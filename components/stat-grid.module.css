@@ -1,0 +1,96 @@
+.grid {
+  display: grid;
+  gap: 12px;
+  width: 100%;
+}
+.cols2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.cols3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.cols4 { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+.cols6 { grid-template-columns: repeat(6, minmax(0, 1fr)); }
+
+@media (max-width: 1100px) {
+  .cols4, .cols6 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (max-width: 600px) {
+  .cols3, .cols4, .cols6 { grid-template-columns: 1fr; }
+  .cols2 { grid-template-columns: 1fr; }
+}
+
+.card {
+  background: var(--qt-surface);
+  border: 1px solid var(--qt-border);
+  border-radius: var(--qt-radius);
+  padding: 16px 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-height: 92px;
+  position: relative;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+.card:hover {
+  border-color: var(--qt-border-strong);
+  box-shadow: var(--qt-shadow-sm);
+}
+.label {
+  font-size: 12.5px;
+  color: var(--qt-text-2);
+  font-weight: 500;
+  letter-spacing: 0.1px;
+}
+.valueRow {
+  display: flex;
+  align-items: baseline;
+  gap: 4px;
+}
+.value {
+  font-size: 24px;
+  font-weight: 700;
+  color: var(--qt-text-1);
+  letter-spacing: -0.4px;
+  line-height: 1.1;
+  font-variant-numeric: tabular-nums;
+}
+.affix {
+  font-size: 14px;
+  color: var(--qt-text-2);
+  font-weight: 600;
+}
+.desc {
+  font-size: 12px;
+  color: var(--qt-text-3);
+  margin-top: 2px;
+}
+.delta {
+  position: absolute;
+  top: 14px;
+  right: 14px;
+  font-size: 11.5px;
+  color: #047857;
+  font-weight: 500;
+  background: rgba(16, 185, 129, 0.1);
+  padding: 1px 6px;
+  border-radius: 4px;
+}
+.deltaDown { color: #b91c1c; background: rgba(239, 68, 68, 0.1); }
+.deltaFlat { color: var(--qt-text-3); background: var(--qt-border); }
+
+.toneAccent .value  { color: #b45309; }
+.toneDanger .value  { color: #b91c1c; }
+.toneSuccess .value { color: #047857; }
+.toneInfo    .value { color: var(--qt-navy-700); }
+.toneDefault .value { color: var(--qt-text-1); }
+
+.toneAccent { background: linear-gradient(180deg, #fffbeb 0%, #ffffff 50%); }
+
+.loading { opacity: 0.6; }
+.skel {
+  display: inline-block;
+  width: 80px;
+  height: 24px;
+  border-radius: 6px;
+  background: linear-gradient(90deg, #e2e8f0 0%, #f1f5f9 50%, #e2e8f0 100%);
+  background-size: 200% 100%;
+  animation: shimmer 1.4s infinite;
+}
+@keyframes shimmer { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }

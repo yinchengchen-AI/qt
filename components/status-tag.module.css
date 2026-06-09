@@ -1,0 +1,15 @@
+.tag {
+  padding: 0 8px;
+  height: 22px;
+  line-height: 20px;
+  font-size: 12px;
+  font-weight: 500;
+  border-radius: 4px;
+  margin: 0;
+}
+.toneDefault    { background: #f1f5f9; color: #475569; }
+.toneInfo       { background: rgba(15, 42, 71, 0.08); color: #0a1c33; }
+.toneProcessing { background: rgba(245, 158, 11, 0.12); color: #b45309; }
+.toneSuccess    { background: rgba(16, 185, 129, 0.12); color: #047857; }
+.toneWarning    { background: rgba(245, 158, 11, 0.18); color: #92400e; }
+.toneDanger     { background: rgba(239, 68, 68, 0.12); color: #b91c1c; }

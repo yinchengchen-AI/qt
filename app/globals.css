@@ -1,3 +1,55 @@
-html, body { height: 100%; margin: 0; padding: 0; }
-#__next, body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif; }
+@import "./tokens.css";
+
+html, body {
+  height: 100%;
+  margin: 0;
+  padding: 0;
+  background: var(--qt-bg);
+  color: var(--qt-text-1);
+}
+body {
+  font-family: var(--qt-font-sans);
+  font-size: 14px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
 * { box-sizing: border-box; }
+
+/* ==== 全局 antd 局部调谐 ==== */
+.ant-pro-layout { background: var(--qt-bg); }
+.ant-pro-table-list { background: transparent; }
+.ant-pro-table .ant-pro-table-list-toolbar,
+.ant-pro-table-search,
+.ant-pro-table-alert,
+.ant-pro-table-pagination { background: transparent; }
+.ant-pro-card {
+  border-radius: var(--qt-radius) !important;
+  border-color: var(--qt-border) !important;
+  box-shadow: var(--qt-shadow-sm);
+}
+.ant-pro-card .ant-pro-card-header { border-bottom-color: var(--qt-border); }
+
+.ant-pro-layout-side {
+  background: #ffffff !important;
+  border-right: 1px solid var(--qt-border);
+}
+.ant-pro-layout-side .ant-menu-light .ant-menu-item-selected {
+  color: var(--qt-navy-900) !important;
+  background-color: rgba(15, 42, 71, 0.08) !important;
+}
+.ant-pro-layout-side .ant-menu-light .ant-menu-item:hover {
+  color: var(--qt-navy-700) !important;
+}
+
+a { color: var(--qt-navy-700); }
+a:hover { color: var(--qt-navy-900); }
+
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-thumb {
+  background: rgba(15, 42, 71, 0.18);
+  border-radius: 999px;
+  border: 2px solid var(--qt-bg);
+}
+::-webkit-scrollbar-thumb:hover { background: rgba(15, 42, 71, 0.3); }
+::-webkit-scrollbar-track { background: transparent; }

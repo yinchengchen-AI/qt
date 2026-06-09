@@ -1,0 +1,106 @@
+.header {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding-bottom: 16px;
+  border-bottom: 1px solid var(--qt-border);
+}
+.section {
+  border-bottom: 1px dashed var(--qt-border);
+  padding-bottom: 12px;
+  margin-top: 4px;
+}
+.row {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+.titleBlock {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+}
+.titles {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+.title {
+  margin: 0;
+  font-size: 22px;
+  font-weight: 700;
+  color: var(--qt-text-1);
+  letter-spacing: -0.2px;
+  line-height: 1.2;
+}
+.section .title {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--qt-text-1);
+}
+.subtitle {
+  margin: 0;
+  font-size: 13px;
+  color: var(--qt-text-2);
+  line-height: 1.5;
+}
+.back {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 28px;
+  padding: 0 10px;
+  border: 1px solid var(--qt-border);
+  background: #fff;
+  border-radius: var(--qt-radius-sm);
+  color: var(--qt-text-2);
+  font-size: 12.5px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  flex-shrink: 0;
+  font-family: inherit;
+}
+.back:hover {
+  border-color: var(--qt-navy-700);
+  color: var(--qt-navy-700);
+  background: rgba(15, 42, 71, 0.04);
+}
+.right {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.meta {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  color: var(--qt-text-2);
+  font-size: 12.5px;
+}
+
+.crumbs {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12.5px;
+  color: var(--qt-text-3);
+  flex-wrap: wrap;
+}
+.crumbItem { display: inline-flex; align-items: center; gap: 4px; }
+.crumbItem a {
+  color: var(--qt-text-3);
+  text-decoration: none;
+}
+.crumbItem a:hover { color: var(--qt-navy-700); }
+.crumbCurrent { color: var(--qt-text-1); font-weight: 500; }
+.crumbSep { color: var(--qt-text-3); margin: 0 2px; }
