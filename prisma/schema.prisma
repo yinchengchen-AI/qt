@@ -1,0 +1,422 @@
+// Prisma 7 schema for 杭州企泰安全科技 业务管理系统
+// PostgreSQL 16; soft delete via deletedAt; monetary fields @db.Decimal(18,2); time @db.Timestamptz(6)
+// NOTE: Prisma 7's schema validator has known wasm issues with `enum` + `@@index` on enum fields.
+//       We model enums as String columns (constrained by PG native ENUM types via raw SQL in migration)
+//       and use TypeScript union types + Zod schemas for application-level type safety.
+
+generator client {
+  provider     = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// =====================================================
+// Auth & Users
+// =====================================================
+model Role {
+  id          String   @id @default(cuid())
+  code        String   @unique
+  name        String
+  description String?
+  permissions Json
+  isSystem    Boolean  @default(false)
+  createdAt   DateTime @default(now()) @db.Timestamptz(6)
+  updatedAt   DateTime @updatedAt      @db.Timestamptz(6)
+  users       User[]
+
+  @@index([code])
+}
+
+model User {
+  id            String     @id @default(cuid())
+  employeeNo    String     @unique
+  name          String
+  email         String     @unique
+  phone         String?
+  passwordHash  String
+  roleId        String
+  role          Role       @relation(fields: [roleId], references: [id])
+  department    String?
+  status        String     @default("ACTIVE") // ACTIVE | DISABLED
+  lastLoginAt   DateTime?  @db.Timestamptz(6)
+  wechatWorkId  String?
+  createdAt     DateTime   @default(now()) @db.Timestamptz(6)
+  updatedAt     DateTime   @updatedAt      @db.Timestamptz(6)
+  deletedAt     DateTime?  @db.Timestamptz(6)
+
+  @@index([roleId])
+  @@index([status])
+}
+
+// =====================================================
+// Customers
+// =====================================================
+model Customer {
+  id                     String    @id @default(cuid())
+  code                   String    @unique
+  name                   String
+  shortName              String?
+  unifiedSocialCreditCode String?  @unique
+  customerType           String    // ENTERPRISE | GOV | OTHER
+  industry               String?
+  scale                  String?   // LARGE | MEDIUM | SMALL | MICRO
+  province               String
+  city                   String
+  address                String?
+  contactPhone           String
+  contactEmail           String?
+  sourceChannel          String?
+  level                  String    @default("C") // A | B | C | D
+  ownerUserId            String
+  status                 String    @default("LEAD") // LEAD | NEGOTIATING | SIGNED | LOST | FROZEN
+  creditLimitAmount      Decimal?  @db.Decimal(18, 2)
+  paymentTermDays        Int       @default(30)
+  createdAt              DateTime  @default(now()) @db.Timestamptz(6)
+  updatedAt              DateTime  @updatedAt      @db.Timestamptz(6)
+  createdById            String
+  updatedById            String
+  deletedAt              DateTime? @db.Timestamptz(6)
+
+  contracts     Contract[]
+  payments      Payment[]
+  followUps     FollowUp[]
+  contacts      ContactPerson[]
+
+  @@index([ownerUserId])
+  @@index([status])
+  @@index([level])
+  @@index([customerType])
+}
+
+model ContactPerson {
+  id          String   @id @default(cuid())
+  customerId  String
+  customer    Customer @relation(fields: [customerId], references: [id])
+  name        String
+  title       String?
+  phone       String
+  email       String?
+  isPrimary   Boolean  @default(false)
+  remark      String?
+  createdAt   DateTime @default(now()) @db.Timestamptz(6)
+  updatedAt   DateTime @updatedAt      @db.Timestamptz(6)
+  deletedAt   DateTime? @db.Timestamptz(6)
+
+  @@index([customerId])
+}
+
+model FollowUp {
+  id            String    @id @default(cuid())
+  customerId    String
+  customer      Customer  @relation(fields: [customerId], references: [id])
+  userId        String
+  followAt      DateTime  @db.Timestamptz(6)
+  method        String    // VISIT | CALL | WECHAT | EMAIL | OTHER
+  content       String
+  nextFollowAt  DateTime? @db.Timestamptz(6)
+  result        String?   // INTENT | NO_INTENT | PENDING | SIGNED
+  createdAt     DateTime  @default(now()) @db.Timestamptz(6)
+  updatedAt     DateTime  @updatedAt      @db.Timestamptz(6)
+  deletedAt     DateTime? @db.Timestamptz(6)
+
+  @@index([customerId])
+  @@index([userId])
+  @@index([followAt])
+}
+
+// =====================================================
+// Contracts
+// =====================================================
+model Contract {
+  id                       String    @id @default(cuid())
+  contractNo               String    @unique
+  customerId               String
+  customer                 Customer  @relation(fields: [customerId], references: [id])
+  customerName             String
+  title                    String
+  serviceType              String    // SAFETY_CONSULT | SAFETY_TRAIN | HAZARD_ANA | EMERGENCY_PLAN | EVALUATION | OTHER
+  signDate                 DateTime  @db.Timestamptz(6)
+  startDate                DateTime  @db.Timestamptz(6)
+  endDate                  DateTime  @db.Timestamptz(6)
+  totalAmount              Decimal   @db.Decimal(18, 2)
+  taxRate                  Decimal   @default(0.06) @db.Decimal(6, 4)
+  taxAmount                Decimal   @db.Decimal(18, 2)
+  amountExcludingTax       Decimal   @db.Decimal(18, 2)
+  paymentMethod            String    // LUMP_SUM | BY_PHASE | BY_MONTH | BY_QUARTER
+  installmentPlan          Json?
+  status                   String    @default("DRAFT") // DRAFT | PENDING_REVIEW | EFFECTIVE | EXECUTING | COMPLETED | TERMINATED | EXPIRED
+  ownerUserId              String
+  reviewerId               String?
+  reviewAt                 DateTime? @db.Timestamptz(6)
+  reviewComment            String?
+  attachments              Json
+  completionInvoiceRatio   Decimal   @default(0.95) @db.Decimal(4, 2)
+  createdAt                DateTime  @default(now()) @db.Timestamptz(6)
+  updatedAt                DateTime  @updatedAt      @db.Timestamptz(6)
+  createdById              String
+  updatedById              String
+  deletedAt                DateTime? @db.Timestamptz(6)
+
+  projects      Project[]
+  payments      Payment[]
+  reviewLogs    ContractReviewLog[]
+
+  @@index([customerId])
+  @@index([status])
+  @@index([ownerUserId])
+  @@index([signDate])
+}
+
+model ContractReviewLog {
+  id         String   @id @default(cuid())
+  contractId String
+  contract   Contract @relation(fields: [contractId], references: [id])
+  reviewerId String
+  action     String   // SUBMIT | APPROVE | REJECT | WITHDRAW
+  comment    String?
+  at         DateTime @default(now()) @db.Timestamptz(6)
+
+  @@index([contractId])
+}
+
+// =====================================================
+// Projects
+// =====================================================
+model Project {
+  id            String    @id @default(cuid())
+  projectNo     String    @unique
+  contractId    String
+  contract      Contract  @relation(fields: [contractId], references: [id])
+  name          String
+  serviceScope  String
+  managerUserId String
+  startDate     DateTime  @db.Timestamptz(6)
+  endDate       DateTime  @db.Timestamptz(6)
+  budgetAmount  Decimal?  @db.Decimal(18, 2)
+  milestones    Json?
+  status        String    @default("PLANNED") // PLANNED | IN_PROGRESS | SUSPENDED | DELIVERED | ACCEPTED | CLOSED | CANCELLED
+  createdAt     DateTime  @default(now()) @db.Timestamptz(6)
+  updatedAt     DateTime  @updatedAt      @db.Timestamptz(6)
+  createdById   String
+  updatedById   String
+  deletedAt     DateTime? @db.Timestamptz(6)
+
+  invoices      Invoice[]
+  progressLogs  ProjectProgressLog[]
+
+  @@index([contractId])
+  @@index([status])
+  @@index([managerUserId])
+  @@unique([contractId, name])
+}
+
+model ProjectProgressLog {
+  id        String   @id @default(cuid())
+  projectId String
+  project   Project  @relation(fields: [projectId], references: [id])
+  userId    String
+  percent   Int
+  remark    String
+  at        DateTime @default(now()) @db.Timestamptz(6)
+
+  @@index([projectId])
+}
+
+// =====================================================
+// Invoices
+// =====================================================
+model Invoice {
+  id                  String    @id @default(cuid())
+  invoiceNo           String    @unique
+  invoiceCode         String?
+  projectId           String
+  project             Project   @relation(fields: [projectId], references: [id])
+  contractId          String
+  customerId          String
+  customerName        String
+  invoiceType         String    // VAT_SPECIAL | VAT_GENERAL | VAT_ELECTRONIC | ELEC_NORMAL
+  amount              Decimal   @db.Decimal(18, 2)
+  taxRate             Decimal   @db.Decimal(6, 4)
+  taxAmount           Decimal   @db.Decimal(18, 2)
+  amountExcludingTax  Decimal   @db.Decimal(18, 2)
+  applyDate           DateTime  @db.Timestamptz(6)
+  expectedIssueDate   DateTime? @db.Timestamptz(6)
+  actualIssueDate     DateTime? @db.Timestamptz(6)
+  titleType           String    // COMPANY | PERSONAL
+  titleName           String
+  taxNo               String?
+  bankName            String?
+  bankAccount         String?
+  address             String?
+  phone               String?
+  remark              String?
+  attachments         Json?
+  status              String    @default("DRAFT") // DRAFT | PENDING_FINANCE | ISSUED | REJECTED | VOIDED | RED_FLUSHED
+  applicantUserId     String
+  financeUserId       String?
+  reviewedAt          DateTime? @db.Timestamptz(6)
+  reviewComment       String?
+  linkedInvoiceId     String?   @unique
+  linkedInvoice       Invoice?  @relation("InvoiceRedFlush", fields: [linkedInvoiceId], references: [id])
+  redFlushInverse     Invoice?  @relation("InvoiceRedFlush")
+  createdAt           DateTime  @default(now()) @db.Timestamptz(6)
+  updatedAt           DateTime  @updatedAt      @db.Timestamptz(6)
+  createdById         String
+  updatedById         String
+  deletedAt           DateTime? @db.Timestamptz(6)
+
+  payments        Payment[]
+  auditLogs       InvoiceAuditLog[]
+  allocations     PaymentAllocation[]
+
+  @@index([projectId])
+  @@index([status])
+  @@index([actualIssueDate])
+  @@index([contractId])
+  @@index([customerId])
+}
+
+model InvoiceAuditLog {
+  id        String   @id @default(cuid())
+  invoiceId String
+  invoice   Invoice  @relation(fields: [invoiceId], references: [id])
+  actorId   String
+  action    String
+  before    Json?
+  after     Json?
+  comment   String?
+  at        DateTime @default(now()) @db.Timestamptz(6)
+
+  @@index([invoiceId])
+}
+
+// =====================================================
+// Payments
+// =====================================================
+model Payment {
+  id              String    @id @default(cuid())
+  paymentNo       String    @unique
+  customerId      String
+  customer        Customer  @relation(fields: [customerId], references: [id])
+  contractId      String
+  contract        Contract  @relation(fields: [contractId], references: [id])
+  invoiceId       String?
+  invoice         Invoice?  @relation(fields: [invoiceId], references: [id])
+  amount          Decimal   @db.Decimal(18, 2)
+  receivedAt      DateTime  @db.Timestamptz(6)
+  method          String    // BANK_TRANSFER | CHECK | CASH | WECHAT | ALIPAY | OTHER
+  bankRefNo       String?   // 去 @unique；CONFIRMED 唯一由 service 校验（PLANNED 允许重复）
+  bankName        String?
+  remark          String?
+  status          String    @default("PLANNED") // PLANNED | CONFIRMED | RECONCILED | REFUNDED | CANCELLED
+  recorderUserId  String
+  reconcileUserId String?
+  reconciledAt    DateTime? @db.Timestamptz(6)
+  createdAt       DateTime  @default(now()) @db.Timestamptz(6)
+  updatedAt       DateTime  @updatedAt      @db.Timestamptz(6)
+  createdById     String
+  updatedById     String
+  deletedAt       DateTime? @db.Timestamptz(6)
+
+  allocations PaymentAllocation[]
+
+  @@index([invoiceId])
+  @@index([contractId])
+  @@index([status])
+  @@index([receivedAt])
+  @@index([customerId])
+}
+
+model PaymentAllocation {
+  id        String   @id @default(cuid())
+  paymentId String
+  payment   Payment  @relation(fields: [paymentId], references: [id])
+  invoiceId String?
+  invoice   Invoice? @relation(fields: [invoiceId], references: [id])
+  projectId String?
+  amount    Decimal  @db.Decimal(18, 2)
+  remark    String?
+  createdAt DateTime @default(now()) @db.Timestamptz(6)
+
+  @@index([paymentId])
+  @@index([invoiceId])
+  @@index([projectId])
+}
+
+// =====================================================
+// Messages / Announcements
+// =====================================================
+model Message {
+  id             String    @id @default(cuid())
+  receiverUserId String
+  type           String    // CONTRACT_PENDING_REVIEW | CONTRACT_EXPIRING | INVOICE_OVERDUE_PAYMENT | PAYMENT_RECEIVED | PROJECT_DUE | CUSTOMER_INACTIVE
+  title          String
+  content        String
+  link           Json?
+  readAt         DateTime? @db.Timestamptz(6)
+  createdAt      DateTime  @default(now()) @db.Timestamptz(6)
+
+  @@index([receiverUserId, readAt])
+  @@index([type])
+}
+
+model Announcement {
+  id             String    @id @default(cuid())
+  title          String
+  content        String
+  publishUserId  String
+  publishAt      DateTime  @default(now()) @db.Timestamptz(6)
+  effectiveFrom  DateTime? @db.Timestamptz(6)
+  effectiveTo    DateTime? @db.Timestamptz(6)
+  pinned         Boolean   @default(false)
+  targetRoles    String[]
+  createdAt      DateTime  @default(now()) @db.Timestamptz(6)
+  updatedAt      DateTime  @updatedAt      @db.Timestamptz(6)
+  deletedAt      DateTime? @db.Timestamptz(6)
+
+  @@index([publishAt])
+}
+
+// =====================================================
+// Audit / Dictionaries / Sequences
+// =====================================================
+model OperationLog {
+  id        String   @id @default(cuid())
+  actorId   String
+  entity    String
+  entityId  String
+  action    String
+  diff      Json?
+  ip        String?
+  at        DateTime @default(now()) @db.Timestamptz(6)
+
+  @@index([actorId])
+  @@index([entity, entityId])
+  @@index([at])
+}
+
+model Dictionary {
+  id        String   @id @default(cuid())
+  category  String
+  code      String
+  label     String
+  sort      Int      @default(0)
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now()) @db.Timestamptz(6)
+  updatedAt DateTime @updatedAt      @db.Timestamptz(6)
+
+  @@unique([category, code])
+  @@index([category, isActive, sort])
+}
+
+model Sequence {
+  id        String   @id @default(cuid())
+  prefix    String
+  year      Int
+  lastValue Int      @default(0)
+  updatedAt DateTime @updatedAt @db.Timestamptz(6)
+
+  @@unique([prefix, year])
+}

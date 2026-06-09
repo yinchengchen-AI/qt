@@ -1,0 +1,44 @@
+# deps
+node_modules
+.pnpm-store
+
+# build
+.next
+.turbo
+dist
+out
+build
+
+# env
+.env
+.env*.local
+!.env.example
+
+# logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# tsbuild
+*.tsbuildinfo
+
+# testing
+coverage
+playwright-report
+test-results
+.vitest-cache
+
+# prisma dev
+prisma/dev.db*
+prisma/migrations/dev
+
+# misc
+.DS_Store
+.idea
+.vscode/*
+!.vscode/settings.json
+!.vscode/extensions.json
+*.swp
+*.swo
