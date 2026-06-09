@@ -1,4 +1,5 @@
 "use client";
+import { useEffect, useState } from "react";
 import useSWR from "swr";
 
 type DictItem = { code: string; label: string };
@@ -26,9 +27,20 @@ function notify(category: string) {
 }
 
 export function useDict(category: string): DictItem[] {
-  const { mutate } = useSWR(["dict", category], () => loadDict(category), { fallbackData: cache.get(category) });
+  // 用 useState + useSWR 触发 fetch；初次返回 fallback，fetch 完成后通过 setState 触发重渲染
+  const [data, setData] = useState<DictItem[]>(() => cache.get(category) ?? []);
+  const { data: swrData } = useSWR(["dict", category], () => loadDict(category), {
+    fallbackData: cache.get(category),
+    revalidateOnMount: !cache.has(category)
+  });
+  useEffect(() => {
+    if (swrData) {
+      setData(swrData);
+      cache.set(category, swrData);
+    }
+  }, [swrData, category]);
   if (!subs.has(category)) subs.set(category, new Set());
-  return (cache.get(category) ?? mutate ?? []) as DictItem[];
+  return data;
 }
 
 export function useDicts(categories: string[]): Record<string, DictItem[]> {
