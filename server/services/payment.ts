@@ -5,9 +5,17 @@ import { requireSession, type SessionUser } from "@/lib/session";
 import { nextBusinessNo } from "@/lib/sequence";
 import { requirePermission, RESOURCE, ACTION } from "@/lib/permissions";
 import type { PaymentCreateInput, PaymentActionInput } from "@/lib/validators/payment";
-import type { Prisma } from "@prisma/client";
+import { Prisma } from "@prisma/client";
 import { audit } from "@/server/audit";
 import { emit, listAdminUserIds } from "@/server/events/bus";
+
+// SALES 行级隔离：回款所属合同的 ownerUserId 必须 = 自己
+function paymentSalesIsolation(user: SessionUser): Prisma.PaymentWhereInput {
+  if (user.roleCode === "SALES") {
+    return { contract: { ownerUserId: user.id } };
+  }
+  return {};
+}
 
 export async function listPayments(
   user: SessionUser,
@@ -48,7 +56,7 @@ export async function createPayment(user: SessionUser, input: PaymentCreateInput
     });
     if (!contract) throw new ApiError(ERROR_CODES.NOT_FOUND, "合同不存在", 404);
     if (input.invoiceId) {
-      const inv = await tx.invoice.findUnique({ where: { id: input.invoiceId } });
+      const inv = await tx.invoice.findFirst({ where: { id: input.invoiceId, deletedAt: null } });
       if (!inv || inv.contractId !== input.contractId) throw new ApiError(ERROR_CODES.NOT_FOUND, "发票不属于该合同", 404);
     }
     const paymentNo = await nextBusinessNo("PAYMENT");
@@ -76,7 +84,7 @@ export async function createPayment(user: SessionUser, input: PaymentCreateInput
 export async function paymentAction(user: SessionUser, id: string, input: PaymentActionInput) {
   requirePermission(user.roleCode, RESOURCE.PAYMENT, ACTION.UPDATE);
   return prisma.$transaction(async (tx) => {
-    const p = await tx.payment.findFirst({ where: { id, deletedAt: null } });
+    const p = await tx.payment.findFirst({ where: { id, deletedAt: null, ...paymentSalesIsolation(user) } });
     if (!p) throw new ApiError(ERROR_CODES.NOT_FOUND, "回款不存在", 404);
 
     if (input.action === "confirm") {
@@ -173,7 +181,9 @@ export async function paymentAction(user: SessionUser, id: string, input: Paymen
         throw new ApiError(ERROR_CODES.VALIDATION_FAILED, "请提供分配明细", 400);
       }
       const totalAlloc = input.allocations.reduce((s, a) => s + a.amount, 0);
-      if (Math.abs(totalAlloc - Number(p.amount)) > 0.01) {
+      const totalAllocDec = new Prisma.Decimal(totalAlloc.toString());
+      const paymentAmtDec = new Prisma.Decimal(p.amount.toString());
+      if (!totalAllocDec.equals(paymentAmtDec)) {
         throw new ApiError(ERROR_CODES.VALIDATION_FAILED, `分配合计 ¥${totalAlloc} 与回款金额 ¥${p.amount} 不一致`, 400);
       }
       await tx.paymentAllocation.deleteMany({ where: { paymentId: id } });

@@ -21,22 +21,22 @@ export async function nextBusinessNo(type: SeqType, opts?: { yyyymm?: boolean })
       ? `${prefix}-${year}${String(new Date().getMonth() + 1).padStart(2, "0")}`
       : `${prefix}-${year}`;
 
-    // 强制行级隔离：用 SELECT FOR UPDATE 锁
-    const rows = await tx.$queryRawUnsafe<Array<{ id: string; lastValue: number }>>(
-      `SELECT id, "lastValue" FROM "Sequence" WHERE prefix = $1 AND year = $2 FOR UPDATE`,
-      key,
-      year
+    // 1) 原子 upsert + 自增：(prefix, year) 不存在则 lastValue=1，存在则 lastValue=lastValue+1
+    // 用 prisma.upsert 保证行存在（解决 SELECT FOR UPDATE 看到 0 行的竞态）
+    // 再用 PG 原生 RETURNING 拿最新值
+    const upserted = await tx.sequence.upsert({
+      where: { prefix_year: { prefix: key, year } },
+      update: {},
+      create: { prefix: key, year, lastValue: 0 }
+    });
+    // 2) 原子自增 + 返回新值（用 SQL RETURNING）
+    const rows = await tx.$queryRawUnsafe<Array<{ lastValue: number }>>(
+      `UPDATE "Sequence" SET "lastValue" = "lastValue" + 1, "updatedAt" = NOW()
+       WHERE id = $1 RETURNING "lastValue"`,
+      upserted.id
     );
-    let next: number;
-    if (rows.length === 0) {
-      await tx.sequence.create({ data: { prefix: key, year, lastValue: 1 } });
-      next = 1;
-    } else {
-      const r = rows[0]!;
-      next = r.lastValue + 1;
-      await tx.sequence.update({ where: { id: r.id }, data: { lastValue: next } });
-    }
-    const suffix = String(next).padStart(4, "0");
+    const r = rows[0]!;
+    const suffix = String(r.lastValue).padStart(4, "0");
     return `${key}-${suffix}`;
   });
 }

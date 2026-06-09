@@ -14,15 +14,21 @@ type AuditInput = {
   userAgent?: string;
 };
 
-// 敏感字段脱敏
+// 敏感字段脱敏：永不入 OperationLog.diff
 const SENSITIVE_KEYS = new Set([
   "password",
   "passwordHash",
   "bankAccount",
+  "bankRefNo",
   "taxNo",
   "unifiedSocialCreditCode",
   "idCard",
-  "cardNo"
+  "cardNo",
+  "wechatWorkId",
+  "phone",
+  "contactPhone",
+  "contactEmail",
+  "email"
 ]);
 function redact<T>(v: T): T {
   if (v == null || typeof v !== "object") return v;

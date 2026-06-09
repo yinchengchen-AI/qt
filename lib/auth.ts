@@ -70,6 +70,22 @@ export const authOptions: AuthOptions = {
         token.uid = user.id;
         token.employeeNo = user.employeeNo;
         token.roleCode = user.roleCode;
+        token.iat = Math.floor(Date.now() / 1000);  // 记录签发时间
+      }
+      // 每次请求都查一次 DB：防止用户被 DISABLED 后旧 token 仍可用
+      // 性能开销：单次 user.findFirst（PK 索引），可接受
+      if (token.uid) {
+        const u = await prisma.user.findFirst({
+          where: { id: token.uid, deletedAt: null, status: "ACTIVE" },
+          select: { id: true, employeeNo: true, role: { select: { code: true } } }
+        });
+        if (!u) {
+          // 返回空 token → next-auth 视为未登录 → 401
+          return {} as typeof token;
+        }
+        // 角色变更后能及时反映（无需重新登录）
+        token.roleCode = u.role.code as typeof token.roleCode;
+        token.employeeNo = u.employeeNo;
       }
       return token;
     },

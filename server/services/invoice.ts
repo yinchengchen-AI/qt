@@ -4,8 +4,16 @@ import { ERROR_CODES } from "@/types/errors";
 import { requireSession, type SessionUser } from "@/lib/session";
 import { requirePermission, RESOURCE, ACTION } from "@/lib/permissions";
 import type { InvoiceCreateInput, InvoiceUpdateInput, InvoiceActionInput } from "@/lib/validators/invoice";
-import type { Prisma } from "@prisma/client";
+import { Prisma } from "@prisma/client";
 import { audit } from "@/server/audit";
+
+// SALES 行级隔离：发票所属合同的 ownerUserId 必须 = 自己
+function invoiceSalesIsolation(user: SessionUser): Prisma.InvoiceWhereInput {
+  if (user.roleCode === "SALES") {
+    return { project: { contract: { ownerUserId: user.id } } };
+  }
+  return {};
+}
 
 function calcTotals(amount: number, taxRate: number) {
   const taxAmount = round2((amount * taxRate) / (1 + taxRate));
@@ -57,8 +65,10 @@ export async function createInvoice(user: SessionUser, input: InvoiceCreateInput
       where: { contractId: project.contractId, status: "ISSUED", deletedAt: null },
       _sum: { amount: true }
     });
-    const issuedAmt = Number(issued._sum.amount ?? 0);
-    if (issuedAmt + input.amount > Number(project.contract.totalAmount) + 0.01) {
+    // 用 Prisma.Decimal 比较，避免 JS number 浮点失真
+    const issuedAmt = new Prisma.Decimal(issued._sum.amount?.toString() ?? "0");
+    const contractTotal = new Prisma.Decimal(project.contract.totalAmount.toString());
+    if (issuedAmt.plus(input.amount).greaterThan(contractTotal)) {
       throw new ApiError(
         ERROR_CODES.INVOICE_OVER_LIMIT,
         `已开票 ¥${issuedAmt.toFixed(2)}，本次 ¥${input.amount.toFixed(2)}，将超过合同总额 ¥${project.contract.totalAmount}`,
@@ -130,7 +140,7 @@ export async function updateInvoice(user: SessionUser, id: string, input: Invoic
 export async function invoiceAction(user: SessionUser, id: string, input: InvoiceActionInput) {
   requirePermission(user.roleCode, RESOURCE.INVOICE, ACTION.UPDATE);
   return prisma.$transaction(async (tx) => {
-    const inv = await tx.invoice.findFirst({ where: { id, deletedAt: null } });
+    const inv = await tx.invoice.findFirst({ where: { id, deletedAt: null, ...invoiceSalesIsolation(user) } });
     if (!inv) throw new ApiError(ERROR_CODES.NOT_FOUND, "发票不存在", 404);
     if (input.action === "submit") {
       if (inv.status !== "DRAFT") throw new ApiError(ERROR_CODES.ENTITY_IMMUTABLE, "仅 DRAFT 可提交", 403);
