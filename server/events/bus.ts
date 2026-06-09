@@ -2,6 +2,7 @@
 // 状态机迁移时在事务内 emit → 原子性
 import type { Prisma, PrismaClient } from "@prisma/client";
 import { Prisma as PrismaNS } from "@prisma/client";
+import { dispatchExternalChannels } from "./dispatcher";
 
 export type DomainEventType =
   | "CONTRACT_PENDING_REVIEW"
@@ -37,6 +38,9 @@ export async function emit(prisma: TxOrClient, ev: DomainEvent): Promise<number>
   for (const d of data) {
     await prisma.message.create({ data: d });
   }
+  // 触发外部通道（fire-and-forget；事务回滚风险可接受）
+  const resolved = data.map((d, i) => ({ ...d, link: messages[i]?.link } as unknown as { receiverUserId: string; title: string; content: string; link?: Record<string, unknown> }));
+  void dispatchExternalChannels(ev, resolved).catch((e) => console.warn("[bus] dispatch failed:", e));
   return data.length;
 }
 

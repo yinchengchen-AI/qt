@@ -7,6 +7,7 @@ import { requirePermission, RESOURCE, ACTION } from "@/lib/permissions";
 import type { CustomerCreateInput, CustomerUpdateInput, FollowUpCreateInput } from "@/lib/validators/customer";
 import type { Prisma } from "@prisma/client";
 import { audit } from "@/server/audit";
+import { rlsTransaction } from "@/lib/rls";
 
 // SALES 行级隔离：列表/详情/更新自动注入 ownerUserId
 function ownershipWhere(user: SessionUser): Prisma.CustomerWhereInput {
@@ -60,7 +61,7 @@ export async function createCustomer(user: SessionUser, input: CustomerCreateInp
   requirePermission(user.roleCode, RESOURCE.CUSTOMER, ACTION.CREATE);
   const code = await nextBusinessNo("CUSTOMER", { yyyymm: true });
   const ownerUserId = input.ownerUserId ?? user.id;  // 默认当前用户为负责人（admin 创建时也归自己）
-  return prisma.customer.create({
+  return rlsTransaction(prisma, user, async (tx) => { return tx.customer.create({
     data: {
       ...input,
       code,
@@ -77,7 +78,7 @@ export async function createCustomer(user: SessionUser, input: CustomerCreateInp
       createdById: user.id,
       updatedById: user.id
     }
-  });
+  }); });
 }
 
 export async function updateCustomer(user: SessionUser, id: string, input: CustomerUpdateInput) {

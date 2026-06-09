@@ -300,3 +300,66 @@ GET /api/statistics/export?type=overview|top-customers|sales-performance   # xls
 | 端到端 P1 | `tests/e2e-flow.mjs` | 27/27 |
 | 端到端 P2 | `tests/p2-flow.mjs` | 21/21 |
 | **合计** | – | **53/53** |
+
+## P3 完善验收
+
+P3 阶段交付：通知三通道、公告系统、RLS 兜底、备份/审计脚本、压测工具、i18n 基础。
+
+### P3 文件清单
+
+| 类别 | 文件 |
+|---|---|
+| 通知 | `lib/notify-config.ts`、`server/events/channels.ts`、`server/events/dispatcher.ts` |
+| 公告 | `server/services/announcement.ts`、`app/api/announcements/**`、`app/announcements/page.tsx`、`lib/validators/announcement.ts` |
+| RLS | `prisma/migrations/20260609_rls/migration.sql`、`lib/rls.ts` |
+| i18n | `lib/i18n.ts` |
+| 备份 | `scripts/backup.sh`、`scripts/audit-cleanup.sh`、`scripts/loadtest.mjs` |
+| Vercel | `vercel.json`、`app/api/jobs/run-all/route.ts` |
+| 文档 | `docs/RLS.md`、`docs/P3_REVIEW.md` |
+
+### P3 E2E
+
+```bash
+node tests/p3-flow.mjs
+```
+
+覆盖 23 用例：公告 CRUD + 靶向角色 + 软删；通知通道关闭无副作用；inbox 异步分发；SALES 行级隔离（应用层）。
+
+### 压测
+
+```bash
+node scripts/loadtest.mjs           # 默认 50 并发 × 5s
+CONCURRENCY=100 DURATION_MS=10000 node scripts/loadtest.mjs
+```
+
+dev 模式实测（C50/C100）：RPS 460-500，P95 < 280ms。详见 `docs/P3_REVIEW.md`。
+
+### 通知三通道配置
+
+`.env` 中按需开启：
+
+```env
+NOTIFY_EMAIL_ENABLED="true"
+SMTP_HOST="smtp.example.com"
+SMTP_USER="..."
+SMTP_PASS="..."
+
+NOTIFY_WECHAT_WORK_ENABLED="true"
+WECHAT_WORK_WEBHOOK_URL="https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=..."
+```
+
+### 备份与定时任务
+
+- **本地 cron**：`bash scripts/backup.sh` + crontab `0 2 * * *`
+- **Vercel Cron**：`vercel.json` 已配 `POST /api/jobs/run-all` 每日 01:00 UTC
+- **Cron Secret**：`.env` 设 `CRON_SECRET`，Vercel Cron 自动注入 Bearer 鉴权
+
+### 完整回归
+
+| 阶段 | 测试 | 通过 |
+|---|---|---|
+| 单元 | Vitest | 5/5 |
+| 端到端 P1 | `tests/e2e-flow.mjs` | 27/27 |
+| 端到端 P2 | `tests/p2-flow.mjs` | 21/21 |
+| 端到端 P3 | `tests/p3-flow.mjs` | 23/23 |
+| **合计** | – | **76/76** |
