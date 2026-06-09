@@ -1,4 +1,7 @@
 "use client";
+import { Page } from "@/components/page";
+import { PageHeader } from "@/components/page-header";
+import { EmptyState } from "@/components/empty-state";
 import { ProCard, ProForm, ProFormText, ProFormSelect, ProFormDigit, ProFormDateTimePicker } from "@ant-design/pro-components";
 import { App as AntdApp, Button } from "antd";
 import { useRouter } from "next/navigation";
@@ -13,7 +16,9 @@ export default function NewInvoicePage() {
     .map((p) => ({ value: p.id, label: `${p.projectNo} · ${p.name}` }));
 
   return (
-    <ProCard title={<span onClick={() => router.push("/invoices")} style={{ cursor: "pointer" }}>← 新建开票</span>}>
+    <Page compact>
+      <PageHeader back={() => router.push("/invoices")} title="新建开票" subtitle="为已签约项目申请开票,提交后由财务审核" />
+      <ProCard>
       <ProForm
         layout="vertical"
         onFinish={async (values) => {
@@ -55,5 +60,6 @@ export default function NewInvoicePage() {
         <Button type="primary" htmlType="submit">保存草稿</Button>
       </ProForm>
     </ProCard>
+    </Page>
   );
 }

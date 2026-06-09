@@ -1,4 +1,7 @@
 "use client";
+import { Page } from "@/components/page";
+import { PageHeader } from "@/components/page-header";
+import { EmptyState } from "@/components/empty-state";
 import { ProCard, ProForm, ProFormText, ProFormSelect, ProFormDigit } from "@ant-design/pro-components";
 import { App as AntdApp, Button } from "antd";
 import { useRouter } from "next/navigation";
@@ -18,7 +21,9 @@ export default function NewCustomerPage() {
   const customerLevel = useDict("CUSTOMER_LEVEL");
 
   return (
-    <ProCard title={<span onClick={() => router.back()} style={{ cursor: "pointer" }}>← 新建客户</span>}>
+    <Page compact>
+      <PageHeader back={() => router.push("/customers")} title="新建客户" subtitle="录入客户基础信息、联系人、授信与等级" />
+      <ProCard>
       <ProForm
         layout="vertical"
         onFinish={async (values) => {
@@ -53,5 +58,6 @@ export default function NewCustomerPage() {
         <Button type="primary" htmlType="submit">保存</Button>
       </ProForm>
     </ProCard>
+    </Page>
   );
 }

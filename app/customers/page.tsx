@@ -1,9 +1,12 @@
 "use client";
-import { ProTable, ProCard } from "@ant-design/pro-components";
-import { Tag, Button, Space, App as AntdApp } from "antd";
+import { ProTable } from "@ant-design/pro-components";
+import { Tag, Button, Space } from "antd";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useSWRConfig } from "swr";
+import { Page } from "@/components/page";
+import { PageHeader } from "@/components/page-header";
+import { StatusTag } from "@/components/status-tag";
 import { useDict } from "@/lib/dict-client";
 
 type Customer = {
@@ -21,35 +24,30 @@ type Customer = {
   createdAt: string;
 };
 
-const STATUS_COLOR: Record<string, string> = {
-  LEAD: "default",
-  NEGOTIATING: "processing",
-  SIGNED: "success",
-  LOST: "warning",
-  FROZEN: "error"
-};
-
 const LEVEL_COLOR: Record<string, string> = { A: "red", B: "orange", C: "blue", D: "default" };
 
 export default function CustomersPage() {
   const router = useRouter();
-  const { message } = AntdApp.useApp();
   const { mutate } = useSWRConfig();
   const customerTypeDict = useDict("CUSTOMER_TYPE");
   const customerLevelDict = useDict("CUSTOMER_LEVEL");
 
   return (
-    <ProCard>
-      <ProTable<Customer>
-        headerTitle="客户管理"
-        rowKey="id"
-        search={{ labelWidth: "auto" }}
-        pagination={{ pageSize: 20, showSizeChanger: true }}
-        toolBarRender={() => [
+    <Page>
+      <PageHeader
+        title="客户管理"
+        subtitle="线索录入、签约、跟进与等级维护;支持按地区 / 类型 / 等级筛选"
+        actions={
           <Button key="add" type="primary" onClick={() => router.push("/customers/new")}>
             新建客户
           </Button>
-        ]}
+        }
+      />
+      <ProTable<Customer>
+        rowKey="id"
+        search={{ labelWidth: "auto" }}
+        pagination={{ pageSize: 20, showSizeChanger: true }}
+        cardBordered={false}
         request={async (params) => {
           const qs = new URLSearchParams({
             page: String(params.current ?? 1),
@@ -65,20 +63,40 @@ export default function CustomersPage() {
         }}
         columns={[
           { title: "客户编号", dataIndex: "code", width: 180 },
-          { title: "客户名称", dataIndex: "name", width: 220,
-            render: (_, r) => <Link href={`/customers/${r.id}`}>{r.name}</Link> },
-          { title: "类型", dataIndex: "customerType", width: 100,
-            valueEnum: Object.fromEntries(customerTypeDict.map((d) => [d.code, { text: d.label }])) },
-          { title: "等级", dataIndex: "level", width: 80,
-            render: (_, r) => <Tag color={LEVEL_COLOR[r.level] ?? "default"}>{r.level}</Tag> },
-          { title: "状态", dataIndex: "status", width: 100,
-            render: (_, r) => <Tag color={STATUS_COLOR[r.status] ?? "default"}>{r.status}</Tag> },
+          {
+            title: "客户名称",
+            dataIndex: "name",
+            width: 220,
+            render: (_, r) => <Link href={`/customers/${r.id}`}>{r.name}</Link>
+          },
+          {
+            title: "类型",
+            dataIndex: "customerType",
+            width: 100,
+            valueEnum: Object.fromEntries(customerTypeDict.map((d) => [d.code, { text: d.label }]))
+          },
+          {
+            title: "等级",
+            dataIndex: "level",
+            width: 80,
+            render: (_, r) => <Tag color={LEVEL_COLOR[r.level] ?? "default"}>{r.level}</Tag>
+          },
+          {
+            title: "状态",
+            dataIndex: "status",
+            width: 100,
+            render: (_, r) => <StatusTag status={r.status} domain="customer" />
+          },
           { title: "联系电话", dataIndex: "contactPhone", width: 140 },
-          { title: "所在地区", dataIndex: "province", width: 160,
-            render: (_, r) => `${r.province} / ${r.city}` }
+          {
+            title: "所在地区",
+            dataIndex: "province",
+            width: 160,
+            render: (_, r) => `${r.province} / ${r.city}`
+          }
         ]}
         options={{ reload: () => mutate((k) => typeof k === "string" && k.startsWith("/api/customers")) }}
       />
-    </ProCard>
+    </Page>
   );
 }

@@ -1,4 +1,7 @@
 "use client";
+import { Page } from "@/components/page";
+import { PageHeader } from "@/components/page-header";
+import { EmptyState } from "@/components/empty-state";
 import { ProCard, ProForm, ProFormText, ProFormSelect, ProFormDigit, ProFormDateTimePicker } from "@ant-design/pro-components";
 import { App as AntdApp, Button } from "antd";
 import { useParams, useRouter } from "next/navigation";
@@ -12,10 +15,12 @@ export default function EditContractPage() {
   const { message } = AntdApp.useApp();
   const { data, isLoading } = useSWR<any>(`/api/contracts/${id}`);
   const serviceType = useDict("SERVICE_TYPE");
-  if (isLoading || !data) return <ProCard>加载中…</ProCard>;
+  if (isLoading || !data) return <Page compact><EmptyState loading /></Page>;
   if (!["DRAFT", "PENDING_REVIEW"].includes(data.status)) return <ProCard>当前状态不可编辑</ProCard>;
   return (
-    <ProCard title={<span onClick={() => router.push(`/contracts/${id}`)} style={{ cursor: "pointer" }}>← 编辑合同 · {data.contractNo}</span>}>
+    <Page compact>
+      <PageHeader back={() => router.push(`/contracts/${id}`)} title="编辑合同" subtitle="草稿或待审批状态可编辑" />
+      <ProCard>
       <ProForm
         layout="vertical"
         initialValues={{
@@ -53,5 +58,6 @@ export default function EditContractPage() {
         ]} />
       </ProForm>
     </ProCard>
+    </Page>
   );
 }

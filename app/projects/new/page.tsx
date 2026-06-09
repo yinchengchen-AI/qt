@@ -1,4 +1,7 @@
 "use client";
+import { Page } from "@/components/page";
+import { PageHeader } from "@/components/page-header";
+import { EmptyState } from "@/components/empty-state";
 import { ProCard, ProForm, ProFormText, ProFormTextArea, ProFormSelect, ProFormDigit, ProFormDateTimePicker } from "@ant-design/pro-components";
 import { App as AntdApp, Button } from "antd";
 import { useRouter } from "next/navigation";
@@ -13,7 +16,9 @@ export default function NewProjectPage() {
     .map((c) => ({ value: c.id, label: `${c.contractNo} · ${c.title}` }));
 
   return (
-    <ProCard title={<span onClick={() => router.push("/projects")} style={{ cursor: "pointer" }}>← 新建项目</span>}>
+    <Page compact>
+      <PageHeader back={() => router.push("/projects")} title="新建项目" subtitle="从已生效合同拆解出可执行项目" />
+      <ProCard>
       <ProForm
         layout="vertical"
         onFinish={async (values) => {
@@ -40,5 +45,6 @@ export default function NewProjectPage() {
         <Button type="primary" htmlType="submit">保存</Button>
       </ProForm>
     </ProCard>
+    </Page>
   );
 }

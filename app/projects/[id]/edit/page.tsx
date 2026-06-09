@@ -1,4 +1,7 @@
 "use client";
+import { Page } from "@/components/page";
+import { PageHeader } from "@/components/page-header";
+import { EmptyState } from "@/components/empty-state";
 import { ProCard, ProForm, ProFormText, ProFormTextArea, ProFormDateTimePicker, ProFormDigit } from "@ant-design/pro-components";
 import { App as AntdApp, Button } from "antd";
 import { useParams, useRouter } from "next/navigation";
@@ -10,10 +13,12 @@ export default function EditProjectPage() {
   const router = useRouter();
   const { message } = AntdApp.useApp();
   const { data, isLoading } = useSWR<any>(`/api/projects/${id}`);
-  if (isLoading || !data) return <ProCard>加载中…</ProCard>;
+  if (isLoading || !data) return <Page compact><EmptyState loading /></Page>;
   if (!["PLANNED", "SUSPENDED"].includes(data.status)) return <ProCard>当前状态不可编辑</ProCard>;
   return (
-    <ProCard title={<span onClick={() => router.push(`/projects/${id}`)} style={{ cursor: "pointer" }}>← 编辑项目 · {data.projectNo}</span>}>
+    <Page compact>
+      <PageHeader back={() => router.push(`/projects/${id}`)} title="编辑项目" subtitle="计划中或已暂停状态可编辑" />
+      <ProCard>
       <ProForm
         layout="vertical"
         initialValues={{
@@ -44,5 +49,6 @@ export default function EditProjectPage() {
         <Button type="primary" htmlType="submit">保存</Button>
       </ProForm>
     </ProCard>
+    </Page>
   );
 }

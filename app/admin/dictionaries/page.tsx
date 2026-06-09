@@ -1,8 +1,28 @@
 "use client";
-import { ProCard, ProTable } from "@ant-design/pro-components";
+import { ProTable } from "@ant-design/pro-components";
 import { useEffect, useState } from "react";
+import { Page } from "@/components/page";
+import { PageHeader } from "@/components/page-header";
+import { Tag } from "antd";
 
 type Dict = { code: string; label: string };
+
+const CATEGORY_LABEL: Record<string, string> = {
+  CUSTOMER_TYPE: "客户类型",
+  CUSTOMER_LEVEL: "客户等级",
+  SERVICE_TYPE: "服务类型",
+  CONTRACT_PAYMENT_METHOD: "合同付款方式",
+  PROJECT_STATUS: "项目状态",
+  INVOICE_TYPE: "发票类型",
+  PAYMENT_RECEIVE_METHOD: "收款方式",
+  CUSTOMER_STATUS: "客户状态",
+  CONTRACT_STATUS: "合同状态",
+  INVOICE_STATUS: "开票状态",
+  PAYMENT_STATUS: "回款状态",
+  FOLLOW_METHOD: "跟进方式",
+  FOLLOW_RESULT: "跟进结果",
+  REVIEW_ACTION: "审批动作"
+};
 
 export default function DictionariesPage() {
   const [rows, setRows] = useState<{ category: string; code: string; label: string }[]>([]);
@@ -11,8 +31,12 @@ export default function DictionariesPage() {
   useEffect(() => {
     setLoading(true);
     Promise.all(
-      ["CUSTOMER_TYPE", "CUSTOMER_LEVEL", "SERVICE_TYPE", "CONTRACT_PAYMENT_METHOD", "PROJECT_STATUS", "INVOICE_TYPE", "PAYMENT_RECEIVE_METHOD", "CUSTOMER_STATUS", "CONTRACT_STATUS", "INVOICE_STATUS", "PAYMENT_STATUS", "FOLLOW_METHOD", "FOLLOW_RESULT", "REVIEW_ACTION"]
-        .map((c) => fetch(`/api/dictionaries?category=${c}`, { credentials: "include" }).then((r) => r.json()).then((j) => ({ category: c, list: (j.data ?? []) as Dict[] })))
+      Object.keys(CATEGORY_LABEL)
+        .map((c) =>
+          fetch(`/api/dictionaries?category=${c}`, { credentials: "include" })
+            .then((r) => r.json())
+            .then((j) => ({ category: c, list: (j.data ?? []) as Dict[] }))
+        )
     ).then((groups) => {
       const all: { category: string; code: string; label: string }[] = [];
       for (const g of groups) for (const d of g.list) all.push({ category: g.category, ...d });
@@ -22,21 +46,27 @@ export default function DictionariesPage() {
   }, []);
 
   return (
-    <ProCard>
+    <Page>
+      <PageHeader title="数据字典" subtitle="系统下拉 / 单选 / 状态等枚举项统一管理" />
       <ProTable
         rowKey={(r) => `${r.category}-${r.code}`}
-        headerTitle="数据字典"
         loading={loading}
         search={false}
         options={false}
         pagination={false}
+        cardBordered={false}
         dataSource={rows}
         columns={[
-          { title: "分类", dataIndex: "category", width: 200 },
-          { title: "代码", dataIndex: "code", width: 200 },
+          {
+            title: "分类",
+            dataIndex: "category",
+            width: 220,
+            render: (v) => <Tag color="blue">{CATEGORY_LABEL[v as string] ?? v as string}</Tag>
+          },
+          { title: "代码", dataIndex: "code", width: 220 },
           { title: "标签", dataIndex: "label" }
         ]}
       />
-    </ProCard>
+    </Page>
   );
 }

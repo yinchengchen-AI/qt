@@ -1,12 +1,27 @@
 "use client";
 import dynamic from "next/dynamic";
 import { App as AntdApp, Badge, Dropdown, Drawer, List, Empty } from "antd";
-import { LogoutOutlined, UserOutlined, BellOutlined } from "@ant-design/icons";
+import {
+  LogoutOutlined,
+  UserOutlined,
+  BellOutlined,
+  DashboardOutlined,
+  TeamOutlined,
+  FileTextOutlined,
+  ProjectOutlined,
+  BookOutlined,
+  PayCircleOutlined,
+  AreaChartOutlined,
+  BellOutlined as BellIcon,
+  NotificationOutlined,
+  SettingOutlined
+} from "@ant-design/icons";
 import { signOut } from "next-auth/react";
 import { useRouter, usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
 import type { RoleCode } from "@/types/enums";
 import type { Action, Resource } from "@/lib/permissions";
+import { QtMark } from "./qt-mark";
 
 const ProLayout = dynamic(
   () => import("@ant-design/pro-components").then((m) => m.ProLayout),
@@ -27,28 +42,28 @@ type Props = {
 const menu = {
   path: "/",
   routes: [
-    { path: "/dashboard", name: "工作台", icon: "dashboard" },
-    { path: "/customers", name: "客户管理", icon: "team" },
-    { path: "/contracts", name: "合同管理", icon: "file-text" },
-    { path: "/projects", name: "项目管理", icon: "project" },
-    { path: "/invoices", name: "开票管理", icon: "book" },
-    { path: "/payments", name: "回款管理", icon: "pay-circle" },
+    { path: "/dashboard", name: "工作台", icon: <DashboardOutlined /> },
+    { path: "/customers", name: "客户管理", icon: <TeamOutlined /> },
+    { path: "/contracts", name: "合同管理", icon: <FileTextOutlined /> },
+    { path: "/projects", name: "项目管理", icon: <ProjectOutlined /> },
+    { path: "/invoices", name: "开票管理", icon: <BookOutlined /> },
+    { path: "/payments", name: "回款管理", icon: <PayCircleOutlined /> },
     {
       path: "/statistics",
       name: "统计分析",
-      icon: "area-chart",
+      icon: <AreaChartOutlined />,
       routes: [
         { path: "/statistics/overview", name: "总览" },
         { path: "/statistics/aging", name: "账龄分析" },
         { path: "/statistics/performance", name: "业务员业绩" }
       ]
     },
-    { path: "/messages", name: "消息中心", icon: "bell" },
-    { path: "/announcements", name: "公告", icon: "notification" },
+    { path: "/messages", name: "消息中心", icon: <BellIcon /> },
+    { path: "/announcements", name: "公告", icon: <NotificationOutlined /> },
     {
       path: "/admin",
       name: "系统管理",
-      icon: "setting",
+      icon: <SettingOutlined />,
       routes: [
         { path: "/admin/users", name: "用户管理" },
         { path: "/admin/roles", name: "角色权限" },
@@ -57,6 +72,16 @@ const menu = {
       ]
     }
   ]
+};
+
+const LAYOUT_TOKEN = {
+  colorTextMenuSelected: "#0a1c33",
+  colorBgMenuItemSelected: "rgba(15, 42, 71, 0.08)",
+  colorTextMenuItemHover: "#0f2a47",
+  colorTextMenu: "#475569",
+  colorTextMenuSecondary: "#94a3b8",
+  sider: { colorMenuBackground: "#ffffff" },
+  header: { colorBgHeader: "#ffffff" }
 };
 
 export function DashboardShell({ user, children }: Props) {
@@ -90,11 +115,25 @@ export function DashboardShell({ user, children }: Props) {
 
   return (
     <ProLayout
-      title="企泰业务管理"
+      title={false}
+      logo={
+        <span style={{ display: "inline-flex", alignItems: "center", padding: "0 4px" }}>
+          <QtMark size={28} />
+        </span>
+      }
+      layout="mix"
+      location={{ pathname }}
+      route={menu}
+      navTheme="light"
+      contentWidth="Fluid"
+      fixSiderbar
+      onMenuHeaderClick={() => router.push("/dashboard")}
+      token={LAYOUT_TOKEN}
+      menu={{ type: "group" }}
       actionsRender={() => [
         <Badge key="msg" count={unread} offset={[-4, 4]} size="small">
           <BellOutlined
-            style={{ fontSize: 18, cursor: "pointer" }}
+            style={{ fontSize: 18, cursor: "pointer", color: "var(--qt-text-2)" }}
             onClick={() => {
               setDrawerOpen(true);
               loadMessages();
@@ -102,10 +141,6 @@ export function DashboardShell({ user, children }: Props) {
           />
         </Badge>
       ]}
-      layout="mix"
-      location={{ pathname }}
-      route={menu}
-      onMenuHeaderClick={() => router.push("/dashboard")}
       avatarProps={{
         render: () => (
           <Dropdown
@@ -124,8 +159,10 @@ export function DashboardShell({ user, children }: Props) {
               ]
             }}
           >
-            <span style={{ cursor: "pointer" }}>
-              <UserOutlined /> {user.name}（{user.roleCode}）
+            <span style={{ cursor: "pointer", display: "inline-flex", alignItems: "center", gap: 6, color: "var(--qt-text-1)" }}>
+              <UserOutlined />
+              <span style={{ fontSize: 13 }}>{user.name}</span>
+              <span style={{ color: "var(--qt-text-3)", fontSize: 12 }}>({user.roleCode})</span>
             </span>
           </Dropdown>
         )
@@ -134,7 +171,7 @@ export function DashboardShell({ user, children }: Props) {
       {children}
       <Drawer
         title="消息"
-        width={420}
+        size="default"
         open={drawerOpen}
         onClose={() => setDrawerOpen(false)}
         extra={
@@ -160,7 +197,7 @@ export function DashboardShell({ user, children }: Props) {
             dataSource={messages}
             renderItem={(m) => (
               <List.Item
-                style={{ background: m.readAt ? undefined : "#e6f4ff", cursor: m.link ? "pointer" : undefined }}
+                style={{ background: m.readAt ? undefined : "rgba(245, 158, 11, 0.06)", cursor: m.link ? "pointer" : undefined }}
                 onClick={async () => {
                   if (!m.readAt) {
                     await fetch(`/api/messages/${m.id}`, { method: "PATCH", credentials: "include" });
@@ -178,7 +215,7 @@ export function DashboardShell({ user, children }: Props) {
                   description={
                     <span>
                       <span style={{ marginRight: 8 }}>{m.type}</span>
-                      <span style={{ color: "#999" }}>{new Date(m.createdAt).toLocaleString("zh-CN")}</span>
+                      <span style={{ color: "var(--qt-text-3)" }}>{new Date(m.createdAt).toLocaleString("zh-CN")}</span>
                     </span>
                   }
                 />

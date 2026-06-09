@@ -1,4 +1,7 @@
 "use client";
+import { Page } from "@/components/page";
+import { PageHeader } from "@/components/page-header";
+import { EmptyState } from "@/components/empty-state";
 import { ProCard, ProForm, ProFormText, ProFormSelect, ProFormDigit } from "@ant-design/pro-components";
 import { App as AntdApp, Button } from "antd";
 import { useParams, useRouter } from "next/navigation";
@@ -18,9 +21,11 @@ export default function EditCustomerPage() {
   const customerType = useDict("CUSTOMER_TYPE");
   const customerLevel = useDict("CUSTOMER_LEVEL");
   const { data, isLoading } = useSWR<any>(`/api/customers/${id}`);
-  if (isLoading || !data) return <ProCard>加载中…</ProCard>;
+  if (isLoading || !data) return <Page compact><EmptyState loading /></Page>;
   return (
-    <ProCard title={<span onClick={() => router.push(`/customers/${id}`)} style={{ cursor: "pointer" }}>← 编辑客户 · {data.name}</span>}>
+    <Page compact>
+      <PageHeader back={() => router.push(`/customers/${id}`)} title="编辑客户" subtitle="修改客户基础信息" />
+      <ProCard>
       <ProForm
         layout="vertical"
         initialValues={{ ...data, creditLimitAmount: data.creditLimitAmount ? Number(data.creditLimitAmount) : undefined }}
@@ -52,5 +57,6 @@ export default function EditCustomerPage() {
         <Button type="primary" htmlType="submit">保存</Button>
       </ProForm>
     </ProCard>
+    </Page>
   );
 }

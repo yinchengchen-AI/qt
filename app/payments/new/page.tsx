@@ -1,4 +1,7 @@
 "use client";
+import { Page } from "@/components/page";
+import { PageHeader } from "@/components/page-header";
+import { EmptyState } from "@/components/empty-state";
 import { ProCard, ProForm, ProFormDigit, ProFormDateTimePicker, ProFormSelect, ProFormText } from "@ant-design/pro-components";
 import { App as AntdApp, Button } from "antd";
 import { useRouter, useSearchParams } from "next/navigation";
@@ -16,7 +19,9 @@ export default function NewPaymentPage() {
     .map((c) => ({ value: c.id, label: `${c.contractNo} · ${c.title}` }));
 
   return (
-    <ProCard title={<span onClick={() => router.push("/payments")} style={{ cursor: "pointer" }}>← 登记回款</span>}>
+    <Page compact>
+      <PageHeader back={() => router.push("/payments")} title="登记回款" subtitle="登记银行到账流水,与发票 / 合同自动对账" />
+      <ProCard>
       <ProForm
         layout="vertical"
         initialValues={{
@@ -51,5 +56,6 @@ export default function NewPaymentPage() {
         <Button type="primary" htmlType="submit">保存</Button>
       </ProForm>
     </ProCard>
+    </Page>
   );
 }

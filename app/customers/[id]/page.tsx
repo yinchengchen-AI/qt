@@ -3,6 +3,10 @@ import { ProCard, ProDescriptions, ProTable } from "@ant-design/pro-components";
 import { Tag, Button } from "antd";
 import { useParams, useRouter } from "next/navigation";
 import useSWR from "swr";
+import { Page } from "@/components/page";
+import { PageHeader } from "@/components/page-header";
+import { EmptyState } from "@/components/empty-state";
+import { StatusTag } from "@/components/status-tag";
 import { useDict } from "@/lib/dict-client";
 
 type Customer = {
@@ -19,36 +23,62 @@ export default function CustomerDetailPage() {
   const router = useRouter();
   const customerType = useDict("CUSTOMER_TYPE");
   const customerLevel = useDict("CUSTOMER_LEVEL");
-  const { data, error, isLoading } = useSWR<Customer>(`/api/customers/${id}`);
+  const { data, error, isLoading, mutate } = useSWR<Customer>(`/api/customers/${id}`);
   const { data: followUps } = useSWR<Array<any>>(`/api/customers/${id}/follow-ups`);
   const { data: contracts } = useSWR<Array<any>>(`/api/customers/${id}/contracts`);
 
-  if (error) return <ProCard>加载失败：{(error as Error).message}</ProCard>;
-  if (isLoading || !data) return <ProCard>加载中…</ProCard>;
+  if (error) {
+    return (
+      <Page>
+        <PageHeader back={() => router.push("/customers")} title="客户详情" />
+        <EmptyState
+          error={{ message: (error as Error).message, onRetry: () => mutate() }}
+          title="加载失败"
+        />
+      </Page>
+    );
+  }
+  if (isLoading || !data) {
+    return (
+      <Page>
+        <PageHeader back={() => router.push("/customers")} title="客户详情" />
+        <EmptyState loading />
+      </Page>
+    );
+  }
   const typeLabel = customerType.find((d) => d.code === data.customerType)?.label ?? data.customerType;
   const levelLabel = customerLevel.find((d) => d.code === data.level)?.label ?? data.level;
   return (
-    <ProCard
-      title={<span onClick={() => router.push("/customers")} style={{ cursor: "pointer" }}>← {data.name} ({data.code})</span>}
-      extra={[<Button key="edit" type="primary" onClick={() => router.push(`/customers/${id}/edit`)}>编辑</Button>]}
-    >
-      <ProDescriptions<Customer> column={2} dataSource={data} columns={[
-        { title: "客户编号", dataIndex: "code" },
-        { title: "客户全称", dataIndex: "name" },
-        { title: "简称", dataIndex: "shortName" },
-        { title: "统一社会信用代码", dataIndex: "unifiedSocialCreditCode" },
-        { title: "类型", dataIndex: "customerType", render: () => typeLabel },
-        { title: "等级", dataIndex: "level", render: () => <Tag>{levelLabel}</Tag> },
-        { title: "状态", dataIndex: "status", render: (_, r) => <Tag color="blue">{r.status}</Tag> },
-        { title: "行业", dataIndex: "industry" },
-        { title: "所在地区", dataIndex: "province", render: (_, r) => `${r.province} / ${r.city}` },
-        { title: "详细地址", dataIndex: "address" },
-        { title: "联系电话", dataIndex: "contactPhone" },
-        { title: "邮箱", dataIndex: "contactEmail" },
-        { title: "授信额度", dataIndex: "creditLimitAmount", render: (v: any) => (v ? `¥${v}` : "-") },
-        { title: "账期（天）", dataIndex: "paymentTermDays" }
-      ]} />
-      <ProCard title="跟进记录" style={{ marginTop: 16 }}>
+    <Page>
+      <PageHeader
+        back={() => router.push("/customers")}
+        title={`${data.name} (${data.code})`}
+        subtitle="客户基础信息、跟进记录与关联合同"
+        actions={
+          <Button key="edit" type="primary" onClick={() => router.push(`/customers/${id}/edit`)}>
+            编辑
+          </Button>
+        }
+        meta={data.status ? <StatusTag status={data.status} domain="customer" /> : null}
+      />
+      <ProCard>
+        <ProDescriptions<Customer> column={2} dataSource={data} columns={[
+          { title: "客户编号", dataIndex: "code" },
+          { title: "客户全称", dataIndex: "name" },
+          { title: "简称", dataIndex: "shortName" },
+          { title: "统一社会信用代码", dataIndex: "unifiedSocialCreditCode" },
+          { title: "类型", dataIndex: "customerType", render: () => typeLabel },
+          { title: "等级", dataIndex: "level", render: () => <Tag>{levelLabel}</Tag> },
+          { title: "行业", dataIndex: "industry" },
+          { title: "所在地区", dataIndex: "province", render: (_, r) => `${r.province} / ${r.city}` },
+          { title: "详细地址", dataIndex: "address" },
+          { title: "联系电话", dataIndex: "contactPhone" },
+          { title: "邮箱", dataIndex: "contactEmail" },
+          { title: "授信额度", dataIndex: "creditLimitAmount", render: (v: any) => (v ? `¥${v}` : "-") },
+          { title: "账期（天）", dataIndex: "paymentTermDays" }
+        ]} />
+      </ProCard>
+      <ProCard title="跟进记录">
         <ProTable rowKey="id" search={false} options={false} pagination={{ pageSize: 5 }} dataSource={followUps ?? []} columns={[
           { title: "时间", dataIndex: "followAt", valueType: "dateTime", width: 180 },
           { title: "方式", dataIndex: "method", width: 100 },
@@ -56,15 +86,15 @@ export default function CustomerDetailPage() {
           { title: "结果", dataIndex: "result", width: 100 }
         ]} />
       </ProCard>
-      <ProCard title="关联合同" style={{ marginTop: 16 }}>
+      <ProCard title="关联合同">
         <ProTable rowKey="id" search={false} options={false} pagination={{ pageSize: 5 }} dataSource={contracts ?? []} columns={[
           { title: "合同号", dataIndex: "contractNo", width: 180 },
           { title: "标题", dataIndex: "title" },
           { title: "签订日", dataIndex: "signDate", valueType: "date", width: 120 },
           { title: "总额（元）", dataIndex: "totalAmount", width: 140, render: (v: any) => `¥${v}` },
-          { title: "状态", dataIndex: "status", width: 100, render: (_, r: any) => <Tag>{r.status}</Tag> }
+          { title: "状态", dataIndex: "status", width: 100, render: (_, r: any) => <StatusTag status={r.status} domain="contract" /> }
         ]} />
       </ProCard>
-    </ProCard>
+    </Page>
   );
 }

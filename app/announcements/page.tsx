@@ -1,9 +1,13 @@
 "use client";
-import { ProCard, ProTable } from "@ant-design/pro-components";
+import { ProTable } from "@ant-design/pro-components";
 import { Tag, Button, Space, Modal, Form, Input, Switch, DatePicker, Select, App as AntdApp, Typography } from "antd";
 import { useEffect, useState } from "react";
 import { PlusOutlined } from "@ant-design/icons";
 import dayjs from "dayjs";
+import { Page } from "@/components/page";
+import { PageHeader } from "@/components/page-header";
+import { StatusTag } from "@/components/status-tag";
+import { ROLE_LABEL } from "@/lib/status";
 
 const { Text, Paragraph } = Typography;
 
@@ -18,8 +22,6 @@ type Announcement = {
   publishUserId: string;
   publishAt: string;
 };
-
-const ROLE_LABEL: Record<string, string> = { ADMIN: "管理员", SALES: "业务", FINANCE: "财务", OPS: "行政" };
 
 export default function AnnouncementsPage() {
   const [rows, setRows] = useState<Announcement[]>([]);
@@ -60,22 +62,61 @@ export default function AnnouncementsPage() {
   };
 
   return (
-    <ProCard>
+    <Page>
+      <PageHeader
+        title="公告"
+        subtitle="发布全员或指定角色可见的公告,支持置顶与生效期"
+        actions={
+          <Button key="add" type="primary" icon={<PlusOutlined />} onClick={() => setModalOpen(true)}>
+            发布公告
+          </Button>
+        }
+      />
       <ProTable<Announcement>
         rowKey="id"
-        headerTitle="公告"
         search={false}
         loading={loading}
         pagination={{ pageSize: 20, total, onChange: load }}
         dataSource={rows}
-        toolBarRender={() => [
-          <Button key="add" type="primary" icon={<PlusOutlined />} onClick={() => setModalOpen(true)}>发布公告</Button>
-        ]}
+        cardBordered={false}
         columns={[
-          { title: "标题", dataIndex: "title", width: 280, render: (_, r) => <Space>{r.pinned && <Tag color="red">置顶</Tag>}<a onClick={() => setDetail(r)}>{r.title}</a></Space> },
-          { title: "接收人", dataIndex: "targetRoles", width: 180, render: (v) => { const arr = (Array.isArray(v) ? v : []) as string[]; return arr.length === 0 ? <Tag>全员</Tag> : arr.map((r) => <Tag key={r} color="blue">{ROLE_LABEL[r] ?? r}</Tag>); } },
-          { title: "生效期", dataIndex: "effectiveFrom", width: 240, render: (_, r) => `${r.effectiveFrom ? new Date(r.effectiveFrom).toLocaleDateString("zh-CN") : "—"} ~ ${r.effectiveTo ? new Date(r.effectiveTo).toLocaleDateString("zh-CN") : "长期"}` },
-          { title: "发布时间", dataIndex: "publishAt", width: 160, render: (v) => new Date(v as string).toLocaleString("zh-CN") }
+          {
+            title: "标题",
+            dataIndex: "title",
+            width: 280,
+            render: (_, r) => (
+              <Space>
+                {r.pinned && <Tag color="red">置顶</Tag>}
+                <a onClick={() => setDetail(r)}>{r.title}</a>
+              </Space>
+            )
+          },
+          {
+            title: "接收人",
+            dataIndex: "targetRoles",
+            width: 180,
+            render: (v) => {
+              const arr = (Array.isArray(v) ? v : []) as string[];
+              if (arr.length === 0) return <Tag>全员</Tag>;
+              return (
+                <Space size={4} wrap>
+                  {arr.map((r) => <Tag key={r} color="blue">{ROLE_LABEL[r] ?? r}</Tag>)}
+                </Space>
+              );
+            }
+          },
+          {
+            title: "生效期",
+            dataIndex: "effectiveFrom",
+            width: 240,
+            render: (_, r) => `${r.effectiveFrom ? new Date(r.effectiveFrom).toLocaleDateString("zh-CN") : "—"} ~ ${r.effectiveTo ? new Date(r.effectiveTo).toLocaleDateString("zh-CN") : "长期"}`
+          },
+          {
+            title: "发布时间",
+            dataIndex: "publishAt",
+            width: 180,
+            render: (v) => new Date(v as string).toLocaleString("zh-CN")
+          }
         ]}
       />
 
@@ -116,6 +157,6 @@ export default function AnnouncementsPage() {
           </>
         )}
       </Modal>
-    </ProCard>
+    </Page>
   );
 }

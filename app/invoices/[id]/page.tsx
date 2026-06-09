@@ -1,15 +1,14 @@
 "use client";
 import { ProCard, ProDescriptions } from "@ant-design/pro-components";
-import { Tag, Button, Space, App as AntdApp, Modal, Input } from "antd";
+import { Button, Space, App as AntdApp, Modal, Input } from "antd";
 import { useParams, useRouter } from "next/navigation";
 import useSWR from "swr";
 import { useSession } from "next-auth/react";
 import { useState } from "react";
-
-const STATUS_COLOR: Record<string, string> = {
-  DRAFT: "default", PENDING_FINANCE: "processing", ISSUED: "green",
-  REJECTED: "red", VOIDED: "volcano", RED_FLUSHED: "purple"
-};
+import { Page } from "@/components/page";
+import { PageHeader } from "@/components/page-header";
+import { EmptyState } from "@/components/empty-state";
+import { StatusTag } from "@/components/status-tag";
 
 export default function InvoiceDetailPage() {
   const params = useParams();
@@ -20,7 +19,14 @@ export default function InvoiceDetailPage() {
   const { data, isLoading, mutate } = useSWR<any>(`/api/invoices/${id}`);
   const [reason, setReason] = useState("");
   const [invoiceNo, setInvoiceNo] = useState("");
-  if (isLoading || !data) return <ProCard>加载中…</ProCard>;
+  if (isLoading || !data) {
+    return (
+      <Page>
+        <PageHeader back={() => router.push("/invoices")} title="开票详情" />
+        <EmptyState loading />
+      </Page>
+    );
+  }
   const roleCode = session?.user?.roleCode;
   const isFinance = roleCode === "FINANCE" || roleCode === "ADMIN";
   const status = data.status;
@@ -58,41 +64,50 @@ export default function InvoiceDetailPage() {
     onOk: async () => { await callAction("void", { reason }); setReason(""); }
   });
   return (
-    <ProCard
-      title={<span onClick={() => router.push("/invoices")} style={{ cursor: "pointer" }}>← {data.customerName} · {data.invoiceNo}</span>}
-      extra={
-        <Space>
-          {status === "DRAFT" && <Button type="primary" onClick={() => callAction("submit")}>提交</Button>}
-          {status === "PENDING_FINANCE" && isFinance && (
-            <>
-              <Button danger onClick={askReject}>驳回</Button>
-              <Button type="primary" onClick={askIssue}>开票</Button>
-            </>
-          )}
-          {status === "ISSUED" && isFinance && (
-            <>
-              <Button onClick={askVoid}>作废（当日）</Button>
-              <Button danger onClick={askRedFlush}>红冲</Button>
-            </>
-          )}
-        </Space>
-      }
-    >
-      <ProDescriptions column={2} dataSource={data} columns={[
-        { title: "发票号", dataIndex: "invoiceNo" }, { title: "客户", dataIndex: "customerName" },
-        { title: "发票类型", dataIndex: "invoiceType" },
-        { title: "状态", dataIndex: "status", render: (_, r: any) => <Tag color={STATUS_COLOR[r.status]}>{r.status}</Tag> },
-        { title: "含税金额", dataIndex: "amount", render: (v: any) => `¥${v}` },
-        { title: "税额", dataIndex: "taxAmount", render: (v: any) => `¥${v}` },
-        { title: "不含税金额", dataIndex: "amountExcludingTax", render: (v: any) => `¥${v}` },
-        { title: "税率", dataIndex: "taxRate", render: (v: any) => `${(Number(v) * 100).toFixed(2)}%` },
-        { title: "申请日", dataIndex: "applyDate", valueType: "dateTime" },
-        { title: "实际开票日", dataIndex: "actualIssueDate", valueType: "dateTime" },
-        { title: "抬头类型", dataIndex: "titleType" }, { title: "抬头名称", dataIndex: "titleName" },
-        { title: "税号", dataIndex: "taxNo" }, { title: "开户行", dataIndex: "bankName" },
-        { title: "银行账号", dataIndex: "bankAccount" }, { title: "地址", dataIndex: "address" },
-        { title: "电话", dataIndex: "phone" }
-      ]} />
-    </ProCard>
+    <Page>
+      <PageHeader
+        back={() => router.push("/invoices")}
+        title={`${data.customerName} · ${data.invoiceNo}`}
+        subtitle={`发票类型: ${data.invoiceType ?? "-"}`}
+        meta={<StatusTag status={data.status} domain="invoice" />}
+        actions={
+          <Space>
+            {status === "DRAFT" && <Button type="primary" onClick={() => callAction("submit")}>提交</Button>}
+            {status === "PENDING_FINANCE" && isFinance && (
+              <>
+                <Button danger onClick={askReject}>驳回</Button>
+                <Button type="primary" onClick={askIssue}>开票</Button>
+              </>
+            )}
+            {status === "ISSUED" && isFinance && (
+              <>
+                <Button onClick={askVoid}>作废（当日）</Button>
+                <Button danger onClick={askRedFlush}>红冲</Button>
+              </>
+            )}
+          </Space>
+        }
+      />
+      <ProCard>
+        <ProDescriptions column={2} dataSource={data} columns={[
+          { title: "发票号", dataIndex: "invoiceNo" },
+          { title: "客户", dataIndex: "customerName" },
+          { title: "发票类型", dataIndex: "invoiceType" },
+          { title: "含税金额", dataIndex: "amount", render: (v: any) => `¥${v}` },
+          { title: "税额", dataIndex: "taxAmount", render: (v: any) => `¥${v}` },
+          { title: "不含税金额", dataIndex: "amountExcludingTax", render: (v: any) => `¥${v}` },
+          { title: "税率", dataIndex: "taxRate", render: (v: any) => `${(Number(v) * 100).toFixed(2)}%` },
+          { title: "申请日", dataIndex: "applyDate", valueType: "dateTime" },
+          { title: "实际开票日", dataIndex: "actualIssueDate", valueType: "dateTime" },
+          { title: "抬头类型", dataIndex: "titleType" },
+          { title: "抬头名称", dataIndex: "titleName" },
+          { title: "税号", dataIndex: "taxNo" },
+          { title: "开户行", dataIndex: "bankName" },
+          { title: "银行账号", dataIndex: "bankAccount" },
+          { title: "地址", dataIndex: "address" },
+          { title: "电话", dataIndex: "phone" }
+        ]} />
+      </ProCard>
+    </Page>
   );
 }

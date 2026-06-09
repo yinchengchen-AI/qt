@@ -1,14 +1,18 @@
 "use client";
-import { ProCard, ProTable } from "@ant-design/pro-components";
+import { ProTable } from "@ant-design/pro-components";
 import { Tag } from "antd";
 import { useEffect, useState } from "react";
+import { Page } from "@/components/page";
+import { PageHeader } from "@/components/page-header";
 
 type Role = { code: string; name: string };
 
-const COLORS = { ADMIN: "red", SALES: "blue", FINANCE: "green", OPS: "orange" } as Record<string, string>;
+const COLORS: Record<string, string> = {
+  ADMIN: "red", SALES: "blue", FINANCE: "green", OPS: "orange"
+};
 
 export default function RolesPage() {
-  // roles 是硬编码在 lib/permissions.ts；这里只是展示
+  // 角色权限硬编码在 lib/permissions.ts;此处仅展示
   const [rows, setRows] = useState<Role[]>([]);
   useEffect(() => {
     setRows([
@@ -19,22 +23,23 @@ export default function RolesPage() {
     ]);
   }, []);
   return (
-    <ProCard>
+    <Page>
+      <PageHeader title="角色权限" subtitle="系统内置的 4 个角色及对应权限矩阵" />
       <ProTable<Role>
         rowKey="code"
-        headerTitle="角色"
         search={false}
         options={false}
         pagination={false}
+        cardBordered={false}
         dataSource={rows}
         columns={[
           { title: "代码", dataIndex: "code", width: 120, render: (v) => <Tag color={COLORS[v as string] ?? "default"}>{v as string}</Tag> },
           { title: "名称", dataIndex: "name" }
         ]}
       />
-      <div style={{ marginTop: 16, padding: 16, background: "#fafafa", borderRadius: 4, color: "#666", fontSize: 13 }}>
+      <div style={{ marginTop: 16, padding: 16, background: "var(--qt-bg)", border: "1px solid var(--qt-border)", borderRadius: "var(--qt-radius)", color: "var(--qt-text-2)", fontSize: 13 }}>
         角色权限矩阵硬编码在 <code>lib/permissions.ts</code> 中。P3 阶段将提供后台编辑界面。
       </div>
-    </ProCard>
+    </Page>
   );
 }
