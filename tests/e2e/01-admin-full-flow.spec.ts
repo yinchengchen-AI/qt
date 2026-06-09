@@ -13,7 +13,7 @@ test.describe.serial("场景 1: admin 完整主链路", () => {
   test("01.1 登录页正常加载", async ({ page }) => {
     await page.goto("/login");
     await expect(page).toHaveTitle(/杭州企泰/);
-    await expect(page.getByText("杭州企泰安全科技 · 业务管理系统")).toBeVisible();
+    await expect(page.getByText("杭州企泰安全科技").first()).toBeVisible();
     await expect(page.getByPlaceholder("请输入工号")).toBeVisible();
     await expect(page.getByPlaceholder("请输入密码")).toBeVisible();
   });
@@ -23,8 +23,8 @@ test.describe.serial("场景 1: admin 完整主链路", () => {
     await page.getByPlaceholder("请输入工号").fill("admin");
     await page.getByPlaceholder("请输入密码").fill("wrongpassword");
     await page.getByText("登 录", { exact: true }).first().click();
-    // antd message 元素 class
-    await expect(page.locator(".ant-message-notice").first()).toBeVisible({ timeout: 8000 });
+    // 设计系统:错误展示在 form 内的 role="alert" 块
+    await expect(page.getByRole("alert").first()).toBeVisible({ timeout: 8000 });
   });
 
   test("01.3 admin 登录成功进入工作台", async ({ page }) => {
@@ -40,9 +40,10 @@ test.describe.serial("场景 1: admin 完整主链路", () => {
     await page.goto("/dashboard");
     // 等 SWR 加载
     await page.waitForLoadState("networkidle");
-    // 至少看到一个 ProCard（ProCard title）
-    const cards = page.locator(".ant-pro-card");
-    await expect(cards.first()).toBeVisible({ timeout: 10000 });
+    // 至少看到一个 KPI 标题或 StatGrid 卡片
+    const title = page.getByRole("heading", { name: "工作台" });
+    await expect(title).toBeVisible({ timeout: 10000 });
+    await expect(page.getByTestId("stat-grid").first()).toBeVisible({ timeout: 10000 });
   });
 
   test("01.5 客户列表页加载 + 显示 admin 已有数据", async ({ page }) => {

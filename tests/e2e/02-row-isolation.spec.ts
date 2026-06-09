@@ -23,8 +23,9 @@ test.describe.serial("场景 2: SALES 行级隔离 + 越权", () => {
   test("02.2 SALES 工作台不显示管理员的金额字段（脱敏）", async ({ page }) => {
     await page.goto("/dashboard");
     await page.waitForLoadState("networkidle");
-    // SALES 看到自己的工作台（应该有内容）
-    await expect(page.locator(".ant-pro-card").first()).toBeVisible({ timeout: 10000 });
+    // SALES 看到自己的工作台（应该有内容）— 设计系统用 StatGrid 替代 ProCard
+    await expect(page.getByRole("heading", { name: "工作台" })).toBeVisible({ timeout: 10000 });
+    await expect(page.getByTestId("stat-grid").first()).toBeVisible({ timeout: 10000 });
   });
 
   test("02.3 SALES 客户列表只显示自己创建的", async ({ page }) => {
