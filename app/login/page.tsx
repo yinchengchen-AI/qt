@@ -2,11 +2,18 @@
 
 import { Suspense, useState } from "react";
 import { App as AntdApp, Button, Checkbox, Form, Input, Typography, Space, Divider } from "antd";
-import { LockOutlined, UserOutlined, SafetyOutlined } from "@ant-design/icons";
+import {
+  LockOutlined,
+  UserOutlined,
+  WarningOutlined,
+  LineChartOutlined,
+  BuildOutlined,
+  TrophyOutlined,
+  SafetyCertificateOutlined
+} from "@ant-design/icons";
 import { signIn } from "next-auth/react";
 import { useRouter, useSearchParams } from "next/navigation";
 import styles from "./login.module.css";
-import { QtMark } from "@/components/qt-mark";
 
 const { Title, Text, Link: AntdLink } = Typography;
 
@@ -113,7 +120,7 @@ function LoginForm() {
             marginBottom: 16,
             padding: "8px 12px",
             background: "#fff2f0",
-            border: "1px solid #ffccc7",
+            border: 1,
             borderRadius: 6,
             color: "#cf1322",
             fontSize: 13
@@ -212,43 +219,103 @@ function LoginForm() {
   );
 }
 
+function BrandMark({ size = 44 }: { size?: number }) {
+  return (
+    <svg
+      width={size}
+      height={size * 0.75}
+      viewBox="0 0 64 48"
+      xmlns="http://www.w3.org/2000/svg"
+      aria-hidden="true"
+    >
+      <defs>
+        <mask id={`brand-mark-${size}`}>
+          <rect width="48" height="48" fill="white" />
+          <rect x="24" y="14" width="24" height="20" fill="black" />
+        </mask>
+      </defs>
+      <rect width="48" height="48" rx="6" fill="#ffffff" mask={`url(#brand-mark-${size})`} />
+      <rect x="32" y="28" width="20" height="20" rx="3" fill="#E11A2A" />
+      <rect x="58" y="14" width="6" height="6" rx="1" fill="#ffffff" />
+    </svg>
+  );
+}
+
 function BrandPanel() {
   return (
     <aside className={styles.brandSide} aria-hidden="true">
+      <svg
+        className={styles.brandMark}
+        viewBox="0 0 64 48"
+        xmlns="http://www.w3.org/2000/svg"
+        aria-hidden="true"
+      >
+        <defs>
+          <mask id="brand-mark-deco">
+            <rect width="48" height="48" fill="white" />
+            <rect x="24" y="14" width="24" height="20" fill="black" />
+          </mask>
+        </defs>
+        <rect width="48" height="48" rx="6" fill="#ffffff" mask="url(#brand-mark-deco)" />
+        <rect x="32" y="28" width="20" height="20" rx="3" fill="#E11A2A" />
+        <rect x="58" y="14" width="6" height="6" rx="1" fill="#ffffff" />
+      </svg>
+      <div className={styles.brandGlow} />
+
       <div className={styles.brandInner}>
         <div className={styles.brandLogo}>
-          <QtMark size={36} withWordmark variant="light" />
+          <BrandMark size={44} />
+          <span className={styles.brandLogoText}>
+            <span className={styles.brandLogoCn}>企泰安全</span>
+            <span className={styles.brandLogoEn}>Qitai Safety</span>
+          </span>
         </div>
 
         <div>
-          <h2 className={styles.brandHeadline}>
-            业务管理一体化平台
-            <br />
-            让经营数据驱动每一次决策
-          </h2>
+          <div className={styles.brandAccent} />
+          <h2 className={styles.brandHeadline}>让安全管理更高效</h2>
           <p className={styles.brandSub}>
-            客户、合同、项目、开票、回款全流程在线协同，实时掌控业务全貌。
+            为生产经营单位提供专业的安全管理咨询服务,覆盖隐患排查、风险评估、体系建设、培训演练全流程业务。
           </p>
+        </div>
 
-          <ul className={styles.features}>
-            <li className={styles.feature}>
-              <span className={styles.featureDot} />
-              客户全生命周期管理 · 主数据统一
-            </li>
-            <li className={styles.feature}>
-              <span className={styles.featureDot} />
-              合同 / 项目 / 财务 实时联动
-            </li>
-            <li className={styles.feature}>
-              <span className={styles.featureDot} />
-              账龄、回款、业绩 多维统计秒级响应
-            </li>
-          </ul>
+        <ul className={styles.capabilities}>
+          <li className={styles.capability}>
+            <span className={styles.capabilityIcon}><WarningOutlined /></span>
+            隐患排查治理
+          </li>
+          <li className={styles.capability}>
+            <span className={styles.capabilityIcon}><LineChartOutlined /></span>
+            风险评估管控
+          </li>
+          <li className={styles.capability}>
+            <span className={styles.capabilityIcon}><BuildOutlined /></span>
+            体系建设咨询
+          </li>
+          <li className={styles.capability}>
+            <span className={styles.capabilityIcon}><TrophyOutlined /></span>
+            培训演练服务
+          </li>
+        </ul>
+
+        <div className={styles.stats}>
+          <div className={styles.stat}>
+            <div className={styles.statNum}>10<small>+</small></div>
+            <div className={styles.statLabel}>年行业经验</div>
+          </div>
+          <div className={styles.stat}>
+            <div className={styles.statNum}>3</div>
+            <div className={styles.statLabel}>ISO 体系认证</div>
+          </div>
+          <div className={styles.stat}>
+            <div className={styles.statNum}>8<small>+</small></div>
+            <div className={styles.statLabel}>服务行业</div>
+          </div>
         </div>
 
         <div className={styles.brandFoot}>
-          <SafetyOutlined style={{ marginRight: 6 }} />
-          等保三级 合规部署 · v 0.1.0
+          <SafetyCertificateOutlined />
+          等保三级 · 合规部署
         </div>
       </div>
     </aside>
