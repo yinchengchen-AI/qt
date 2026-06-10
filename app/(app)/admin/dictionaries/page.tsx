@@ -1,71 +1,149 @@
 "use client";
-import { ProTable } from "@ant-design/pro-components";
-import { useEffect, useState } from "react";
+import { ProTable, type ProColumns } from "@ant-design/pro-components";
+import { App as AntdApp, Button, Tag, Space, Switch } from "antd";
+import { useState } from "react";
+import { useSWRConfig } from "swr";
 import { Page } from "@/components/page";
 import { PageHeader } from "@/components/page-header";
-import { Tag } from "antd";
+import { DictEditDrawer } from "./_components/DictEditDrawer";
+import { CreateDictModal } from "./_components/CreateDictModal";
+import { DICTIONARY_CATEGORY_LABEL } from "@/lib/dictionary-categories";
 
-type Dict = { code: string; label: string };
-
-const CATEGORY_LABEL: Record<string, string> = {
-  CUSTOMER_TYPE: "客户类型",
-  CUSTOMER_LEVEL: "客户等级",
-  SERVICE_TYPE: "服务类型",
-  CONTRACT_PAYMENT_METHOD: "合同付款方式",
-  PROJECT_STATUS: "项目状态",
-  INVOICE_TYPE: "发票类型",
-  PAYMENT_RECEIVE_METHOD: "收款方式",
-  CUSTOMER_STATUS: "客户状态",
-  CONTRACT_STATUS: "合同状态",
-  INVOICE_STATUS: "开票状态",
-  PAYMENT_STATUS: "回款状态",
-  FOLLOW_METHOD: "跟进方式",
-  FOLLOW_RESULT: "跟进结果",
-  REVIEW_ACTION: "审批动作"
+type Dict = {
+  id: string;
+  category: string;
+  code: string;
+  label: string;
+  sort: number;
+  isActive: boolean;
+  createdAt: string;
 };
 
 export default function DictionariesPage() {
-  const [rows, setRows] = useState<{ category: string; code: string; label: string }[]>([]);
-  const [loading, setLoading] = useState(false);
+  const { message, modal } = AntdApp.useApp();
+  const { mutate } = useSWRConfig();
+  const [editing, setEditing] = useState<Dict | null>(null);
+  const [createOpen, setCreateOpen] = useState(false);
+  const [includeInactive, setIncludeInactive] = useState(true);
 
-  useEffect(() => {
-    setLoading(true);
-    Promise.all(
-      Object.keys(CATEGORY_LABEL)
-        .map((c) =>
-          fetch(`/api/dictionaries?category=${c}`, { credentials: "include" })
-            .then((r) => r.json())
-            .then((j) => ({ category: c, list: (j.data ?? []) as Dict[] }))
-        )
-    ).then((groups) => {
-      const all: { category: string; code: string; label: string }[] = [];
-      for (const g of groups) for (const d of g.list) all.push({ category: g.category, ...d });
-      setRows(all);
-      setLoading(false);
+  async function onDisable(d: Dict) {
+    modal.confirm({
+      title: `停用 ${d.code}?`,
+      content: "软停用:该字典项将从下拉中隐藏,业务数据仍可读。",
+      okType: "danger",
+      onOk: async () => {
+        const r = await fetch(`/api/dictionaries/${d.id}`, { method: "DELETE", credentials: "include" });
+        const j = await r.json();
+        if (j.code !== 0) return message.error(j.message);
+        message.success("已停用");
+        mutate((k) => typeof k === "string" && k.startsWith("/api/dictionaries"));
+      }
     });
-  }, []);
+  }
+
+  async function onToggleActive(d: Dict, next: boolean) {
+    const r = await fetch(`/api/dictionaries/${d.id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      credentials: "include",
+      body: JSON.stringify({ isActive: next })
+    });
+    const j = await r.json();
+    if (j.code !== 0) return message.error(j.message);
+    message.success(next ? "已启用" : "已停用");
+    mutate((k) => typeof k === "string" && k.startsWith("/api/dictionaries"));
+  }
+
+  const columns: ProColumns<Dict>[] = [
+    {
+      title: "分类",
+      dataIndex: "category",
+      width: 160,
+      render: (_, r) => <Tag color="blue">{DICTIONARY_CATEGORY_LABEL[r.category] ?? r.category}</Tag>
+    },
+    { title: "代码", dataIndex: "code", width: 200 },
+    { title: "标签", dataIndex: "label", width: 220 },
+    { title: "排序", dataIndex: "sort", width: 80, sorter: true },
+    {
+      title: "启用",
+      dataIndex: "isActive",
+      width: 100,
+      render: (_, r) => (
+        <Switch
+          size="small"
+          checked={r.isActive}
+          onChange={(next) => onToggleActive(r, next)}
+        />
+      )
+    },
+    {
+      title: "操作",
+      width: 160,
+      fixed: "right",
+      render: (_, r) => (
+        <Space size="small">
+          <Button type="link" size="small" onClick={() => setEditing(r)}>
+            编辑
+          </Button>
+          {r.isActive ? (
+            <Button type="link" size="small" danger onClick={() => onDisable(r)}>
+              停用
+            </Button>
+          ) : null}
+        </Space>
+      )
+    }
+  ];
 
   return (
     <Page>
-      <PageHeader title="数据字典" subtitle="系统下拉 / 单选 / 状态等枚举项统一管理" />
-      <ProTable
-        rowKey={(r) => `${r.category}-${r.code}`}
-        loading={loading}
-        search={false}
-        options={false}
-        pagination={false}
-        cardBordered={false}
-        dataSource={rows}
-        columns={[
-          {
-            title: "分类",
-            dataIndex: "category",
-            width: 220,
-            render: (v) => <Tag color="blue">{CATEGORY_LABEL[v as string] ?? (v as string)}</Tag>
-          },
-          { title: "代码", dataIndex: "code", width: 220 },
-          { title: "标签", dataIndex: "label" }
-        ]}
+      <PageHeader
+        title="数据字典"
+        subtitle="13 类白名单内的下拉 / 单选 / 状态枚举;支持增 / 改 / 启停 / 重排"
+        actions={
+          <Space>
+            <span style={{ fontSize: 13, color: "rgba(0,0,0,0.65)" }}>
+              <Switch size="small" checked={includeInactive} onChange={setIncludeInactive} /> 包含已停用
+            </span>
+            <Button type="primary" onClick={() => setCreateOpen(true)}>
+              新增字典项
+            </Button>
+          </Space>
+        }
+      />
+      <ProTable<Dict>
+        rowKey="id"
+        columns={columns}
+        search={{
+          labelWidth: "auto",
+          defaultCollapsed: false
+        }}
+        toolbar={{ settings: [] }}
+        pagination={{ pageSize: 50, showSizeChanger: true }}
+        request={async (params) => {
+          const qs = new URLSearchParams();
+          qs.set("page", String(params.current ?? 1));
+          qs.set("pageSize", String(params.pageSize ?? 50));
+          if (params.keyword) qs.set("keyword", String(params.keyword));
+          if (includeInactive) qs.set("includeInactive", "true");
+          const res = await fetch(`/api/dictionaries?${qs}`, { credentials: "include" });
+          const j = await res.json();
+          if (j.code !== 0) throw new Error(j.message);
+          return { data: j.data.list, total: j.data.total, success: true };
+        }}
+      />
+
+      <DictEditDrawer
+        open={!!editing}
+        dict={editing}
+        onClose={() => setEditing(null)}
+        onSaved={() => mutate((k) => typeof k === "string" && k.startsWith("/api/dictionaries"))}
+      />
+
+      <CreateDictModal
+        open={createOpen}
+        onClose={() => setCreateOpen(false)}
+        onSaved={() => mutate((k) => typeof k === "string" && k.startsWith("/api/dictionaries"))}
       />
     </Page>
   );

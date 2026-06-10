@@ -1,0 +1,36 @@
+// 字典 13 类白名单 — service 校验 / 前端下拉 / seed 一致
+export const ALLOWED_DICTIONARY_CATEGORIES = [
+  "CUSTOMER_TYPE",
+  "CUSTOMER_LEVEL",
+  "SERVICE_TYPE",
+  "CONTRACT_PAYMENT_METHOD",
+  "PROJECT_STATUS",
+  "INVOICE_TYPE",
+  "PAYMENT_RECEIVE_METHOD",
+  "CUSTOMER_STATUS",
+  "CONTRACT_STATUS",
+  "INVOICE_STATUS",
+  "PAYMENT_STATUS",
+  "FOLLOW_METHOD",
+  "FOLLOW_RESULT",
+  "REVIEW_ACTION"
+] as const;
+
+export type DictionaryCategory = (typeof ALLOWED_DICTIONARY_CATEGORIES)[number];
+
+export const DICTIONARY_CATEGORY_LABEL: Record<string, string> = {
+  CUSTOMER_TYPE: "客户类型",
+  CUSTOMER_LEVEL: "客户等级",
+  SERVICE_TYPE: "服务类型",
+  CONTRACT_PAYMENT_METHOD: "合同付款方式",
+  PROJECT_STATUS: "项目状态",
+  INVOICE_TYPE: "发票类型",
+  PAYMENT_RECEIVE_METHOD: "收款方式",
+  CUSTOMER_STATUS: "客户状态",
+  CONTRACT_STATUS: "合同状态",
+  INVOICE_STATUS: "开票状态",
+  PAYMENT_STATUS: "回款状态",
+  FOLLOW_METHOD: "跟进方式",
+  FOLLOW_RESULT: "跟进结果",
+  REVIEW_ACTION: "审批动作"
+};
