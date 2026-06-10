@@ -20,6 +20,8 @@ import {
 import {
   LogoutOutlined,
   BellOutlined,
+  MenuFoldOutlined,
+  MenuUnfoldOutlined,
   DashboardOutlined,
   TeamOutlined,
   FileTextOutlined,
@@ -135,6 +137,7 @@ export function DashboardShell({ user, children }: Props) {
   const router = useRouter();
   const pathname = usePathname();
   const { token } = theme.useToken();
+  const [collapsed, setCollapsed] = useState(false);
   const [unread, setUnread] = useState(0);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [messages, setMessages] = useState<
@@ -197,8 +200,9 @@ export function DashboardShell({ user, children }: Props) {
     <Layout style={{ minHeight: "100vh" }}>
       <Sider
         width={232}
-        breakpoint="lg"
-        collapsedWidth={0}
+        collapsedWidth={64}
+        collapsed={collapsed}
+        trigger={null}
         style={{
           position: "sticky",
           top: 0,
@@ -268,6 +272,28 @@ export function DashboardShell({ user, children }: Props) {
             borderBottom: `1px solid ${token.colorSplit}`
           }}
         >
+          <button
+            type="button"
+            onClick={() => setCollapsed((c) => !c)}
+            aria-label={collapsed ? "展开侧栏" : "收起侧栏"}
+            title={collapsed ? "展开侧栏" : "收起侧栏"}
+            style={{
+              background: "transparent",
+              border: "none",
+              padding: 6,
+              marginRight: 8,
+              cursor: "pointer",
+              color: token.colorTextSecondary,
+              fontSize: 16,
+              display: "inline-flex",
+              alignItems: "center",
+              justifyContent: "center",
+              borderRadius: 6,
+              transition: "background-color 160ms"
+            }}
+          >
+            {collapsed ? <MenuUnfoldOutlined /> : <MenuFoldOutlined />}
+          </button>
           <Crumbs pathname={pathname} />
 
           <div style={{ display: "inline-flex", alignItems: "center", gap: 16 }}>
