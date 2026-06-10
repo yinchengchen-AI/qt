@@ -1,11 +1,14 @@
 "use client";
-import { Page } from "@/components/page";
-import { PageHeader } from "@/components/page-header";
-import { ProCard, ProForm, ProFormText, ProFormSelect } from "@ant-design/pro-components";
-import { App as AntdApp, Button } from "antd";
+import { ProForm, ProFormText, ProFormSelect } from "@ant-design/pro-components";
+import { App as AntdApp, Card, Space, Tag, Typography } from "antd";
 import { useParams, useRouter } from "next/navigation";
 import useSWR from "swr";
+import { Page } from "@/components/page";
+import { PageHeader } from "@/components/page-header";
+import { FormSection, FormGrid, FormCard } from "@/components/form";
 import { FormPageSkeleton } from "@/components/form-page-skeleton";
+
+const { Text } = Typography;
 
 type Role = { id: string; code: string; name: string };
 type User = {
@@ -35,7 +38,7 @@ export default function EditUserPage() {
   if (isLoading || !data) {
     return (
       <Page compact>
-        <PageHeader back={() => router.push(`/admin/users/${id}`)} title="编辑用户" subtitle="修改用户基础信息、角色与状态" />
+        <PageHeader back={() => router.push(`/admin/users/${id}`)} title="编辑用户" />
         <FormPageSkeleton />
       </Page>
     );
@@ -46,19 +49,22 @@ export default function EditUserPage() {
       <PageHeader
         back={() => router.push(`/admin/users/${id}`)}
         title={`编辑 ${data.name}`}
-        subtitle="修改用户基础信息、角色与状态"
+        subtitle={`工号 ${data.employeeNo} 不可改;不能改/禁自己(后端护栏)`}
       />
-      <ProCard>
+      <FormCard headerHint={'如忘记密码,请回列表点「重置密码」按钮(后端生成随机密码一次性展示)'}>
         <ProForm
           layout="vertical"
-          submitter={false}
           initialValues={{
             name: data.name,
             email: data.email,
-            phone: data.phone ?? "",
+            phone: data.phone ?? undefined,
             roleId: data.roleId,
-            department: data.department ?? "",
+            department: data.department ?? undefined,
             status: data.status
+          }}
+          submitter={{
+            searchConfig: { resetText: "重置", submitText: "保存" },
+            resetButtonProps: { style: { display: "none" } }
           }}
           onFinish={async (values) => {
             const res = await fetch(`/api/users/${id}`, {
@@ -72,35 +78,72 @@ export default function EditUserPage() {
               message.error(j.message);
               return false;
             }
-            message.success("保存成功");
+            message.success("已保存");
             router.push(`/admin/users/${id}`);
             return true;
           }}
         >
-          <ProFormText name="name" label="姓名" rules={[{ required: true, max: 40 }]} />
-          <ProFormText name="email" label="邮箱" rules={[{ required: true, type: "email", max: 120 }]} />
-          <ProFormText name="phone" label="手机号" />
-          <ProFormSelect
-            name="roleId"
-            label="角色"
-            rules={[{ required: true }]}
-            options={roleOptions}
-            showSearch
-          />
-          <ProFormText name="department" label="部门" />
-          <ProFormSelect
-            name="status"
-            label="状态"
-            options={[
-              { value: "ACTIVE", label: "启用" },
-              { value: "DISABLED", label: "禁用" }
-            ]}
-          />
-          <Button type="primary" htmlType="submit">
-            保存
-          </Button>
+          <FormSection title="账号信息">
+            <FormGrid columns={2}>
+              <ProFormText
+                name="name"
+                label="姓名"
+                rules={[{ required: true, max: 40 }]}
+                fieldProps={{ size: "large", maxLength: 40 }}
+              />
+              <ProFormText
+                name="email"
+                label="邮箱"
+                rules={[{ required: true, type: "email", max: 120 }]}
+                fieldProps={{ size: "large", maxLength: 120 }}
+              />
+              <ProFormText
+                name="phone"
+                label="手机号"
+                fieldProps={{ size: "large", maxLength: 20 }}
+              />
+            </FormGrid>
+          </FormSection>
+
+          <FormSection title="角色与部门">
+            <FormGrid columns={2}>
+              <ProFormSelect
+                name="roleId"
+                label="角色"
+                options={roleOptions}
+                showSearch
+                rules={[{ required: true }]}
+                fieldProps={{ size: "large", optionFilterProp: "label" }}
+              />
+              <ProFormText
+                name="department"
+                label="部门"
+                fieldProps={{ size: "large", maxLength: 40 }}
+              />
+            </FormGrid>
+          </FormSection>
+
+          <FormSection title="状态">
+            <FormGrid columns={1}>
+              <ProFormSelect
+                name="status"
+                label="账号状态"
+                options={[
+                  { value: "ACTIVE", label: "启用" },
+                  { value: "DISABLED", label: "禁用" }
+                ]}
+                rules={[{ required: true }]}
+                fieldProps={{ size: "large" }}
+              />
+              <Space>
+                <Text type="secondary" style={{ fontSize: 12 }}>
+                  最后一位 <Tag color="blue">ADMIN</Tag> 不可禁用;自己不可改/禁(后端护栏)
+                </Text>
+              </Space>
+            </FormGrid>
+          </FormSection>
         </ProForm>
-      </ProCard>
+      </FormCard>
     </Page>
   );
 }
