@@ -1,11 +1,20 @@
 "use client";
-import { Page } from "@/components/page";
-import { PageHeader } from "@/components/page-header";
-import { EmptyState } from "@/components/empty-state";
-import { ProCard, ProForm, ProFormText, ProFormTextArea, ProFormDateTimePicker, ProFormDigit } from "@ant-design/pro-components";
-import { App as AntdApp, Button } from "antd";
+import {
+  ProForm,
+  ProFormText,
+  ProFormTextArea,
+  ProFormDigit,
+  ProFormDatePicker
+} from "@ant-design/pro-components";
+import { App as AntdApp, Card, Space, Tag, Typography } from "antd";
 import { useParams, useRouter } from "next/navigation";
 import useSWR from "swr";
+import { Page } from "@/components/page";
+import { PageHeader } from "@/components/page-header";
+import { FormSection, FormGrid, FormCard } from "@/components/form";
+import { FormPageSkeleton } from "@/components/form-page-skeleton";
+
+const { Text } = Typography;
 
 export default function EditProjectPage() {
   const params = useParams();
@@ -13,43 +22,134 @@ export default function EditProjectPage() {
   const router = useRouter();
   const { message } = AntdApp.useApp();
   const { data, isLoading } = useSWR<any>(`/api/projects/${id}`);
-  if (isLoading || !data) return <Page compact><EmptyState loading /></Page>;
-  if (!["PLANNED", "SUSPENDED"].includes(data.status)) return <ProCard>当前状态不可编辑</ProCard>;
+
+  if (isLoading || !data) {
+    return (
+      <Page compact>
+        <PageHeader back={() => router.push(`/projects/${id}`)} title="编辑项目" />
+        <FormPageSkeleton />
+      </Page>
+    );
+  }
+
+  if (!["PLANNED", "SUSPENDED"].includes(data.status)) {
+    return (
+      <Page compact>
+        <PageHeader back={() => router.push(`/projects/${id}`)} title="编辑项目" />
+        <FormCard>
+          <Text type="warning">
+            当前状态 <Tag>{data.status}</Tag> 不可编辑;仅 PLANNED / SUSPENDED 可改。
+          </Text>
+        </FormCard>
+      </Page>
+    );
+  }
+
   return (
     <Page compact>
-      <PageHeader back={() => router.push(`/projects/${id}`)} title="编辑项目" subtitle="计划中或已暂停状态可编辑" />
-      <ProCard>
-      <ProForm
-        layout="vertical"
-        submitter={false}
-        initialValues={{
-          ...data,
-          startDate: data.startDate ? new Date(data.startDate) : undefined,
-          endDate: data.endDate ? new Date(data.endDate) : undefined
-        }}
-        onFinish={async (values) => {
-          const payload = {
-            ...values,
-            startDate: values.startDate?.toISOString?.(),
-            endDate: values.endDate?.toISOString?.()
-          };
-          const res = await fetch(`/api/projects/${id}`, {
-            method: "PATCH", headers: { "Content-Type": "application/json" }, credentials: "include",
-            body: JSON.stringify(payload)
-          });
-          const j = await res.json();
-          if (j.code !== 0) { message.error(j.message); return false; }
-          message.success("已保存"); router.push(`/projects/${id}`); return true;
-        }}
-      >
-        <ProFormText name="name" label="项目名称" rules={[{ required: true }]} />
-        <ProFormTextArea name="serviceScope" label="服务范围" rules={[{ required: true }]} />
-        <ProFormDateTimePicker name="startDate" label="起期" rules={[{ required: true }]} />
-        <ProFormDateTimePicker name="endDate" label="止期" rules={[{ required: true }]} />
-        <ProFormDigit name="budgetAmount" label="预算（元）" min={0} fieldProps={{ precision: 2, prefix: "¥" }} />
-        <Button type="primary" htmlType="submit">保存</Button>
-      </ProForm>
-    </ProCard>
+      <PageHeader
+        back={() => router.push(`/projects/${id}`)}
+        title={`编辑 ${data.name}`}
+        subtitle={`所属合同:${data.contract?.contractNo ?? data.contractId ?? "-"}`}
+      />
+      <FormCard headerHint="所属合同不可改;项目止期必须晚于起期且不超过合同止期">
+        <ProForm
+          layout="vertical"
+          initialValues={{
+            name: data.name,
+            serviceScope: data.serviceScope,
+            startDate: data.startDate ? new Date(data.startDate) : undefined,
+            endDate: data.endDate ? new Date(data.endDate) : undefined,
+            budgetAmount: data.budgetAmount ? Number(data.budgetAmount) : undefined
+          }}
+          onFinish={async (values) => {
+            const payload = {
+              ...values,
+              startDate: values.startDate?.toISOString?.(),
+              endDate: values.endDate?.toISOString?.()
+            };
+            const res = await fetch(`/api/projects/${id}`, {
+              method: "PATCH",
+              headers: { "Content-Type": "application/json" },
+              credentials: "include",
+              body: JSON.stringify(payload)
+            });
+            const j = await res.json();
+            if (j.code !== 0) {
+              message.error(j.message);
+              return false;
+            }
+            message.success("已保存");
+            router.push(`/projects/${id}`);
+            return true;
+          }}
+        >
+          <FormSection title="项目信息">
+            <FormGrid columns={1}>
+              <ProFormText
+                name="name"
+                label="项目名称"
+                rules={[{ required: true, max: 100 }]}
+                fieldProps={{ size: "large" }}
+              />
+              <ProFormTextArea
+                name="serviceScope"
+                label="服务范围"
+                rules={[{ required: true }]}
+                fieldProps={{ size: "large", rows: 4, maxLength: 2000, showCount: true }}
+              />
+            </FormGrid>
+          </FormSection>
+
+          <FormSection title="项目起止期">
+            <FormGrid columns={2}>
+              <ProFormDatePicker
+                name="startDate"
+                label="起期"
+                rules={[{ required: true }]}
+                fieldProps={{ size: "large", style: { width: "100%" } }}
+              />
+              <ProFormDatePicker
+                name="endDate"
+                label="止期"
+                rules={[
+                  { required: true, message: "请选择止期" },
+                  ({ getFieldValue }: { getFieldValue: (n: string) => unknown }) => ({
+                    validator(_: unknown, value: unknown) {
+                      const start = getFieldValue("startDate") as string | number | Date | null | undefined;
+                      if (!value || !start) return Promise.resolve();
+                      const d = new Date(value as string).getTime();
+                      const s = new Date(start).getTime();
+                      if (d <= s) {
+                        return Promise.reject(new Error("止期必须晚于起期"));
+                      }
+                      return Promise.resolve();
+                    }
+                  })
+                ]}
+                fieldProps={{ size: "large", style: { width: "100%" } }}
+              />
+            </FormGrid>
+          </FormSection>
+
+          <FormSection title="预算">
+            <FormGrid columns={1}>
+              <ProFormDigit
+                name="budgetAmount"
+                label="项目预算"
+                min={0}
+                fieldProps={{ size: "large", precision: 2, prefix: "¥", addonAfter: "元" }}
+              />
+            </FormGrid>
+          </FormSection>
+
+          <Space>
+            <Text type="secondary" style={{ fontSize: 12 }}>
+              项目预算为参考值,合同总额是最终结算依据。
+            </Text>
+          </Space>
+        </ProForm>
+      </FormCard>
     </Page>
   );
 }
