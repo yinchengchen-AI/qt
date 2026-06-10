@@ -1,0 +1,18 @@
+import { chromium } from "playwright";
+const browser = await chromium.launch({ headless: true, channel: "chrome" });
+const ctx = await browser.newContext({ viewport: { width: 1440, height: 900 } });
+const page = await ctx.newPage();
+page.on("console", (m) => console.log(`[${m.type()}]`, m.text()));
+page.on("pageerror", (e) => console.log("[err]", e.message));
+await page.goto("http://localhost:3000/login", { waitUntil: "networkidle" });
+console.log("loaded");
+await page.locator('input[name="employeeNo"]').clear();
+await page.locator('input[name="employeeNo"]').fill("admin");
+await page.locator('input[name="password"]').clear();
+await page.locator('input[name="password"]').fill("123456");
+console.log("filled");
+await page.click('button[type="submit"]');
+console.log("clicked");
+await page.waitForTimeout(5000);
+console.log("url after click:", page.url());
+await browser.close();

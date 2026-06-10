@@ -71,6 +71,7 @@ const MENU: MenuItem[] = [
     children: [
       { path: "/admin/users", name: "用户管理" },
       { path: "/admin/roles", name: "角色权限" },
+      { path: "/admin/departments", name: "部门管理" },
       { path: "/admin/dictionaries", name: "数据字典" },
       { path: "/admin/operation-logs", name: "操作日志" }
     ]
