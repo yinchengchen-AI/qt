@@ -36,7 +36,6 @@ import {
 } from "@ant-design/icons";
 import type { RoleCode } from "@/types/enums";
 import type { Action, Resource } from "@/lib/permissions";
-import { QtMark } from "@/components/qt-mark";
 
 const { Sider, Header, Content } = Layout;
 const { Text } = Typography;
@@ -213,22 +212,49 @@ export function DashboardShell({ user, children }: Props) {
       >
         <div
           style={{
-            padding: "20px 20px 12px",
-            borderBottom: `1px solid ${token.colorSplit}`
+            height: 64,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            borderBottom: `1px solid ${token.colorSplit}`,
+            overflow: "hidden",
+            flexShrink: 0
           }}
         >
-          <Link
-            href="/dashboard"
-            style={{
-              display: "inline-flex",
-              alignItems: "center",
-              gap: 10,
-              textDecoration: "none",
-              color: token.colorText
-            }}
-          >
-            <QtMark size={32} withWordmark wordmarkSize={14} />
-          </Link>
+          {collapsed ? (
+            <span
+              aria-label="企泰安全"
+              style={{
+                width: 36,
+                height: 36,
+                borderRadius: 8,
+                background: "linear-gradient(135deg, #0A1C33 0%, #142E63 100%)",
+                color: "#ffffff",
+                display: "inline-flex",
+                alignItems: "center",
+                justifyContent: "center",
+                fontSize: 18,
+                fontWeight: 700,
+                letterSpacing: "0.02em"
+              }}
+            >
+              企
+            </span>
+          ) : (
+            <Link
+              href="/dashboard"
+              aria-label="企泰安全"
+              style={{
+                textDecoration: "none",
+                color: token.colorText,
+                fontSize: 18,
+                fontWeight: 700,
+                letterSpacing: "0.12em"
+              }}
+            >
+              企泰安全
+            </Link>
+          )}
         </div>
 
         <Menu
