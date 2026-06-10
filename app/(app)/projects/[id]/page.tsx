@@ -2,6 +2,7 @@
 import { ProCard, ProDescriptions, ProTable } from "@ant-design/pro-components";
 import { Button, Space } from "antd";
 import { useParams, useRouter } from "next/navigation";
+import type { Project as ProjectEntity } from "@/lib/types/entities";
 import useSWR from "swr";
 import { Page } from "@/components/page";
 import { PageHeader } from "@/components/page-header";
@@ -19,10 +20,11 @@ export default function ProjectDetailPage() {
   const params = useParams();
   const id = String(params.id);
   const router = useRouter();
-  const { data, isLoading, mutate } = useSWR<any>(`/api/projects/${id}`);
+  const { data, isLoading, mutate } = useSWR<{ data: ProjectEntity }>(`/api/projects/${id}`);
+  const project = data?.data;
   const { run } = useActionCall({ baseUrl: `/api/projects/${id}`, reload: () => mutate() });
 
-  if (isLoading || !data) {
+  if (isLoading || !project) {
     return (
       <Page>
         <PageHeader back={() => router.push("/projects")} title="项目详情" />
@@ -32,7 +34,7 @@ export default function ProjectDetailPage() {
   }
 
   const allowed = (() => {
-    const s = data.status;
+    const s = project.status;
     if (s === "PLANNED") return ["start", "cancel"];
     if (s === "IN_PROGRESS") return ["suspend", "deliver", "cancel"];
     if (s === "SUSPENDED") return ["resume", "cancel"];
@@ -41,18 +43,18 @@ export default function ProjectDetailPage() {
     return [];
   })();
 
-  const contractNo = data.contract?.contractNo ?? data.contractNo ?? "-";
+  const contractNo = project.contract?.contractNo ?? project.contractNo ?? "-";
 
   return (
     <Page>
       <PageHeader
         back={() => router.push("/projects")}
-        title={`${data.name} · ${data.projectNo}`}
+        title={`${project.name} · ${project.projectNo}`}
         subtitle={`所属合同: ${contractNo}`}
-        meta={<StatusTag status={data.status} domain="project" />}
+        meta={<StatusTag status={project.status} domain="project" />}
         actions={
           <Space>
-            {["PLANNED", "SUSPENDED"].includes(data.status) && (
+            {["PLANNED", "SUSPENDED"].includes(project.status) && (
               <Button onClick={() => router.push(`/projects/${id}/edit`)}>编辑</Button>
             )}
             {allowed.map((a) => (
@@ -72,20 +74,20 @@ export default function ProjectDetailPage() {
         <ProDescriptions column={2} dataSource={data} columns={[
           { title: "项目编号", dataIndex: "projectNo" },
           { title: "所属合同", dataIndex: ["contract", "contractNo"], render: () => contractNo },
-          { title: "起期", dataIndex: "startDate", render: (v: any) => <DateTimeCell value={v} /> },
-          { title: "止期", dataIndex: "endDate", render: (v: any) => <DateTimeCell value={v} /> },
-          { title: "预算", dataIndex: "budgetAmount", render: (v: any) => <CurrencyCell value={v} /> }
+          { title: "起期", dataIndex: "startDate", render: (v) => <DateTimeCell value={v as string} /> },
+          { title: "止期", dataIndex: "endDate", render: (v) => <DateTimeCell value={v as string} /> },
+          { title: "预算", dataIndex: "budgetAmount", render: (v) => <CurrencyCell value={v as string} /> }
         ]} />
       </ProCard>
       <PageHeader level="section" title="服务范围" />
       <ProCard>
-        <div style={{ whiteSpace: "pre-wrap" }}>{data.serviceScope}</div>
+        <div style={{ whiteSpace: "pre-wrap" }}>{project.serviceScope}</div>
       </ProCard>
       <PageHeader level="section" title="进度日志" />
       <ProCard>
-        <ProTable rowKey="id" search={false} options={false} pagination={{ pageSize: 10 }} dataSource={data.progressLogs ?? []} columns={[
-          { title: "时间", dataIndex: "at", valueType: "dateTime", width: 180, render: (_, r: any) => <DateTimeCell value={r.at} /> },
-          { title: "进度", dataIndex: "percent", width: 100, render: (v: any) => `${v}%` },
+        <ProTable rowKey="id" search={false} options={false} pagination={{ pageSize: 10 }} dataSource={project.progressLogs ?? []} columns={[
+          { title: "时间", dataIndex: "at", valueType: "dateTime", width: 180, render: (_, r) => <DateTimeCell value={r.at as string} /> },
+          { title: "进度", dataIndex: "percent", width: 100, render: (v) => `${v as number}%` },
           { title: "说明", dataIndex: "remark" }
         ]} />
       </ProCard>

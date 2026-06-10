@@ -1,6 +1,6 @@
 "use client";
 import { StepsForm, ProFormText, ProFormSelect, ProFormDigit } from "@ant-design/pro-components";
-import { App as AntdApp, Card, Space, Tag, Typography } from "antd";
+import { App as AntdApp, Space, Tag, Typography } from "antd";
 import { useRouter } from "next/navigation";
 import { useDict } from "@/lib/dict-client";
 import { useStatusOptions } from "@/lib/use-status-enum";

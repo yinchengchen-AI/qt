@@ -2,6 +2,7 @@
 import { ProCard, ProDescriptions, ProTable } from "@ant-design/pro-components";
 import { Button, Space, Modal, Input } from "antd";
 import { useParams, useRouter } from "next/navigation";
+import type { Payment as PaymentEntity } from "@/lib/types/entities";
 import useSWR from "swr";
 import { useSession } from "next-auth/react";
 import { useState } from "react";
@@ -18,12 +19,13 @@ export default function PaymentDetailPage() {
   const id = String(params.id);
   const router = useRouter();
   const { data: session } = useSession();
-  const { data, isLoading, mutate } = useSWR<any>(`/api/payments/${id}`);
+  const { data, isLoading, mutate } = useSWR<{ data: PaymentEntity }>(`/api/payments/${id}`);
+  const payment = data?.data;
   const [bankRefNo, setBankRefNo] = useState("");
   const [reason, setReason] = useState("");
   const { run } = useActionCall({ baseUrl: `/api/payments/${id}`, reload: () => mutate() });
 
-  if (isLoading || !data) {
+  if (isLoading || !payment) {
     return (
       <Page>
         <PageHeader back={() => router.push("/payments")} title="回款详情" />
@@ -33,7 +35,7 @@ export default function PaymentDetailPage() {
   }
   const roleCode = session?.user?.roleCode;
   const isFinance = roleCode === "FINANCE" || roleCode === "ADMIN";
-  const status = data.status;
+  const status = payment.status;
 
   const askConfirm = () => Modal.confirm({
     title: "确认回款(财务)",
@@ -52,9 +54,9 @@ export default function PaymentDetailPage() {
     <Page>
       <PageHeader
         back={() => router.push("/payments")}
-        title={`回款 ${data.paymentNo}`}
-        subtitle={`到账日: ${data.receivedAt ? new Date(data.receivedAt).toLocaleString("zh-CN") : "-"}`}
-        meta={<StatusTag status={data.status} domain="payment" />}
+        title={`回款 ${payment.paymentNo}`}
+        subtitle={`到账日: ${payment.receivedAt ? new Date(payment.receivedAt).toLocaleString("zh-CN") : "-"}`}
+        meta={<StatusTag status={payment.status} domain="payment" />}
         actions={
           <Space>
             {status === "PLANNED" && <Button type="primary" onClick={askConfirm} disabled={!isFinance}>财务确认</Button>}
@@ -69,36 +71,36 @@ export default function PaymentDetailPage() {
         }
       />
       <ProCard>
-        <ProDescriptions column={2} dataSource={data} columns={[
+        <ProDescriptions column={2} dataSource={payment} columns={[
           { title: "回款号", dataIndex: "paymentNo" },
-          { title: "金额", dataIndex: "amount", render: (v: any) => <CurrencyCell value={v} /> },
-          { title: "方式", dataIndex: "method", render: (v: any) => METHOD_MAP[v] ?? v },
-          { title: "到账日", dataIndex: "receivedAt", render: (v: any) => <DateTimeCell value={v} /> },
+          { title: "金额", dataIndex: "amount", render: (v) => <CurrencyCell value={v as string} /> },
+          { title: "方式", dataIndex: "method", render: (v) => METHOD_MAP[v as string] ?? v },
+          { title: "到账日", dataIndex: "receivedAt", render: (v) => <DateTimeCell value={v as string} /> },
           { title: "银行流水号", dataIndex: "bankRefNo" },
           { title: "收款行", dataIndex: "bankName" },
           { title: "登记人", dataIndex: "recorderUserId" },
           { title: "对账人", dataIndex: "reconcileUserId" },
-          { title: "对账时间", dataIndex: "reconciledAt", render: (v: any) => <DateTimeCell value={v} /> },
+          { title: "对账时间", dataIndex: "reconciledAt", render: (v) => <DateTimeCell value={v as string} /> },
           { title: "备注", dataIndex: "remark" }
         ]} />
       </ProCard>
-      {data.invoice && (
+      {payment.invoice && (
         <>
           <PageHeader level="section" title="关联发票" />
           <ProCard>
-            <ProDescriptions column={2} dataSource={data.invoice} columns={[
+            <ProDescriptions column={2} dataSource={payment.invoice} columns={[
               { title: "发票号", dataIndex: "invoiceNo" },
-              { title: "金额", dataIndex: "amount", render: (v: any) => <CurrencyCell value={v} /> }
+              { title: "金额", dataIndex: "amount", render: (v) => <CurrencyCell value={v as string} /> }
             ]} />
           </ProCard>
         </>
       )}
       <PageHeader level="section" title="分配明细" />
       <ProCard>
-        <ProTable rowKey="id" search={false} options={false} pagination={false} dataSource={data.allocations ?? []} columns={[
+        <ProTable rowKey="id" search={false} options={false} pagination={false} dataSource={payment.allocations ?? []} columns={[
           { title: "发票编号", dataIndex: "invoiceId" },
           { title: "项目编号", dataIndex: "projectId" },
-          { title: "金额", dataIndex: "amount", render: (v: any) => <CurrencyCell value={v} /> },
+          { title: "金额", dataIndex: "amount", render: (v) => <CurrencyCell value={v as string} /> },
           { title: "备注", dataIndex: "remark" }
         ]} />
       </ProCard>

@@ -139,6 +139,7 @@ export function FilePreviewModal(props: {
       )}
       {blobUrl && !loading && !err && canPreview && isImage && (
         <div style={{ display: "flex", justifyContent: "center", background: "#fafafa", padding: 16 }}>
+          {/* eslint-disable-next-line @next/next/no-img-element -- blob URL 不能被 next/image 优化，需要原生 <img> */}
           <img
             src={blobUrl}
             alt={attachment?.name}

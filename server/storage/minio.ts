@@ -16,7 +16,7 @@ import { env, isMinioEnabled } from "@/lib/env";
 // 单例(避免每次请求都新建 client)
 let _client: S3Client | null = null;
 let _bucketEnsured: string | null = null;
-let _corsEnsured: string | null = null;
+const _corsEnsured: string | null = null;
 
 export function getS3Client(): S3Client {
   if (_client) return _client;

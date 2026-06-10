@@ -33,7 +33,6 @@ export default function CustomersPage() {
   const router = useRouter();
   const { mutate } = useSWRConfig();
   const customerTypeDict = useDict("CUSTOMER_TYPE");
-  const customerLevelDict = useDict("CUSTOMER_LEVEL");
   const statusEnum = useStatusValueEnum("customer");
 
   return (

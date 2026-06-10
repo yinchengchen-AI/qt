@@ -76,7 +76,7 @@ export async function invoiceOverdueJob(now: Date): Promise<JobResult> {
     }
   });
   let created = 0;
-  let scanned = candidates.length;
+  const scanned = candidates.length;
   for (const inv of candidates) {
     const sum = await prisma.payment.aggregate({
       where: { invoiceId: inv.id, status: { in: ["CONFIRMED", "RECONCILED"] } },

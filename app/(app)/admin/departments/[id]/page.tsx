@@ -1,6 +1,6 @@
 "use client";
 import { ProCard, ProDescriptions, ProTable, type ProColumns } from "@ant-design/pro-components";
-import { App as AntdApp, Button, Space, Tag, Typography } from "antd";
+import { Button, Space, Tag, Typography } from "antd";
 import { useParams, useRouter } from "next/navigation";
 import useSWR from "swr";
 import { Page } from "@/components/page";

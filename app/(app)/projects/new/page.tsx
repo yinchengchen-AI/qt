@@ -7,7 +7,7 @@ import {
   ProFormDigit,
   ProFormDatePicker
 } from "@ant-design/pro-components";
-import { App as AntdApp, Card, Space, Tag, Typography } from "antd";
+import { App as AntdApp, Space, Tag, Typography } from "antd";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { Page } from "@/components/page";
@@ -141,7 +141,7 @@ export default function NewProjectPage() {
                 label="起期"
                 rules={[
                   { required: true, message: "请选择起期" },
-                  ({ getFieldValue }: { getFieldValue: (n: string) => unknown }) => ({
+                  {
                     validator(_: unknown, value: unknown) {
                       if (!contractStart || !value) return Promise.resolve();
                       const v = new Date(value as string).getTime();
@@ -151,7 +151,7 @@ export default function NewProjectPage() {
                       }
                       return Promise.resolve();
                     }
-                  })
+                  }
                 ]}
                 fieldProps={{ size: "large", style: { width: "100%" } }}
               />
@@ -160,7 +160,7 @@ export default function NewProjectPage() {
                 label="止期"
                 rules={[
                   { required: true, message: "请选择止期" },
-                  ({ getFieldValue }: { getFieldValue: (n: string) => unknown }) => ({
+                  ({ getFieldValue }: { getFieldValue: (name: string) => unknown }) => ({
                     validator(_: unknown, value: unknown) {
                       const start = getFieldValue("startDate") as string | number | Date | null | undefined;
                       if (!value || !start) return Promise.resolve();

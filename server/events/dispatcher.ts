@@ -1,6 +1,6 @@
 ﻿// 事件 dispatcher：emit 到 inbox + 其他通道（fire-and-forget）
 // 设计：inbox 写 Message 在事务内（已有）；email / wechat 在事务外异步（失败不抛，仅 log）
-import type { Prisma, PrismaClient } from "@prisma/client";
+// (Prisma types imported lazily in the functions that need them)
 import { prisma } from "@/lib/prisma";
 import { CHANNEL_HANDLERS, type ChannelPayload } from "./channels";
 import { NOTIFY_CONFIG, isChannelEnabled, type NotifyChannel } from "@/lib/notify-config";

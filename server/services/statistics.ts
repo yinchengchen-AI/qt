@@ -1,12 +1,12 @@
 // 统计服务：合同/开票/回款汇总 + 账龄 + Top10 + 业务人员业绩
 import { prisma } from "@/lib/prisma";
-import { requireSession, type SessionUser } from "@/lib/session";
+import { type SessionUser } from "@/lib/session";
 import { requirePermission, RESOURCE, ACTION } from "@/lib/permissions";
 import type { Prisma } from "@prisma/client";
 
 type DateRange = { from?: Date; to?: Date };
 
-function dateWhere(range: DateRange, field: "actualIssueDate" | "receivedAt" | "signDate" = "signDate"): Prisma.DateTimeFilter {
+function dateWhere(range: DateRange, _field: "actualIssueDate" | "receivedAt" | "signDate" = "signDate"): Prisma.DateTimeFilter {
   const w: Prisma.DateTimeFilter = {};
   if (range.from) w.gte = range.from;
   if (range.to) w.lte = range.to;

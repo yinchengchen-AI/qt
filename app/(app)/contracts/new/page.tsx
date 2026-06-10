@@ -7,8 +7,7 @@ import {
   ProFormDatePicker,
   ProFormUploadButton
 } from "@ant-design/pro-components";
-import { App as AntdApp, Card, Space, Tag, Typography } from "antd";
-import { useSession } from "next-auth/react";
+import { App as AntdApp, Space, Tag, Typography } from "antd";
 import { useRouter } from "next/navigation";
 import { useDict } from "@/lib/dict-client";
 import { proCustomRequest } from "@/lib/upload-client";
@@ -39,7 +38,6 @@ type Customer = {
 
 export default function NewContractPage() {
   const router = useRouter();
-  const { data: session } = useSession();
   const { message } = AntdApp.useApp();
   const serviceType = useDict("SERVICE_TYPE");
 

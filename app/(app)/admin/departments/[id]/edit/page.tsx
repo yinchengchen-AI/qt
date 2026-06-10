@@ -1,6 +1,6 @@
 "use client";
 import { ProForm, ProFormText, ProFormTreeSelect, ProFormDigit, ProFormSwitch } from "@ant-design/pro-components";
-import { App as AntdApp, Card, Space, Tag, Typography } from "antd";
+import { App as AntdApp, Space, Tag, Typography } from "antd";
 import { useParams, useRouter } from "next/navigation";
 import useSWR from "swr";
 import { Page } from "@/components/page";

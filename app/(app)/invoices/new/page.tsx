@@ -7,7 +7,7 @@ import {
   ProFormDatePicker,
   ProFormUploadButton
 } from "@ant-design/pro-components";
-import { App as AntdApp, Card, Space, Tag, Typography } from "antd";
+import { App as AntdApp, Space, Tag, Typography } from "antd";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { Page } from "@/components/page";
@@ -28,19 +28,6 @@ const TITLE_TYPE_OPTIONS = [
   { value: "COMPANY", label: "公司" },
   { value: "PERSONAL", label: "个人" }
 ];
-
-type Project = {
-  id: string;
-  projectNo: string;
-  name: string;
-  status: string;
-  contract?: {
-    id: string;
-    contractNo: string;
-    customerId: string;
-    customerName: string;
-  };
-};
 
 type Customer = {
   id: string;

@@ -8,7 +8,7 @@ import { StatGrid, type StatItem } from "@/components/stat-grid";
 import { EmptyState } from "@/components/empty-state";
 import { StatusTag } from "@/components/status-tag";
 import { formatCurrency } from "@/lib/format";
-import { CurrencyCell, DateCell } from "@/components/table-cells";
+import { CurrencyCell } from "@/components/table-cells";
 
 type Bucket = "0-30" | "31-60" | "61-90" | "90+";
 type AgingRow = {

@@ -1,7 +1,5 @@
 // 业务编号：QT-{类型简码}-YYYY-####，年内递增，Sequence 表 + 事务内 UPSERT
 import { prisma } from "./prisma";
-import { ApiError } from "./api";
-import { ERROR_CODES } from "@/types/errors";
 
 const PREFIX_MAP = {
   CUSTOMER: "QT-C",      // QT-C-YYYYMM-#### 月度

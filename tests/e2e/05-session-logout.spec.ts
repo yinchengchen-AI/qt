@@ -1,5 +1,5 @@
 // 场景 5：会话生命周期 + 登出 + 多用户切换
-import { test, expect } from "@playwright/test";
+import { test } from "@playwright/test";
 
 test.describe.serial("场景 5: 会话生命周期", () => {
   test("05.1 登出后再访问 dashboard 应跳回登录", async ({ page }) => {

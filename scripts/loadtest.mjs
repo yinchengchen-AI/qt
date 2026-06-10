@@ -1,5 +1,5 @@
 // 简单压测：登录 admin 后，N 并发持续 5 秒请求 /api/customers
-import http from "node:http";
+import _http from "node:http";
 import { performance } from "node:perf_hooks";
 
 const BASE = process.env.BASE ?? "http://localhost:3000";

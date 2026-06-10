@@ -15,9 +15,6 @@ export type StatusMeta = {
   label: string;
   tone: Tone;
 };
-
-const DEFAULT_LABEL = (code: string) => code;
-
 /* === Customer === */
 const CUSTOMER: Record<string, StatusMeta> = {
   LEAD:        { label: "线索",     tone: "default" },

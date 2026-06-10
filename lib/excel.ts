@@ -6,7 +6,7 @@ export type ExcelColumn<T> = { header: string; key: keyof T | string; width?: nu
 export async function exportToXlsx<T extends Record<string, unknown>>(
   rows: T[],
   columns: ExcelColumn<T>[],
-  filename: string
+  _filename: string
 ): Promise<Buffer> {
   const wb = new ExcelJS.Workbook();
   const ws = wb.addWorksheet("Sheet1");

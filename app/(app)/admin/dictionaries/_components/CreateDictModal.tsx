@@ -1,5 +1,5 @@
 "use client";
-import { App as AntdApp, Button, Form, Input, InputNumber, Modal, Select } from "antd";
+import { App as AntdApp, Form, Input, InputNumber, Modal, Select } from "antd";
 import {
   ALLOWED_DICTIONARY_CATEGORIES,
   DICTIONARY_CATEGORY_LABEL

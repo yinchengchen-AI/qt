@@ -6,7 +6,7 @@ import {
   ProFormDigit,
   ProFormDatePicker
 } from "@ant-design/pro-components";
-import { App as AntdApp, Card, Space, Typography } from "antd";
+import { App as AntdApp, Space, Typography } from "antd";
 import { StatusTag } from "@/components/status-tag";
 import { useParams, useRouter } from "next/navigation";
 import useSWR from "swr";
@@ -22,7 +22,8 @@ export default function EditProjectPage() {
   const id = String(params.id);
   const router = useRouter();
   const { message } = AntdApp.useApp();
-  const { data, isLoading } = useSWR<any>(`/api/projects/${id}`);
+  const { data, isLoading } = // eslint-disable-next-line @typescript-eslint/no-explicit-any -- edit page reads many dynamic fields
+  useSWR<any>(`/api/projects/${id}`);
 
   if (isLoading || !data) {
     return (

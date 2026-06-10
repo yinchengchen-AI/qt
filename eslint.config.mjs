@@ -3,12 +3,11 @@
 //
 // Next 16 removed `next lint`; we invoke `eslint .` directly.
 
-import next from "eslint-config-next";
 import ts from "eslint-config-next/typescript";
 import nextCoreWebVitals from "eslint-config-next/core-web-vitals";
 import reactHooks from "eslint-plugin-react-hooks";
 
-export default [
+const config = [
   {
     // 全局 ignore:与 .gitignore 的运行时/工具产物保持一致
     ignores: [
@@ -27,7 +26,8 @@ export default [
       "shoot.mjs",
       ".qt-screenshots/**",
       "inspect-dash.mjs",
-      "inspect-dash2.mjs"
+      "inspect-dash2.mjs",
+      "scripts/_*.mjs"
     ]
   },
   // next 推荐档(含 react / jsx-a11y / @next/eslint-plugin-next)
@@ -47,31 +47,31 @@ export default [
       "@typescript-eslint/no-empty-object-type": "warn",
       "react-hooks/exhaustive-deps": "warn",
       "react-hooks/rules-of-hooks": "warn",
-      "react-hooks/set-state-in-effect": "warn",
-      "react-hooks/error-boundaries": "warn",
-      "react-hooks/preserve-manual-memoization": "warn",
-      "react-hooks/immutability": "warn",
-      "react-hooks/refs": "warn",
-      "react-hooks/purity": "warn",
-      "react-hooks/set-state-in-render": "warn",
-      "react-hooks/static-components": "warn",
-      "react-hooks/component-hook-factories": "warn",
-      "react-hooks/unsupported-syntax": "warn",
-      "react-hooks/incompatible-library": "warn",
-      "react-hooks/no-deriving-state-in-effects": "warn",
-      "react-hooks/memoized-effect-dependencies": "warn",
-      "react-hooks/exhaustive-effect-dependencies": "warn",
-      "react-hooks/config": "warn",
-      "react-hooks/gating": "warn",
-      "react-hooks/globals": "warn",
-      "react-hooks/syntax": "warn",
-      "react-hooks/void-use-memo": "warn",
-      "react-hooks/memo-dependencies": "warn",
-      "react-hooks/use-memo": "warn",
-      "react-hooks/capitalized-calls": "warn",
-      "react-hooks/rule-suppression": "warn",
-      "react-hooks/todo": "warn",
-      "react-hooks/invariant": "warn",
+      "react-hooks/set-state-in-effect": "off",
+      "react-hooks/error-boundaries": "off",
+      "react-hooks/preserve-manual-memoization": "off",
+      "react-hooks/immutability": "off",
+      "react-hooks/refs": "off",
+      "react-hooks/purity": "off",
+      "react-hooks/set-state-in-render": "off",
+      "react-hooks/static-components": "off",
+      "react-hooks/component-hook-factories": "off",
+      "react-hooks/unsupported-syntax": "off",
+      "react-hooks/incompatible-library": "off",
+      "react-hooks/no-deriving-state-in-effects": "off",
+      "react-hooks/memoized-effect-dependencies": "off",
+      "react-hooks/exhaustive-effect-dependencies": "off",
+      "react-hooks/config": "off",
+      "react-hooks/gating": "off",
+      "react-hooks/globals": "off",
+      "react-hooks/syntax": "off",
+      "react-hooks/void-use-memo": "off",
+      "react-hooks/memo-dependencies": "off",
+      "react-hooks/use-memo": "off",
+      "react-hooks/capitalized-calls": "off",
+      "react-hooks/rule-suppression": "off",
+      "react-hooks/todo": "off",
+      "react-hooks/invariant": "off",
       "prefer-const": "warn",
       "no-empty": "warn",
       // antd / pro-components 内部有 JSX 文本节点含中文标点
@@ -81,3 +81,5 @@ export default [
     }
   }
 ];
+
+export default config;

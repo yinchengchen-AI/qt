@@ -113,7 +113,7 @@ async function seedBusinessData() {
   const negIdxs = [0,1,2,3,4,6,8,9,11];
   await prisma.customer.updateMany({ where: { id: { in: negIdxs.map(i => customers[i].id) } }, data: { status: 'NEGOTIATING' } });
 
-  const Y = 2026;
+  const _Y = 2026;
   const dayMs = 86400_000;
   const nowMs = Date.now();
   const days = (n) => new Date(nowMs - n * dayMs);
@@ -456,22 +456,22 @@ async function main() {
     update: { name: "技术部", sort: 2, isActive: true },
     create: { id: "dept_seed_tech", code: "tech", name: "技术部", sort: 2, isActive: true }
   });
-  const bizDept = await prisma.department.upsert({
+  const _bizDept = await prisma.department.upsert({
     where: { code: "biz" },
     update: { name: "业务部", sort: 1, isActive: true },
     create: { id: "dept_seed_biz", code: "biz", name: "业务部", sort: 1, isActive: true }
   });
-  const finDept = await prisma.department.upsert({
+  const _finDept = await prisma.department.upsert({
     where: { code: "fin" },
     update: { name: "财务部", sort: 3, isActive: true },
     create: { id: "dept_seed_fin", code: "fin", name: "财务部", sort: 3, isActive: true }
   });
-  const techOps = await prisma.department.upsert({
+  const _techOps = await prisma.department.upsert({
     where: { code: "tech_ops" },
     update: { name: "技术运维组", parentId: techDept.id, sort: 1, isActive: true },
     create: { id: "dept_seed_tech_ops", code: "tech_ops", name: "技术运维组", parentId: techDept.id, sort: 1, isActive: true }
   });
-  const techWeb = await prisma.department.upsert({
+  const _techWeb = await prisma.department.upsert({
     where: { code: "tech_web" },
     update: { name: "前端组", parentId: techDept.id, sort: 2, isActive: true },
     create: { id: "dept_seed_tech_web", code: "tech_web", name: "前端组", parentId: techDept.id, sort: 2, isActive: true }
