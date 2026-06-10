@@ -1,6 +1,7 @@
-"use client";
+﻿"use client";
 import { ProForm, ProFormText, ProFormSelect } from "@ant-design/pro-components";
-import { App as AntdApp, Card, Space, Tag, Typography } from "antd";
+import { App as AntdApp, Card, Modal, Space, Tag, Typography, Button, Input } from "antd";
+import { CopyOutlined } from "@ant-design/icons";
 import { useRouter } from "next/navigation";
 import useSWR from "swr";
 import { Page } from "@/components/page";
@@ -26,7 +27,7 @@ export default function NewUserPage() {
       <PageHeader
         back={() => router.push("/admin/users")}
         title="新建用户"
-        subtitle="新建账号默认密码 123456,可在列表中重置"
+        subtitle="系统会生成 10 位随机初始密码,创建后请立即转交给本人;后续可重置"
       />
       <FormCard headerHint="工号、邮箱全局唯一;角色决定权限矩阵;自己不能改自己(后端护栏)">
         <ProForm
@@ -49,6 +50,31 @@ export default function NewUserPage() {
               return false;
             }
             message.success("创建成功");
+            const initialPassword: string | undefined = j.data.initialPassword;
+            if (initialPassword) {
+              Modal.info({
+                title: "账号已创建,初始密码如下(只显示一次)",
+                content: (
+                  <div>
+                    <p>请立即转交给 {values.name}({values.employeeNo}),并要求首次登录后修改。</p>
+                    <Input.Group compact>
+                      <Input readOnly value={initialPassword} style={{ width: "calc(100% - 80px)" }} />
+                      <Button
+                        icon={<CopyOutlined />}
+                        onClick={() => {
+                          void navigator.clipboard.writeText(initialPassword);
+                          message.success("已复制");
+                        }}
+                      >
+                        复制
+                      </Button>
+                    </Input.Group>
+                  </div>
+                ),
+                onOk: () => router.push(`/admin/users/${j.data.id}`)
+              });
+              return true;
+            }
             router.push(`/admin/users/${j.data.id}`);
             return true;
           }}

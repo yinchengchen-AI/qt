@@ -1,4 +1,4 @@
-// 事件 dispatcher：emit 到 inbox + 其他通道（fire-and-forget）
+﻿// 事件 dispatcher：emit 到 inbox + 其他通道（fire-and-forget）
 // 设计：inbox 写 Message 在事务内（已有）；email / wechat 在事务外异步（失败不抛，仅 log）
 import type { Prisma, PrismaClient } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
@@ -70,14 +70,6 @@ function formatDate(d: unknown): string {
   const date = typeof d === "string" ? new Date(d) : d instanceof Date ? d : null;
   if (!date || isNaN(date.getTime())) return "—";
   return date.toISOString().slice(0, 10);
-}
-
-const TX_CLIENT_KEYS = new Set([
-  "$connect", "$disconnect", "$on", "$transaction", "$use", "$extends"
-]);
-
-function isTransactionClient(x: unknown): x is Prisma.TransactionClient {
-  return !!x && typeof x === "object" && !TX_CLIENT_KEYS.has("$connect" in x ? "$connect" : "");
 }
 
 /** 异步发送非 inbox 通道；不抛错，仅 log */

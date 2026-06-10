@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { Suspense, useState } from "react";
 import { App as AntdApp, Button, Checkbox, Form, Input, Typography, Space, Divider } from "antd";
@@ -22,12 +22,19 @@ function mapAuthError(code?: string | null) {
   return ERROR_MAP[code] ?? "登录失败，请检查工号或密码";
 }
 
-const QUICK_ACCOUNTS: { no: string; label: string }[] = [
-  { no: "admin", label: "管理员" },
-  { no: "sales", label: "业务" },
-  { no: "finance", label: "财务" },
-  { no: "ops", label: "运营" }
-];
+// 仅开发/预览环境开放快速填充;生产构建时 NODE_ENV 会被静态替换为 "production",
+// Next.js 的 dead-code elimination 会把整段 `[]` 折掉,DOM 上不会渲染测试卡。
+const QUICK_ACCOUNTS: { no: string; label: string }[] =
+  process.env.NODE_ENV !== "production"
+    ? [
+        { no: "admin", label: "管理员" },
+        { no: "sales", label: "业务" },
+        { no: "finance", label: "财务" },
+        { no: "ops", label: "运营" }
+      ]
+    : [];
+
+const SHOW_QUICK_FILL = process.env.NODE_ENV !== "production";
 
 type FormValues = { employeeNo: string; password: string };
 
@@ -80,6 +87,7 @@ function LoginForm() {
   }
 
   function fillAccount(no: string) {
+    if (!SHOW_QUICK_FILL) return;
     form.setFieldsValue({ employeeNo: no, password: "123456" });
     setError(null);
   }
@@ -89,7 +97,7 @@ function LoginForm() {
       form={form}
       layout="vertical"
       requiredMark={false}
-      initialValues={{ employeeNo: "admin", password: "123456" }}
+      initialValues={{ employeeNo: "", password: "" }}
       onFinish={handleFinish}
     >
       <header style={{ marginBottom: 16 }}>
@@ -171,25 +179,32 @@ function LoginForm() {
         </Button>
       </Form.Item>
 
-      <details className={styles.testCard}>
-        <summary>测试账号 · 点击下方账号快速填充</summary>
-        <div className={styles.testGrid}>
-          {QUICK_ACCOUNTS.map((a) => (
-            <span key={a.no}>
-              <code className={styles.testCode} onClick={() => fillAccount(a.no)}>
-                {a.no}
-              </code>
-              {a.label}
-            </span>
-          ))}
-        </div>
-      </details>
+      {SHOW_QUICK_FILL && QUICK_ACCOUNTS.length > 0 ? (
+        <details className={styles.testCard}>
+          <summary>测试账号 · 点击下方账号快速填充</summary>
+          <div className={styles.testGrid}>
+            {QUICK_ACCOUNTS.map((a) => (
+              <span key={a.no}>
+                <code className={styles.testCode} onClick={() => fillAccount(a.no)}>
+                  {a.no}
+                </code>
+                {a.label}
+              </span>
+            ))}
+          </div>
+        </details>
+      ) : null}
 
       <div className={styles.foot}>
         <Space separator={<Divider orientation="vertical" />}>
           <span>© 2026 杭州企泰安全科技</span>
-          <a href="https://beian.miit.gov.cn" target="_blank" rel="noreferrer">
-            浙ICP备 0000000 号
+          <a
+            href="https://beian.miit.gov.cn"
+            target="_blank"
+            rel="noreferrer"
+            suppressHydrationWarning
+          >
+            {process.env.NEXT_PUBLIC_BEIAN_NO ?? "浙ICP备 0000000 号"}
           </a>
         </Space>
       </div>
