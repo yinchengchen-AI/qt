@@ -11,7 +11,7 @@ import { App as AntdApp, Card, Space, Tag, Typography } from "antd";
 import { useSession } from "next-auth/react";
 import { useRouter } from "next/navigation";
 import { useDict } from "@/lib/dict-client";
-import { uploadFileToMinIO } from "@/lib/upload-client";
+import { proCustomRequest } from "@/lib/upload-client";
 import { Page } from "@/components/page";
 import { PageHeader } from "@/components/page-header";
 import { FormSection, FormGrid, FormCard } from "@/components/form";
@@ -212,17 +212,7 @@ export default function NewContractPage() {
               max={5}
               fieldProps={{
                 name: "file",
-                customRequest: async (options: any) => {
-                  try {
-                    const file = options.file as File;
-                    if (!file) throw new Error("empty file");
-                    const res = await uploadFileToMinIO(file);
-                    options.onSuccess(res, new XMLHttpRequest());
-                  } catch (e) {
-                    options.onError(e as Error);
-                    void message.error((e as Error).message);
-                  }
-                }
+                customRequest: proCustomRequest()
               }}
             />
           </FormSection>

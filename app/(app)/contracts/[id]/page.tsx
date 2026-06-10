@@ -11,6 +11,7 @@ import { DetailPageSkeleton } from "@/components/detail-page-skeleton";
 import { StatusTag } from "@/components/status-tag";
 import { useActionCall } from "@/lib/use-action-call";
 import { CurrencyCell, DateTimeCell, PercentCell } from "@/components/table-cells";
+import { AttachmentList, type AttachmentItem } from "@/components/file/attachment-list";
 
 const PAYMENT_METHOD_MAP: Record<string, string> = { LUMP_SUM: "一次性", BY_PHASE: "按阶段", BY_MONTH: "按月", BY_QUARTER: "按季" };
 type Contract = {
@@ -95,41 +96,16 @@ export default function ContractDetailPage() {
       </ProCard>
       <PageHeader level="section" title="附件" />
       <ProCard>
-        {(data.attachments ?? []).length === 0 ? (
-          <div>暂无附件</div>
-        ) : (
-          <ul style={{ paddingLeft: 20, margin: 0 }}>
-            {(data.attachments ?? []).map((a: any) => {
-              const isLegacy = typeof a.url === "string" && a.url.startsWith("https://placeholder.local");
-              const label = isLegacy ? a.name + " (历史链接已失效)" : a.name;
-              return (
-                <li key={a.id} style={{ marginBottom: 4 }}>
-                  {isLegacy ? (
-                    <span style={{ color: "rgba(0,0,0,0.45)" }}>{label}</span>
-                  ) : (
-                    <a
-                      href="#"
-                      onClick={async (e) => {
-                        e.preventDefault();
-                        try {
-                          const r = await fetch(`/api/files/${a.id}/presign-download`, { method: "POST", credentials: "include" });
-                          const j = await r.json();
-                          if (j.code !== 0) { void message.error(j.message || "下载失败"); return; }
-                          window.open(j.data.url, "_blank", "noopener");
-                        } catch (err) { void message.error((err as Error).message); }
-                      }}
-                    >
-                      {label}
-                    </a>
-                  )}
-                  <span style={{ fontSize: 12, color: "rgba(0, 0, 0, 0.45)", marginLeft: 8 }}>
-                    ({a.mimeType} · {Math.round((a.size ?? 0) / 1024)} KB)
-                  </span>
-                </li>
-              );
-            })}
-          </ul>
-        )}
+        <AttachmentList
+          items={(data.attachments ?? []).map((a: any) => ({
+            id: a.id,
+            name: a.name,
+            mimeType: a.mimeType,
+            size: a.size,
+            legacyUrl: typeof a.url === "string" ? a.url : undefined
+          })) as AttachmentItem[]}
+          onDeleted={() => mutate()}
+        />
       </ProCard>
     </Page>
   );

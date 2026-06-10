@@ -4,7 +4,8 @@ import {
   ProFormText,
   ProFormSelect,
   ProFormDigit,
-  ProFormDatePicker
+  ProFormDatePicker,
+  ProFormUploadButton
 } from "@ant-design/pro-components";
 import { App as AntdApp, Card, Space, Tag, Typography } from "antd";
 import { useRouter } from "next/navigation";
@@ -12,6 +13,7 @@ import { useState } from "react";
 import { Page } from "@/components/page";
 import { PageHeader } from "@/components/page-header";
 import { FormSection, FormGrid, FormCard } from "@/components/form";
+import { proCustomRequest } from "@/lib/upload-client";
 
 const { Text } = Typography;
 
@@ -77,11 +79,17 @@ export default function NewInvoicePage() {
             titleType: "COMPANY"
           }}
           onFinish={async (values) => {
+            // 新上传的附件:从 ProFormUploadButton 拿 response(同合同模式)
+            const newlyUploaded = (values.attachments ?? [])
+              .map((f: { response?: { id?: string; name?: string; mimeType?: string; size?: number; uploadedBy?: string; uploadedAt?: string } }) => f.response)
+              .filter((r: { id?: string } | undefined): r is { id: string; name: string; mimeType: string; size: number; uploadedBy: string; uploadedAt: string } => Boolean(r && r.id));
             const payload = {
               ...values,
               applyDate: values.applyDate?.toISOString?.(),
-              expectedIssueDate: values.expectedIssueDate?.toISOString?.()
+              expectedIssueDate: values.expectedIssueDate?.toISOString?.(),
+              attachments: newlyUploaded
             };
+            delete (payload as Record<string, unknown>).attachments_uploads;
             const res = await fetch("/api/invoices", {
               method: "POST",
               headers: { "Content-Type": "application/json" },
@@ -261,6 +269,24 @@ export default function NewInvoicePage() {
                 label="电话"
                 placeholder={pickedCustomer?.contactPhone ?? "可空"}
                 fieldProps={{ size: "large", maxLength: 20 }}
+              />
+            </FormGrid>
+          </FormSection>
+
+          <FormSection
+            title="支持凭证"
+            description="电子发票 PDF、银行回单等(可选,先传可后改);保存后会跟发票绑定"
+          >
+            <FormGrid columns={1}>
+              <ProFormUploadButton
+                name="attachments"
+                label="上传附件"
+                max={5}
+                fieldProps={{
+                  name: "file",
+                  // 新建阶段 invoiceId 尚未生成,先传 null,落到 tmp/;创建后 service 会回填 invoiceId
+                  customRequest: proCustomRequest({ invoiceId: null })
+                }}
               />
             </FormGrid>
           </FormSection>

@@ -25,6 +25,7 @@ export type PresignUploadInput = {
   mimeType: string;
   size: number;
   contractId?: string | null;
+  invoiceId?: string | null;
   uploadedById: string;
 };
 
@@ -71,14 +72,21 @@ export async function presignUpload(input: PresignUploadInput): Promise<PresignU
       mimeType: input.mimeType,
       size: input.size,
       uploadedById: input.uploadedById,
-      contractId: input.contractId ?? null
+      contractId: input.contractId ?? null,
+      invoiceId: input.invoiceId ?? null
     }
   });
   const yyyy = now.getUTCFullYear();
   const mm = String(now.getUTCMonth() + 1).padStart(2, "0");
+  // 路径规则:
+  //   合同关联: contracts/{contractId}/{yyyy}/{mm}/{cuid}-{name}.{ext}
+  //   发票关联: invoices/{invoiceId}/{yyyy}/{mm}/{cuid}-{name}.{ext}
+  //   暂未绑定: tmp/{yyyy}/{mm}/{cuid}-{name}.{ext}
   const objectKey = input.contractId
     ? `contracts/${input.contractId}/${yyyy}/${mm}/${att.id}-${safeName}.${ext}`
-    : `contracts/tmp/${yyyy}/${mm}/${att.id}-${safeName}.${ext}`;
+    : input.invoiceId
+      ? `invoices/${input.invoiceId}/${yyyy}/${mm}/${att.id}-${safeName}.${ext}`
+      : `tmp/${yyyy}/${mm}/${att.id}-${safeName}.${ext}`;
 
   await prisma.attachment.update({
     where: { id: att.id },
@@ -115,31 +123,44 @@ export type PresignDownloadResult = {
 
 export async function presignDownload(input: PresignDownloadInput): Promise<PresignDownloadResult> {
   const att = await prisma.attachment.findUnique({
-    where: { id: input.attachmentId }
+    where: { id: input.attachmentId },
+    include: { invoice: { select: { id: true, applicantUserId: true, createdById: true, contractId: true, contract: { select: { ownerUserId: true, createdById: true } } } } }
   });
   if (!att || att.deletedAt) {
     throw new ApiError(ERROR_CODES.NOT_FOUND, "附件不存在或已删除", 404);
   }
 
-  // 鉴权:登录用户可下自己上传的;admin/finance/拥有该合同的业务可下任何
+  // 鉴权规则(放行其一即可):
+  //   1) 上传者本人
+  //   2) ADMIN / FINANCE 角色
+  //   3) 关联合同: 合同的 ownerUserId / createdById
+  //   4) 关联发票: 发票的 applicantUserId / createdById,或发票所属合同的 owner/createdBy
+  //   5) 都没有(tmp 上传) -> 仅上传者可下
   if (att.uploadedById !== input.userId) {
     const u = await prisma.user.findUnique({
       where: { id: input.userId },
       select: { role: { select: { code: true } } }
     });
     const isPrivileged = u?.role?.code === "ADMIN" || u?.role?.code === "FINANCE";
-    if (!isPrivileged && att.contractId) {
-      const c = await prisma.contract.findUnique({
-        where: { id: att.contractId },
-        select: { ownerUserId: true, createdById: true }
-      });
-      const canSee = c && (c.ownerUserId === input.userId || c.createdById === input.userId);
+    if (!isPrivileged) {
+      let canSee = false;
+      if (att.contractId) {
+        const c = await prisma.contract.findUnique({
+          where: { id: att.contractId },
+          select: { ownerUserId: true, createdById: true }
+        });
+        canSee = !!(c && (c.ownerUserId === input.userId || c.createdById === input.userId));
+      }
+      if (!canSee && att.invoice) {
+        canSee = att.invoice.applicantUserId === input.userId || att.invoice.createdById === input.userId;
+        if (!canSee && att.invoice.contract) {
+          const c = att.invoice.contract;
+          canSee = c.ownerUserId === input.userId || c.createdById === input.userId;
+        }
+      }
       if (!canSee) {
         throw new ApiError(ERROR_CODES.FORBIDDEN, "无权下载此附件", 403);
       }
-    } else if (!isPrivileged) {
-      // 未绑定合同的附件(临时上传)且非特权 -> 仅上传者可下
-      throw new ApiError(ERROR_CODES.FORBIDDEN, "无权下载此附件", 403);
     }
   }
 
@@ -171,26 +192,37 @@ export async function presignDownload(input: PresignDownloadInput): Promise<Pres
 
 // 软删除
 export async function softDeleteAttachment(attachmentId: string, userId: string): Promise<void> {
-  const att = await prisma.attachment.findUnique({ where: { id: attachmentId } });
+  const att = await prisma.attachment.findUnique({
+    where: { id: attachmentId },
+    include: { invoice: { select: { id: true, applicantUserId: true, createdById: true, contractId: true, contract: { select: { ownerUserId: true, createdById: true } } } } }
+  });
   if (!att || att.deletedAt) {
     throw new ApiError(ERROR_CODES.NOT_FOUND, "附件不存在", 404);
   }
-  // 鉴权:上传者本人 / 合同 owner / admin
+  // 鉴权:上传者本人 / 合同 owner / 发票 applicant / 发票所属合同 owner / admin
   if (att.uploadedById !== userId) {
     const u = await prisma.user.findUnique({
       where: { id: userId },
       select: { role: { select: { code: true } } }
     });
     const isAdmin = u?.role?.code === "ADMIN";
-    let isContractOwner = false;
+    let allowed = false;
     if (att.contractId) {
       const c = await prisma.contract.findUnique({
         where: { id: att.contractId },
         select: { ownerUserId: true }
       });
-      isContractOwner = c?.ownerUserId === userId;
+      if (c?.ownerUserId === userId) allowed = true;
     }
-    if (!isAdmin && !isContractOwner) {
+    if (!allowed && att.invoice) {
+      if (att.invoice.applicantUserId === userId || att.invoice.createdById === userId) {
+        allowed = true;
+      } else if (att.invoice.contract) {
+        const c = att.invoice.contract;
+        if (c.ownerUserId === userId || c.createdById === userId) allowed = true;
+      }
+    }
+    if (!isAdmin && !allowed) {
       throw new ApiError(ERROR_CODES.FORBIDDEN, "无权删除此附件", 403);
     }
   }
