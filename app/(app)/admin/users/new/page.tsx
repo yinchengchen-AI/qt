@@ -1,6 +1,6 @@
 ﻿"use client";
 import { ProForm, ProFormText, ProFormSelect } from "@ant-design/pro-components";
-import { App as AntdApp, Card, Modal, Space, Tag, Typography, Button, Input } from "antd";
+import { App as AntdApp, Modal, Space, Tag, Typography, Button, Input } from "antd";
 import { CopyOutlined } from "@ant-design/icons";
 import { useRouter } from "next/navigation";
 import useSWR from "swr";

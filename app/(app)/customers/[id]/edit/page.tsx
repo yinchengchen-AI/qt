@@ -5,7 +5,7 @@ import {
   ProFormSelect,
   ProFormDigit
 } from "@ant-design/pro-components";
-import { App as AntdApp, Space, Tag, Typography } from "antd";
+import { App as AntdApp, Space, Typography } from "antd";
 import { useParams, useRouter } from "next/navigation";
 import useSWR from "swr";
 import { useDict } from "@/lib/dict-client";
@@ -30,7 +30,8 @@ export default function EditCustomerPage() {
   const industryDict = useDict("CUSTOMER_INDUSTRY");
   const sourceDict = useDict("CUSTOMER_SOURCE");
   const statusOptions = useStatusOptions("customer");
-  const { data, isLoading } = useSWR<any>(`/api/customers/${id}`);
+  const { data, isLoading } = // eslint-disable-next-line @typescript-eslint/no-explicit-any -- edit page reads many dynamic fields
+  useSWR<any>(`/api/customers/${id}`);
 
   if (isLoading || !data) {
     return (

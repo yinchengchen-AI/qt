@@ -6,7 +6,6 @@ import { App as AntdApp, Button, Card, Select, Typography } from "antd";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { PermissionMatrix, type Permission } from "@/components/admin/permission-matrix";
-import { ROLE_LABEL } from "@/lib/status";
 
 const { Text } = Typography;
 

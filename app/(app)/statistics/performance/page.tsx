@@ -7,7 +7,7 @@ import { DownloadOutlined } from "@ant-design/icons";
 import { Page } from "@/components/page";
 import { PageHeader } from "@/components/page-header";
 import { EmptyState } from "@/components/empty-state";
-import { formatCurrency } from "@/lib/format";
+
 import { CurrencyCell } from "@/components/table-cells";
 
 type Row = {

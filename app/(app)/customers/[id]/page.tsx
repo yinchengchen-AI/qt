@@ -27,8 +27,8 @@ export default function CustomerDetailPage() {
   const industryDict = useDict("CUSTOMER_INDUSTRY");
   const sourceDict = useDict("CUSTOMER_SOURCE");
   const { data, error, isLoading, mutate } = useSWR<Customer>(`/api/customers/${id}`);
-  const { data: followUps } = useSWR<Array<any>>(`/api/customers/${id}/follow-ups`);
-  const { data: contracts } = useSWR<Array<any>>(`/api/customers/${id}/contracts`);
+  const { data: followUps } = useSWR<Array<Record<string, unknown>>>(`/api/customers/${id}/follow-ups`);
+  const { data: contracts } = useSWR<Array<Record<string, unknown>>>(`/api/customers/${id}/contracts`);
 
   if (error) {
     return (
@@ -80,15 +80,15 @@ export default function CustomerDetailPage() {
           { title: "详细地址", dataIndex: "address" },
           { title: "联系电话", dataIndex: "contactPhone" },
           { title: "邮箱", dataIndex: "contactEmail" },
-          { title: "授信额度", dataIndex: "creditLimitAmount", render: (v: any) => <CurrencyCell value={v} /> },
+          { title: "授信额度", dataIndex: "creditLimitAmount", render: (v) => <CurrencyCell value={v as string} /> },
           { title: "账期(天)", dataIndex: "paymentTermDays" },
-          { title: "创建时间", dataIndex: "createdAt", render: (v: any) => <DateCell value={v} /> }
+          { title: "创建时间", dataIndex: "createdAt", render: (v) => <DateCell value={v as string} /> }
         ]} />
       </ProCard>
       <PageHeader level="section" title="跟进记录" />
       <ProCard>
         <ProTable rowKey="id" search={false} options={false} pagination={{ pageSize: 5 }} dataSource={followUps ?? []} columns={[
-          { title: "时间", dataIndex: "followAt", valueType: "dateTime", width: 180, render: (_, r: any) => <DateTimeCell value={r.followAt} /> },
+          { title: "时间", dataIndex: "followAt", valueType: "dateTime", width: 180, render: (_, r) => <DateTimeCell value={r.followAt as string} /> },
           { title: "方式", dataIndex: "method", width: 100 },
           { title: "内容", dataIndex: "content" },
           { title: "结果", dataIndex: "result", width: 100 }
@@ -99,9 +99,9 @@ export default function CustomerDetailPage() {
         <ProTable rowKey="id" search={false} options={false} pagination={{ pageSize: 5 }} dataSource={contracts ?? []} columns={[
           { title: "合同号", dataIndex: "contractNo", width: 180 },
           { title: "标题", dataIndex: "title" },
-          { title: "签订日", dataIndex: "signDate", valueType: "date", width: 120, render: (_, r: any) => <DateCell value={r.signDate} /> },
-          { title: "总额(元)", dataIndex: "totalAmount", width: 140, render: (_, r: any) => <CurrencyCell value={r.totalAmount} /> },
-          { title: "状态", dataIndex: "status", width: 100, render: (_, r: any) => <StatusTag status={r.status} domain="contract" /> }
+          { title: "签订日", dataIndex: "signDate", valueType: "date", width: 120, render: (_, r) => <DateCell value={r.signDate as string} /> },
+          { title: "总额(元)", dataIndex: "totalAmount", width: 140, render: (_, r) => <CurrencyCell value={r.totalAmount as string} /> },
+          { title: "状态", dataIndex: "status", width: 100, render: (_, r) => <StatusTag status={r.status as string} domain="contract" /> }
         ]} />
       </ProCard>
     </Page>

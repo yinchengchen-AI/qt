@@ -70,6 +70,7 @@ export async function uploadFileToMinIO(file: File, opts: UploadOpts = {}): Prom
 // 是 XMLHttpRequest | UploadRequestFile 联合类型,这里只需要一个占位 XHR;
 // 自定义 customRequest 永远不读它)。
 export function proCustomRequest(opts: UploadOpts = {}) {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- antd UploadRequestOption 的 onSuccess 签名是 (response, xhr)，调用方依赖 antd 类型拉进来会拆不完
   return (options: any): void => {
     const file = options.file as File | undefined;
     if (!file) {

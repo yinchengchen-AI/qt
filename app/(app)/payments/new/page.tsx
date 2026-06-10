@@ -6,7 +6,7 @@ import {
   ProFormDigit,
   ProFormDatePicker
 } from "@ant-design/pro-components";
-import { App as AntdApp, Card, Space, Tag, Typography } from "antd";
+import { App as AntdApp, Space, Tag, Typography } from "antd";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useState } from "react";
 import { Page } from "@/components/page";
@@ -47,7 +47,6 @@ export default function NewPaymentPage() {
   const presetInvoice = search.get("invoiceId") ?? undefined;
   const { message } = AntdApp.useApp();
   const [pickedContract, setPickedContract] = useState<Contract | null>(null);
-  const [pickedInvoice, setPickedInvoice] = useState<Invoice | null>(null);
 
   return (
     <Page compact>
@@ -125,7 +124,6 @@ export default function NewPaymentPage() {
                       ? ({ id: o.value, customerName: o.customerName ?? "" } as Contract)
                       : null
                   );
-                  setPickedInvoice(null);
                 }}
               />
               <ProFormSelect
@@ -152,10 +150,7 @@ export default function NewPaymentPage() {
                     amount: i.amount
                   }));
                 }}
-                onChange={(_: unknown, opt: { amount?: string } | unknown) => {
-                  const o = opt as { amount?: string } | undefined;
-                  setPickedInvoice(o ? ({ amount: o.amount } as Invoice) : null);
-                }}
+                onChange={(_: unknown, _opt: { amount?: string } | unknown) => undefined}
               />
             </FormGrid>
           </FormSection>

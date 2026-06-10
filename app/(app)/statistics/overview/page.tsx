@@ -2,7 +2,7 @@
 import { ProCard } from "@ant-design/pro-components";
 import { Button, Space, DatePicker, App as AntdApp } from "antd";
 import { Line } from "@ant-design/charts";
-import { useState, useEffect } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { DownloadOutlined } from "@ant-design/icons";
 import dayjs from "dayjs";
 import { Page } from "@/components/page";
@@ -24,7 +24,7 @@ export default function OverviewPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const { message } = AntdApp.useApp();
-  const load = async () => {
+  const load = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
@@ -39,8 +39,8 @@ export default function OverviewPage() {
     } finally {
       setLoading(false);
     }
-  };
-  useEffect(() => { load(); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [range]);
+  }, [range]);
+  useEffect(() => { load(); }, [range, load]);
 
   const download = async () => {
     const qs = new URLSearchParams({ type: "overview" });
@@ -76,7 +76,7 @@ export default function OverviewPage() {
         subtitle="按时间段汇总合同、开票、回款,观察趋势"
         actions={
           <Space>
-            <DatePicker.RangePicker value={range} onChange={(v) => setRange(v as any)} />
+            <DatePicker.RangePicker value={range} onChange={(v) => setRange(v as [import("dayjs").Dayjs, import("dayjs").Dayjs] | null)} />
             <Button icon={<DownloadOutlined />} onClick={download}>导出 xlsx</Button>
           </Space>
         }

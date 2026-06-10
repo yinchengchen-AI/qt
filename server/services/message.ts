@@ -2,7 +2,7 @@
 import { prisma } from "@/lib/prisma";
 import { ApiError } from "@/lib/api";
 import { ERROR_CODES } from "@/types/errors";
-import { requireSession, type SessionUser } from "@/lib/session";
+import { type SessionUser } from "@/lib/session";
 import { requirePermission, RESOURCE, ACTION } from "@/lib/permissions";
 import type { Prisma } from "@prisma/client";
 

@@ -42,7 +42,7 @@ export function useActionCall(options: UseActionCallOptions) {
         return false;
       }
     },
-    [options.baseUrl, options.reload, options.successMessage, message]
+    [options, message]
   );
 
   return { run };

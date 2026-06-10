@@ -43,13 +43,6 @@ export function useDict(category: string): DictItem[] {
   return data;
 }
 
-export function useDicts(categories: string[]): Record<string, DictItem[]> {
-  const out: Record<string, DictItem[]> = {};
-  for (const c of categories) {
-    out[c] = useDict(c);
-  }
-  return out;
-}
 
 export async function refreshDict(category: string) {
   cache.delete(category);

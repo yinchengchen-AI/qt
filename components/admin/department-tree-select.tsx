@@ -39,7 +39,6 @@ export function DepartmentTreeSelect({
   name = "departmentId",
   label = "部门",
   placeholder = "不选 = 无部门",
-  required = false,
   excludeSelfId,
   value,
   onChange

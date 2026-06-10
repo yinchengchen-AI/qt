@@ -6,8 +6,8 @@ import { test, expect } from "@playwright/test";
 
 const stamp = Date.now();
 const customerName = `E2E客户-${stamp}`;
-const contractTitle = `E2E合同-${stamp}`;
-const projectName = `E2E项目-${stamp}`;
+const _contractTitle = `E2E合同-${stamp}`;
+const _projectName = `E2E项目-${stamp}`;
 
 test.describe.serial("场景 1: admin 完整主链路", () => {
   test("01.1 登录页正常加载", async ({ page }) => {

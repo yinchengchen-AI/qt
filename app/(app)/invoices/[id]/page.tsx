@@ -2,6 +2,7 @@
 import { ProCard, ProDescriptions } from "@ant-design/pro-components";
 import { Button, Space, Modal, Input } from "antd";
 import { useParams, useRouter } from "next/navigation";
+import type { AttachmentSnapshot, Invoice as InvoiceEntity } from "@/lib/types/entities";
 import useSWR from "swr";
 import { useSession } from "next-auth/react";
 import { useState } from "react";
@@ -11,7 +12,7 @@ import { DetailPageSkeleton } from "@/components/detail-page-skeleton";
 import { StatusTag } from "@/components/status-tag";
 import { useActionCall } from "@/lib/use-action-call";
 import { CurrencyCell, DateTimeCell, PercentCell } from "@/components/table-cells";
-import { AttachmentList, type AttachmentItem } from "@/components/file/attachment-list";
+import { AttachmentList } from "@/components/file/attachment-list";
 const INVOICE_TYPE_MAP: Record<string, string> = { VAT_SPECIAL: "增值税专用发票", VAT_GENERAL: "增值税普通发票", VAT_ELECTRONIC: "增值税电子专票", ELEC_NORMAL: "电子普通发票" };
 const TITLE_TYPE_MAP: Record<string, string> = { COMPANY: "公司", PERSONAL: "个人" };
 
@@ -20,12 +21,13 @@ export default function InvoiceDetailPage() {
   const id = String(params.id);
   const router = useRouter();
   const { data: session } = useSession();
-  const { data, isLoading, mutate } = useSWR<any>(`/api/invoices/${id}`);
+  const { data, isLoading, mutate } = useSWR<{ data: InvoiceEntity }>(`/api/invoices/${id}`);
+  const invoice = data?.data;
   const [reason, setReason] = useState("");
   const [invoiceNo, setInvoiceNo] = useState("");
   const { run } = useActionCall({ baseUrl: `/api/invoices/${id}`, reload: () => mutate() });
 
-  if (isLoading || !data) {
+  if (isLoading || !invoice) {
     return (
       <Page>
         <PageHeader back={() => router.push("/invoices")} title="开票详情" />
@@ -35,7 +37,7 @@ export default function InvoiceDetailPage() {
   }
   const roleCode = session?.user?.roleCode;
   const isFinance = roleCode === "FINANCE" || roleCode === "ADMIN";
-  const status = data.status;
+  const status = invoice?.status;
 
   const askIssue = () => Modal.confirm({
     title: "开票(财务)",
@@ -65,9 +67,9 @@ export default function InvoiceDetailPage() {
     <Page>
       <PageHeader
         back={() => router.push("/invoices")}
-        title={`${data.customerName} · ${data.invoiceNo}`}
-        subtitle={`发票类型: ${data.invoiceType ?? "-"}`}
-        meta={<StatusTag status={data.status} domain="invoice" />}
+        title={`${invoice.customerName} · ${invoice.invoiceNo}`}
+        subtitle={`发票类型: ${invoice.invoiceType ?? "-"}`}
+        meta={<StatusTag status={invoice.status} domain="invoice" />}
         actions={
           <Space>
             {status === "DRAFT" && <Button type="primary" onClick={() => run("submit")}>提交</Button>}
@@ -87,17 +89,17 @@ export default function InvoiceDetailPage() {
         }
       />
       <ProCard>
-        <ProDescriptions column={2} dataSource={data} columns={[
+        <ProDescriptions<InvoiceEntity> column={2} dataSource={invoice} columns={[
           { title: "发票号", dataIndex: "invoiceNo" },
           { title: "客户", dataIndex: "customerName" },
-          { title: "发票类型", dataIndex: "invoiceType", render: (v: any) => INVOICE_TYPE_MAP[v] ?? v },
-          { title: "含税金额", dataIndex: "amount", render: (v: any) => <CurrencyCell value={v} /> },
-          { title: "税额", dataIndex: "taxAmount", render: (v: any) => <CurrencyCell value={v} /> },
-          { title: "不含税金额", dataIndex: "amountExcludingTax", render: (v: any) => <CurrencyCell value={v} /> },
-          { title: "税率", dataIndex: "taxRate", render: (v: any) => <PercentCell value={v} /> },
-          { title: "申请日", dataIndex: "applyDate", render: (v: any) => <DateTimeCell value={v} /> },
-          { title: "实际开票日", dataIndex: "actualIssueDate", render: (v: any) => <DateTimeCell value={v} /> },
-          { title: "抬头类型", dataIndex: "titleType", render: (v: any) => TITLE_TYPE_MAP[v] ?? v },
+          { title: "发票类型", dataIndex: "invoiceType", render: (v) => INVOICE_TYPE_MAP[v as string] ?? v },
+          { title: "含税金额", dataIndex: "amount", render: (v) => <CurrencyCell value={v as string} /> },
+          { title: "税额", dataIndex: "taxAmount", render: (v) => <CurrencyCell value={v as string} /> },
+          { title: "不含税金额", dataIndex: "amountExcludingTax", render: (v) => <CurrencyCell value={v as string} /> },
+          { title: "税率", dataIndex: "taxRate", render: (v) => <PercentCell value={v as string} /> },
+          { title: "申请日", dataIndex: "applyDate", render: (v) => <DateTimeCell value={v as string} /> },
+          { title: "实际开票日", dataIndex: "actualIssueDate", render: (v) => <DateTimeCell value={v as string} /> },
+          { title: "抬头类型", dataIndex: "titleType", render: (v) => TITLE_TYPE_MAP[v as string] ?? v },
           { title: "抬头名称", dataIndex: "titleName" },
           { title: "税号", dataIndex: "taxNo" },
           { title: "开户行", dataIndex: "bankName" },
@@ -109,13 +111,13 @@ export default function InvoiceDetailPage() {
       <PageHeader level="section" title="附件" />
       <ProCard>
         <AttachmentList
-          items={(data.attachments ?? []).map((a: any) => ({
+          items={(invoice?.attachments ?? []).map((a: AttachmentSnapshot) => ({
             id: a.id,
             name: a.name,
             mimeType: a.mimeType,
             size: a.size,
             legacyUrl: typeof a.url === "string" ? a.url : undefined
-          })) as AttachmentItem[]}
+          }))}
           onDeleted={() => mutate()}
         />
       </ProCard>

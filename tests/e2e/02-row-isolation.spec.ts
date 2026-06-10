@@ -37,7 +37,7 @@ test.describe.serial("场景 2: SALES 行级隔离 + 越权", () => {
 
   test("02.4 SALES 访问 /admin/users 应被拒（无权限）", async ({ page }) => {
     // 直接访问 admin 页
-    const response = await page.goto("/admin/users");
+    const _response = await page.goto("/admin/users");
     // 页面可能 200 渲染但内容为空，或 401/403
     // 我们只检查不会崩
     await page.waitForLoadState("networkidle");

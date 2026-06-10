@@ -19,7 +19,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     }
     const body = await req.json().catch(() => ({}));
     const parsed = schema.parse(body);
-    const data = await projectAction(user, id, { action: action as any, ...parsed });
+    const data = await projectAction(user, id, { action: action as "start" | "suspend" | "resume" | "deliver" | "accept" | "close" | "cancel", ...parsed });
     return ok(data);
   } catch (e) {
     return err(e);

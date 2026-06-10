@@ -1,7 +1,7 @@
 import { prisma } from "@/lib/prisma";
 import { ApiError } from "@/lib/api";
 import { ERROR_CODES } from "@/types/errors";
-import { requireSession, type SessionUser } from "@/lib/session";
+import { type SessionUser } from "@/lib/session";
 import { nextBusinessNo } from "@/lib/sequence";
 import { audit } from "@/server/audit";
 import { requirePermission, RESOURCE, ACTION } from "@/lib/permissions";

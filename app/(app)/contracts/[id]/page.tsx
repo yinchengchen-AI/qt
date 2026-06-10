@@ -1,7 +1,8 @@
 "use client";
 import { ProCard, ProDescriptions } from "@ant-design/pro-components";
-import { Button, Space, App as AntdApp, Modal, Input } from "antd";
+import { Button, Space, Modal, Input } from "antd";
 import { useParams, useRouter } from "next/navigation";
+import type { Contract as ContractEntity } from "@/lib/types/entities";
 import useSWR from "swr";
 import { useSession } from "next-auth/react";
 import { useState } from "react";
@@ -11,29 +12,20 @@ import { DetailPageSkeleton } from "@/components/detail-page-skeleton";
 import { StatusTag } from "@/components/status-tag";
 import { useActionCall } from "@/lib/use-action-call";
 import { CurrencyCell, DateTimeCell, PercentCell } from "@/components/table-cells";
-import { AttachmentList, type AttachmentItem } from "@/components/file/attachment-list";
+import { AttachmentList } from "@/components/file/attachment-list";
 
 const PAYMENT_METHOD_MAP: Record<string, string> = { LUMP_SUM: "一次性", BY_PHASE: "按阶段", BY_MONTH: "按月", BY_QUARTER: "按季" };
-type Contract = {
-  id: string; contractNo: string; customerId: string; customerName: string;
-  title: string; serviceType: string; signDate: string; startDate: string;
-  endDate: string; totalAmount: string; taxRate: string; taxAmount: string;
-  amountExcludingTax: string; paymentMethod: string; status: string;
-  attachments: any[]; installmentPlan: any[] | null; reviewComment: string | null;
-  reviewerId: string | null; reviewAt: string | null;
-};
 
 export default function ContractDetailPage() {
-  const params = useParams();
-  const { message } = AntdApp.useApp();
-  const id = String(params.id);
+  const params = useParams();  const id = String(params.id);
   const router = useRouter();
   const { data: session } = useSession();
-  const { data, isLoading, mutate } = useSWR<Contract>(`/api/contracts/${id}`);
+  const { data, isLoading, mutate } = useSWR<{ data: ContractEntity }>(`/api/contracts/${id}`);
+  const contract = data?.data;
   const [comment, setComment] = useState("");
   const { run } = useActionCall({ baseUrl: `/api/contracts/${id}`, reload: () => mutate() });
 
-  if (isLoading || !data) {
+  if (isLoading || !contract) {
     return (
       <Page>
         <PageHeader back={() => router.push("/contracts")} title="合同详情" />
@@ -42,7 +34,7 @@ export default function ContractDetailPage() {
     );
   }
   const roleCode = session?.user?.roleCode;
-  const status = data.status;
+  const status = contract.status;
 
   const askComment = (label: string, path: string) => {
     Modal.confirm({
@@ -56,9 +48,9 @@ export default function ContractDetailPage() {
     <Page>
       <PageHeader
         back={() => router.push("/contracts")}
-        title={`${data.title} · ${data.contractNo}`}
-        subtitle={`客户: ${data.customerName} · 服务类型: ${data.serviceType}`}
-        meta={<StatusTag status={data.status} domain="contract" />}
+        title={`${contract.title} · ${contract.contractNo}`}
+        subtitle={`客户: ${contract.customerName} · 服务类型: ${contract.serviceType}`}
+        meta={<StatusTag status={contract.status} domain="contract" />}
         actions={
           <Space>
             {status === "DRAFT" && <Button onClick={() => router.push(`/contracts/${id}/edit`)}>编辑</Button>}
@@ -77,33 +69,33 @@ export default function ContractDetailPage() {
         }
       />
       <ProCard>
-        <ProDescriptions<Contract> column={2} dataSource={data} columns={[
+        <ProDescriptions<ContractEntity> column={2} dataSource={contract} columns={[
           { title: "合同号", dataIndex: "contractNo" },
           { title: "客户", dataIndex: "customerName" },
           { title: "服务类型", dataIndex: "serviceType" },
-          { title: "签订日期", dataIndex: "signDate", render: (v: any) => <DateTimeCell value={v} /> },
-          { title: "服务起期", dataIndex: "startDate", render: (v: any) => <DateTimeCell value={v} /> },
-          { title: "服务止期", dataIndex: "endDate", render: (v: any) => <DateTimeCell value={v} /> },
-          { title: "付款方式", dataIndex: "paymentMethod", render: (v: any) => PAYMENT_METHOD_MAP[v] ?? v },
-          { title: "合同总额(含税)", dataIndex: "totalAmount", render: (v: any) => <CurrencyCell value={v} /> },
-          { title: "税率", dataIndex: "taxRate", render: (v: any) => <PercentCell value={v} /> },
-          { title: "税额", dataIndex: "taxAmount", render: (v: any) => <CurrencyCell value={v} /> },
-          { title: "不含税金额", dataIndex: "amountExcludingTax", render: (v: any) => <CurrencyCell value={v} /> },
+          { title: "签订日期", dataIndex: "signDate", render: (v) => <DateTimeCell value={v as string} /> },
+          { title: "服务起期", dataIndex: "startDate", render: (v) => <DateTimeCell value={v as string} /> },
+          { title: "服务止期", dataIndex: "endDate", render: (v) => <DateTimeCell value={v as string} /> },
+          { title: "付款方式", dataIndex: "paymentMethod", render: (v) => PAYMENT_METHOD_MAP[v as string] ?? v },
+          { title: "合同总额(含税)", dataIndex: "totalAmount", render: (v) => <CurrencyCell value={v as string} /> },
+          { title: "税率", dataIndex: "taxRate", render: (v) => <PercentCell value={v as string} /> },
+          { title: "税额", dataIndex: "taxAmount", render: (v) => <CurrencyCell value={v as string} /> },
+          { title: "不含税金额", dataIndex: "amountExcludingTax", render: (v) => <CurrencyCell value={v as string} /> },
           { title: "审批人", dataIndex: "reviewerId" },
-          { title: "审批时间", dataIndex: "reviewAt", render: (v: any) => <DateTimeCell value={v} /> },
+          { title: "审批时间", dataIndex: "reviewAt", render: (v) => <DateTimeCell value={v as string} /> },
           { title: "审批意见", dataIndex: "reviewComment" }
         ]} />
       </ProCard>
       <PageHeader level="section" title="附件" />
       <ProCard>
         <AttachmentList
-          items={(data.attachments ?? []).map((a: any) => ({
+          items={(contract.attachments ?? []).map((a) => ({
             id: a.id,
             name: a.name,
             mimeType: a.mimeType,
             size: a.size,
             legacyUrl: typeof a.url === "string" ? a.url : undefined
-          })) as AttachmentItem[]}
+          }))}
           onDeleted={() => mutate()}
         />
       </ProCard>
