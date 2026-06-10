@@ -1,9 +1,10 @@
-// 通知通道：inbox / email / wechatWork
+﻿// 通知通道：inbox / email / wechatWork
 // inbox: 已在 events/bus.ts 中处理
 // email: nodemailer 异步发送；失败只 log，不抛
 // wechatWork: webhook POST JSON
 import nodemailer from "nodemailer";
 import { NOTIFY_CONFIG, type NotifyChannel } from "@/lib/notify-config";
+import { getPublicBaseUrl } from "@/lib/env";
 
 export type ChannelPayload = {
   type: string;
@@ -66,14 +67,15 @@ export async function sendWechatWork(p: ChannelPayload): Promise<{ ok: boolean; 
 }
 
 function kindToPath(link: { kind: string }): string {
+  const base = getPublicBaseUrl();
   const map: Record<string, string> = {
-    contract: "https://yourdomain.com/contracts",
-    invoice: "https://yourdomain.com/invoices",
-    payment: "https://yourdomain.com/payments",
-    project: "https://yourdomain.com/projects",
-    customer: "https://yourdomain.com/customers"
+    contract: `${base}/contracts`,
+    invoice: `${base}/invoices`,
+    payment: `${base}/payments`,
+    project: `${base}/projects`,
+    customer: `${base}/customers`
   };
-  return map[link.kind] ?? "https://yourdomain.com/messages";
+  return map[link.kind] ?? `${base}/messages`;
 }
 
 export const CHANNEL_HANDLERS: Record<Exclude<NotifyChannel, "inbox">, (p: ChannelPayload) => Promise<{ ok: boolean; error?: string }>> = {

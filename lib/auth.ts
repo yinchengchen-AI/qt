@@ -1,4 +1,4 @@
-// NextAuth v4 配置（JWT + Credentials；不挂 PrismaAdapter，简化 P0 阶段）
+﻿// NextAuth v4 配置（JWT + Credentials；不挂 PrismaAdapter，简化 P0 阶段）
 import type { AuthOptions } from "next-auth";
 import CredentialsProvider from "next-auth/providers/credentials";
 import bcrypt from "bcrypt";
@@ -34,9 +34,43 @@ declare module "next-auth/jwt" {
   }
 }
 
+// 角色 / ACTIVE 状态的轻量缓存，避免每个请求都打 DB。
+// 失效策略：TTL 到期自动失效；ADMIN 改角色/禁用户时无法即时反映。
+// 30s 在"及时撤销"和"DB 压力"之间取中间值；如需立即撤销可缩短到 5s。
+const CACHE_TTL_MS = 30_000;
+type CachedUser = { id: string; employeeNo: string; roleCode: RoleCode };
+const userCache = new Map<string, { value: CachedUser | null; expiresAt: number }>();
+
+async function loadActiveUser(uid: string): Promise<CachedUser | null> {
+  const now = Date.now();
+  const hit = userCache.get(uid);
+  if (hit && hit.expiresAt > now) return hit.value;
+  const u = await prisma.user.findFirst({
+    where: { id: uid, deletedAt: null, status: "ACTIVE" },
+    select: { id: true, employeeNo: true, role: { select: { code: true } } }
+  });
+  const value: CachedUser | null = u
+    ? { id: u.id, employeeNo: u.employeeNo, roleCode: u.role.code as RoleCode }
+    : null;
+  userCache.set(uid, { value, expiresAt: now + CACHE_TTL_MS });
+  // 防止 Map 无限增长：定期清理
+  if (userCache.size > 500) {
+    for (const [k, v] of userCache) {
+      if (v.expiresAt <= now) userCache.delete(k);
+    }
+  }
+  return value;
+}
+
+/** 角色 / 状态变更后调用，清掉指定用户的缓存 */
+export function invalidateAuthCache(uid: string): void {
+  userCache.delete(uid);
+}
+
 export const authOptions: AuthOptions = {
   session: { strategy: "jwt", maxAge: 8 * 60 * 60 },
   pages: { signIn: "/login" },
+  useSecureCookies: process.env.NODE_ENV === "production",
   providers: [
     CredentialsProvider({
       name: "Credentials",
@@ -70,21 +104,17 @@ export const authOptions: AuthOptions = {
         token.uid = user.id;
         token.employeeNo = user.employeeNo;
         token.roleCode = user.roleCode;
-        token.iat = Math.floor(Date.now() / 1000);  // 记录签发时间
+        token.iat = Math.floor(Date.now() / 1000);
       }
-      // 每次请求都查一次 DB：防止用户被 DISABLED 后旧 token 仍可用
-      // 性能开销：单次 user.findFirst（PK 索引），可接受
+      // 缓存查 user,确认仍 ACTIVE;30s 内复用,避免每个请求都打 DB
       if (token.uid) {
-        const u = await prisma.user.findFirst({
-          where: { id: token.uid, deletedAt: null, status: "ACTIVE" },
-          select: { id: true, employeeNo: true, role: { select: { code: true } } }
-        });
+        const u = await loadActiveUser(token.uid);
         if (!u) {
-          // 返回空 token → next-auth 视为未登录 → 401
-          return {} as typeof token;
+          // 用户被禁用/删除/软删 → 失效:NextAuth 看到空 token 会让 session 返回 null
+          // 不要返回 `{} as typeof token` 这种类型欺骗,直接清字段更显式
+          return null as unknown as typeof token;
         }
-        // 角色变更后能及时反映（无需重新登录）
-        token.roleCode = u.role.code as typeof token.roleCode;
+        token.roleCode = u.roleCode;
         token.employeeNo = u.employeeNo;
       }
       return token;

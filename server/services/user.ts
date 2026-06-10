@@ -1,4 +1,4 @@
-// 用户管理服务（仅 ADMIN）
+﻿// 用户管理服务（仅 ADMIN）
 // 护栏：
 //   - 不能改/禁/删自己
 //   - 不能改/禁/删最后一位 ACTIVE 的 ADMIN
@@ -10,6 +10,7 @@ import { ERROR_CODES } from "@/types/errors";
 import type { SessionUser } from "@/lib/session";
 import { requirePermission, RESOURCE, ACTION } from "@/lib/permissions";
 import { audit } from "@/server/audit";
+import { invalidateAuthCache } from "@/lib/auth";
 import type { Prisma } from "@prisma/client";
 
 const PASSWORD_SALT_ROUNDS = 10;
@@ -123,7 +124,9 @@ export async function createUser(actor: SessionUser, input: UserCreateInput) {
   if (existing) {
     throw new ApiError(ERROR_CODES.VALIDATION_FAILED, "工号或邮箱已被使用", 409);
   }
-  const passwordHash = await bcrypt.hash("123456", PASSWORD_SALT_ROUNDS);
+  // 改用 10 位随机密码,明文只通过响应一次性返回给创建人;ADMIN 负责转交
+  const initialPassword = randomPassword(10);
+  const passwordHash = await bcrypt.hash(initialPassword, PASSWORD_SALT_ROUNDS);
   const u = await prisma.user.create({
     data: {
       employeeNo: input.employeeNo,
@@ -143,7 +146,8 @@ export async function createUser(actor: SessionUser, input: UserCreateInput) {
     entityId: u.id,
     after: { employeeNo: u.employeeNo, name: u.name, roleCode: role.code }
   });
-  return u;
+  // 把明文初始密码返回给调用方;前端应在创建页一次性展示并提示转交
+  return { ...u, initialPassword };
 }
 
 export type UserUpdateInput = Partial<{
@@ -186,6 +190,7 @@ export async function updateUser(actor: SessionUser, id: string, input: UserUpda
       ...(input.status !== undefined ? { status: input.status } : {})
     }
   });
+  invalidateAuthCache(id);
   await audit(prisma, {
     actorId: actor.id,
     action: "USER_UPDATE",
@@ -203,6 +208,7 @@ export async function softDeleteUser(actor: SessionUser, id: string) {
   if (!existing) throw new ApiError(ERROR_CODES.NOT_FOUND, "用户不存在", 404);
   await assertNotSelfAndNotLastAdmin(actor, existing.id, existing.role.code);
   await prisma.user.update({ where: { id }, data: { deletedAt: new Date() } });
+  invalidateAuthCache(id);
   await audit(prisma, {
     actorId: actor.id,
     action: "USER_DELETE",
@@ -241,6 +247,7 @@ export async function toggleStatus(actor: SessionUser, id: string, status: "ACTI
     await assertNotSelfAndNotLastAdmin(actor, existing.id, existing.role.code);
   }
   const updated = await prisma.user.update({ where: { id }, data: { status } });
+  invalidateAuthCache(id);
   await audit(prisma, {
     actorId: actor.id,
     action: "USER_TOGGLE_STATUS",
