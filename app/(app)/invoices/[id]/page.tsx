@@ -11,6 +11,7 @@ import { DetailPageSkeleton } from "@/components/detail-page-skeleton";
 import { StatusTag } from "@/components/status-tag";
 import { useActionCall } from "@/lib/use-action-call";
 import { CurrencyCell, DateTimeCell, PercentCell } from "@/components/table-cells";
+import { AttachmentList, type AttachmentItem } from "@/components/file/attachment-list";
 const INVOICE_TYPE_MAP: Record<string, string> = { VAT_SPECIAL: "增值税专用发票", VAT_GENERAL: "增值税普通发票", VAT_ELECTRONIC: "增值税电子专票", ELEC_NORMAL: "电子普通发票" };
 const TITLE_TYPE_MAP: Record<string, string> = { COMPANY: "公司", PERSONAL: "个人" };
 
@@ -104,6 +105,19 @@ export default function InvoiceDetailPage() {
           { title: "地址", dataIndex: "address" },
           { title: "电话", dataIndex: "phone" }
         ]} />
+      </ProCard>
+      <PageHeader level="section" title="附件" />
+      <ProCard>
+        <AttachmentList
+          items={(data.attachments ?? []).map((a: any) => ({
+            id: a.id,
+            name: a.name,
+            mimeType: a.mimeType,
+            size: a.size,
+            legacyUrl: typeof a.url === "string" ? a.url : undefined
+          })) as AttachmentItem[]}
+          onDeleted={() => mutate()}
+        />
       </ProCard>
     </Page>
   );

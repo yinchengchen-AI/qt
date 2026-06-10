@@ -4,7 +4,8 @@ import {
   ProFormText,
   ProFormSelect,
   ProFormDigit,
-  ProFormDatePicker
+  ProFormDatePicker,
+  ProFormUploadButton
 } from "@ant-design/pro-components";
 import { App as AntdApp, Card, Space, Typography } from "antd";
 import { StatusTag } from "@/components/status-tag";
@@ -15,6 +16,8 @@ import { Page } from "@/components/page";
 import { PageHeader } from "@/components/page-header";
 import { FormSection, FormGrid, FormCard } from "@/components/form";
 import { FormPageSkeleton } from "@/components/form-page-skeleton";
+import { proCustomRequest } from "@/lib/upload-client";
+import { AttachmentList, type AttachmentItem } from "@/components/file/attachment-list";
 
 const { Text } = Typography;
 
@@ -30,7 +33,7 @@ export default function EditContractPage() {
   const id = String(params.id);
   const router = useRouter();
   const { message } = AntdApp.useApp();
-  const { data, isLoading } = useSWR<any>(`/api/contracts/${id}`);
+  const { data, isLoading, mutate } = useSWR<any>(`/api/contracts/${id}`);
   const serviceType = useDict("SERVICE_TYPE");
 
   if (isLoading || !data) {
@@ -76,12 +79,21 @@ export default function EditContractPage() {
             taxRate: data.taxRate ? Number(data.taxRate) : 0.06
           }}
           onFinish={async (values) => {
+            // 新上传的(从 ProFormUploadButton):[{ uid, name, status, response: { id, ... } }]
+            // 与已有(data.attachments)合并,一起发给后端
+            const existing = (data.attachments ?? []) as Array<{ id: string; name: string; mimeType: string; size: number; uploadedBy: string; uploadedAt: string }>;
+            const newlyUploaded = (values.attachments ?? [])
+              .map((f: { response?: { id?: string; name?: string; mimeType?: string; size?: number; uploadedBy?: string; uploadedAt?: string } }) => f.response)
+              .filter((r: { id?: string } | undefined): r is { id: string; name: string; mimeType: string; size: number; uploadedBy: string; uploadedAt: string } => Boolean(r && r.id));
+            const merged = [...existing, ...newlyUploaded];
             const payload = {
               ...values,
               signDate: values.signDate?.toISOString?.(),
               startDate: values.startDate?.toISOString?.(),
-              endDate: values.endDate?.toISOString?.()
+              endDate: values.endDate?.toISOString?.(),
+              attachments: merged
             };
+            delete (payload as Record<string, unknown>).attachments_uploads;
             const res = await fetch(`/api/contracts/${id}`, {
               method: "PATCH",
               headers: { "Content-Type": "application/json" },
@@ -172,6 +184,25 @@ export default function EditContractPage() {
                 min={0}
                 max={1}
                 fieldProps={{ size: "large", precision: 4, step: 0.01 }}
+              />
+            </FormGrid>
+          </FormSection>
+
+          <FormSection title="合同附件" description="可继续添加;已有附件的删除请到详情页操作">
+            <FormGrid columns={1}>
+              <AttachmentList
+                items={(data.attachments ?? []) as AttachmentItem[]}
+                allowDelete={false}
+                showHeader={false}
+              />
+              <ProFormUploadButton
+                name="attachments"
+                label="新增附件"
+                max={5}
+                fieldProps={{
+                  name: "file",
+                  customRequest: proCustomRequest({ contractId: id })
+                }}
               />
             </FormGrid>
           </FormSection>

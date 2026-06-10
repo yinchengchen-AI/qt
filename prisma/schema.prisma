@@ -269,9 +269,10 @@ model Invoice {
   updatedById        String
   deletedAt          DateTime? @db.Timestamptz(6)
 
-  payments    Payment[]
-  auditLogs   InvoiceAuditLog[]
-  allocations PaymentAllocation[]
+  payments       Payment[]
+  auditLogs      InvoiceAuditLog[]
+  allocations    PaymentAllocation[]
+  attachmentRefs Attachment[]        @relation("InvoiceAttachments")
 
   @@index([status])
   @@index([actualIssueDate])
@@ -460,10 +461,13 @@ model Attachment {
   uploadedBy   User      @relation(fields: [uploadedById], references: [id])
   contractId   String?
   contract     Contract? @relation("ContractAttachments", fields: [contractId], references: [id], onDelete: SetNull)
+  invoiceId    String?
+  invoice      Invoice?  @relation("InvoiceAttachments", fields: [invoiceId], references: [id], onDelete: SetNull)
   uploadedAt   DateTime  @default(now()) @db.Timestamptz(6)
   deletedAt    DateTime? @db.Timestamptz(6)
 
   @@index([contractId, deletedAt])
+  @@index([invoiceId, deletedAt])
   @@index([uploadedById])
   @@index([deletedAt])
 }

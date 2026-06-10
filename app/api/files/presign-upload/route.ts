@@ -1,5 +1,5 @@
 ﻿// POST /api/files/presign-upload
-// body: { filename, mimeType, size, contractId? }
+// body: { filename, mimeType, size, contractId?, invoiceId? }
 // 鉴权 + 校验 + 创建 Attachment 记录 + 返回 PUT 预签名 URL
 import { z } from "zod";
 import { ok, err } from "@/lib/api";
@@ -13,7 +13,8 @@ const bodySchema = z.object({
   filename: z.string().min(1).max(255),
   mimeType: z.string().min(1).max(127),
   size: z.number().int().positive(),
-  contractId: z.string().optional().nullable()
+  contractId: z.string().optional().nullable(),
+  invoiceId: z.string().optional().nullable()
 });
 
 export async function POST(req: Request) {
@@ -33,6 +34,7 @@ export async function POST(req: Request) {
       mimeType: body.mimeType,
       size: body.size,
       contractId: body.contractId ?? null,
+      invoiceId: body.invoiceId ?? null,
       uploadedById: user.id
     });
     return ok(result);

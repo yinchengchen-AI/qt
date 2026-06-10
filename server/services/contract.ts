@@ -10,20 +10,41 @@ import { audit } from "@/server/audit";
 import { emit, listAdminUserIds } from "@/server/events/bus";
 
 // 把前端传的 attachment 快照(id+name+...)用 DB 真实记录重写一遍,防 spoofing
+// 同时在事务内把 presign 时落 tmp/ 的附件绑到新合同 contractId
 async function resolveAttachmentSnapshots(
-  raw: { id: string; name: string; url?: string; mimeType: string; size: number; uploadedBy: string; uploadedAt: string }[]
+  raw: { id: string; name: string; url?: string; mimeType: string; size: number; uploadedBy: string; uploadedAt: string }[],
+  contractId: string,
+  tx: Prisma.TransactionClient
 ): Promise<Prisma.InputJsonValue> {
   if (raw.length === 0) return [] as unknown as Prisma.InputJsonValue;
   if (raw.length > 5) {
     throw new ApiError(ERROR_CODES.VALIDATION_FAILED, "附件最多 5 个", 400);
   }
   const ids = [...new Set(raw.map((r) => r.id))];
-  const found = await prisma.attachment.findMany({
+  const found = await tx.attachment.findMany({
     where: { id: { in: ids }, deletedAt: null },
-    select: { id: true, originalName: true, mimeType: true, size: true, uploadedById: true, uploadedAt: true }
+    select: { id: true, originalName: true, mimeType: true, size: true, uploadedById: true, uploadedAt: true, contractId: true, invoiceId: true }
   });
   if (found.length !== ids.length) {
     throw new ApiError(ERROR_CODES.VALIDATION_FAILED, "附件 id 无效或已删除", 400);
+  }
+  // 绑定到当前合同:
+  //   - 没绑任何东西(presign 时 contractId/invoiceId 都为 null -> 落 tmp):绑定到本 contract
+  //   - 已绑本 contract:放过
+  //   - 已绑别的合同 / 发票:拒绝(防越权)
+  const toBind = found.filter((a) => !a.contractId && !a.invoiceId);
+  if (toBind.length > 0) {
+    await tx.attachment.updateMany({
+      where: { id: { in: toBind.map((a) => a.id) }, contractId: null, invoiceId: null },
+      data: { contractId }
+    });
+  }
+  // 已绑本 contract:放过;已绑其它 contract 或 任意 invoice:拒绝
+  const others = found.filter((a) =>
+    (a.contractId && a.contractId !== contractId) || a.invoiceId
+  );
+  if (others.length > 0) {
+    throw new ApiError(ERROR_CODES.FORBIDDEN, "部分附件已绑定到其它合同/发票", 403);
   }
   return found.map((a) => ({
     id: a.id,
@@ -106,7 +127,7 @@ export async function createContract(user: SessionUser, input: ContractCreateInp
   return prisma.$transaction(async (tx) => {
     const code = await nextBusinessNo("CONTRACT");
     const { taxAmount, amountExcludingTax } = calcTotals(input.totalAmount, input.taxRate);
-    return tx.contract.create({
+    const created = await tx.contract.create({
       data: {
         contractNo: code,
         customerId: input.customerId,
@@ -124,11 +145,17 @@ export async function createContract(user: SessionUser, input: ContractCreateInp
         installmentPlan: (input.installmentPlan ?? null) as Prisma.InputJsonValue,
         status: "DRAFT",
         ownerUserId: customer.ownerUserId,
-        attachments: await resolveAttachmentSnapshots(input.attachments ?? []),
+        attachments: [] as unknown as Prisma.InputJsonValue,
         createdById: user.id,
         updatedById: user.id
       }
     });
+    // 解析附件并绑定(tmp -> contractId),把真实记录写回 JSON 快照
+    if ((input.attachments ?? []).length > 0) {
+      const attachments = await resolveAttachmentSnapshots(input.attachments ?? [], created.id, tx);
+      await tx.contract.update({ where: { id: created.id }, data: { attachments } });
+    }
+    return tx.contract.findUnique({ where: { id: created.id } });
   });
 }
 
@@ -149,23 +176,26 @@ export async function updateContract(user: SessionUser, id: string, input: Contr
     taxAmount = new Prisma.Decimal(r.taxAmount);
     amountExcludingTax = new Prisma.Decimal(r.amountExcludingTax);
   }
-  return prisma.contract.update({
-    where: { id },
-    data: {
-      ...input,
-      signDate: input.signDate ? new Date(input.signDate) : undefined,
-      startDate: input.startDate ? new Date(input.startDate) : undefined,
-      endDate: input.endDate ? new Date(input.endDate) : undefined,
-      totalAmount: input.totalAmount,
-      taxRate: input.taxRate,
-      taxAmount,
-      amountExcludingTax,
-      installmentPlan: input.installmentPlan as Prisma.InputJsonValue,
-      attachments: input.attachments
-        ? await resolveAttachmentSnapshots(input.attachments)
-        : undefined,
-      updatedById: user.id
-    }
+  return prisma.$transaction(async (tx) => {
+    const attachments = input.attachments
+      ? await resolveAttachmentSnapshots(input.attachments, id, tx)
+      : undefined;
+    return tx.contract.update({
+      where: { id },
+      data: {
+        ...input,
+        signDate: input.signDate ? new Date(input.signDate) : undefined,
+        startDate: input.startDate ? new Date(input.startDate) : undefined,
+        endDate: input.endDate ? new Date(input.endDate) : undefined,
+        totalAmount: input.totalAmount,
+        taxRate: input.taxRate,
+        taxAmount,
+        amountExcludingTax,
+        installmentPlan: input.installmentPlan as Prisma.InputJsonValue,
+        attachments,
+        updatedById: user.id
+      }
+    });
   });
 }
 

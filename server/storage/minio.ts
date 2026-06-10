@@ -8,6 +8,9 @@ import {
   PutBucketCorsCommand,
   type CORSRule
 } from "@aws-sdk/client-s3";
+// 注意:MinIO RELEASE.2025-09-07+ 把 S3 PutBucketCors API 标为 NotImplemented (501)。
+// 但 MinIO 2025+ 默认开启 CORS(响应 Access-Control-Allow-Origin 反射 Origin),
+// 浏览器预检/上传/下载都正常,所以下面这行只是 best-effort 兜底,失败就 log。
 import { env, isMinioEnabled } from "@/lib/env";
 
 // 单例(避免每次请求都新建 client)
@@ -42,36 +45,36 @@ export function getBucket(): string {
 export async function ensureBucketAndCors(): Promise<void> {
   if (!isMinioEnabled()) return;
   const bucket = getBucket();
-  if (_bucketEnsured === bucket && _corsEnsured === bucket) return;
+  if (_bucketEnsured === bucket) return;
   const client = getS3Client();
+  // 1) 确保桶存在
   try {
-    if (_bucketEnsured !== bucket) {
-      try {
-        await client.send(new HeadBucketCommand({ Bucket: bucket }));
-      } catch {
-        await client.send(new CreateBucketCommand({ Bucket: bucket }));
+    try {
+      await client.send(new HeadBucketCommand({ Bucket: bucket }));
+    } catch {
+      await client.send(new CreateBucketCommand({ Bucket: bucket }));
+    }
+    _bucketEnsured = bucket;
+  } catch (e) {
+    console.warn("[minio] ensureBucket 失败(下次请求会重试):", (e as Error).message);
+  }
+  // 2) 尝试同步 CORS(best-effort;MinIO 2025+ 默认就支持,失败仅 log 不阻断)
+  try {
+    const rules: CORSRule[] = [
+      {
+        AllowedHeaders: ["*"],
+        AllowedMethods: ["GET", "PUT"],
+        AllowedOrigins: buildAllowedOrigins(),
+        ExposeHeaders: ["ETag"],
+        MaxAgeSeconds: 3000
       }
-      _bucketEnsured = bucket;
-    }
-    if (_corsEnsured !== bucket) {
-      const allowedOrigins = buildAllowedOrigins();
-      const rules: CORSRule[] = [
-        {
-          AllowedHeaders: ["*"],
-          AllowedMethods: ["GET", "PUT", "HEAD"],
-          AllowedOrigins: allowedOrigins,
-          ExposeHeaders: ["ETag"],
-          MaxAgeSeconds: 3000
-        }
-      ];
-      await client.send(
-        new PutBucketCorsCommand({ Bucket: bucket, CORSConfiguration: { CORSRules: rules } })
-      );
-      _corsEnsured = bucket;
-    }
+    ];
+    await client.send(
+      new PutBucketCorsCommand({ Bucket: bucket, CORSConfiguration: { CORSRules: rules } })
+    );
   } catch (e) {
     console.warn(
-      "[minio] ensureBucketAndCors 失败(可忽略,首次请求会重试):",
+      "[minio] PutBucketCors 失败(可忽略,MinIO 2025+ 默认 CORS):",
       (e as Error).message
     );
   }
