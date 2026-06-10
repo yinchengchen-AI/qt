@@ -10,7 +10,8 @@ type Dept = {
   children?: Dept[];
 };
 
-function buildData(list: Dept[]): { value: string; title: string; children?: unknown[] }[] {
+type TreeNode = { value: string; title: string; children?: TreeNode[] };
+function buildData(list: Dept[]): TreeNode[] {
   return list.map((d) => ({
     value: d.id,
     title: `${d.name} (${d.code})`,
@@ -107,11 +108,10 @@ export function DepartmentTreeSelect({
         showSearch: true,
         treeDefaultExpandAll: true,
         treeNodeFilterProp: "title",
+        treeData: data,
         value,
         onChange
       }}
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      request={async () => data as any}
     />
   );
 }
