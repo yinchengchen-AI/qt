@@ -42,3 +42,7 @@ prisma/migrations/dev
 !.vscode/extensions.json
 *.swp
 *.swo
+
+# agent / e2e tooling state (not source)
+.omc/
+.playwright-mcp/
