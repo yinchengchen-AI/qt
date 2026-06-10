@@ -15,7 +15,8 @@ export const RESOURCE = {
   STATISTICS: "STATISTICS",
   MESSAGE: "MESSAGE",
   ANNOUNCEMENT: "ANNOUNCEMENT",
-  OPERATION_LOG: "OPERATION_LOG"
+  OPERATION_LOG: "OPERATION_LOG",
+  DEPARTMENT: "DEPARTMENT"
 } as const;
 export type Resource = (typeof RESOURCE)[keyof typeof RESOURCE];
 
@@ -40,9 +41,12 @@ const R_EXPORT: Action[] = ["READ", "EXPORT"];
 // 内置角色默认权限（P0 阶段硬编码；后续允许后台编辑）
 export const ROLE_PERMISSIONS: Record<RoleCode, Permission[]> = {
   ADMIN: Object.values(RESOURCE).map((resource) =>
-    resource === RESOURCE.STATISTICS ? { resource, actions: [...CRUD, ACTION.EXPORT] } : { resource, actions: CRUD }
+    resource === RESOURCE.STATISTICS
+      ? { resource, actions: [...CRUD, ACTION.EXPORT] }
+      : { resource, actions: CRUD }
   ),
   SALES: [
+    { resource: RESOURCE.DEPARTMENT, actions: R },
     { resource: RESOURCE.USER, actions: R },
     { resource: RESOURCE.DICTIONARY, actions: R },
     { resource: RESOURCE.CUSTOMER, actions: CRU },
@@ -55,6 +59,7 @@ export const ROLE_PERMISSIONS: Record<RoleCode, Permission[]> = {
     { resource: RESOURCE.ANNOUNCEMENT, actions: R }
   ],
   FINANCE: [
+    { resource: RESOURCE.DEPARTMENT, actions: R },
     { resource: RESOURCE.USER, actions: R },
     { resource: RESOURCE.DICTIONARY, actions: R },
     { resource: RESOURCE.CUSTOMER, actions: R },
@@ -67,6 +72,7 @@ export const ROLE_PERMISSIONS: Record<RoleCode, Permission[]> = {
     { resource: RESOURCE.ANNOUNCEMENT, actions: R }
   ],
   OPS: [
+    { resource: RESOURCE.DEPARTMENT, actions: CRUD },
     { resource: RESOURCE.USER, actions: R },
     { resource: RESOURCE.DICTIONARY, actions: R },
     // CUSTOMER 金额字段不触碰（P1 阶段在 service 层显式过滤）
