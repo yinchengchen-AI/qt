@@ -80,7 +80,8 @@ export default function CustomerDetailPage() {
           { title: "创建时间", dataIndex: "createdAt", render: (v: any) => <DateCell value={v} /> }
         ]} />
       </ProCard>
-      <ProCard title="跟进记录">
+      <PageHeader level="section" title="跟进记录" />
+      <ProCard>
         <ProTable rowKey="id" search={false} options={false} pagination={{ pageSize: 5 }} dataSource={followUps ?? []} columns={[
           { title: "时间", dataIndex: "followAt", valueType: "dateTime", width: 180, render: (_, r: any) => <DateTimeCell value={r.followAt} /> },
           { title: "方式", dataIndex: "method", width: 100 },
@@ -88,7 +89,8 @@ export default function CustomerDetailPage() {
           { title: "结果", dataIndex: "result", width: 100 }
         ]} />
       </ProCard>
-      <ProCard title="关联合同">
+      <PageHeader level="section" title="关联合同" />
+      <ProCard>
         <ProTable rowKey="id" search={false} options={false} pagination={{ pageSize: 5 }} dataSource={contracts ?? []} columns={[
           { title: "合同号", dataIndex: "contractNo", width: 180 },
           { title: "标题", dataIndex: "title" },

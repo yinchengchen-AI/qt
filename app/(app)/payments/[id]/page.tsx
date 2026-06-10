@@ -82,14 +82,18 @@ export default function PaymentDetailPage() {
         ]} />
       </ProCard>
       {data.invoice && (
-        <ProCard title="关联发票">
-          <ProDescriptions column={2} dataSource={data.invoice} columns={[
-            { title: "发票号", dataIndex: "invoiceNo" },
-            { title: "金额", dataIndex: "amount", render: (v: any) => <CurrencyCell value={v} /> }
-          ]} />
-        </ProCard>
+        <>
+          <PageHeader level="section" title="关联发票" />
+          <ProCard>
+            <ProDescriptions column={2} dataSource={data.invoice} columns={[
+              { title: "发票号", dataIndex: "invoiceNo" },
+              { title: "金额", dataIndex: "amount", render: (v: any) => <CurrencyCell value={v} /> }
+            ]} />
+          </ProCard>
+        </>
       )}
-      <ProCard title="分配明细">
+      <PageHeader level="section" title="分配明细" />
+      <ProCard>
         <ProTable rowKey="id" search={false} options={false} pagination={false} dataSource={data.allocations ?? []} columns={[
           { title: "发票 ID", dataIndex: "invoiceId" },
           { title: "项目 ID", dataIndex: "projectId" },

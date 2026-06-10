@@ -91,7 +91,8 @@ export default function ContractDetailPage() {
           { title: "审批意见", dataIndex: "reviewComment" }
         ]} />
       </ProCard>
-      <ProCard title="附件">
+      <PageHeader level="section" title="附件" />
+      <ProCard>
         {(data.attachments ?? []).length === 0 ? <div>暂无附件</div> : (
           <ul>{(data.attachments ?? []).map((a: any) => (
             <li key={a.id}>{a.name} <span style={{ fontSize: 12, color: "rgba(0, 0, 0, 0.45)" }}>({a.mimeType} · {Math.round((a.size ?? 0) / 1024)} KB)</span></li>

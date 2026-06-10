@@ -65,7 +65,7 @@ export function PageHeader({
 
   if (isSection) {
     return (
-      <div className={className} style={{ marginBottom: 16 }}>
+      <div className={className} style={{ marginTop: 24, marginBottom: 16 }}>
         <Title level={4} style={{ margin: 0 }}>
           {title}
         </Title>

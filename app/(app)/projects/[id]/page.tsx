@@ -77,10 +77,12 @@ export default function ProjectDetailPage() {
           { title: "预算", dataIndex: "budgetAmount", render: (v: any) => <CurrencyCell value={v} /> }
         ]} />
       </ProCard>
-      <ProCard title="服务范围">
+      <PageHeader level="section" title="服务范围" />
+      <ProCard>
         <div style={{ whiteSpace: "pre-wrap" }}>{data.serviceScope}</div>
       </ProCard>
-      <ProCard title="进度日志">
+      <PageHeader level="section" title="进度日志" />
+      <ProCard>
         <ProTable rowKey="id" search={false} options={false} pagination={{ pageSize: 10 }} dataSource={data.progressLogs ?? []} columns={[
           { title: "时间", dataIndex: "at", valueType: "dateTime", width: 180, render: (_, r: any) => <DateTimeCell value={r.at} /> },
           { title: "进度", dataIndex: "percent", width: 100, render: (v: any) => `${v}%` },
