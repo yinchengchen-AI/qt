@@ -1,4 +1,4 @@
-# deps
+﻿# deps
 node_modules
 .pnpm-store
 
@@ -46,3 +46,12 @@ prisma/migrations/dev
 # agent / e2e tooling state (not source)
 .omc/
 .playwright-mcp/
+
+# agent / e2e tooling state (not source)
+.omc/
+.playwright-mcp/
+
+# local runtime artifacts
+.next-pid.txt
+.qt-screenshots/
+server.log.err

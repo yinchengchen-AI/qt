@@ -82,7 +82,7 @@ export function QtMark({
               textTransform: "uppercase"
             }}
           >
-            QITAI SAFETY
+            企泰安全
           </span>
         </span>
       ) : null}
