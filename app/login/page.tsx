@@ -300,15 +300,25 @@ function BrandPanel() {
 
         <div className={styles.stats}>
           <div className={styles.stat}>
-            <div className={styles.statNum}>10<small>+</small></div>
+            <div className={styles.statValue}>
+              <span className={styles.statNum}>10</span>
+              <span className={styles.statSuffix}>+</span>
+            </div>
             <div className={styles.statLabel}>年行业经验</div>
           </div>
+          <div className={styles.statDivider} aria-hidden="true" />
           <div className={styles.stat}>
-            <div className={styles.statNum}>3</div>
+            <div className={styles.statValue}>
+              <span className={styles.statNum}>3</span>
+            </div>
             <div className={styles.statLabel}>ISO 体系认证</div>
           </div>
+          <div className={styles.statDivider} aria-hidden="true" />
           <div className={styles.stat}>
-            <div className={styles.statNum}>8<small>+</small></div>
+            <div className={styles.statValue}>
+              <span className={styles.statNum}>8</span>
+              <span className={styles.statSuffix}>+</span>
+            </div>
             <div className={styles.statLabel}>服务行业</div>
           </div>
         </div>
