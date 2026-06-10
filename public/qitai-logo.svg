@@ -1,36 +1,22 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 56" role="img" aria-label="杭州企泰安全科技 QITAI">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 220 56" role="img" aria-label="杭州企泰安全科技 QITAI">
   <defs>
-    <linearGradient id="qitai-mark-grad" x1="0" y1="0" x2="1" y2="1">
-      <stop offset="0" stop-color="#0A1C33" />
-      <stop offset="1" stop-color="#103259" />
-    </linearGradient>
-    <linearGradient id="qitai-slash" x1="0" y1="0" x2="1" y2="1">
-      <stop offset="0" stop-color="#F25C44" />
-      <stop offset="1" stop-color="#C7381F" />
-    </linearGradient>
-    <linearGradient id="qitai-text" x1="0" y1="0" x2="1" y2="0">
-      <stop offset="0" stop-color="#F59E0B" />
-      <stop offset="1" stop-color="#EA7C1A" />
-    </linearGradient>
+    <mask id="qitai-cutout">
+      <rect width="48" height="48" fill="white" />
+      <!-- 蓝色右上角矩形缺口 -->
+      <rect x="32" y="0" width="16" height="24" fill="black" />
+    </mask>
   </defs>
 
-  <!-- Mark: 蓝色圆角方块 + 白色 Q + 红/橙斜杠 -->
+  <!-- Mark: 蓝色"C/G 形"方块(右上切角)+ 红色小方块(右下重叠)+ 黑色小点 -->
   <g>
-    <!-- 蓝色底 -->
-    <rect x="2" y="2" width="52" height="52" rx="12" fill="url(#qitai-mark-grad)" />
-    <!-- 白色 Q：环 + 内孔 + 尾巴被斜杠替代 -->
-    <path d="M16 18 a14 14 0 1 0 24 0 a14 14 0 1 0 -24 0 Z M30 32 l-6 8"
-          fill="none" stroke="#ffffff" stroke-width="4" stroke-linecap="round" stroke-linejoin="round" />
-    <!-- 红色斜杠 (替代 Q 尾巴) -->
-    <path d="M30 30 l14 16 l-6 4 l-14 -16 z" fill="url(#qitai-slash)" />
+    <rect width="48" height="48" rx="6" fill="#0A1C33" mask="url(#qitai-cutout)" />
+    <rect x="32" y="28" width="20" height="20" rx="3" fill="#E11A2A" />
+    <rect x="56" y="14" width="6" height="6" rx="1" fill="#0A1C33" />
   </g>
 
-  <!-- Wordmark -->
-  <g transform="translate(64, 0)">
-    <text x="0" y="26" font-family="-apple-system, BlinkMacSystemFont, 'PingFang SC', 'Microsoft YaHei', 'Noto Sans CJK SC', sans-serif"
-          font-size="22" font-weight="700" letter-spacing="2"
-          fill="url(#qitai-text)">企泰安全</text>
-    <text x="0" y="48" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', sans-serif"
-          font-size="10" font-weight="600" letter-spacing="3" fill="#6B7280">QITAI · SAFETY TECH</text>
+  <!-- Wordmark: "企泰安全" + "QITAI" 副标题 -->
+  <g transform="translate(72, 0)" font-family="-apple-system, BlinkMacSystemFont, 'PingFang SC', '微软雅黑', 'Noto Sans CJK SC', sans-serif">
+    <text x="0" y="26" font-size="22" font-weight="700" letter-spacing="2" fill="#0A1C33">企泰安全</text>
+    <text x="0" y="48" font-size="11" font-weight="600" letter-spacing="3" fill="#0A1C33" opacity="0.7">QITAI · SAFETY TECH</text>
   </g>
 </svg>
