@@ -34,6 +34,7 @@ import {
 } from "@ant-design/icons";
 import type { RoleCode } from "@/types/enums";
 import type { Action, Resource } from "@/lib/permissions";
+import { QtMark } from "@/components/qt-mark";
 
 const { Sider, Header, Content } = Layout;
 const { Text } = Typography;
@@ -222,30 +223,7 @@ export function DashboardShell({ user, children }: Props) {
               color: token.colorText
             }}
           >
-            <span
-              aria-hidden
-              style={{
-                width: 32,
-                height: 32,
-                borderRadius: 8,
-                background: token.colorPrimary,
-                color: token.colorWhite,
-                display: "grid",
-                placeItems: "center",
-                fontWeight: 600,
-                fontSize: 16
-              }}
-            >
-              Q
-            </span>
-            <span style={{ display: "flex", flexDirection: "column", lineHeight: 1.2 }}>
-              <Text strong style={{ fontSize: 14 }}>
-                企泰业务
-              </Text>
-              <Text type="secondary" style={{ fontSize: 11, marginTop: 2 }}>
-                Business Console
-              </Text>
-            </span>
+            <QtMark size={32} withWordmark wordmarkSize={14} />
           </Link>
         </div>
 

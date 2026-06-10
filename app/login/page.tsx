@@ -6,6 +6,7 @@ import { LockOutlined, UserOutlined, SafetyOutlined } from "@ant-design/icons";
 import { signIn } from "next-auth/react";
 import { useRouter, useSearchParams } from "next/navigation";
 import styles from "./login.module.css";
+import { QtMark } from "@/components/qt-mark";
 
 const { Title, Text, Link: AntdLink } = Typography;
 
@@ -201,8 +202,7 @@ function BrandPanel() {
     <aside className={styles.brandSide} aria-hidden="true">
       <div className={styles.brandInner}>
         <div className={styles.brandLogo}>
-          <span className={styles.brandLogoMark}>Q</span>
-          企泰业务管理
+          <QtMark size={36} withWordmark variant="light" />
         </div>
 
         <div>
