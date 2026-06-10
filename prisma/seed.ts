@@ -33,22 +33,26 @@ async function main() {
 
   const passwordHash = await bcrypt.hash("123456", 10);
   const userDefs = [
-    { employeeNo: "admin", name: "系统管理员", email: "admin@qt.com", roleCode: "ADMIN" },
-    { employeeNo: "sales", name: "张业务", email: "sales@qt.com", roleCode: "SALES" },
-    { employeeNo: "finance", name: "李财务", email: "finance@qt.com", roleCode: "FINANCE" },
-    { employeeNo: "ops", name: "王行政", email: "ops@qt.com", roleCode: "OPS" }
+    { employeeNo: "admin",   name: "系统管理员", email: "admin@qt.com",   roleCode: "ADMIN",   deptCode: "tech" },
+    { employeeNo: "sales",   name: "张业务",     email: "sales@qt.com",   roleCode: "SALES",   deptCode: "biz" },
+    { employeeNo: "finance", name: "李财务",     email: "finance@qt.com", roleCode: "FINANCE", deptCode: "fin" },
+    { employeeNo: "ops",     name: "王行政",     email: "ops@qt.com",     roleCode: "OPS",     deptCode: "biz" }
   ] as const;
   for (const u of userDefs) {
     const role = await prisma.role.findUniqueOrThrow({ where: { code: u.roleCode } });
+    const dept = u.deptCode
+      ? await prisma.department.findUnique({ where: { code: u.deptCode } })
+      : null;
     await prisma.user.upsert({
       where: { employeeNo: u.employeeNo },
-      update: {},
+      update: dept ? { departmentId: dept.id } : {},
       create: {
         employeeNo: u.employeeNo,
         name: u.name,
         email: u.email,
         passwordHash,
-        roleId: role.id
+        roleId: role.id,
+        departmentId: dept?.id ?? null
       }
     });
   }

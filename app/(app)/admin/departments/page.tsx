@@ -26,8 +26,8 @@ export default function DepartmentsPage() {
   const [view, setView] = useState<"tree" | "list">("tree");
   const [includeInactive, setIncludeInactive] = useState(false);
   const { data, loading, reload } = useListRequest<Department>(
-    `/api/departments?pageSize=200&tree=${view === "tree"}&includeInactive=${includeInactive}`,
-    { deps: [view, includeInactive] }
+    `/api/departments?pageSize=500&includeInactive=${includeInactive}`,
+    { deps: [includeInactive] }
   );
 
   async function onDelete(d: Department) {

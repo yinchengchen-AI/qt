@@ -20,7 +20,8 @@ type User = {
   phone: string | null;
   roleId: string;
   role: Role;
-  department: string | null;
+  departmentId: string | null;
+  department: { id: string; code: string; name: string } | null;
   status: "ACTIVE" | "DISABLED";
 };
 
@@ -60,7 +61,7 @@ export default function EditUserPage() {
             email: data.email,
             phone: data.phone ?? undefined,
             roleId: data.roleId,
-            department: data.department ?? undefined,
+            departmentId: data.departmentId ?? undefined,
             status: data.status
           }}
           submitter={{

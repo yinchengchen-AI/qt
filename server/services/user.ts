@@ -78,7 +78,7 @@ export async function getUser(user: SessionUser, id: string) {
   requirePermission(user.roleCode, RESOURCE.USER, ACTION.READ);
   const u = await prisma.user.findFirst({
     where: { id, deletedAt: null },
-    include: { role: true }
+    include: { role: true, department: { select: { id: true, code: true, name: true } } }
   });
   if (!u) throw new ApiError(ERROR_CODES.NOT_FOUND, "用户不存在", 404);
   // 不要把 passwordHash 暴露给前端
