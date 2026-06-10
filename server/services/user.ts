@@ -64,7 +64,10 @@ export async function listUsers(
       orderBy: { createdAt: "desc" },
       skip: (page - 1) * pageSize,
       take: pageSize,
-      include: { role: { select: { id: true, code: true, name: true } } }
+      include: {
+        role: { select: { id: true, code: true, name: true } },
+        department: { select: { id: true, code: true, name: true } }
+      }
     }),
     prisma.user.count({ where })
   ]);

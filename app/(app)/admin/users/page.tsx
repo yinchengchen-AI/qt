@@ -17,7 +17,7 @@ type User = {
   phone: string | null;
   roleId: string;
   role: Role;
-  department: string | null;
+  department: { id: string; code: string; name: string } | null;
   status: "ACTIVE" | "DISABLED";
   lastLoginAt: string | null;
   createdAt: string;
@@ -94,7 +94,7 @@ export default function UsersPage() {
       width: 100,
       render: (_, r) => <Tag color="blue">{r.role?.name ?? r.roleId}</Tag>
     },
-    { title: "部门", dataIndex: "department", width: 120, render: (_, r) => r.department ?? "-" },
+    { title: "部门", dataIndex: ["department", "name"], width: 140, render: (_, r) => r.department?.name ?? "-" },
     {
       title: "状态",
       dataIndex: "status",
@@ -163,7 +163,7 @@ export default function UsersPage() {
           qs.set("pageSize", String(params.pageSize ?? 20));
           if (params.keyword) qs.set("keyword", String(params.keyword));
           if (params.status) qs.set("status", String(params.status));
-          if (params.department) qs.set("department", String(params.department));
+          if (params.departmentId) qs.set("departmentId", String(params.departmentId));
           const res = await fetch(`/api/users?${qs}`, { credentials: "include" });
           const j = await res.json();
           if (j.code !== 0) throw new Error(j.message);

@@ -16,7 +16,7 @@ type User = {
   phone: string | null;
   roleId: string;
   role: { id: string; code: string; name: string };
-  department: string | null;
+  department: { id: string; code: string; name: string } | null;
   status: "ACTIVE" | "DISABLED";
   lastLoginAt: string | null;
   createdAt: string;
@@ -91,7 +91,7 @@ export default function UserDetailPage() {
               dataIndex: ["role", "name"],
               render: () => `${data.role?.name ?? "-"} (${data.role?.code ?? ""})`
             },
-            { title: "部门", dataIndex: "department", render: (_: unknown, r: User) => r.department ?? "-" },
+            { title: "部门", dataIndex: ["department", "name"], render: (_: unknown, r: User) => r.department?.name ?? "-" },
             {
               title: "状态",
               dataIndex: "status",

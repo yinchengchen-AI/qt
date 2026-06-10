@@ -6,6 +6,7 @@ import useSWR from "swr";
 import { Page } from "@/components/page";
 import { PageHeader } from "@/components/page-header";
 import { FormSection, FormGrid, FormCard } from "@/components/form";
+import { DepartmentTreeSelect } from "@/components/admin/department-tree-select";
 
 const { Text } = Typography;
 
@@ -98,11 +99,9 @@ export default function NewUserPage() {
                 rules={[{ required: true, message: "请选择角色" }]}
                 fieldProps={{ size: "large", optionFilterProp: "label" }}
               />
-              <ProFormText
-                name="department"
+              <DepartmentTreeSelect
                 label="部门"
                 placeholder="如:技术部 / 财务部"
-                fieldProps={{ size: "large", maxLength: 40 }}
               />
             </FormGrid>
           </FormSection>

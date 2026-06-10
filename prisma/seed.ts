@@ -76,7 +76,36 @@ async function main() {
     });
   }
 
-  console.log("✅ Seed 完成：4 角色 + 4 账号（密码 123456）+ 字典");
+
+  // ----- 部门 seed -----
+  // 3 个顶级部门(业务/技术/财务)+ 2 个技术部下子部门
+  const techDept = await prisma.department.upsert({
+    where: { code: "tech" },
+    update: { name: "技术部", sort: 2, isActive: true },
+    create: { id: "dept_seed_tech", code: "tech", name: "技术部", sort: 2, isActive: true }
+  });
+  const bizDept = await prisma.department.upsert({
+    where: { code: "biz" },
+    update: { name: "业务部", sort: 1, isActive: true },
+    create: { id: "dept_seed_biz", code: "biz", name: "业务部", sort: 1, isActive: true }
+  });
+  const finDept = await prisma.department.upsert({
+    where: { code: "fin" },
+    update: { name: "财务部", sort: 3, isActive: true },
+    create: { id: "dept_seed_fin", code: "fin", name: "财务部", sort: 3, isActive: true }
+  });
+  const techOps = await prisma.department.upsert({
+    where: { code: "tech_ops" },
+    update: { name: "技术运维组", parentId: techDept.id, sort: 1, isActive: true },
+    create: { id: "dept_seed_tech_ops", code: "tech_ops", name: "技术运维组", parentId: techDept.id, sort: 1, isActive: true }
+  });
+  const techWeb = await prisma.department.upsert({
+    where: { code: "tech_web" },
+    update: { name: "前端组", parentId: techDept.id, sort: 2, isActive: true },
+    create: { id: "dept_seed_tech_web", code: "tech_web", name: "前端组", parentId: techDept.id, sort: 2, isActive: true }
+  });
+
+  console.log("✅ Seed 完成：4 角色 + 4 账号（密码 123456）+ 字典 + 5 部门");
 }
 
 main()
