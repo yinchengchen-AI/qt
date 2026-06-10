@@ -38,16 +38,16 @@ export async function listUsers(
     keyword?: string;
     roleId?: string;
     status?: string;
-    department?: string;
+    departmentId?: string;
   }
 ) {
   requirePermission(user.roleCode, RESOURCE.USER, ACTION.READ);
-  const { page, pageSize, keyword, roleId, status, department } = params;
+  const { page, pageSize, keyword, roleId, status, departmentId } = params;
   const where: Prisma.UserWhereInput = {
     deletedAt: null,
     ...(roleId ? { roleId } : {}),
     ...(status ? { status } : {}),
-    ...(department ? { department } : {}),
+    ...(departmentId ? { departmentId } : {}),
     ...(keyword
       ? {
           OR: [
@@ -103,7 +103,7 @@ export type UserCreateInput = {
   email: string;
   phone?: string;
   roleId: string;
-  department?: string;
+  departmentId?: string;
   status?: "ACTIVE" | "DISABLED";
 };
 
@@ -128,7 +128,7 @@ export async function createUser(actor: SessionUser, input: UserCreateInput) {
       email: input.email,
       phone: input.phone ?? null,
       roleId: input.roleId,
-      department: input.department ?? null,
+      departmentId: input.departmentId ?? null,
       status: input.status ?? "ACTIVE",
       passwordHash
     }
@@ -148,7 +148,7 @@ export type UserUpdateInput = Partial<{
   email: string;
   phone: string | null;
   roleId: string;
-  department: string | null;
+  departmentId: string | null;
   status: "ACTIVE" | "DISABLED";
 }>;
 
@@ -179,7 +179,7 @@ export async function updateUser(actor: SessionUser, id: string, input: UserUpda
       ...(input.email !== undefined ? { email: input.email } : {}),
       ...(input.phone !== undefined ? { phone: input.phone } : {}),
       ...(input.roleId !== undefined ? { roleId: input.roleId } : {}),
-      ...(input.department !== undefined ? { department: input.department } : {}),
+      ...(input.departmentId !== undefined ? { departmentId: input.departmentId } : {}),
       ...(input.status !== undefined ? { status: input.status } : {})
     }
   });

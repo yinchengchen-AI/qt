@@ -38,7 +38,8 @@ model User {
   passwordHash  String
   roleId        String
   role          Role       @relation(fields: [roleId], references: [id])
-  department    String?
+  departmentId  String?
+  department    Department? @relation("UserDepartment", fields: [departmentId], references: [id])
   status        String     @default("ACTIVE") // ACTIVE | DISABLED
   lastLoginAt   DateTime?  @db.Timestamptz(6)
   wechatWorkId  String?
@@ -48,6 +49,7 @@ model User {
 
   @@index([roleId])
   @@index([status])
+  @@index([departmentId])
 }
 
 // =====================================================
@@ -409,6 +411,28 @@ model Dictionary {
 
   @@unique([category, code])
   @@index([category, isActive, sort])
+}
+
+// 部门管理（树形自引用）
+// 1b: 平铺 / 树形选 树形
+// - parentId 自我引用形成任意层级
+// - code 业务唯一,如 业务部 / 业务一部 / 业务二部
+// - isActive=false 为停用,业务查询自动过滤
+// - members 由 User.departmentId 反向关联计数
+model Department {
+  id        String   @id @default(cuid())
+  code      String   @unique
+  name      String
+  parentId  String?
+  parent    Department?  @relation("DepartmentTree", fields: [parentId], references: [id])
+  children  Department[] @relation("DepartmentTree")
+  sort      Int      @default(0)
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now()) @db.Timestamptz(6)
+  updatedAt DateTime @updatedAt      @db.Timestamptz(6)
+  members   User[]      @relation("UserDepartment")
+
+  @@index([parentId, isActive, sort])
 }
 
 model Sequence {
