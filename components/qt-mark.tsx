@@ -3,23 +3,19 @@ import { CSSProperties } from "react";
 
 /**
  * 企泰安全 logo
- *  - mark:蓝色"C/G 形"方块(右上切角) + 红色小方块(右下重叠) + 黑色小点
- *  - wordmark:"企泰安全" + "QITAI · SAFETY TECH" 副标题
- *  - variant:default(深蓝底) / light(白底深 Q) / mono(线框)
+ *  - mark:蓝色 C/G 形方块(右侧中段缺口) + 红色小方块(右下) + 黑色小点
+ *  - wordmark:"企泰安全" + "QITAI SAFETY" 副标题
+ *  - variant:default(深蓝+鲜红) / light(同色,适配浅色背景) / mono(全深蓝)
  */
 type Variant = "default" | "light" | "mono";
 
 type Props = {
-  /** 仅 mark 的边长,单位 px,默认 32 */
   size?: number;
-  /** 是否带文字 wordmark */
   withWordmark?: boolean;
-  /** 文字可选大小,默认 16 */
   wordmarkSize?: number;
   variant?: Variant;
   className?: string;
   style?: CSSProperties;
-  /** 整体 aria-label,默认"杭州企泰安全科技" */
   title?: string;
 };
 
@@ -32,7 +28,6 @@ export function QtMark({
   style,
   title = "杭州企泰安全科技"
 }: Props) {
-  // 配色
   const c =
     variant === "light"
       ? { blue: "#0A1C33", red: "#E11A2A", dot: "#0A1C33" }
@@ -51,22 +46,19 @@ export function QtMark({
       <svg
         width={size}
         height={size}
-        viewBox="0 0 62 48"
+        viewBox="0 0 64 48"
         xmlns="http://www.w3.org/2000/svg"
         aria-hidden={withWordmark ? "true" : undefined}
       >
         <defs>
           <mask id={`qitai-mask-${size}`}>
             <rect width="48" height="48" fill="white" />
-            <rect x="32" y="0" width="16" height="24" fill="black" />
+            <rect x="24" y="14" width="24" height="20" fill="black" />
           </mask>
         </defs>
-        {/* 蓝色主体(C/G 形) */}
         <rect width="48" height="48" rx="6" fill={c.blue} mask={`url(#qitai-mask-${size})`} />
-        {/* 红色小方块(右下) */}
         <rect x="32" y="28" width="20" height="20" rx="3" fill={c.red} />
-        {/* 黑色小点(右上) */}
-        <rect x="56" y="14" width="6" height="6" rx="1" fill={c.dot} />
+        <rect x="58" y="14" width="6" height="6" rx="1" fill={c.dot} />
       </svg>
       {withWordmark ? (
         <span style={{ display: "inline-flex", flexDirection: "column", lineHeight: 1.2 }}>
@@ -83,14 +75,14 @@ export function QtMark({
           <span
             style={{
               fontSize: Math.max(10, wordmarkSize * 0.55),
-              fontWeight: 600,
+              fontWeight: 700,
               letterSpacing: "0.25em",
-              color: "rgba(10, 28, 51, 0.55)",
+              color: "rgba(10, 28, 51, 0.7)",
               marginTop: 4,
               textTransform: "uppercase"
             }}
           >
-            QITAI · SAFETY TECH
+            QITAI SAFETY
           </span>
         </span>
       ) : null}
