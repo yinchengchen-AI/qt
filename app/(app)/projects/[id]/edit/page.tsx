@@ -6,7 +6,8 @@ import {
   ProFormDigit,
   ProFormDatePicker
 } from "@ant-design/pro-components";
-import { App as AntdApp, Card, Space, Tag, Typography } from "antd";
+import { App as AntdApp, Card, Space, Typography } from "antd";
+import { StatusTag } from "@/components/status-tag";
 import { useParams, useRouter } from "next/navigation";
 import useSWR from "swr";
 import { Page } from "@/components/page";
@@ -38,7 +39,7 @@ export default function EditProjectPage() {
         <PageHeader back={() => router.push(`/projects/${id}`)} title="编辑项目" />
         <FormCard>
           <Text type="warning">
-            当前状态 <Tag>{data.status}</Tag> 不可编辑;仅 PLANNED / SUSPENDED 可改。
+            当前状态 <StatusTag status={data.status} domain="project" /> 不可编辑;仅 计划中 / 已暂停 可改。
           </Text>
         </FormCard>
       </Page>

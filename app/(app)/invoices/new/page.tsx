@@ -98,7 +98,7 @@ export default function NewInvoicePage() {
             return true;
           }}
         >
-          <FormSection title="关联合同" description="合同须处于 EFFECTIVE / EXECUTING 状态;选合同后自动带出客户与抬头">
+          <FormSection title="关联合同" description="合同须处于 已生效 / 执行中 状态;选合同后自动带出客户与抬头">
             <ProFormSelect
               name="contractId"
               label="合同"
@@ -267,7 +267,7 @@ export default function NewInvoicePage() {
 
           <Space>
             <Text type="secondary" style={{ fontSize: 12 }}>
-              草稿状态可编辑;提交后 <Tag color="blue">DRAFT → PENDING_FINANCE</Tag> 由财务审核。
+              草稿状态可编辑;提交后 <Tag color="blue">草稿 → 财务待审</Tag> 由财务审核。
             </Text>
           </Space>
         </ProForm>

@@ -66,7 +66,7 @@ export default function NewProjectPage() {
             return true;
           }}
         >
-          <FormSection title="所属合同" description="仅 EFFECTIVE / EXECUTING 状态的合同可选">
+          <FormSection title="所属合同" description="仅 已生效 / 执行中 状态的合同可选">
             <ProFormSelect
               name="contractId"
               label="合同"
@@ -110,7 +110,7 @@ export default function NewProjectPage() {
               <ProFormText
                 name="name"
                 label="项目名称"
-                placeholder="如:阿里巴巴 2026 Q1 安全评估"
+                placeholder="如:阿里巴巴 2026 第一季度 安全评估"
                 rules={[
                   { required: true, message: "请输入项目名称" },
                   { max: 100 }
@@ -195,7 +195,7 @@ export default function NewProjectPage() {
 
           <Space>
             <Text type="secondary" style={{ fontSize: 12 }}>
-              项目默认状态 <Tag color="blue">PLANNED 计划中</Tag>;
+              项目默认状态 <Tag color="blue">计划中</Tag>;
               创建后可手动 <Tag>开始</Tag> <Tag>取消</Tag>。
             </Text>
           </Space>

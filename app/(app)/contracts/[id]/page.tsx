@@ -12,6 +12,7 @@ import { StatusTag } from "@/components/status-tag";
 import { useActionCall } from "@/lib/use-action-call";
 import { CurrencyCell, DateTimeCell, PercentCell } from "@/components/table-cells";
 
+const PAYMENT_METHOD_MAP: Record<string, string> = { LUMP_SUM: "一次性", BY_PHASE: "按阶段", BY_MONTH: "按月", BY_QUARTER: "按季" };
 type Contract = {
   id: string; contractNo: string; customerId: string; customerName: string;
   title: string; serviceType: string; signDate: string; startDate: string;
@@ -81,7 +82,7 @@ export default function ContractDetailPage() {
           { title: "签订日期", dataIndex: "signDate", render: (v: any) => <DateTimeCell value={v} /> },
           { title: "服务起期", dataIndex: "startDate", render: (v: any) => <DateTimeCell value={v} /> },
           { title: "服务止期", dataIndex: "endDate", render: (v: any) => <DateTimeCell value={v} /> },
-          { title: "付款方式", dataIndex: "paymentMethod" },
+          { title: "付款方式", dataIndex: "paymentMethod", render: (v: any) => PAYMENT_METHOD_MAP[v] ?? v },
           { title: "合同总额(含税)", dataIndex: "totalAmount", render: (v: any) => <CurrencyCell value={v} /> },
           { title: "税率", dataIndex: "taxRate", render: (v: any) => <PercentCell value={v} /> },
           { title: "税额", dataIndex: "taxAmount", render: (v: any) => <CurrencyCell value={v} /> },

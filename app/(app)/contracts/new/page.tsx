@@ -90,7 +90,7 @@ export default function NewContractPage() {
             return true;
           }}
         >
-          <FormSection title="签约主体" description="只可选 NEGOTIATING / SIGNED 状态客户">
+          <FormSection title="签约主体" description="只可选 洽谈中 / 已签约 状态客户">
             <FormGrid columns={1}>
               <ProFormSelect
                 name="customerId"
@@ -221,7 +221,7 @@ export default function NewContractPage() {
 
           <Space style={{ marginTop: 8 }}>
             <Text type="secondary" style={{ fontSize: 12 }}>
-              草稿状态可编辑;提交审批后 <Tag color="blue">DRAFT → PENDING_REVIEW</Tag> 不可直接改,需撤回。
+              草稿状态可编辑;提交审批后 <Tag color="blue">草稿 → 待审批</Tag> 不可直接改,需撤回。
             </Text>
           </Space>
         </ProForm>

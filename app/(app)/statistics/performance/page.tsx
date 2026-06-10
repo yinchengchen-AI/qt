@@ -62,7 +62,7 @@ export default function PerformancePage() {
       ) : (
         <>
           <div>
-            <PageHeader level="section" title="合同额 Top" />
+            <PageHeader level="section" title="合同额排行" />
             <ProCard>
               {chartData.length > 0 ? (
                 <Column data={chartData} xField="name" yField="value" height={280} />

@@ -69,7 +69,7 @@ export function CreateDictModal({ open, onClose, onSaved, defaultCategory }: Pro
             { pattern: /^[A-Z][A-Z0-9_]*$/, message: "大写字母/数字/下划线,以大写字母开头" }
           ]}
         >
-          <Input placeholder="如 NEW_TYPE" />
+          <Input placeholder="如 新类型" />
         </Form.Item>
         <Form.Item name="label" label="标签" rules={[{ required: true, max: 80 }]}>
           <Input maxLength={80} showCount />

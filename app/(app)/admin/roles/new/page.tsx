@@ -11,10 +11,10 @@ import { ROLE_LABEL } from "@/lib/status";
 const { Text } = Typography;
 
 const TEMPLATE_OPTIONS = [
-  { value: "ADMIN", label: "复制 ADMIN 权限（只读系统角色）" },
-  { value: "SALES", label: "复制 SALES 权限" },
-  { value: "FINANCE", label: "复制 FINANCE 权限" },
-  { value: "OPS", label: "复制 OPS 权限" },
+  { value: "ADMIN", label: "复制管理员权限（只读系统角色）" },
+  { value: "SALES", label: "复制业务人员权限" },
+  { value: "FINANCE", label: "复制财务人员权限" },
+  { value: "OPS", label: "复制行政人员权限" },
   { value: "EMPTY", label: "空白（自定义）" }
 ];
 
@@ -28,7 +28,7 @@ export default function NewRolePage() {
       <PageHeader
         back={() => router.push("/admin/roles")}
         title="新建角色"
-        subtitle="自定义角色（isSystem=false）"
+        subtitle="自定义角色（非系统角色）"
       />
       <ProCard>
         <ProForm

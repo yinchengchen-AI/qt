@@ -11,6 +11,7 @@ import { DetailPageSkeleton } from "@/components/detail-page-skeleton";
 import { StatusTag } from "@/components/status-tag";
 import { useActionCall } from "@/lib/use-action-call";
 import { CurrencyCell, DateTimeCell } from "@/components/table-cells";
+const METHOD_MAP: Record<string, string> = { BANK_TRANSFER: "银行转账", CHECK: "支票", CASH: "现金", WECHAT: "微信", ALIPAY: "支付宝", OTHER: "其他" };
 
 export default function PaymentDetailPage() {
   const params = useParams();
@@ -71,7 +72,7 @@ export default function PaymentDetailPage() {
         <ProDescriptions column={2} dataSource={data} columns={[
           { title: "回款号", dataIndex: "paymentNo" },
           { title: "金额", dataIndex: "amount", render: (v: any) => <CurrencyCell value={v} /> },
-          { title: "方式", dataIndex: "method" },
+          { title: "方式", dataIndex: "method", render: (v: any) => METHOD_MAP[v] ?? v },
           { title: "到账日", dataIndex: "receivedAt", render: (v: any) => <DateTimeCell value={v} /> },
           { title: "银行流水号", dataIndex: "bankRefNo" },
           { title: "收款行", dataIndex: "bankName" },
@@ -95,8 +96,8 @@ export default function PaymentDetailPage() {
       <PageHeader level="section" title="分配明细" />
       <ProCard>
         <ProTable rowKey="id" search={false} options={false} pagination={false} dataSource={data.allocations ?? []} columns={[
-          { title: "发票 ID", dataIndex: "invoiceId" },
-          { title: "项目 ID", dataIndex: "projectId" },
+          { title: "发票编号", dataIndex: "invoiceId" },
+          { title: "项目编号", dataIndex: "projectId" },
           { title: "金额", dataIndex: "amount", render: (v: any) => <CurrencyCell value={v} /> },
           { title: "备注", dataIndex: "remark" }
         ]} />

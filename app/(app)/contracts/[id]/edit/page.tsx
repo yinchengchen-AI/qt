@@ -6,7 +6,8 @@ import {
   ProFormDigit,
   ProFormDatePicker
 } from "@ant-design/pro-components";
-import { App as AntdApp, Card, Space, Tag, Typography } from "antd";
+import { App as AntdApp, Card, Space, Typography } from "antd";
+import { StatusTag } from "@/components/status-tag";
 import { useParams, useRouter } from "next/navigation";
 import useSWR from "swr";
 import { useDict } from "@/lib/dict-client";
@@ -47,7 +48,7 @@ export default function EditContractPage() {
         <PageHeader back={() => router.push(`/contracts/${id}`)} title="编辑合同" />
         <FormCard>
           <Text type="warning">
-            当前状态 <Tag>{data.status}</Tag> 不可编辑;仅 DRAFT / PENDING_REVIEW 可改。
+            当前状态 <StatusTag status={data.status} domain="contract" /> 不可编辑;仅 草稿 / 待审批 可改。
           </Text>
         </FormCard>
       </Page>

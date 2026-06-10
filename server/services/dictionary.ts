@@ -1,5 +1,5 @@
 // 数据字典服务
-// - 13 类白名单（不允许新建 category）
+// - 15 类白名单（不允许新建 category）
 // - 增/改/启停/重排；删除 = 软停用 isActive=false
 // - 客户/合同等业务表 code 外键悬空风险,不允许硬删
 import { prisma } from "@/lib/prisma";

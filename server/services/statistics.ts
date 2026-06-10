@@ -29,7 +29,7 @@ export async function getOverview(user: SessionUser, range: DateRange) {
         deletedAt: null,
         status: "ISSUED",
         actualIssueDate: dateWhere(range, "actualIssueDate"),
-        ...(user.roleCode === "SALES" ? { project: { contract: { ownerUserId: user.id } } } : {})
+        ...(user.roleCode === "SALES" ? { contract: { ownerUserId: user.id } } : {})
       },
       _sum: { amount: true },
       _count: { _all: true }
@@ -84,7 +84,7 @@ export async function getTimeSeries(user: SessionUser, range: DateRange) {
         deletedAt: null,
         status: "ISSUED",
         actualIssueDate: { gte: from, lte: to },
-        ...(user.roleCode === "SALES" ? { project: { contract: { ownerUserId: user.id } } } : {})
+        ...(user.roleCode === "SALES" ? { contract: { ownerUserId: user.id } } : {})
       },
       select: { actualIssueDate: true, amount: true }
     }),
@@ -238,7 +238,7 @@ export async function getSalesPerformance(user: SessionUser, targetUserId?: stri
       }),
       prisma.invoice.aggregate({
         where: {
-          project: { contract: { ownerUserId: u.id } },
+          contract: { ownerUserId: u.id },
           deletedAt: null,
           status: "ISSUED",
           ...(range ? { actualIssueDate: dateWhere(range, "actualIssueDate") } : {})

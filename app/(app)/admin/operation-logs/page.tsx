@@ -37,14 +37,14 @@ export default function OperationLogsPage() {
       title: "操作人",
       dataIndex: "actorId",
       width: 200,
-      fieldProps: { placeholder: "user.id" },
+      fieldProps: { placeholder: "用户编号" },
       render: (_, r) => (r.actor ? `${r.actor.name}(${r.actor.employeeNo})` : r.actorId)
     },
     {
       title: "动作",
       dataIndex: "action",
       width: 140,
-      fieldProps: { placeholder: "如 CONTRACT_SUBMIT" },
+      fieldProps: { placeholder: "如 合同提交" },
       render: (_, r) => {
         const domain = actionDomain(r.action);
         if (domain) {
@@ -64,7 +64,7 @@ export default function OperationLogsPage() {
       }, {}),
       fieldProps: { allowClear: true, showSearch: true }
     },
-    { title: "对象 ID", dataIndex: "entityId", width: 220 },
+    { title: "对象编号", dataIndex: "entityId", width: 220 },
     {
       title: "差异",
       dataIndex: "diff",
@@ -80,7 +80,7 @@ export default function OperationLogsPage() {
     <Page>
       <PageHeader
         title="操作日志"
-        subtitle="按时间倒序记录所有状态机迁移与关键修改;支持按 entity / action / actorId 过滤"
+        subtitle="按时间倒序记录所有状态机迁移与关键修改;支持按 对象 / 动作 / 操作人编号 过滤"
       />
       <ProTable<Log>
         rowKey="id"

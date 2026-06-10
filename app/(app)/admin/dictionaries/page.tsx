@@ -99,7 +99,7 @@ export default function DictionariesPage() {
     <Page>
       <PageHeader
         title="数据字典"
-        subtitle="13 类白名单内的下拉 / 单选 / 状态枚举;支持增 / 改 / 启停 / 重排"
+        subtitle="15 类白名单内的下拉 / 单选 / 状态枚举;支持增 / 改 / 启停 / 重排"
         actions={
           <Space>
             <span style={{ fontSize: 13, color: "rgba(0,0,0,0.65)" }}>
@@ -148,3 +148,4 @@ export default function DictionariesPage() {
     </Page>
   );
 }
+

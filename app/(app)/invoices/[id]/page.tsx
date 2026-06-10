@@ -11,6 +11,8 @@ import { DetailPageSkeleton } from "@/components/detail-page-skeleton";
 import { StatusTag } from "@/components/status-tag";
 import { useActionCall } from "@/lib/use-action-call";
 import { CurrencyCell, DateTimeCell, PercentCell } from "@/components/table-cells";
+const INVOICE_TYPE_MAP: Record<string, string> = { VAT_SPECIAL: "增值税专用发票", VAT_GENERAL: "增值税普通发票", VAT_ELECTRONIC: "增值税电子专票", ELEC_NORMAL: "电子普通发票" };
+const TITLE_TYPE_MAP: Record<string, string> = { COMPANY: "公司", PERSONAL: "个人" };
 
 export default function InvoiceDetailPage() {
   const params = useParams();
@@ -87,14 +89,14 @@ export default function InvoiceDetailPage() {
         <ProDescriptions column={2} dataSource={data} columns={[
           { title: "发票号", dataIndex: "invoiceNo" },
           { title: "客户", dataIndex: "customerName" },
-          { title: "发票类型", dataIndex: "invoiceType" },
+          { title: "发票类型", dataIndex: "invoiceType", render: (v: any) => INVOICE_TYPE_MAP[v] ?? v },
           { title: "含税金额", dataIndex: "amount", render: (v: any) => <CurrencyCell value={v} /> },
           { title: "税额", dataIndex: "taxAmount", render: (v: any) => <CurrencyCell value={v} /> },
           { title: "不含税金额", dataIndex: "amountExcludingTax", render: (v: any) => <CurrencyCell value={v} /> },
           { title: "税率", dataIndex: "taxRate", render: (v: any) => <PercentCell value={v} /> },
           { title: "申请日", dataIndex: "applyDate", render: (v: any) => <DateTimeCell value={v} /> },
           { title: "实际开票日", dataIndex: "actualIssueDate", render: (v: any) => <DateTimeCell value={v} /> },
-          { title: "抬头类型", dataIndex: "titleType" },
+          { title: "抬头类型", dataIndex: "titleType", render: (v: any) => TITLE_TYPE_MAP[v] ?? v },
           { title: "抬头名称", dataIndex: "titleName" },
           { title: "税号", dataIndex: "taxNo" },
           { title: "开户行", dataIndex: "bankName" },

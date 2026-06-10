@@ -27,6 +27,8 @@ export default function EditCustomerPage() {
   const { message } = AntdApp.useApp();
   const customerType = useDict("CUSTOMER_TYPE");
   const customerLevel = useDict("CUSTOMER_LEVEL");
+  const industryDict = useDict("CUSTOMER_INDUSTRY");
+  const sourceDict = useDict("CUSTOMER_SOURCE");
   const statusOptions = useStatusOptions("customer");
   const { data, isLoading } = useSWR<any>(`/api/customers/${id}`);
 
@@ -116,6 +118,8 @@ export default function EditCustomerPage() {
                 <ProFormSelect
                   name="industry"
                   label="行业"
+                  placeholder="请选择行业"
+                  options={industryDict.map((d) => ({ value: d.code, label: d.label }))}
                   showSearch
                   allowClear
                   fieldProps={{ size: "large" }}
@@ -123,6 +127,8 @@ export default function EditCustomerPage() {
                 <ProFormSelect
                   name="sourceChannel"
                   label="客户来源"
+                  placeholder="请选择客户来源"
+                  options={sourceDict.map((d) => ({ value: d.code, label: d.label }))}
                   showSearch
                   allowClear
                   fieldProps={{ size: "large" }}
@@ -226,7 +232,7 @@ export default function EditCustomerPage() {
                 />
                 <Space>
                   <Text type="secondary" style={{ fontSize: 12 }}>
-                    状态切换的合法性由后端校验（如 FROZEN 需要无进行中合同 / 未对账回款）
+                    状态切换的合法性由后端校验（如 已冻结 需要无进行中合同 / 未对账回款）
                   </Text>
                 </Space>
               </FormGrid>

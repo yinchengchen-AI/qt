@@ -18,7 +18,7 @@ export default function NewUserPage() {
   const { data: rolesResp } = useSWR<{ data: { list: Role[] } }>("/api/roles?pageSize=100");
   const roleOptions = (rolesResp?.data?.list ?? []).map((r) => ({
     value: r.id,
-    label: `${r.name} (${r.code})`
+    label: r.name
   }));
 
   return (
@@ -58,7 +58,7 @@ export default function NewUserPage() {
               <ProFormText
                 name="employeeNo"
                 label="工号"
-                placeholder="如:zhangsan 或 z001"
+                placeholder="如:zs001 或 张三"
                 rules={[{ required: true, max: 40, message: "工号必填, ≤ 40 字符" }]}
                 fieldProps={{ size: "large", maxLength: 40, showCount: true }}
               />
@@ -72,7 +72,7 @@ export default function NewUserPage() {
               <ProFormText
                 name="email"
                 label="邮箱"
-                placeholder="如:zhangsan@example.com"
+                placeholder="如:zs@example.com"
                 rules={[
                   { required: true, type: "email", message: "请输入正确邮箱" },
                   { max: 120 }
@@ -120,8 +120,8 @@ export default function NewUserPage() {
               />
               <Space>
                 <Text type="secondary" style={{ fontSize: 12 }}>
-                  默认 <Tag color="green">ACTIVE 启用</Tag>;
-                  选 <Tag>DISABLED</Tag> 状态会立即禁止该账号登录
+                  默认 <Tag color="green">启用</Tag>;
+                  选 <Tag>禁用</Tag> 状态会立即禁止该账号登录
                 </Text>
               </Space>
             </FormGrid>

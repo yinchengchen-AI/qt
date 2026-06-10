@@ -1,7 +1,9 @@
-// 字典 13 类白名单 — service 校验 / 前端下拉 / seed 一致
+// 字典 15 类白名单 — service 校验 / 前端下拉 / seed 一致
 export const ALLOWED_DICTIONARY_CATEGORIES = [
   "CUSTOMER_TYPE",
   "CUSTOMER_LEVEL",
+  "CUSTOMER_INDUSTRY",
+  "CUSTOMER_SOURCE",
   "SERVICE_TYPE",
   "CONTRACT_PAYMENT_METHOD",
   "PROJECT_STATUS",
@@ -21,6 +23,8 @@ export type DictionaryCategory = (typeof ALLOWED_DICTIONARY_CATEGORIES)[number];
 export const DICTIONARY_CATEGORY_LABEL: Record<string, string> = {
   CUSTOMER_TYPE: "客户类型",
   CUSTOMER_LEVEL: "客户等级",
+  CUSTOMER_INDUSTRY: "行业",
+  CUSTOMER_SOURCE: "客户来源",
   SERVICE_TYPE: "服务类型",
   CONTRACT_PAYMENT_METHOD: "合同付款方式",
   PROJECT_STATUS: "项目状态",

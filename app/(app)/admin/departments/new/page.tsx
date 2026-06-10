@@ -69,7 +69,7 @@ export default function NewDepartmentPage() {
               <ProFormText
                 name="code"
                 label="代码"
-                placeholder="如 tech / tech_team_a"
+                placeholder="如 技术部 / 技术一组"
                 rules={[
                   { required: true, max: 30 },
                   { pattern: /^[A-Za-z][A-Za-z0-9_-]*$/, message: "字母开头,允许字母/数字/-/_" }
@@ -115,7 +115,7 @@ export default function NewDepartmentPage() {
 
           <Space>
             <Text type="secondary" style={{ fontSize: 12 }}>
-              顶级部门可后续挂为其它部门的子部门;现有成员的部门 ID 不会变化,FK 仍指向原部门。
+              顶级部门可后续挂为其它部门的子部门;现有成员的部门编号 不会变化,外键仍指向原部门。
             </Text>
           </Space>
         </ProForm>

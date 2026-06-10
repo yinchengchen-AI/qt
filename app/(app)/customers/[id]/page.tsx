@@ -12,7 +12,7 @@ import { CurrencyCell, DateCell, DateTimeCell } from "@/components/table-cells";
 
 type Customer = {
   id: string; code: string; name: string; shortName: string | null;
-  unifiedSocialCreditCode: string | null; customerType: string; industry: string | null;
+  unifiedSocialCreditCode: string | null; customerType: string; industry: string | null; sourceChannel: string | null;
   scale: string | null; level: string; status: string; contactPhone: string;
   contactEmail: string | null; province: string; city: string; address: string | null;
   creditLimitAmount: string | null; paymentTermDays: number; createdAt: string;
@@ -24,6 +24,8 @@ export default function CustomerDetailPage() {
   const router = useRouter();
   const customerType = useDict("CUSTOMER_TYPE");
   const customerLevel = useDict("CUSTOMER_LEVEL");
+  const industryDict = useDict("CUSTOMER_INDUSTRY");
+  const sourceDict = useDict("CUSTOMER_SOURCE");
   const { data, error, isLoading, mutate } = useSWR<Customer>(`/api/customers/${id}`);
   const { data: followUps } = useSWR<Array<any>>(`/api/customers/${id}/follow-ups`);
   const { data: contracts } = useSWR<Array<any>>(`/api/customers/${id}/contracts`);
@@ -49,6 +51,8 @@ export default function CustomerDetailPage() {
   }
   const typeLabel = customerType.find((d) => d.code === data.customerType)?.label ?? data.customerType;
   const levelLabel = customerLevel.find((d) => d.code === data.level)?.label ?? data.level;
+  const industryLabel = data.industry ? (industryDict.find((d) => d.code === data.industry)?.label ?? data.industry) : "—";
+  const sourceLabel = data.sourceChannel ? (sourceDict.find((d) => d.code === data.sourceChannel)?.label ?? data.sourceChannel) : "—";
   return (
     <Page>
       <PageHeader
@@ -70,7 +74,8 @@ export default function CustomerDetailPage() {
           { title: "统一社会信用代码", dataIndex: "unifiedSocialCreditCode" },
           { title: "类型", dataIndex: "customerType", render: () => typeLabel },
           { title: "等级", dataIndex: "level", render: () => <Tag>{levelLabel}</Tag> },
-          { title: "行业", dataIndex: "industry" },
+          { title: "行业", dataIndex: "industry", render: () => industryLabel },
+          { title: "客户来源", dataIndex: "sourceChannel", render: () => sourceLabel },
           { title: "所在地区", dataIndex: "province", render: (_, r) => `${r.province} / ${r.city}` },
           { title: "详细地址", dataIndex: "address" },
           { title: "联系电话", dataIndex: "contactPhone" },

@@ -84,7 +84,7 @@ export default function NewPaymentPage() {
               message.error(j.message);
               return false;
             }
-            message.success("已登记（PLANNED）");
+            message.success("已登记（计划中）");
             router.push(`/payments/${j.data.id}`);
             return true;
           }}
@@ -191,7 +191,7 @@ export default function NewPaymentPage() {
                 name="bankRefNo"
                 label="银行流水号"
                 placeholder="对账时必填;全局唯一"
-                tooltip="CONFIRMED 状态时必填"
+                tooltip="已确认状态时必填"
                 fieldProps={{ size: "large", maxLength: 50 }}
               />
             </FormGrid>
@@ -216,8 +216,8 @@ export default function NewPaymentPage() {
 
           <Space>
             <Text type="secondary" style={{ fontSize: 12 }}>
-              登记后状态 <Tag color="blue">PLANNED 计划中</Tag>;
-              财务确认后变 <Tag color="processing">CONFIRMED</Tag>,可对账。
+              登记后状态 <Tag color="blue">计划中</Tag>;
+              财务确认后变 <Tag color="processing">已确认</Tag>,可对账。
             </Text>
           </Space>
         </ProForm>

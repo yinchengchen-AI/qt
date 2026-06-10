@@ -34,7 +34,7 @@ export default function EditUserPage() {
   const { data: rolesResp } = useSWR<{ data: { list: Role[] } }>("/api/roles?pageSize=100");
   const roleOptions = (rolesResp?.data?.list ?? []).map((r) => ({
     value: r.id,
-    label: `${r.name} (${r.code})`
+    label: r.name
   }));
 
   if (isLoading || !data) {
@@ -137,7 +137,7 @@ export default function EditUserPage() {
               />
               <Space>
                 <Text type="secondary" style={{ fontSize: 12 }}>
-                  最后一位 <Tag color="blue">ADMIN</Tag> 不可禁用;自己不可改/禁(后端护栏)
+                  最后一位 <Tag color="blue">管理员</Tag> 不可禁用;自己不可改/禁(后端护栏)
                 </Text>
               </Space>
             </FormGrid>

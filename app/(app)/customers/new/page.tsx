@@ -18,6 +18,8 @@ export default function NewCustomerPage() {
   const { message } = AntdApp.useApp();
   const customerType = useDict("CUSTOMER_TYPE");
   const customerLevel = useDict("CUSTOMER_LEVEL");
+  const industryDict = useDict("CUSTOMER_INDUSTRY");
+  const sourceDict = useDict("CUSTOMER_SOURCE");
   // 新建不允许 FROZEN
   const statusOptions = useStatusOptions("customer", (c) => c !== "FROZEN");
 
@@ -102,7 +104,8 @@ export default function NewCustomerPage() {
                 <ProFormSelect
                   name="industry"
                   label="行业"
-                  placeholder="如:制造业 / 金融 / 政府"
+                  placeholder="请选择行业"
+                  options={industryDict.map((d) => ({ value: d.code, label: d.label }))}
                   showSearch
                   allowClear
                   fieldProps={{ size: "large" }}
@@ -110,7 +113,8 @@ export default function NewCustomerPage() {
                 <ProFormSelect
                   name="sourceChannel"
                   label="客户来源"
-                  placeholder="如:展会 / 转介绍 / 官网"
+                  placeholder="请选择客户来源"
+                  options={sourceDict.map((d) => ({ value: d.code, label: d.label }))}
                   showSearch
                   allowClear
                   fieldProps={{ size: "large" }}
@@ -209,8 +213,8 @@ export default function NewCustomerPage() {
                 />
                 <Space>
                   <Text type="secondary" style={{ fontSize: 12 }}>
-                    新建客户默认 <Tag color="blue">LEAD 线索</Tag>。如已签约请选
-                    <Tag color="green">SIGNED 已签约</Tag>
+                    新建客户默认 <Tag color="blue">线索</Tag>。如已签约请选
+                    <Tag color="green">已签约</Tag>
                   </Text>
                 </Space>
               </FormGrid>
