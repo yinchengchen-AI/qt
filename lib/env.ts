@@ -1,4 +1,4 @@
-﻿import { createEnv } from "@t3-oss/env-nextjs";
+import { createEnv } from "@t3-oss/env-nextjs";
 import { z } from "zod";
 
 export const env = createEnv({
@@ -13,7 +13,20 @@ export const env = createEnv({
     APP_PUBLIC_URL: z.string().url().optional(),
     // cron 调用的共享密钥；生产环境必须设置
     CRON_SECRET: z.string().min(16).optional(),
-    NODE_ENV: z.enum(["development", "test", "production"]).default("development")
+    NODE_ENV: z.enum(["development", "test", "production"]).default("development"),
+    // MinIO / S3-compatible 对象存储(合同附件)
+    // 留空字符串视为未配置;相关 API 会返回 503
+    MINIO_ENDPOINT: z.string().min(1).optional(),
+    MINIO_PORT: z.coerce.number().int().positive().optional(),
+    MINIO_USE_SSL: z
+      .string()
+      .optional()
+      .transform((v) => v === "true" || v === "1"),
+    MINIO_ACCESS_KEY: z.string().min(1).optional(),
+    MINIO_SECRET_KEY: z.string().min(1).optional(),
+    MINIO_BUCKET: z.string().min(1).optional(),
+    // 用于在通知/审计里拼出原始 URL;可省略(默认走 MINIO_ENDPOINT:PORT)
+    MINIO_PUBLIC_BASE_URL: z.string().url().optional()
   },
   client: {},
   runtimeEnv: {
@@ -23,7 +36,14 @@ export const env = createEnv({
     APP_ENC_KEY_HEX: process.env.APP_ENC_KEY_HEX,
     APP_PUBLIC_URL: process.env.APP_PUBLIC_URL,
     CRON_SECRET: process.env.CRON_SECRET,
-    NODE_ENV: process.env.NODE_ENV
+    NODE_ENV: process.env.NODE_ENV,
+    MINIO_ENDPOINT: process.env.MINIO_ENDPOINT,
+    MINIO_PORT: process.env.MINIO_PORT,
+    MINIO_USE_SSL: process.env.MINIO_USE_SSL,
+    MINIO_ACCESS_KEY: process.env.MINIO_ACCESS_KEY,
+    MINIO_SECRET_KEY: process.env.MINIO_SECRET_KEY,
+    MINIO_BUCKET: process.env.MINIO_BUCKET,
+    MINIO_PUBLIC_BASE_URL: process.env.MINIO_PUBLIC_BASE_URL
   },
   emptyStringAsUndefined: true
 });
@@ -56,4 +76,15 @@ export function assertProductionConfig(): void {
 export function getPublicBaseUrl(): string {
   assertProductionConfig();
   return (env.APP_PUBLIC_URL ?? env.NEXTAUTH_URL ?? "http://localhost:3000").replace(/\/+$/, "");
+}
+
+// MinIO 是否完整配置(任一字段缺失即视为未启用);缺失时 API 路由返回 503
+export function isMinioEnabled(): boolean {
+  return Boolean(
+    env.MINIO_ENDPOINT &&
+      env.MINIO_PORT &&
+      env.MINIO_ACCESS_KEY &&
+      env.MINIO_SECRET_KEY &&
+      env.MINIO_BUCKET
+  );
 }

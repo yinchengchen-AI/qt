@@ -1,4 +1,4 @@
-﻿// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-nocheck -- 业务数据全部由 patches/_seed_writer.mjs 注入生成,数据结构是 JS 字面量暂不细化
 // 种子：4 角色 + 4 账号 + 字典
 import { PrismaClient } from "@prisma/client";

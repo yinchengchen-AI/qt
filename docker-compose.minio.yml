@@ -1,0 +1,42 @@
+# 本地开发用 MinIO 单节点
+# 启动: docker compose -f docker-compose.minio.yml up -d
+# 停止: docker compose -f docker-compose.minio.yml down
+# 数据卷:  ./docker-data/minio  (删除卷 = 清空所有对象)
+# Console: http://localhost:9001  账号 minioadmin / minioadmin
+# API:     http://localhost:9000
+
+services:
+  minio:
+    image: minio/minio:latest
+    container_name: qitai-minio
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: minioadmin
+    ports:
+      - "9000:9000"   # S3 API
+      - "9001:9001"   # Web Console
+    volumes:
+      - ./docker-data/minio:/data
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    restart: unless-stopped
+
+  # 启动后自动建桶 + 配 CORS
+  minio-init:
+    image: minio/mc:latest
+    container_name: qitai-minio-init
+    depends_on:
+      minio:
+        condition: service_healthy
+    entrypoint: >
+      /bin/sh -c "
+      mc alias set local http://minio:9000 minioadmin minioadmin &&
+      mc mb -p local/qt-biz-attachments || true &&
+      mc anonymous set none local/qt-biz-attachments &&
+      echo 'MinIO ready: bucket qt-biz-attachments created (private)'
+      "
+    restart: "no"

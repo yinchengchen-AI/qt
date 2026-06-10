@@ -24,6 +24,7 @@ type Contract = {
 
 export default function ContractDetailPage() {
   const params = useParams();
+  const { message } = AntdApp.useApp();
   const id = String(params.id);
   const router = useRouter();
   const { data: session } = useSession();
@@ -94,10 +95,40 @@ export default function ContractDetailPage() {
       </ProCard>
       <PageHeader level="section" title="附件" />
       <ProCard>
-        {(data.attachments ?? []).length === 0 ? <div>暂无附件</div> : (
-          <ul>{(data.attachments ?? []).map((a: any) => (
-            <li key={a.id}>{a.name} <span style={{ fontSize: 12, color: "rgba(0, 0, 0, 0.45)" }}>({a.mimeType} · {Math.round((a.size ?? 0) / 1024)} KB)</span></li>
-          ))}</ul>
+        {(data.attachments ?? []).length === 0 ? (
+          <div>暂无附件</div>
+        ) : (
+          <ul style={{ paddingLeft: 20, margin: 0 }}>
+            {(data.attachments ?? []).map((a: any) => {
+              const isLegacy = typeof a.url === "string" && a.url.startsWith("https://placeholder.local");
+              const label = isLegacy ? a.name + " (历史链接已失效)" : a.name;
+              return (
+                <li key={a.id} style={{ marginBottom: 4 }}>
+                  {isLegacy ? (
+                    <span style={{ color: "rgba(0,0,0,0.45)" }}>{label}</span>
+                  ) : (
+                    <a
+                      href="#"
+                      onClick={async (e) => {
+                        e.preventDefault();
+                        try {
+                          const r = await fetch(`/api/files/${a.id}/presign-download`, { method: "POST", credentials: "include" });
+                          const j = await r.json();
+                          if (j.code !== 0) { void message.error(j.message || "下载失败"); return; }
+                          window.open(j.data.url, "_blank", "noopener");
+                        } catch (err) { void message.error((err as Error).message); }
+                      }}
+                    >
+                      {label}
+                    </a>
+                  )}
+                  <span style={{ fontSize: 12, color: "rgba(0, 0, 0, 0.45)", marginLeft: 8 }}>
+                    ({a.mimeType} · {Math.round((a.size ?? 0) / 1024)} KB)
+                  </span>
+                </li>
+              );
+            })}
+          </ul>
         )}
       </ProCard>
     </Page>

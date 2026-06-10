@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import { Suspense, useState } from "react";
 import { App as AntdApp, Button, Checkbox, Form, Input, Typography, Space, Divider } from "antd";
