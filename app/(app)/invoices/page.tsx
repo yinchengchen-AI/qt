@@ -30,7 +30,7 @@ export default function InvoicesPage() {
     <Page>
       <PageHeader
         title="开票管理"
-        subtitle="项目开票申请、审核、实际开票与红冲;按状态 / 客户 / 项目筛选"
+        subtitle="合同开票申请、审核、实际开票与红冲;按状态 / 客户 / 合同筛选"
         actions={
           <Button key="add" type="primary" onClick={() => router.push("/invoices/new")}>
             新建开票

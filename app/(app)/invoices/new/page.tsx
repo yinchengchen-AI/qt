@@ -59,13 +59,13 @@ export default function NewInvoicePage() {
       <PageHeader
         back={() => router.push("/invoices")}
         title="新建开票"
-        subtitle="为已签约项目申请开票,提交后由财务审核"
+        subtitle="为已生效合同申请开票，提交后由财务审核"
       />
       <FormCard
         headerHint={
           pickedCustomer
             ? `已选客户：${pickedCustomer.name}。抬头名称自动锁定为客户全称,可手动改。`
-            : "选项目后会带出关联客户;抬头信息按公司/个人区分字段"
+            : "选合同后会带出关联客户;抬头信息按公司/个人区分字段"
         }
       >
         <ProForm
@@ -98,31 +98,34 @@ export default function NewInvoicePage() {
             return true;
           }}
         >
-          <FormSection title="关联项目" description="仅 PLANNED / IN_PROGRESS / SUSPENDED / DELIVERED / ACCEPTED 状态可开票">
+          <FormSection title="关联合同" description="合同须处于 EFFECTIVE / EXECUTING 状态;选合同后自动带出客户与抬头">
             <ProFormSelect
-              name="projectId"
-              label="项目"
-              placeholder="搜索项目编号 / 名称"
+              name="contractId"
+              label="合同"
+              placeholder="搜索合同编号 / 标题"
               showSearch
-              rules={[{ required: true, message: "请选择项目" }]}
+              rules={[{ required: true, message: "请选择合同" }]}
               fieldProps={{ size: "large", optionFilterProp: "label" }}
               request={async (params: { keyWords?: string }) => {
                 const qs = new URLSearchParams();
                 qs.set("pageSize", "50");
                 qs.set("keyword", params.keyWords ?? "");
-                const r = await fetch(`/api/projects?${qs}`, { credentials: "include" });
+                qs.set("status", "EFFECTIVE,EXECUTING");
+                const r = await fetch(`/api/contracts?${qs}`, { credentials: "include" });
                 const j = await r.json();
                 if (j.code !== 0) return [];
-                return (j.data.list as Project[])
-                  .filter((p) =>
-                    ["PLANNED", "IN_PROGRESS", "SUSPENDED", "DELIVERED", "ACCEPTED"].includes(p.status)
-                  )
-                  .map((p) => ({
-                    value: p.id,
-                    label: `${p.projectNo} · ${p.name}`,
-                    customerId: p.contract?.customerId,
-                    customerName: p.contract?.customerName
-                  }));
+                return (j.data.list as Array<{
+                  id: string;
+                  contractNo: string;
+                  title: string;
+                  customerId: string;
+                  customerName: string;
+                }>).map((c) => ({
+                  value: c.id,
+                  label: `${c.contractNo} · ${c.title}`,
+                  customerId: c.customerId,
+                  customerName: c.customerName
+                }));
               }}
               onChange={async (
                 _: unknown,

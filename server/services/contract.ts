@@ -32,7 +32,9 @@ export async function listContracts(
   const where: Prisma.ContractWhereInput = {
     ...ownershipWhere(user),
     deletedAt: null,
-    ...(status ? { status } : {}),
+    ...(status
+      ? { status: { in: status.split(",").map((s) => s.trim()).filter(Boolean) } }
+      : {}),
     ...(customerId ? { customerId } : {}),
     ...(keyword
       ? {

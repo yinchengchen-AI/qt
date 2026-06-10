@@ -144,9 +144,9 @@ export async function getInvoiceAging(user: SessionUser) {
     where: {
       deletedAt: null,
       status: "ISSUED",
-      ...(user.roleCode === "SALES" ? { project: { contract: { ownerUserId: user.id } } } : {})
+      ...(user.roleCode === "SALES" ? { contract: { ownerUserId: user.id } } : {})
     },
-    select: { id: true, invoiceNo: true, amount: true, actualIssueDate: true, customerId: true, customerName: true, projectId: true, contractId: true }
+    select: { id: true, invoiceNo: true, amount: true, actualIssueDate: true, customerId: true, customerName: true, contractId: true }
   });
   // 拉每张发票的已收金额
   const paid = await prisma.payment.groupBy({

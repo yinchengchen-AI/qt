@@ -3,7 +3,7 @@ import { z } from "zod";
 const isoDate = z.iso.datetime();
 
 export const invoiceCreateSchema = z.object({
-  projectId: z.string().min(1, "请选择项目"),
+  contractId: z.string().min(1, "请选择合同"),
   invoiceType: z.enum(["VAT_SPECIAL", "VAT_GENERAL", "VAT_ELECTRONIC", "ELEC_NORMAL"]),
   amount: z.number().positive("金额必须大于 0"),
   taxRate: z.number().min(0).max(1).default(0.06),

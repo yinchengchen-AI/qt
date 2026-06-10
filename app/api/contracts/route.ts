@@ -8,6 +8,7 @@ const listQuery = z.object({
   page: z.coerce.number().int().min(1).default(1),
   pageSize: z.coerce.number().int().min(1).max(100).default(20),
   keyword: z.string().optional(),
+  // 接受单值或逗号分隔多值,如 ?status=EFFECTIVE,EXECUTING
   status: z.string().optional(),
   customerId: z.string().optional()
 });

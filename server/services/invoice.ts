@@ -10,7 +10,7 @@ import { audit } from "@/server/audit";
 // SALES 行级隔离：发票所属合同的 ownerUserId 必须 = 自己
 function invoiceSalesIsolation(user: SessionUser): Prisma.InvoiceWhereInput {
   if (user.roleCode === "SALES") {
-    return { project: { contract: { ownerUserId: user.id } } };
+    return { contract: { ownerUserId: user.id } };
   }
   return {};
 }
@@ -24,17 +24,16 @@ function round2(v: number) { return Math.round(v * 100) / 100; }
 
 export async function listInvoices(
   user: SessionUser,
-  params: { page: number; pageSize: number; keyword?: string; status?: string; projectId?: string; contractId?: string }
+  params: { page: number; pageSize: number; keyword?: string; status?: string; contractId?: string }
 ) {
   requirePermission(user.roleCode, RESOURCE.INVOICE, ACTION.READ);
-  const { page, pageSize, keyword, status, projectId, contractId } = params;
+  const { page, pageSize, keyword, status, contractId } = params;
   const where: Prisma.InvoiceWhereInput = {
     deletedAt: null,
     ...(status ? { status } : {}),
-    ...(projectId ? { projectId } : {}),
     ...(contractId ? { contractId } : {}),
     ...(keyword ? { OR: [{ invoiceNo: { contains: keyword, mode: "insensitive" } }, { customerName: { contains: keyword, mode: "insensitive" } }] } : {}),
-    ...(user.roleCode === "SALES" ? { project: { contract: { ownerUserId: user.id } } } : {})
+    ...(user.roleCode === "SALES" ? { contract: { ownerUserId: user.id } } : {})
   };
   const [list, total] = await Promise.all([
     prisma.invoice.findMany({ where, orderBy: { createdAt: "desc" }, skip: (page - 1) * pageSize, take: pageSize }),
@@ -46,7 +45,7 @@ export async function listInvoices(
 export async function getInvoice(user: SessionUser, id: string) {
   requirePermission(user.roleCode, RESOURCE.INVOICE, ACTION.READ);
   const inv = await prisma.invoice.findFirst({
-    where: { id, deletedAt: null, ...(user.roleCode === "SALES" ? { project: { contract: { ownerUserId: user.id } } } : {}) }
+    where: { id, deletedAt: null, ...(user.roleCode === "SALES" ? { contract: { ownerUserId: user.id } } : {}) }
   });
   if (!inv) throw new ApiError(ERROR_CODES.NOT_FOUND, "发票不存在", 404);
   return inv;
@@ -55,23 +54,29 @@ export async function getInvoice(user: SessionUser, id: string) {
 export async function createInvoice(user: SessionUser, input: InvoiceCreateInput) {
   requirePermission(user.roleCode, RESOURCE.INVOICE, ACTION.CREATE);
   return prisma.$transaction(async (tx) => {
-    const project = await tx.project.findFirst({
-      where: { id: input.projectId, deletedAt: null, ...(user.roleCode === "SALES" ? { contract: { ownerUserId: user.id } } : {}) },
-      include: { contract: true }
+    const contract = await tx.contract.findFirst({
+      where: { id: input.contractId, deletedAt: null, ...(user.roleCode === "SALES" ? { ownerUserId: user.id } : {}) }
     });
-    if (!project) throw new ApiError(ERROR_CODES.NOT_FOUND, "项目不存在", 404);
+    if (!contract) throw new ApiError(ERROR_CODES.NOT_FOUND, "合同不存在", 404);
+    if (contract.status !== "EFFECTIVE" && contract.status !== "EXECUTING") {
+      throw new ApiError(
+        ERROR_CODES.CONTRACT_STATUS_INVALID,
+        `合同 ${contract.contractNo} 当前状态 ${contract.status}，不可开票（须 EFFECTIVE / EXECUTING）`,
+        422
+      );
+    }
     // R-08：累计开票不能超合同总额
     const issued = await tx.invoice.aggregate({
-      where: { contractId: project.contractId, status: "ISSUED", deletedAt: null },
+      where: { contractId: contract.id, status: "ISSUED", deletedAt: null },
       _sum: { amount: true }
     });
     // 用 Prisma.Decimal 比较，避免 JS number 浮点失真
     const issuedAmt = new Prisma.Decimal(issued._sum.amount?.toString() ?? "0");
-    const contractTotal = new Prisma.Decimal(project.contract.totalAmount.toString());
+    const contractTotal = new Prisma.Decimal(contract.totalAmount.toString());
     if (issuedAmt.plus(input.amount).greaterThan(contractTotal)) {
       throw new ApiError(
         ERROR_CODES.INVOICE_OVER_LIMIT,
-        `已开票 ¥${issuedAmt.toFixed(2)}，本次 ¥${input.amount.toFixed(2)}，将超过合同总额 ¥${project.contract.totalAmount}`,
+        `已开票 ¥${issuedAmt.toFixed(2)}，本次 ¥${input.amount.toFixed(2)}，将超过合同总额 ¥${contract.totalAmount}`,
         422
       );
     }
@@ -79,10 +84,9 @@ export async function createInvoice(user: SessionUser, input: InvoiceCreateInput
     return tx.invoice.create({
       data: {
         invoiceNo: `DRAFT-${Date.now()}`,
-        projectId: input.projectId,
-        contractId: project.contractId,
-        customerId: project.contract.customerId,
-        customerName: project.contract.customerName,
+        contractId: contract.id,
+        customerId: contract.customerId,
+        customerName: contract.customerName,
         invoiceType: input.invoiceType,
         amount: input.amount,
         taxRate: input.taxRate,
@@ -110,7 +114,7 @@ export async function createInvoice(user: SessionUser, input: InvoiceCreateInput
 export async function updateInvoice(user: SessionUser, id: string, input: InvoiceUpdateInput) {
   requirePermission(user.roleCode, RESOURCE.INVOICE, ACTION.UPDATE);
   const inv = await prisma.invoice.findFirst({
-    where: { id, deletedAt: null, ...(user.roleCode === "SALES" ? { project: { contract: { ownerUserId: user.id } } } : {}) }
+    where: { id, deletedAt: null, ...(user.roleCode === "SALES" ? { contract: { ownerUserId: user.id } } : {}) }
   });
   if (!inv) throw new ApiError(ERROR_CODES.NOT_FOUND, "发票不存在", 404);
   if (inv.status !== "DRAFT") throw new ApiError(ERROR_CODES.ENTITY_IMMUTABLE, "仅 DRAFT 可修改", 403);
@@ -219,7 +223,6 @@ export async function invoiceAction(user: SessionUser, id: string, input: Invoic
       const negative = await tx.invoice.create({
         data: {
           invoiceNo: `RED-${inv.invoiceNo}-${Date.now()}`,
-          projectId: inv.projectId,
           contractId: inv.contractId,
           customerId: inv.customerId,
           customerName: inv.customerName,

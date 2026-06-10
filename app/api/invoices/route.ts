@@ -9,7 +9,6 @@ const listQuery = z.object({
   pageSize: z.coerce.number().int().min(1).max(100).default(20),
   keyword: z.string().optional(),
   status: z.string().optional(),
-  projectId: z.string().optional(),
   contractId: z.string().optional()
 });
 

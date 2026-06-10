@@ -72,7 +72,7 @@ export async function invoiceOverdueJob(now: Date): Promise<JobResult> {
       actualIssueDate: { lte: cutoff }
     },
     include: {
-      project: { include: { contract: { select: { ownerUserId: true } } } }
+      contract: { select: { ownerUserId: true } }
     }
   });
   let created = 0;
@@ -98,7 +98,7 @@ export async function invoiceOverdueJob(now: Date): Promise<JobResult> {
     await emit(prisma, {
       type: "INVOICE_OVERDUE_PAYMENT",
       payload: { invoiceId: inv.id, invoiceNo: inv.invoiceNo, customerName: inv.customerName, daysOverdue, remaining: remaining.toFixed(2) },
-      receivers: Array.from(new Set([inv.project.contract.ownerUserId, ...admins.map((a) => a.id), ...finance.map((f) => f.id)]))
+      receivers: Array.from(new Set([inv.contract.ownerUserId, ...admins.map((a) => a.id), ...finance.map((f) => f.id)]))
     });
     created++;
   }

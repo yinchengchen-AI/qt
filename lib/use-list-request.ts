@@ -15,7 +15,6 @@ const KNOWN_KEYS = new Set([
   "customerType",
   "serviceType",
   "contractId",
-  "projectId",
   "invoiceId"
 ]);
 

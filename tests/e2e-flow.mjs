@@ -162,7 +162,7 @@ try {
 
   const newInv = await admin.req('/api/invoices', {
     method: 'POST',
-    body: { projectId, contractId, customerId, invoiceType: 'VAT_SPECIAL',
+    body: { contractId, customerId, invoiceType: 'VAT_SPECIAL',
       amount: 60000, taxRate: 0.06, applyDate: new Date().toISOString(),
       titleType: 'COMPANY', titleName: 'E2E客户测试有限公司', taxNo: '91110000600037341L',
       bankName: '工行', bankAccount: '6222021234567890', address: '杭州', phone: '13800000002' },
@@ -178,7 +178,7 @@ try {
 
   const overInv = await admin.req('/api/invoices', {
     method: 'POST',
-    body: { projectId, contractId, customerId, invoiceType: 'VAT_SPECIAL',
+    body: { contractId, customerId, invoiceType: 'VAT_SPECIAL',
       amount: 99999999, taxRate: 0.06, applyDate: new Date().toISOString(),
       titleType: 'COMPANY', titleName: '超限测试', taxNo: '91110000600037341L' },
   });
