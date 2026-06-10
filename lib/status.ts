@@ -110,3 +110,14 @@ export const ROLE_LABEL: Record<string, string> = {
   FINANCE: "财务",
   OPS: "行政"
 };
+
+/** 形如 [{ value: 'DRAFT', label: '草稿' }] 的下拉选项;供 ProFormSelect / Select 使用 */
+export function getStatusOptions(
+  domain: StatusDomain,
+  filter?: (code: string) => boolean
+): { value: string; label: string }[] {
+  const palette = DOMAIN_MAP[domain];
+  return Object.entries(palette)
+    .filter(([code]) => (filter ? filter(code) : true))
+    .map(([code, meta]) => ({ value: code, label: meta.label }));
+}

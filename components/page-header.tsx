@@ -1,19 +1,21 @@
 import type { ReactNode } from "react";
 import Link from "next/link";
+import { Breadcrumb, Button, Space, Typography } from "antd";
 import { ArrowLeftOutlined } from "@ant-design/icons";
-import styles from "./page-header.module.css";
+
+const { Title } = Typography;
 
 type Crumb = { label: string; href?: string };
 
 type Props = {
   title: ReactNode;
   subtitle?: ReactNode;
-  /** true = 显示 ←,string = 自定义返回文字(默认 "返回");function = 自定义 onClick */
+  /** true = 显示返回按钮;string = 自定义返回文字(默认 "返回");function = 自定义 onClick */
   back?: boolean | string | (() => void);
   actions?: ReactNode;
   meta?: ReactNode;
   breadcrumb?: Crumb[];
-  /** "page" 大标题 22px; "section" 子区块 16px */
+  /** "page" 大标题; "section" 子区块 */
   level?: "page" | "section";
   className?: string;
 };
@@ -35,65 +37,74 @@ export function PageHeader({
     const onClick = typeof back === "function" ? back : undefined;
     const label = typeof back === "string" ? back : "返回";
     return (
-      <button
-        type="button"
-        className={styles.back}
+      <Button
+        type="text"
+        size="small"
+        icon={<ArrowLeftOutlined />}
         onClick={onClick}
-        aria-label="返回上一页"
+        style={{ marginRight: 4, paddingInline: 6 }}
       >
-        <ArrowLeftOutlined />
-        <span>{label}</span>
-      </button>
+        {label}
+      </Button>
     );
   }
 
   function renderBreadcrumb() {
     if (!breadcrumb?.length) return null;
     return (
-      <nav className={styles.crumbs} aria-label="breadcrumb">
-        {breadcrumb.map((c, i) => {
+      <Breadcrumb
+        style={{ marginBottom: 12 }}
+        items={breadcrumb.map((c, i) => {
           const last = i === breadcrumb.length - 1;
-          return (
-            <span key={i} className={styles.crumbItem}>
-              {c.href && !last ? (
-                <Link href={c.href}>{c.label}</Link>
-              ) : (
-                <span className={last ? styles.crumbCurrent : ""}>{c.label}</span>
-              )}
-              {!last && <span className={styles.crumbSep}>/</span>}
-            </span>
-          );
+          if (c.href && !last) return { title: <Link href={c.href}>{c.label}</Link> };
+          return { title: c.label };
         })}
-      </nav>
+      />
+    );
+  }
+
+  if (isSection) {
+    return (
+      <div className={className} style={{ marginBottom: 16 }}>
+        <Title level={4} style={{ margin: 0 }}>
+          {title}
+        </Title>
+      </div>
     );
   }
 
   return (
-    <header
-      className={[
-        styles.header,
-        isSection ? styles.section : "",
-        className ?? ""
-      ]
-        .filter(Boolean)
-        .join(" ")}
-    >
+    <div className={className} style={{ marginBottom: 24 }}>
       {renderBreadcrumb()}
-      <div className={styles.row}>
-        <div className={styles.titleBlock}>
+      <div
+        style={{
+          display: "flex",
+          alignItems: "flex-start",
+          justifyContent: "space-between",
+          gap: 24,
+          flexWrap: "wrap"
+        }}
+      >
+        <div style={{ display: "flex", alignItems: "flex-start", gap: 8 }}>
           {renderBack()}
-          <div className={styles.titles}>
-            <h1 className={styles.title}>{title}</h1>
-            {subtitle ? <p className={styles.subtitle}>{subtitle}</p> : null}
+          <div>
+            <Title level={3} style={{ margin: 0, fontWeight: 600 }}>
+              {title}
+            </Title>
+            {subtitle ? (
+              <Typography.Paragraph type="secondary" style={{ marginTop: 6, marginBottom: 0, maxWidth: 640 }}>
+                {subtitle}
+              </Typography.Paragraph>
+            ) : null}
           </div>
         </div>
         {(actions || meta) && (
-          <div className={styles.right}>
-            {meta ? <div className={styles.meta}>{meta}</div> : null}
-            {actions ? <div className={styles.actions}>{actions}</div> : null}
-          </div>
+          <Space>
+            {meta}
+            {actions}
+          </Space>
         )}
       </div>
-    </header>
+    </div>
   );
 }

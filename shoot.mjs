@@ -32,8 +32,10 @@ const page = await ctx.newPage();
 
 // Login first
 await page.goto("http://localhost:3000/login", { waitUntil: "networkidle" });
-await page.fill('input[name="employeeNo"]', "admin");
-await page.fill('input[name="password"]', "123456");
+await page.locator('input[name="employeeNo"]').clear();
+await page.locator('input[name="employeeNo"]').fill("admin");
+await page.locator('input[name="password"]').clear();
+await page.locator('input[name="password"]').fill("123456");
 await Promise.all([
   page.waitForURL(/\/dashboard|\/$/, { timeout: 20000 }),
   page.click('button[type="submit"]')

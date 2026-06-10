@@ -1,16 +1,14 @@
 import type { ReactNode } from "react";
-import styles from "./stat-grid.module.css";
+import { Card, Col, Row, Skeleton, Typography } from "antd";
+
+const { Text } = Typography;
 
 export type StatItem = {
   label: ReactNode;
   value: ReactNode;
   prefix?: ReactNode;
   suffix?: ReactNode;
-  /** 数字下方的小说明 */
   description?: ReactNode;
-  /** 强调色:default | accent(琥珀) | danger */
-  tone?: "default" | "accent" | "danger" | "success" | "info";
-  /** delta:正绿/负红 */
   delta?: { value: ReactNode; direction?: "up" | "down" | "flat" };
 };
 
@@ -22,57 +20,66 @@ type Props = {
   className?: string;
 };
 
-const COLS: Record<number, string> = {
-  2: "cols2",
-  3: "cols3",
-  4: "cols4",
-  6: "cols6"
-};
-
-const TONE_CLASS: Record<string, string> = {
-  default: styles.toneDefault ?? "",
-  accent:  styles.toneAccent  ?? "",
-  danger:  styles.toneDanger  ?? "",
-  success: styles.toneSuccess ?? "",
-  info:    styles.toneInfo    ?? ""
+const SPAN_MAP: Record<number, { xs: number; sm: number; md: number; lg: number; xl: number }> = {
+  2: { xs: 24, sm: 12, md: 12, lg: 12, xl: 12 },
+  3: { xs: 24, sm: 12, md: 8, lg: 8, xl: 8 },
+  4: { xs: 24, sm: 12, md: 12, lg: 6, xl: 6 },
+  6: { xs: 24, sm: 12, md: 8, lg: 4, xl: 4 }
 };
 
 export function StatGrid({ items, columns = 4, loading, className }: Props) {
-  const colClass = COLS[columns] ?? "cols4";
+  const span = SPAN_MAP[columns] ?? SPAN_MAP[4]!;
+  const s = { xs: span.xs ?? 24, sm: span.sm ?? 12, md: span.md ?? 12, lg: span.lg ?? 12, xl: span.xl ?? 12 };
   return (
-    <div data-testid="stat-grid" className={[styles.grid, styles[colClass] ?? "", className ?? ""].filter(Boolean).join(" ")}>
+    <Row gutter={[16, 16]} className={["app-stagger", className].filter(Boolean).join(" ")}>
       {items.map((it, i) => {
-        const tone = it.tone ?? "default";
+        const deltaColor =
+          it.delta?.direction === "up"
+            ? "#52c41a"
+            : it.delta?.direction === "down"
+              ? "#ff4d4f"
+              : undefined;
         return (
-          <div
-            key={i}
-            className={[styles.card, TONE_CLASS[tone] ?? "", loading ? styles.loading : ""]
-              .filter(Boolean)
-              .join(" ")}
-          >
-            <div className={styles.label}>{it.label}</div>
-            <div className={styles.valueRow}>
-              {it.prefix ? <span className={styles.affix}>{it.prefix}</span> : null}
-              <span className={styles.value}>
-                {loading ? <span className={styles.skel} /> : it.value}
-              </span>
-              {it.suffix ? <span className={styles.affix}>{it.suffix}</span> : null}
-            </div>
-            {it.description ? <div className={styles.desc}>{it.description}</div> : null}
-            {it.delta ? (
-              <div
-                className={[
-                  styles.delta,
-                  it.delta.direction === "down" ? styles.deltaDown : "",
-                  it.delta.direction === "flat"  ? styles.deltaFlat  : ""
-                ].filter(Boolean).join(" ")}
-              >
-                {it.delta.value}
-              </div>
-            ) : null}
-          </div>
+          <Col key={i} xs={s.xs} sm={s.sm} md={s.md} lg={s.lg} xl={s.xl}>
+            <Card size="small" hoverable styles={{ body: { padding: 20 } }}>
+              {loading ? (
+                <Skeleton active paragraph={{ rows: 2 }} title={false} />
+              ) : (
+                <>
+                  <Text type="secondary" style={{ fontSize: 13 }}>
+                    {it.label}
+                  </Text>
+                  <div
+                    style={{
+                      display: "flex",
+                      alignItems: "baseline",
+                      gap: 6,
+                      marginTop: 6,
+                      fontSize: 26,
+                      fontWeight: 600,
+                      lineHeight: 1.2
+                    }}
+                  >
+                    {it.prefix ? <span style={{ fontSize: 16, color: "#00000073" }}>{it.prefix}</span> : null}
+                    <span>{it.value}</span>
+                    {it.suffix ? <span style={{ fontSize: 13, color: "#00000073" }}>{it.suffix}</span> : null}
+                  </div>
+                  {it.description ? (
+                    <Text type="secondary" style={{ fontSize: 12, display: "block", marginTop: 6 }}>
+                      {it.description}
+                    </Text>
+                  ) : null}
+                  {it.delta ? (
+                    <Text style={{ fontSize: 12, color: deltaColor, display: "block", marginTop: 4 }}>
+                      {it.delta.value}
+                    </Text>
+                  ) : null}
+                </>
+              )}
+            </Card>
+          </Col>
         );
       })}
-    </div>
+    </Row>
   );
 }

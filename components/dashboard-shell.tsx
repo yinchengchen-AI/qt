@@ -1,9 +1,24 @@
 "use client";
-import dynamic from "next/dynamic";
-import { App as AntdApp, Badge, Dropdown, Drawer, List, Empty } from "antd";
+
+import { useEffect, useMemo, useState } from "react";
+import Link from "next/link";
+import { useRouter, usePathname } from "next/navigation";
+import { signOut } from "next-auth/react";
+import {
+  Layout,
+  Menu,
+  Avatar,
+  Dropdown,
+  Badge,
+  Drawer,
+  List,
+  Empty,
+  Typography,
+  theme,
+  type MenuProps
+} from "antd";
 import {
   LogoutOutlined,
-  UserOutlined,
   BellOutlined,
   DashboardOutlined,
   TeamOutlined,
@@ -12,21 +27,55 @@ import {
   BookOutlined,
   PayCircleOutlined,
   AreaChartOutlined,
-  BellOutlined as BellIcon,
   NotificationOutlined,
-  SettingOutlined
+  SettingOutlined,
+  UserOutlined,
+  DownOutlined
 } from "@ant-design/icons";
-import { signOut } from "next-auth/react";
-import { useRouter, usePathname } from "next/navigation";
-import { useEffect, useState } from "react";
 import type { RoleCode } from "@/types/enums";
 import type { Action, Resource } from "@/lib/permissions";
-import { QtMark } from "./qt-mark";
 
-const ProLayout = dynamic(
-  () => import("@ant-design/pro-components").then((m) => m.ProLayout),
-  { ssr: false }
-);
+const { Sider, Header, Content } = Layout;
+const { Text } = Typography;
+
+type MenuItem = {
+  path: string;
+  name: string;
+  icon?: React.ReactNode;
+  children?: Omit<MenuItem, "children">[];
+};
+
+const MENU: MenuItem[] = [
+  { path: "/dashboard", name: "工作台", icon: <DashboardOutlined /> },
+  { path: "/customers", name: "客户管理", icon: <TeamOutlined /> },
+  { path: "/contracts", name: "合同管理", icon: <FileTextOutlined /> },
+  { path: "/projects", name: "项目管理", icon: <ProjectOutlined /> },
+  { path: "/invoices", name: "开票管理", icon: <BookOutlined /> },
+  { path: "/payments", name: "回款管理", icon: <PayCircleOutlined /> },
+  {
+    path: "/statistics",
+    name: "统计分析",
+    icon: <AreaChartOutlined />,
+    children: [
+      { path: "/statistics/overview", name: "总览" },
+      { path: "/statistics/aging", name: "账龄分析" },
+      { path: "/statistics/performance", name: "业务员业绩" }
+    ]
+  },
+  { path: "/messages", name: "消息中心", icon: <BellOutlined /> },
+  { path: "/announcements", name: "公告", icon: <NotificationOutlined /> },
+  {
+    path: "/admin",
+    name: "系统管理",
+    icon: <SettingOutlined />,
+    children: [
+      { path: "/admin/users", name: "用户管理" },
+      { path: "/admin/roles", name: "角色权限" },
+      { path: "/admin/dictionaries", name: "数据字典" },
+      { path: "/admin/operation-logs", name: "操作日志" }
+    ]
+  }
+];
 
 type Props = {
   user: {
@@ -39,72 +88,79 @@ type Props = {
   children: React.ReactNode;
 };
 
-const menu = {
-  path: "/",
-  routes: [
-    { path: "/dashboard", name: "工作台", icon: <DashboardOutlined /> },
-    { path: "/customers", name: "客户管理", icon: <TeamOutlined /> },
-    { path: "/contracts", name: "合同管理", icon: <FileTextOutlined /> },
-    { path: "/projects", name: "项目管理", icon: <ProjectOutlined /> },
-    { path: "/invoices", name: "开票管理", icon: <BookOutlined /> },
-    { path: "/payments", name: "回款管理", icon: <PayCircleOutlined /> },
-    {
-      path: "/statistics",
-      name: "统计分析",
-      icon: <AreaChartOutlined />,
-      routes: [
-        { path: "/statistics/overview", name: "总览" },
-        { path: "/statistics/aging", name: "账龄分析" },
-        { path: "/statistics/performance", name: "业务员业绩" }
-      ]
-    },
-    { path: "/messages", name: "消息中心", icon: <BellIcon /> },
-    { path: "/announcements", name: "公告", icon: <NotificationOutlined /> },
-    {
-      path: "/admin",
-      name: "系统管理",
-      icon: <SettingOutlined />,
-      routes: [
-        { path: "/admin/users", name: "用户管理" },
-        { path: "/admin/roles", name: "角色权限" },
-        { path: "/admin/dictionaries", name: "数据字典" },
-        { path: "/admin/operation-logs", name: "操作日志" }
-      ]
+function findSelectedKey(pathname: string): { key: string; open: string[] } {
+  for (const item of MENU) {
+    if (item.path === pathname) return { key: item.path, open: [] };
+    if (item.children?.some((c) => pathname.startsWith(c.path))) {
+      return { key: pathname, open: [item.path] };
     }
-  ]
-};
+  }
+  return { key: pathname, open: [] };
+}
 
-const LAYOUT_TOKEN = {
-  colorTextMenuSelected: "#0a1c33",
-  colorBgMenuItemSelected: "rgba(15, 42, 71, 0.08)",
-  colorTextMenuItemHover: "#0f2a47",
-  colorTextMenu: "#475569",
-  colorTextMenuSecondary: "#94a3b8",
-  sider: { colorMenuBackground: "#ffffff" },
-  header: { colorBgHeader: "#ffffff" }
+function toAntdMenu(items: MenuItem[]): MenuProps["items"] {
+  return items.map((item) => {
+    const label =
+      item.children && item.children.length > 0 ? (
+        item.name
+      ) : (
+        <Link href={item.path}>{item.name}</Link>
+      );
+    const node: NonNullable<MenuProps["items"]>[number] = {
+      key: item.path,
+      icon: item.icon as React.ReactNode,
+      label
+    };
+    if (item.children?.length) {
+      (node as { children?: NonNullable<MenuProps["items"]>[number][] }).children =
+        item.children.map((c) => ({
+          key: c.path,
+          label: <Link href={c.path}>{c.name}</Link>
+        }));
+    }
+    return node;
+  });
+}
+
+const ROLE_LABEL: Record<RoleCode, string> = {
+  ADMIN: "管理员",
+  SALES: "业务人员",
+  FINANCE: "财务人员",
+  OPS: "行政人员"
 };
 
 export function DashboardShell({ user, children }: Props) {
   const router = useRouter();
   const pathname = usePathname();
-  const { message } = AntdApp.useApp();
+  const { token } = theme.useToken();
   const [unread, setUnread] = useState(0);
   const [drawerOpen, setDrawerOpen] = useState(false);
-  const [messages, setMessages] = useState<Array<{ id: string; title: string; type: string; readAt: string | null; createdAt: string; link: { kind: string; id: string } | null }>>([]);
+  const [messages, setMessages] = useState<
+    Array<{ id: string; title: string; type: string; readAt: string | null; createdAt: string; link: { kind: string; id: string } | null }>
+  >([]);
+
+  const { key: selectedKey, open: defaultOpen } = useMemo(
+    () => findSelectedKey(pathname),
+    [pathname]
+  );
 
   const loadUnread = async () => {
     try {
       const r = await fetch("/api/messages?page=1&pageSize=1&unread=true", { credentials: "include" });
       const j = await r.json();
       if (j.code === 0) setUnread(j.data.unreadCount);
-    } catch {}
+    } catch {
+      /* ignore */
+    }
   };
   const loadMessages = async () => {
     try {
       const r = await fetch("/api/messages?page=1&pageSize=10", { credentials: "include" });
       const j = await r.json();
       if (j.code === 0) setMessages(j.data.list);
-    } catch {}
+    } catch {
+      /* ignore */
+    }
   };
 
   useEffect(() => {
@@ -113,67 +169,197 @@ export function DashboardShell({ user, children }: Props) {
     return () => clearInterval(t);
   }, []);
 
-  return (
-    <ProLayout
-      title={false}
-      logo={
-        <span style={{ display: "inline-flex", alignItems: "center", padding: "0 4px" }}>
-          <QtMark size={28} />
-        </span>
+  const userMenu: MenuProps["items"] = [
+    {
+      key: "role",
+      label: (
+        <Text type="secondary" style={{ fontSize: 12 }}>
+          {ROLE_LABEL[user.roleCode] ?? user.roleCode} · {user.employeeNo}
+        </Text>
+      ),
+      disabled: true
+    },
+    { type: "divider" },
+    {
+      key: "logout",
+      icon: <LogoutOutlined />,
+      label: "退出登录",
+      onClick: async () => {
+        await signOut({ redirect: false });
+        router.push("/login");
       }
-      layout="mix"
-      location={{ pathname }}
-      route={menu}
-      navTheme="light"
-      contentWidth="Fluid"
-      fixSiderbar
-      onMenuHeaderClick={() => router.push("/dashboard")}
-      token={LAYOUT_TOKEN}
-      menu={{ type: "group" }}
-      actionsRender={() => [
-        <Badge key="msg" count={unread} offset={[-4, 4]} size="small">
-          <BellOutlined
-            style={{ fontSize: 18, cursor: "pointer", color: "var(--qt-text-2)" }}
-            onClick={() => {
-              setDrawerOpen(true);
-              loadMessages();
-            }}
-          />
-        </Badge>
-      ]}
-      avatarProps={{
-        render: () => (
-          <Dropdown
-            menu={{
-              items: [
-                {
-                  key: "logout",
-                  icon: <LogoutOutlined />,
-                  label: "退出登录",
-                  onClick: async () => {
-                    await signOut({ redirect: false });
-                    message.success("已退出");
-                    router.push("/login");
-                  }
-                }
-              ]
+    }
+  ];
+
+  return (
+    <Layout style={{ minHeight: "100vh" }}>
+      <Sider
+        width={232}
+        breakpoint="lg"
+        collapsedWidth={0}
+        style={{
+          position: "sticky",
+          top: 0,
+          height: "100vh",
+          borderRight: `1px solid ${token.colorSplit}`,
+          background: token.colorBgContainer
+        }}
+      >
+        <div
+          style={{
+            padding: "20px 20px 12px",
+            borderBottom: `1px solid ${token.colorSplit}`
+          }}
+        >
+          <Link
+            href="/dashboard"
+            style={{
+              display: "inline-flex",
+              alignItems: "center",
+              gap: 10,
+              textDecoration: "none",
+              color: token.colorText
             }}
           >
-            <span style={{ cursor: "pointer", display: "inline-flex", alignItems: "center", gap: 6, color: "var(--qt-text-1)" }}>
-              <UserOutlined />
-              <span style={{ fontSize: 13 }}>{user.name}</span>
-              <span style={{ color: "var(--qt-text-3)", fontSize: 12 }}>({user.roleCode})</span>
+            <span
+              aria-hidden
+              style={{
+                width: 32,
+                height: 32,
+                borderRadius: 8,
+                background: token.colorPrimary,
+                color: token.colorWhite,
+                display: "grid",
+                placeItems: "center",
+                fontWeight: 600,
+                fontSize: 16
+              }}
+            >
+              Q
             </span>
-          </Dropdown>
-        )
-      }}
-    >
-      {children}
+            <span style={{ display: "flex", flexDirection: "column", lineHeight: 1.2 }}>
+              <Text strong style={{ fontSize: 14 }}>
+                企泰业务
+              </Text>
+              <Text type="secondary" style={{ fontSize: 11, marginTop: 2 }}>
+                Business Console
+              </Text>
+            </span>
+          </Link>
+        </div>
+
+        <Menu
+          mode="inline"
+          selectedKeys={[selectedKey]}
+          defaultOpenKeys={defaultOpen}
+          items={toAntdMenu(MENU)}
+          style={{ borderInlineEnd: 0, paddingTop: 8 }}
+          onClick={(e) => {
+            if (typeof e.key === "string" && e.key.startsWith("/")) router.push(e.key);
+          }}
+        />
+
+        <div
+          style={{
+            position: "absolute",
+            bottom: 0,
+            left: 0,
+            right: 0,
+            padding: "12px 20px",
+            borderTop: `1px solid ${token.colorSplit}`,
+            fontSize: 12,
+            color: token.colorTextTertiary
+          }}
+        >
+          v 0.1.0 · 内部系统
+        </div>
+      </Sider>
+
+      <Layout style={{ background: token.colorBgLayout }}>
+        <Header
+          style={{
+            position: "sticky",
+            top: 0,
+            zIndex: 10,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            padding: "0 24px",
+            background: token.colorBgContainer,
+            borderBottom: `1px solid ${token.colorSplit}`
+          }}
+        >
+          <Crumbs pathname={pathname} />
+
+          <div style={{ display: "inline-flex", alignItems: "center", gap: 16 }}>
+            <Badge count={unread} size="small" offset={[-2, 2]}>
+              <button
+                type="button"
+                onClick={() => {
+                  setDrawerOpen(true);
+                  loadMessages();
+                }}
+                aria-label="消息"
+                style={{
+                  background: "transparent",
+                  border: "none",
+                  padding: 6,
+                  cursor: "pointer",
+                  color: token.colorTextSecondary,
+                  fontSize: 16,
+                  display: "inline-flex",
+                  alignItems: "center",
+                  justifyContent: "center"
+                }}
+              >
+                <BellOutlined />
+              </button>
+            </Badge>
+
+            <Dropdown menu={{ items: userMenu }} trigger={["click"]} placement="bottomRight">
+              <span
+                style={{
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: 8,
+                  cursor: "pointer",
+                  padding: "4px 8px",
+                  borderRadius: 6,
+                  transition: "background-color 160ms"
+                }}
+              >
+                <Avatar size={28} icon={<UserOutlined />} style={{ background: token.colorPrimary }}>
+                  {user.name?.[0]}
+                </Avatar>
+                <span style={{ display: "flex", flexDirection: "column", lineHeight: 1.2 }}>
+                  <Text style={{ fontSize: 13 }}>{user.name}</Text>
+                  <Text type="secondary" style={{ fontSize: 11 }}>
+                    {ROLE_LABEL[user.roleCode] ?? user.roleCode}
+                  </Text>
+                </span>
+                <DownOutlined style={{ fontSize: 10, color: token.colorTextTertiary }} />
+              </span>
+            </Dropdown>
+          </div>
+        </Header>
+
+        <Content
+          key={pathname}
+          className="app-anim-in"
+          style={{
+            padding: 24,
+            minHeight: "calc(100vh - 64px)"
+          }}
+        >
+          {children}
+        </Content>
+      </Layout>
+
       <Drawer
-        title="消息"
-        size="default"
+        title="消息中心"
         open={drawerOpen}
         onClose={() => setDrawerOpen(false)}
+        size="default"
         extra={
           <a
             onClick={async (e) => {
@@ -185,6 +371,7 @@ export function DashboardShell({ user, children }: Props) {
                 loadMessages();
               }
             }}
+            style={{ color: token.colorPrimary, fontSize: 13 }}
           >
             全部已读
           </a>
@@ -197,25 +384,39 @@ export function DashboardShell({ user, children }: Props) {
             dataSource={messages}
             renderItem={(m) => (
               <List.Item
-                style={{ background: m.readAt ? undefined : "rgba(245, 158, 11, 0.06)", cursor: m.link ? "pointer" : undefined }}
+                style={{
+                  background: m.readAt ? undefined : token.colorPrimaryBg,
+                  borderRadius: 6,
+                  padding: "10px 12px",
+                  marginBottom: 6,
+                  cursor: m.link ? "pointer" : undefined,
+                  border: "none",
+                  transition: "background-color 160ms"
+                }}
                 onClick={async () => {
                   if (!m.readAt) {
                     await fetch(`/api/messages/${m.id}`, { method: "PATCH", credentials: "include" });
                     setUnread((u) => Math.max(0, u - 1));
                   }
                   if (m.link) {
-                    const map: Record<string, string> = { contract: "/contracts", invoice: "/invoices", payment: "/payments", project: "/projects", customer: "/customers" };
+                    const map: Record<string, string> = {
+                      contract: "/contracts",
+                      invoice: "/invoices",
+                      payment: "/payments",
+                      project: "/projects",
+                      customer: "/customers"
+                    };
                     router.push(`${map[m.link.kind] ?? "/"}/${m.link.id}`);
                     setDrawerOpen(false);
                   }
                 }}
               >
                 <List.Item.Meta
-                  title={m.title}
+                  title={<span style={{ fontSize: 13, fontWeight: 500 }}>{m.title}</span>}
                   description={
-                    <span>
+                    <span style={{ fontSize: 12, color: token.colorTextTertiary }}>
                       <span style={{ marginRight: 8 }}>{m.type}</span>
-                      <span style={{ color: "var(--qt-text-3)" }}>{new Date(m.createdAt).toLocaleString("zh-CN")}</span>
+                      <span>{new Date(m.createdAt).toLocaleString("zh-CN")}</span>
                     </span>
                   }
                 />
@@ -224,6 +425,49 @@ export function DashboardShell({ user, children }: Props) {
           />
         )}
       </Drawer>
-    </ProLayout>
+    </Layout>
+  );
+}
+
+const CRUMB_LABEL: Record<string, string> = {
+  dashboard: "工作台",
+  customers: "客户管理",
+  contracts: "合同管理",
+  projects: "项目管理",
+  invoices: "开票管理",
+  payments: "回款管理",
+  statistics: "统计分析",
+  overview: "总览",
+  aging: "账龄分析",
+  performance: "业务员业绩",
+  messages: "消息中心",
+  announcements: "公告",
+  admin: "系统管理",
+  users: "用户管理",
+  roles: "角色权限",
+  dictionaries: "数据字典",
+  "operation-logs": "操作日志"
+};
+
+function Crumbs({ pathname }: { pathname: string }) {
+  const parts = pathname.split("/").filter(Boolean);
+  if (parts.length === 0) {
+    return <Text type="secondary">工作台</Text>;
+  }
+  return (
+    <span>
+      {parts.map((p, i) => (
+        <span key={i}>
+          {i > 0 ? (
+            <Text type="secondary" style={{ margin: "0 6px" }}>
+              /
+            </Text>
+          ) : null}
+          <Text type={i === parts.length - 1 ? undefined : "secondary"}>
+            {CRUMB_LABEL[p] ?? p}
+          </Text>
+        </span>
+      ))}
+    </span>
   );
 }

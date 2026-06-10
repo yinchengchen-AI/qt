@@ -1,55 +1,65 @@
-@import "./tokens.css";
+/* =============================================================
+   Reset to Ant Design default look. Keep only what's not provided
+   by AntdRegistry's reset.css: a baseline body, smooth page enter
+   animations, and a couple of small motion utilities.
+   ------------------------------------------------------------- */
 
-html, body {
+html,
+body {
   height: 100%;
   margin: 0;
   padding: 0;
-  background: var(--qt-bg);
-  color: var(--qt-text-1);
-}
-body {
-  font-family: var(--qt-font-sans);
-  font-size: 14px;
-  line-height: 1.5;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
 }
+
 * { box-sizing: border-box; }
 
-/* ==== 全局 antd 局部调谐 ==== */
-.ant-pro-layout { background: var(--qt-bg); }
-.ant-pro-table-list { background: transparent; }
-.ant-pro-table .ant-pro-table-list-toolbar,
-.ant-pro-table-search,
-.ant-pro-table-alert,
-.ant-pro-table-pagination { background: transparent; }
-.ant-pro-card {
-  border-radius: var(--qt-radius) !important;
-  border-color: var(--qt-border) !important;
-  box-shadow: var(--qt-shadow-sm);
-}
-.ant-pro-card .ant-pro-card-header { border-bottom-color: var(--qt-border); }
-
-.ant-pro-layout-side {
-  background: #ffffff !important;
-  border-right: 1px solid var(--qt-border);
-}
-.ant-pro-layout-side .ant-menu-light .ant-menu-item-selected {
-  color: var(--qt-navy-900) !important;
-  background-color: rgba(15, 42, 71, 0.08) !important;
-}
-.ant-pro-layout-side .ant-menu-light .ant-menu-item:hover {
-  color: var(--qt-navy-700) !important;
-}
-
-a { color: var(--qt-navy-700); }
-a:hover { color: var(--qt-navy-900); }
-
-::-webkit-scrollbar { width: 10px; height: 10px; }
-::-webkit-scrollbar-thumb {
-  background: rgba(15, 42, 71, 0.18);
-  border-radius: 999px;
-  border: 2px solid var(--qt-bg);
-}
-::-webkit-scrollbar-thumb:hover { background: rgba(15, 42, 71, 0.3); }
+/* Subtle scrollbar — antd default chrome, slightly tightened. */
+::-webkit-scrollbar { width: 8px; height: 8px; }
 ::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb {
+  background: rgba(0, 0, 0, 0.18);
+  border-radius: 999px;
+}
+::-webkit-scrollbar-thumb:hover { background: rgba(0, 0, 0, 0.32); }
+
+/* =============================================================
+   Page transition: a single soft fade + slight rise. Mounted
+   per route via the <main key={pathname}> in dashboard-shell.
+   ------------------------------------------------------------- */
+
+@keyframes app-fade-up {
+  from { opacity: 0; transform: translate3d(0, 6px, 0); }
+  to   { opacity: 1; transform: translate3d(0, 0, 0); }
+}
+
+.app-anim-in {
+  animation: app-fade-up 220ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+
+/* Stagger helper: child elements float in one after another. */
+.app-stagger > * {
+  animation: app-fade-up 260ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+.app-stagger > *:nth-child(1) { animation-delay: 20ms; }
+.app-stagger > *:nth-child(2) { animation-delay: 60ms; }
+.app-stagger > *:nth-child(3) { animation-delay: 100ms; }
+.app-stagger > *:nth-child(4) { animation-delay: 140ms; }
+.app-stagger > *:nth-child(5) { animation-delay: 180ms; }
+.app-stagger > *:nth-child(6) { animation-delay: 220ms; }
+.app-stagger > *:nth-child(7) { animation-delay: 260ms; }
+.app-stagger > *:nth-child(8) { animation-delay: 300ms; }
+.app-stagger > *:nth-child(n + 9) { animation-delay: 320ms; }
+
+/* Respect reduced motion. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+  }
+}

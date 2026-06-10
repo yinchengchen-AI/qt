@@ -1,7 +1,5 @@
 import type { ReactNode } from "react";
 import { Alert, Button, Empty, Spin } from "antd";
-import { InboxOutlined, WarningOutlined, LoadingOutlined } from "@ant-design/icons";
-import styles from "./empty-state.module.css";
 
 type Props = {
   loading?: boolean;
@@ -16,10 +14,10 @@ type Props = {
   className?: string;
 };
 
-const HEIGHT_CLASS: Record<string, string> = {
-  small:   styles.hSmall   ?? "",
-  default: styles.hDefault ?? "",
-  tall:    styles.hTall    ?? ""
+const HEIGHT_MAP: Record<string, number> = {
+  small: 160,
+  default: 240,
+  tall: 320
 };
 
 export function EmptyState({
@@ -33,51 +31,71 @@ export function EmptyState({
   height = "default",
   className
 }: Props) {
+  const minHeight = HEIGHT_MAP[height] ?? HEIGHT_MAP.default;
+  const wrapperStyle: React.CSSProperties = {
+    display: "flex",
+    flexDirection: "column",
+    alignItems: "center",
+    justifyContent: "center",
+    width: "100%",
+    minHeight,
+    padding: 24,
+    gap: 12,
+    textAlign: "center"
+  };
+
   if (loading) {
     return (
-      <div className={[styles.box, HEIGHT_CLASS[height], className ?? ""].filter(Boolean).join(" ")}>
-        <Spin indicator={<LoadingOutlined spin />} size="large" />
-        {title ? <div className={styles.title}>{title}</div> : null}
-        {description ? <div className={styles.desc}>{description}</div> : null}
+      <div className={className} style={wrapperStyle}>
+        <Spin />
+        {title ? <div style={{ fontSize: 15, fontWeight: 500 }}>{title}</div> : null}
+        {description ? (
+          <div style={{ fontSize: 13, color: "rgba(0, 0, 0, 0.45)" }}>{description}</div>
+        ) : null}
       </div>
     );
   }
+
   if (error) {
     return (
-      <div className={[styles.box, HEIGHT_CLASS[height], className ?? ""].filter(Boolean).join(" ")}>
+      <div className={className} style={wrapperStyle}>
         <Alert
           type="error"
           showIcon
-          icon={<WarningOutlined />}
           message={title ?? "加载失败"}
           description={error.message}
           action={
             error.onRetry ? (
-              <Button size="small" onClick={error.onRetry}>重试</Button>
+              <Button size="small" onClick={error.onRetry}>
+                重试
+              </Button>
             ) : null
           }
-          style={{ maxWidth: 520 }}
+          style={{ maxWidth: 480 }}
         />
       </div>
     );
   }
+
   if (empty) {
     return (
-      <div className={[styles.box, HEIGHT_CLASS[height], className ?? ""].filter(Boolean).join(" ")}>
+      <div className={className} style={wrapperStyle}>
         <Empty
-          image={icon ?? <InboxOutlined style={{ fontSize: 40, color: "var(--qt-text-3)" }} />}
-          imageStyle={{ height: 56 }}
+          image={icon ?? Empty.PRESENTED_IMAGE_SIMPLE}
           description={
             <div>
-              <div className={styles.title}>{title ?? "暂无数据"}</div>
-              {description ? <div className={styles.desc}>{description}</div> : null}
+              <div style={{ fontSize: 15, fontWeight: 500, color: "rgba(0,0,0,0.85)" }}>{title ?? "暂无数据"}</div>
+              {description ? (
+                <div style={{ fontSize: 13, color: "rgba(0,0,0,0.45)", marginTop: 4 }}>{description}</div>
+              ) : null}
             </div>
           }
         >
-          {action}
+          {action ?? null}
         </Empty>
       </div>
     );
   }
+
   return null;
 }
