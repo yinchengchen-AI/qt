@@ -1,0 +1,26 @@
+# 本地开发用 PostgreSQL 16
+# 启动: docker compose -f docker-compose.postgres.yml up -d
+# 停止: docker compose -f docker-compose.postgres.yml down
+# 数据卷:  ./docker-data/postgres
+#
+# 与 README.md 里的 `docker run` 命令等价,只是把命令收编进 compose
+# 业务库: qt_biz (owner=qitai)  / 账号: qitai / qitai_pass
+
+services:
+  qitai-postgres:
+    image: postgres:16-alpine
+    container_name: qitai-postgres
+    environment:
+      POSTGRES_USER: qitai
+      POSTGRES_PASSWORD: qitai_pass
+      POSTGRES_DB: qt_biz
+    ports:
+      - "5432:5432"
+    volumes:
+      - ./docker-data/postgres:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U qitai -d qt_biz"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    restart: unless-stopped

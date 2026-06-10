@@ -1,0 +1,4 @@
+
+# shell scripts must stay LF (autocrlf would break the shebang / line endings)
+*.sh text eol=lf
+docker/minio/entrypoint.sh text eol=lf
