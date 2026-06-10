@@ -1,51 +1,52 @@
 # 杭州企泰安全科技 业务管理系统
 
 > 客户 / 合同 / 项目 / 开票 / 回款 一体化管理。
-> 设计文档见 `docs/DESIGN.md`（v3，钉版本矩阵）。
+> 附件走 MinIO 对象存储的 presigned 直传,不走应用服务器中转。
+> 设计文档见 `docs/DESIGN-v3.md`(v3,钉版本矩阵)。
 
-## 技术栈（P0 阶段已落地）
+## 技术栈
 
 | 层 | 选型 | 版本 |
 |---|---|---|
-| 框架 | Next.js（App Router + RSC + Server Actions） | 16.2.7 |
+| 框架 | Next.js(App Router + RSC + Server Actions) | 16.2.7 |
 | 运行时 | React | 19.2.7 |
-| 语言 | TypeScript（strict + noUncheckedIndexedAccess） | 6.0.3 |
-| UI | Ant Design + @ant-design/pro-components（beta） | 6.4.3 / 3.1.12-0 |
+| 语言 | TypeScript(strict + noUncheckedIndexedAccess) | 6.0.3 |
+| UI | Ant Design + @ant-design/pro-components(beta) | 6.4.3 / 3.1.12-0 |
 | 图表 | @ant-design/charts | 2.6.7 |
 | 状态 | zustand | 5.0.14 |
 | 数据请求 | swr | 2.4.1 |
 | 校验 | zod | 4.4.3 |
 | ORM | Prisma + @prisma/adapter-pg | 7.8.0 |
 | 数据库 | PostgreSQL | 16 |
-| 认证 | NextAuth（Credentials + JWT） | 4.24.14 |
+| 对象存储 | MinIO + @aws-sdk/client-s3 v3 | latest / 3.x |
+| 认证 | NextAuth(Credentials + JWT) | 4.24.14 |
 | 加密 | bcrypt | 6.0.0 |
 | 测试 | Vitest + @playwright/test | 4.1.8 / 1.60.0 |
-| 包管理 | pnpm | – |
 
 ## 快速启动
 
-### 1. 启动 PostgreSQL 16
+### 1. 启动基础设施(PostgreSQL + MinIO)
 
 ```bash
-docker run -d --name qitai-postgres \
-  -e POSTGRES_USER=qitai -e POSTGRES_PASSWORD=qitai_pass -e POSTGRES_DB=qitai \
-  -p 5432:5432 postgres:16-alpine
-docker exec qitai-postgres psql -U qitai -d qitai -c "CREATE DATABASE qt_biz;"
+# 数据库(端口 5432)
+docker compose -f docker-compose.postgres.yml up -d
+
+# 对象存储(端口 9000 S3 API / 9001 Web Console,账号 minioadmin/minioadmin)
+docker compose -f docker-compose.minio.yml up -d
 ```
 
-### 2. 配置环境变量
+数据卷: `./docker-data/postgres` `./docker-data/minio`
 
-复制 `.env.example` 为 `.env` 并按需修改。
-
-### 3. 安装依赖 + 推库 + 种子
+### 2. 配环境变量 + 装依赖 + 推库 + 种子
 
 ```bash
+cp .env.example .env       # 按需修改(默认 minioadmin/minioadmin 是 dev 合规值)
 npm install
 npx prisma db push
 npm run seed
 ```
 
-### 4. 启动开发服务器
+### 3. 起服务
 
 ```bash
 npm run dev
@@ -69,49 +70,121 @@ npm run dev
 | `npm run build` | 生产构建 |
 | `npm run start` | 启动生产服务 |
 | `npm run typecheck` | TS 类型检查 |
-| `npm test` | 单元测试（Vitest） |
-| `npm run test:e2e` | E2E（Playwright） |
+| `npm run lint` | ESLint(已配置 0 warnings) |
+| `npm test` | 单元测试(Vitest) |
+| `npm run test:e2e` | E2E(Playwright) |
 | `npx prisma db push` | 同步 schema 到 DB |
 | `npx prisma migrate dev` | 创建/应用 migration |
 | `npm run seed` | 跑种子 |
 
-## 当前状态
+## 当前状态:v0.1.0 已上线就绪
 
-✅ **P0 脚手架** 已完成：
-- Next.js 16 + React 19 + TS 6 strict 项目骨架
-- Ant Design 6 + ProComponents 3.x beta 集成（AntdRegistry + ConfigProvider + ProLayout）
-- Prisma 7 + PostgreSQL 16 集成（18 张业务表已建）
-- NextAuth v4（JWT + Credentials + bcrypt）登录
-- 4 角色（ADMIN/SALES/FINANCE/OPS）+ 权限矩阵 + 4 测试账号
-- 字典种子（6 类、20+ 条）
-- 登录页 + Dashboard（StatisticCard 占位）+ ProLayout 主框架
-- Vitest 5 个冒烟测试通过
+**核心模块**
 
-🚧 **未实现**（P1+ 阶段）：
-- 客户/合同/项目/开票/回款 五大模块 CRUD（数据库已就绪，service/route 落地中）
-- 状态机迁移与跨模块校验
-- 消息提醒 worker、定时任务
-- 统计分析 + 导出
-- PG 行级安全（RLS）策略
+- 客户 / 合同 / 项目 / 开票 / 回款 五大模块 CRUD + 状态机 + 16 条跨模块校验规则
+- 合同/发票附件走 MinIO(presigned 直传,不中转应用服务器)
+- 消息中心(站内信 + 三通道通知:邮件/企微)
+- 统计分析(总览 / 账龄 / 业绩)+ xlsx 导出
+- 4 角色 RBAC(ADMIN/SALES/FINANCE/OPS)+ SALES 行级隔离
+- 软删除 / 操作日志 / Cron 定时任务
+- 登录页 + 顶部导航 重做(品牌 logo 配色、统计数字区、面包屑) 
 
-## 目录
+**质量基线**
+
+- `npm run typecheck` 0 errors
+- `npm run lint` 0 errors / 0 warnings(历史 137 条全清)
+- `npm test` 17/17 通过
+- `npm run build` 成功
+- dev server `/login` `/dashboard` `/contracts` 200
+
+## 最近更新
+
+### v0.1.0(2026-06-11)上线前清理
+
+- **chore(lint)**:清空 136 个 lint warnings,删 23 条 react-hooks/* 噪音规则(没启 React Compiler)
+- **feat(shell)**:header 左侧加收放按钮,Sider 改为 64px 图标条模式
+- **feat(login)**:登录页左侧品牌区改用 logo 配色(深海军蓝 #0A1C33 + 鲜红 #E11A2A)+ 业务定位型文案;数字区升级为 antd Statistic 风格大字号(56px)+ 红色 + 号 + 竖线分隔
+- **feat(shell)**:header 面包屑居左,加竖线与收放按钮分组;Sider logo 区改为纯文字"企泰安全",高度 64px 跟 header 严格对齐,折叠态"企"字 + 深蓝渐变方块
+- **fix(infra)**:统一仓库 `core.autocrlf=false`,文件以 LF 提交
+- **fix(infra)**:git push 加 `http.proxy=http://127.0.0.1:9876`(本地仓库 local 配置),走系统代理解决 github.com:443 直连 timeout
+
+### 历史里程碑
+
+- **v0.1.0-rc.1**:MinIO 接入(presign upload/download + Attachment 表 + CORS);Docker 合并为单 image(MinIO + mc 初始化),`minio/minio:latest` + `minio/mc:latest` 官方镜像
+- **v0.1.0-rc.1**:合同/发票上传/预览/下载/删除 端到端打通
+- **P3**:通知三通道(邮件/企微)+ RLS 策略 + 备份脚本 + Vercel Cron
+- **P2**:领域事件总线 + 4 个定时任务 + 统计分析 + xlsx 导出 + 软删除
+- **P1**:五大模块 CRUD + 16 条跨模块校验 + 27/27 e2e
+- **P0**:项目脚手架 + 登录 + 字典种子 + 4 角色权限
+
+## 对象存储(MinIO)
+
+附件上传走 presigned PUT 直传,不经过应用服务器。
+
+**启动**
+
+```bash
+docker compose -f docker-compose.minio.yml up -d
+# Console: http://localhost:9001  账号 minioadmin / minioadmin
+# S3 API:  http://localhost:9000
+```
+
+`qitai-minio-init` 容器会在主服务 healthy 后自动建桶 `qt-biz-attachments`(私有)。
+
+**关键流程**
+
+1. 前端 `ProFormUploadButton` 的 `customRequest` 调 `POST /api/files/presign-upload` 拿 5min 有效 PUT URL
+2. 浏览器 `fetch(url, { method: "PUT", body: file })` 直传 MinIO
+3. 详情页点文件名 → `POST /api/files/[id]/presign-download` 拿 5min GET URL → 新标签打开
+
+**业务规则**
+
+- MIME 白名单:PDF / Word / Excel / JPEG / PNG / WebP
+- 单文件 ≤ 20MB,单合同附件 ≤ 5
+- `objectKey` 命名:`contracts/{yyyy}/{mm}/{cuid}-{slug}.{ext}`
+- 下载鉴权:复用 `requireSession()` + 合同 `read` 权限
+- 软删除:删 `Attachment` 记录但保留 MinIO 对象(GC job 留作后置)
+
+**关键文件**
+
+| 文件 | 职责 |
+|---|---|
+| `server/storage/minio.ts` | S3Client 单例 + ensureBucket + CORS |
+| `server/storage/presign.ts` | `presignUpload` / `presignDownload` |
+| `app/api/files/presign-upload/route.ts` | 拿 PUT URL |
+| `app/api/files/[id]/presign-download/route.ts` | 拿 GET URL |
+| `app/api/files/[id]/route.ts` | 软删除 |
+| `lib/upload-client.ts` | 浏览器 `customRequest` 上传封装 |
+| `prisma/schema.prisma` | `Attachment` model |
+
+## 目录结构
 
 ```
-app/                   Next.js App Router（页面 + Route Handlers）
-  layout.tsx           AntdRegistry + ConfigProvider + App
-  page.tsx             根重定向（/login 或 /dashboard）
-  login/               登录页
-  dashboard/           工作台（ProLayout + StatisticCard）
-  api/                 Route Handlers
-    auth/[...nextauth] NextAuth
-    auth/me, login     显式登录/会话
-components/            Pro 扩展组件
-lib/                   env / prisma / auth / api / permissions / 字典
-prisma/                schema.prisma + seed.ts
-server/                domain/{customer,contract,...}/rules.ts
-tests/                 Vitest
-types/                 enums + errors
+app/                       Next.js App Router(页面 + Route Handlers)
+  (app)/                   已登录布局(Sider + Header + Content)
+    dashboard/             工作台
+    customers/             客户管理
+    contracts/             合同管理(附件上传/预览/下载)
+    projects/              项目管理
+    invoices/              开票管理
+    payments/              回款管理
+    statistics/            统计分析
+    admin/                 系统管理
+  api/                     Route Handlers
+    files/                 附件 presigned URL
+    auth/                  NextAuth
+  login/                   登录页(品牌区)
+components/                通用组件(qt-mark / dashboard-shell / page-header / ...)
+lib/                       env / prisma / auth / api / permissions / 字典 / upload-client
+server/                    services / events / jobs / storage(minio+presign) / audit
+prisma/                    schema.prisma + seed.ts + migrations/
+tests/                     Vitest 单元 + tests/*.mjs 端到端
+types/                     enums + errors
+docs/                      DESIGN-v3 / RLS / P2_REVIEW / P3_REVIEW / CODE_REVIEW / ...
+docker-compose.postgres.yml
+docker-compose.minio.yml
 ```
+
 
 ## P1 主链路验收
 
@@ -296,7 +369,7 @@ GET /api/statistics/export?type=overview|top-customers|sales-performance   # xls
 
 | 阶段 | 测试 | 通过 |
 |---|---|---|
-| 单元 | Vitest | 5/5 |
+| 单元 | Vitest | 17/17 |
 | 端到端 P1 | `tests/e2e-flow.mjs` | 27/27 |
 | 端到端 P2 | `tests/p2-flow.mjs` | 21/21 |
 | **合计** | – | **53/53** |
@@ -362,4 +435,4 @@ WECHAT_WORK_WEBHOOK_URL="https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=..
 | 端到端 P1 | `tests/e2e-flow.mjs` | 27/27 |
 | 端到端 P2 | `tests/p2-flow.mjs` | 21/21 |
 | 端到端 P3 | `tests/p3-flow.mjs` | 23/23 |
-| **合计** | – | **76/76** |
+| **合计** | – | **88/88** |
