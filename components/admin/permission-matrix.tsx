@@ -37,9 +37,10 @@ type Props = {
 };
 
 export function PermissionMatrix({ value, onChange, readOnly }: Props) {
-  // 归一化:给每个 resource 至少一个空 actions 数组
+  // 归一化: 兼容 undefined / null / 非数组
+  const safeValue = Array.isArray(value) ? value : [];
   const byRes = new Map<string, Set<string>>();
-  for (const p of value) {
+  for (const p of safeValue) {
     byRes.set(p.resource, new Set(p.actions));
   }
   for (const r of RESOURCE_LIST) {
