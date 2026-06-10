@@ -5,7 +5,7 @@
 //       and use TypeScript union types + Zod schemas for application-level type safety.
 
 generator client {
-  provider     = "prisma-client-js"
+  provider = "prisma-client-js"
 }
 
 datasource db {
@@ -23,29 +23,31 @@ model Role {
   permissions Json
   isSystem    Boolean  @default(false)
   createdAt   DateTime @default(now()) @db.Timestamptz(6)
-  updatedAt   DateTime @updatedAt      @db.Timestamptz(6)
+  updatedAt   DateTime @updatedAt @db.Timestamptz(6)
   users       User[]
 
   @@index([code])
 }
 
 model User {
-  id            String     @id @default(cuid())
-  employeeNo    String     @unique
-  name          String
-  email         String     @unique
-  phone         String?
-  passwordHash  String
-  roleId        String
-  role          Role       @relation(fields: [roleId], references: [id])
-  departmentId  String?
-  department    Department? @relation("UserDepartment", fields: [departmentId], references: [id])
-  status        String     @default("ACTIVE") // ACTIVE | DISABLED
-  lastLoginAt   DateTime?  @db.Timestamptz(6)
-  wechatWorkId  String?
-  createdAt     DateTime   @default(now()) @db.Timestamptz(6)
-  updatedAt     DateTime   @updatedAt      @db.Timestamptz(6)
-  deletedAt     DateTime?  @db.Timestamptz(6)
+  id           String      @id @default(cuid())
+  employeeNo   String      @unique
+  name         String
+  email        String      @unique
+  phone        String?
+  passwordHash String
+  roleId       String
+  role         Role        @relation(fields: [roleId], references: [id])
+  departmentId String?
+  department   Department? @relation("UserDepartment", fields: [departmentId], references: [id])
+  status       String      @default("ACTIVE") // ACTIVE | DISABLED
+  lastLoginAt  DateTime?   @db.Timestamptz(6)
+  wechatWorkId String?
+  createdAt    DateTime    @default(now()) @db.Timestamptz(6)
+  updatedAt    DateTime    @updatedAt @db.Timestamptz(6)
+  deletedAt    DateTime?   @db.Timestamptz(6)
+
+  uploadedAttachments Attachment[]
 
   @@index([roleId])
   @@index([status])
@@ -56,35 +58,35 @@ model User {
 // Customers
 // =====================================================
 model Customer {
-  id                     String    @id @default(cuid())
-  code                   String    @unique
-  name                   String
-  shortName              String?
-  unifiedSocialCreditCode String?  @unique
-  customerType           String    // ENTERPRISE | GOV | OTHER
-  industry               String?
-  scale                  String?   // LARGE | MEDIUM | SMALL | MICRO
-  province               String
-  city                   String
-  address                String?
-  contactPhone           String
-  contactEmail           String?
-  sourceChannel          String?
-  level                  String    @default("C") // A | B | C | D
-  ownerUserId            String
-  status                 String    @default("LEAD") // LEAD | NEGOTIATING | SIGNED | LOST | FROZEN
-  creditLimitAmount      Decimal?  @db.Decimal(18, 2)
-  paymentTermDays        Int       @default(30)
-  createdAt              DateTime  @default(now()) @db.Timestamptz(6)
-  updatedAt              DateTime  @updatedAt      @db.Timestamptz(6)
-  createdById            String
-  updatedById            String
-  deletedAt              DateTime? @db.Timestamptz(6)
+  id                      String    @id @default(cuid())
+  code                    String    @unique
+  name                    String
+  shortName               String?
+  unifiedSocialCreditCode String?   @unique
+  customerType            String // ENTERPRISE | GOV | OTHER
+  industry                String?
+  scale                   String? // LARGE | MEDIUM | SMALL | MICRO
+  province                String
+  city                    String
+  address                 String?
+  contactPhone            String
+  contactEmail            String?
+  sourceChannel           String?
+  level                   String    @default("C") // A | B | C | D
+  ownerUserId             String
+  status                  String    @default("LEAD") // LEAD | NEGOTIATING | SIGNED | LOST | FROZEN
+  creditLimitAmount       Decimal?  @db.Decimal(18, 2)
+  paymentTermDays         Int       @default(30)
+  createdAt               DateTime  @default(now()) @db.Timestamptz(6)
+  updatedAt               DateTime  @updatedAt @db.Timestamptz(6)
+  createdById             String
+  updatedById             String
+  deletedAt               DateTime? @db.Timestamptz(6)
 
-  contracts     Contract[]
-  payments      Payment[]
-  followUps     FollowUp[]
-  contacts      ContactPerson[]
+  contracts Contract[]
+  payments  Payment[]
+  followUps FollowUp[]
+  contacts  ContactPerson[]
 
   @@index([ownerUserId])
   @@index([status])
@@ -93,35 +95,35 @@ model Customer {
 }
 
 model ContactPerson {
-  id          String   @id @default(cuid())
-  customerId  String
-  customer    Customer @relation(fields: [customerId], references: [id])
-  name        String
-  title       String?
-  phone       String
-  email       String?
-  isPrimary   Boolean  @default(false)
-  remark      String?
-  createdAt   DateTime @default(now()) @db.Timestamptz(6)
-  updatedAt   DateTime @updatedAt      @db.Timestamptz(6)
-  deletedAt   DateTime? @db.Timestamptz(6)
+  id         String    @id @default(cuid())
+  customerId String
+  customer   Customer  @relation(fields: [customerId], references: [id])
+  name       String
+  title      String?
+  phone      String
+  email      String?
+  isPrimary  Boolean   @default(false)
+  remark     String?
+  createdAt  DateTime  @default(now()) @db.Timestamptz(6)
+  updatedAt  DateTime  @updatedAt @db.Timestamptz(6)
+  deletedAt  DateTime? @db.Timestamptz(6)
 
   @@index([customerId])
 }
 
 model FollowUp {
-  id            String    @id @default(cuid())
-  customerId    String
-  customer      Customer  @relation(fields: [customerId], references: [id])
-  userId        String
-  followAt      DateTime  @db.Timestamptz(6)
-  method        String    // VISIT | CALL | WECHAT | EMAIL | OTHER
-  content       String
-  nextFollowAt  DateTime? @db.Timestamptz(6)
-  result        String?   // INTENT | NO_INTENT | PENDING | SIGNED
-  createdAt     DateTime  @default(now()) @db.Timestamptz(6)
-  updatedAt     DateTime  @updatedAt      @db.Timestamptz(6)
-  deletedAt     DateTime? @db.Timestamptz(6)
+  id           String    @id @default(cuid())
+  customerId   String
+  customer     Customer  @relation(fields: [customerId], references: [id])
+  userId       String
+  followAt     DateTime  @db.Timestamptz(6)
+  method       String // VISIT | CALL | WECHAT | EMAIL | OTHER
+  content      String
+  nextFollowAt DateTime? @db.Timestamptz(6)
+  result       String? // INTENT | NO_INTENT | PENDING | SIGNED
+  createdAt    DateTime  @default(now()) @db.Timestamptz(6)
+  updatedAt    DateTime  @updatedAt @db.Timestamptz(6)
+  deletedAt    DateTime? @db.Timestamptz(6)
 
   @@index([customerId])
   @@index([userId])
@@ -132,39 +134,40 @@ model FollowUp {
 // Contracts
 // =====================================================
 model Contract {
-  id                       String    @id @default(cuid())
-  contractNo               String    @unique
-  customerId               String
-  customer                 Customer  @relation(fields: [customerId], references: [id])
-  customerName             String
-  title                    String
-  serviceType              String    // SAFETY_CONSULT | SAFETY_TRAIN | HAZARD_ANA | EMERGENCY_PLAN | EVALUATION | OTHER
-  signDate                 DateTime  @db.Timestamptz(6)
-  startDate                DateTime  @db.Timestamptz(6)
-  endDate                  DateTime  @db.Timestamptz(6)
-  totalAmount              Decimal   @db.Decimal(18, 2)
-  taxRate                  Decimal   @default(0.06) @db.Decimal(6, 4)
-  taxAmount                Decimal   @db.Decimal(18, 2)
-  amountExcludingTax       Decimal   @db.Decimal(18, 2)
-  paymentMethod            String    // LUMP_SUM | BY_PHASE | BY_MONTH | BY_QUARTER
-  installmentPlan          Json?
-  status                   String    @default("DRAFT") // DRAFT | PENDING_REVIEW | EFFECTIVE | EXECUTING | COMPLETED | TERMINATED | EXPIRED
-  ownerUserId              String
-  reviewerId               String?
-  reviewAt                 DateTime? @db.Timestamptz(6)
-  reviewComment            String?
-  attachments              Json
-  completionInvoiceRatio   Decimal   @default(0.95) @db.Decimal(4, 2)
-  createdAt                DateTime  @default(now()) @db.Timestamptz(6)
-  updatedAt                DateTime  @updatedAt      @db.Timestamptz(6)
-  createdById              String
-  updatedById              String
-  deletedAt                DateTime? @db.Timestamptz(6)
+  id                     String    @id @default(cuid())
+  contractNo             String    @unique
+  customerId             String
+  customer               Customer  @relation(fields: [customerId], references: [id])
+  customerName           String
+  title                  String
+  serviceType            String // SAFETY_CONSULT | SAFETY_TRAIN | HAZARD_ANA | EMERGENCY_PLAN | EVALUATION | OTHER
+  signDate               DateTime  @db.Timestamptz(6)
+  startDate              DateTime  @db.Timestamptz(6)
+  endDate                DateTime  @db.Timestamptz(6)
+  totalAmount            Decimal   @db.Decimal(18, 2)
+  taxRate                Decimal   @default(0.06) @db.Decimal(6, 4)
+  taxAmount              Decimal   @db.Decimal(18, 2)
+  amountExcludingTax     Decimal   @db.Decimal(18, 2)
+  paymentMethod          String // LUMP_SUM | BY_PHASE | BY_MONTH | BY_QUARTER
+  installmentPlan        Json?
+  status                 String    @default("DRAFT") // DRAFT | PENDING_REVIEW | EFFECTIVE | EXECUTING | COMPLETED | TERMINATED | EXPIRED
+  ownerUserId            String
+  reviewerId             String?
+  reviewAt               DateTime? @db.Timestamptz(6)
+  reviewComment          String?
+  attachments            Json
+  completionInvoiceRatio Decimal   @default(0.95) @db.Decimal(4, 2)
+  createdAt              DateTime  @default(now()) @db.Timestamptz(6)
+  updatedAt              DateTime  @updatedAt @db.Timestamptz(6)
+  createdById            String
+  updatedById            String
+  deletedAt              DateTime? @db.Timestamptz(6)
 
-  projects      Project[]
-  payments      Payment[]
-  invoices      Invoice[]
-  reviewLogs    ContractReviewLog[]
+  projects       Project[]
+  payments       Payment[]
+  invoices       Invoice[]
+  reviewLogs     ContractReviewLog[]
+  attachmentRefs Attachment[]        @relation("ContractAttachments")
 
   @@index([customerId])
   @@index([status])
@@ -177,7 +180,7 @@ model ContractReviewLog {
   contractId String
   contract   Contract @relation(fields: [contractId], references: [id])
   reviewerId String
-  action     String   // SUBMIT | APPROVE | REJECT | WITHDRAW
+  action     String // SUBMIT | APPROVE | REJECT | WITHDRAW
   comment    String?
   at         DateTime @default(now()) @db.Timestamptz(6)
 
@@ -201,17 +204,17 @@ model Project {
   milestones    Json?
   status        String    @default("PLANNED") // PLANNED | IN_PROGRESS | SUSPENDED | DELIVERED | ACCEPTED | CLOSED | CANCELLED
   createdAt     DateTime  @default(now()) @db.Timestamptz(6)
-  updatedAt     DateTime  @updatedAt      @db.Timestamptz(6)
+  updatedAt     DateTime  @updatedAt @db.Timestamptz(6)
   createdById   String
   updatedById   String
   deletedAt     DateTime? @db.Timestamptz(6)
 
-  progressLogs  ProjectProgressLog[]
+  progressLogs ProjectProgressLog[]
 
+  @@unique([contractId, name])
   @@index([contractId])
   @@index([status])
   @@index([managerUserId])
-  @@unique([contractId, name])
 }
 
 model ProjectProgressLog {
@@ -222,54 +225,53 @@ model ProjectProgressLog {
   percent   Int
   remark    String
   at        DateTime @default(now()) @db.Timestamptz(6)
-
 }
 
 // =====================================================
 // Invoices
 // =====================================================
 model Invoice {
-  id                  String    @id @default(cuid())
-  invoiceNo           String    @unique
-  invoiceCode         String?
-  contractId          String
-  contract            Contract  @relation(fields: [contractId], references: [id])
-  customerId          String
-  customerName        String
-  invoiceType         String    // VAT_SPECIAL | VAT_GENERAL | VAT_ELECTRONIC | ELEC_NORMAL
-  amount              Decimal   @db.Decimal(18, 2)
-  taxRate             Decimal   @db.Decimal(6, 4)
-  taxAmount           Decimal   @db.Decimal(18, 2)
-  amountExcludingTax  Decimal   @db.Decimal(18, 2)
-  applyDate           DateTime  @db.Timestamptz(6)
-  expectedIssueDate   DateTime? @db.Timestamptz(6)
-  actualIssueDate     DateTime? @db.Timestamptz(6)
-  titleType           String    // COMPANY | PERSONAL
-  titleName           String
-  taxNo               String?
-  bankName            String?
-  bankAccount         String?
-  address             String?
-  phone               String?
-  remark              String?
-  attachments         Json?
-  status              String    @default("DRAFT") // DRAFT | PENDING_FINANCE | ISSUED | REJECTED | VOIDED | RED_FLUSHED
-  applicantUserId     String
-  financeUserId       String?
-  reviewedAt          DateTime? @db.Timestamptz(6)
-  reviewComment       String?
-  linkedInvoiceId     String?   @unique
-  linkedInvoice       Invoice?  @relation("InvoiceRedFlush", fields: [linkedInvoiceId], references: [id])
-  redFlushInverse     Invoice?  @relation("InvoiceRedFlush")
-  createdAt           DateTime  @default(now()) @db.Timestamptz(6)
-  updatedAt           DateTime  @updatedAt      @db.Timestamptz(6)
-  createdById         String
-  updatedById         String
-  deletedAt           DateTime? @db.Timestamptz(6)
+  id                 String    @id @default(cuid())
+  invoiceNo          String    @unique
+  invoiceCode        String?
+  contractId         String
+  contract           Contract  @relation(fields: [contractId], references: [id])
+  customerId         String
+  customerName       String
+  invoiceType        String // VAT_SPECIAL | VAT_GENERAL | VAT_ELECTRONIC | ELEC_NORMAL
+  amount             Decimal   @db.Decimal(18, 2)
+  taxRate            Decimal   @db.Decimal(6, 4)
+  taxAmount          Decimal   @db.Decimal(18, 2)
+  amountExcludingTax Decimal   @db.Decimal(18, 2)
+  applyDate          DateTime  @db.Timestamptz(6)
+  expectedIssueDate  DateTime? @db.Timestamptz(6)
+  actualIssueDate    DateTime? @db.Timestamptz(6)
+  titleType          String // COMPANY | PERSONAL
+  titleName          String
+  taxNo              String?
+  bankName           String?
+  bankAccount        String?
+  address            String?
+  phone              String?
+  remark             String?
+  attachments        Json?
+  status             String    @default("DRAFT") // DRAFT | PENDING_FINANCE | ISSUED | REJECTED | VOIDED | RED_FLUSHED
+  applicantUserId    String
+  financeUserId      String?
+  reviewedAt         DateTime? @db.Timestamptz(6)
+  reviewComment      String?
+  linkedInvoiceId    String?   @unique
+  linkedInvoice      Invoice?  @relation("InvoiceRedFlush", fields: [linkedInvoiceId], references: [id])
+  redFlushInverse    Invoice?  @relation("InvoiceRedFlush")
+  createdAt          DateTime  @default(now()) @db.Timestamptz(6)
+  updatedAt          DateTime  @updatedAt @db.Timestamptz(6)
+  createdById        String
+  updatedById        String
+  deletedAt          DateTime? @db.Timestamptz(6)
 
-  payments        Payment[]
-  auditLogs       InvoiceAuditLog[]
-  allocations     PaymentAllocation[]
+  payments    Payment[]
+  auditLogs   InvoiceAuditLog[]
+  allocations PaymentAllocation[]
 
   @@index([status])
   @@index([actualIssueDate])
@@ -305,8 +307,8 @@ model Payment {
   invoice         Invoice?  @relation(fields: [invoiceId], references: [id])
   amount          Decimal   @db.Decimal(18, 2)
   receivedAt      DateTime  @db.Timestamptz(6)
-  method          String    // BANK_TRANSFER | CHECK | CASH | WECHAT | ALIPAY | OTHER
-  bankRefNo       String?   // 去 @unique；CONFIRMED 唯一由 service 校验（PLANNED 允许重复）
+  method          String // BANK_TRANSFER | CHECK | CASH | WECHAT | ALIPAY | OTHER
+  bankRefNo       String? // 去 @unique；CONFIRMED 唯一由 service 校验（PLANNED 允许重复）
   bankName        String?
   remark          String?
   status          String    @default("PLANNED") // PLANNED | CONFIRMED | RECONCILED | REFUNDED | CANCELLED
@@ -314,7 +316,7 @@ model Payment {
   reconcileUserId String?
   reconciledAt    DateTime? @db.Timestamptz(6)
   createdAt       DateTime  @default(now()) @db.Timestamptz(6)
-  updatedAt       DateTime  @updatedAt      @db.Timestamptz(6)
+  updatedAt       DateTime  @updatedAt @db.Timestamptz(6)
   createdById     String
   updatedById     String
   deletedAt       DateTime? @db.Timestamptz(6)
@@ -350,7 +352,7 @@ model PaymentAllocation {
 model Message {
   id             String    @id @default(cuid())
   receiverUserId String
-  type           String    // CONTRACT_PENDING_REVIEW | CONTRACT_EXPIRING | INVOICE_OVERDUE_PAYMENT | PAYMENT_RECEIVED | PROJECT_DUE | CUSTOMER_INACTIVE
+  type           String // CONTRACT_PENDING_REVIEW | CONTRACT_EXPIRING | INVOICE_OVERDUE_PAYMENT | PAYMENT_RECEIVED | PROJECT_DUE | CUSTOMER_INACTIVE
   title          String
   content        String
   link           Json?
@@ -362,18 +364,18 @@ model Message {
 }
 
 model Announcement {
-  id             String    @id @default(cuid())
-  title          String
-  content        String
-  publishUserId  String
-  publishAt      DateTime  @default(now()) @db.Timestamptz(6)
-  effectiveFrom  DateTime? @db.Timestamptz(6)
-  effectiveTo    DateTime? @db.Timestamptz(6)
-  pinned         Boolean   @default(false)
-  targetRoles    String[]
-  createdAt      DateTime  @default(now()) @db.Timestamptz(6)
-  updatedAt      DateTime  @updatedAt      @db.Timestamptz(6)
-  deletedAt      DateTime? @db.Timestamptz(6)
+  id            String    @id @default(cuid())
+  title         String
+  content       String
+  publishUserId String
+  publishAt     DateTime  @default(now()) @db.Timestamptz(6)
+  effectiveFrom DateTime? @db.Timestamptz(6)
+  effectiveTo   DateTime? @db.Timestamptz(6)
+  pinned        Boolean   @default(false)
+  targetRoles   String[]
+  createdAt     DateTime  @default(now()) @db.Timestamptz(6)
+  updatedAt     DateTime  @updatedAt @db.Timestamptz(6)
+  deletedAt     DateTime? @db.Timestamptz(6)
 
   @@index([publishAt])
 }
@@ -382,14 +384,14 @@ model Announcement {
 // Audit / Dictionaries / Sequences
 // =====================================================
 model OperationLog {
-  id        String   @id @default(cuid())
-  actorId   String
-  entity    String
-  entityId  String
-  action    String
-  diff      Json?
-  ip        String?
-  at        DateTime @default(now()) @db.Timestamptz(6)
+  id       String   @id @default(cuid())
+  actorId  String
+  entity   String
+  entityId String
+  action   String
+  diff     Json?
+  ip       String?
+  at       DateTime @default(now()) @db.Timestamptz(6)
 
   @@index([actorId])
   @@index([entity, entityId])
@@ -404,7 +406,7 @@ model Dictionary {
   sort      Int      @default(0)
   isActive  Boolean  @default(true)
   createdAt DateTime @default(now()) @db.Timestamptz(6)
-  updatedAt DateTime @updatedAt      @db.Timestamptz(6)
+  updatedAt DateTime @updatedAt @db.Timestamptz(6)
 
   @@unique([category, code])
   @@index([category, isActive, sort])
@@ -417,17 +419,17 @@ model Dictionary {
 // - isActive=false 为停用,业务查询自动过滤
 // - members 由 User.departmentId 反向关联计数
 model Department {
-  id        String   @id @default(cuid())
-  code      String   @unique
+  id        String       @id @default(cuid())
+  code      String       @unique
   name      String
   parentId  String?
   parent    Department?  @relation("DepartmentTree", fields: [parentId], references: [id])
   children  Department[] @relation("DepartmentTree")
-  sort      Int      @default(0)
-  isActive  Boolean  @default(true)
-  createdAt DateTime @default(now()) @db.Timestamptz(6)
-  updatedAt DateTime @updatedAt      @db.Timestamptz(6)
-  members   User[]      @relation("UserDepartment")
+  sort      Int          @default(0)
+  isActive  Boolean      @default(true)
+  createdAt DateTime     @default(now()) @db.Timestamptz(6)
+  updatedAt DateTime     @updatedAt @db.Timestamptz(6)
+  members   User[]       @relation("UserDepartment")
 
   @@index([parentId, isActive, sort])
 }
@@ -440,4 +442,28 @@ model Sequence {
   updatedAt DateTime @updatedAt @db.Timestamptz(6)
 
   @@unique([prefix, year])
+}
+
+// =====================================================
+// Attachments (MinIO 对象存储索引)
+// - objectKey 唯一,真实二进制存 MinIO
+// - soft delete: deletedAt 不为 null 视为已删,MinIO 对象保留
+// =====================================================
+model Attachment {
+  id           String    @id @default(cuid())
+  objectKey    String    @unique
+  bucket       String
+  originalName String
+  mimeType     String
+  size         Int
+  uploadedById String
+  uploadedBy   User      @relation(fields: [uploadedById], references: [id])
+  contractId   String?
+  contract     Contract? @relation("ContractAttachments", fields: [contractId], references: [id], onDelete: SetNull)
+  uploadedAt   DateTime  @default(now()) @db.Timestamptz(6)
+  deletedAt    DateTime? @db.Timestamptz(6)
+
+  @@index([contractId, deletedAt])
+  @@index([uploadedById])
+  @@index([deletedAt])
 }

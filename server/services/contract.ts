@@ -9,6 +9,33 @@ import { Prisma } from "@prisma/client";
 import { audit } from "@/server/audit";
 import { emit, listAdminUserIds } from "@/server/events/bus";
 
+// 把前端传的 attachment 快照(id+name+...)用 DB 真实记录重写一遍,防 spoofing
+async function resolveAttachmentSnapshots(
+  raw: { id: string; name: string; url?: string; mimeType: string; size: number; uploadedBy: string; uploadedAt: string }[]
+): Promise<Prisma.InputJsonValue> {
+  if (raw.length === 0) return [] as unknown as Prisma.InputJsonValue;
+  if (raw.length > 5) {
+    throw new ApiError(ERROR_CODES.VALIDATION_FAILED, "附件最多 5 个", 400);
+  }
+  const ids = [...new Set(raw.map((r) => r.id))];
+  const found = await prisma.attachment.findMany({
+    where: { id: { in: ids }, deletedAt: null },
+    select: { id: true, originalName: true, mimeType: true, size: true, uploadedById: true, uploadedAt: true }
+  });
+  if (found.length !== ids.length) {
+    throw new ApiError(ERROR_CODES.VALIDATION_FAILED, "附件 id 无效或已删除", 400);
+  }
+  return found.map((a) => ({
+    id: a.id,
+    name: a.originalName,
+    mimeType: a.mimeType,
+    size: a.size,
+    uploadedBy: a.uploadedById,
+    uploadedAt: a.uploadedAt.toISOString()
+  })) as unknown as Prisma.InputJsonValue;
+}
+
+
 function ownershipWhere(user: SessionUser): Prisma.ContractWhereInput {
   return user.roleCode === "SALES" ? { ownerUserId: user.id } : {};
 }
@@ -94,10 +121,10 @@ export async function createContract(user: SessionUser, input: ContractCreateInp
         taxAmount,
         amountExcludingTax,
         paymentMethod: input.paymentMethod,
-        installmentPlan: (input.installmentPlan ?? null) as any,
+        installmentPlan: (input.installmentPlan ?? null) as Prisma.InputJsonValue,
         status: "DRAFT",
         ownerUserId: customer.ownerUserId,
-        attachments: input.attachments as any,
+        attachments: await resolveAttachmentSnapshots(input.attachments ?? []),
         createdById: user.id,
         updatedById: user.id
       }
@@ -119,8 +146,8 @@ export async function updateContract(user: SessionUser, id: string, input: Contr
     const ta = input.totalAmount ?? Number(existing.totalAmount);
     const tr = input.taxRate ?? Number(existing.taxRate);
     const r = calcTotals(ta, tr);
-    taxAmount = r.taxAmount as any;
-    amountExcludingTax = r.amountExcludingTax as any;
+    taxAmount = new Prisma.Decimal(r.taxAmount);
+    amountExcludingTax = new Prisma.Decimal(r.amountExcludingTax);
   }
   return prisma.contract.update({
     where: { id },
@@ -133,8 +160,10 @@ export async function updateContract(user: SessionUser, id: string, input: Contr
       taxRate: input.taxRate,
       taxAmount,
       amountExcludingTax,
-      installmentPlan: input.installmentPlan as any,
-      attachments: input.attachments as any,
+      installmentPlan: input.installmentPlan as Prisma.InputJsonValue,
+      attachments: input.attachments
+        ? await resolveAttachmentSnapshots(input.attachments)
+        : undefined,
       updatedById: user.id
     }
   });

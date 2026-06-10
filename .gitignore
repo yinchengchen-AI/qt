@@ -12,6 +12,7 @@ build
 # env
 .env
 .env*.local
+*.err
 !.env.example
 
 # logs
@@ -55,3 +56,6 @@ prisma/migrations/dev
 .next-pid.txt
 .qt-screenshots/
 server.log.err
+
+# docker volumes (local)
+docker-data/

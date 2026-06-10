@@ -6,7 +6,9 @@ const isoDate = z.iso.datetime();
 const attachment = z.object({
   id: z.string(),
   name: z.string().min(1),
-  url: z.string().url(),
+  // url optional: 新流程存 MinIO objectKey, 下载时实时签 URL
+  // 旧数据 (https://placeholder.local/...) 仅在历史列表展示
+  url: z.string().url().optional(),
   mimeType: z.string(),
   size: z.number().int().nonnegative(),
   uploadedBy: z.string(),

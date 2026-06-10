@@ -11,6 +11,7 @@ import { App as AntdApp, Card, Space, Tag, Typography } from "antd";
 import { useSession } from "next-auth/react";
 import { useRouter } from "next/navigation";
 import { useDict } from "@/lib/dict-client";
+import { uploadFileToMinIO } from "@/lib/upload-client";
 import { Page } from "@/components/page";
 import { PageHeader } from "@/components/page-header";
 import { FormSection, FormGrid, FormCard } from "@/components/form";
@@ -62,17 +63,11 @@ export default function NewContractPage() {
               signDate: values.signDate?.toISOString?.() ?? values.signDate,
               startDate: values.startDate?.toISOString?.() ?? values.startDate,
               endDate: values.endDate?.toISOString?.() ?? values.endDate,
-              attachments: (values.attachments ?? []).map(
-                (f: { name: string; url?: string; type?: string; size?: number }, i: number) => ({
-                  id: `att-${Date.now()}-${i}`,
-                  name: f.name,
-                  url: f.url ?? `https://placeholder.local/${f.name}`,
-                  mimeType: f.type ?? "application/octet-stream",
-                  size: f.size ?? 0,
-                  uploadedBy: session?.user?.id ?? "unknown",
-                  uploadedAt: new Date().toISOString()
-                })
-              )
+              // attachments: 来自 ProFormUploadButton 的 customRequest 上传结果
+              // 元素形状:{ uid, name, status, response: { id, name, mimeType, size, uploadedBy, uploadedAt } }
+              attachments: (values.attachments ?? [])
+                .map((f: { response?: { id?: string; name?: string; mimeType?: string; size?: number; uploadedBy?: string; uploadedAt?: string } }) => f.response)
+                .filter((r: { id?: string; name?: string; mimeType?: string; size?: number; uploadedBy?: string; uploadedAt?: string } | undefined): r is { id: string; name: string; mimeType: string; size: number; uploadedBy: string; uploadedAt: string } => Boolean(r && r.id))
             };
             const res = await fetch("/api/contracts", {
               method: "POST",
@@ -215,7 +210,20 @@ export default function NewContractPage() {
               name="attachments"
               label="上传"
               max={5}
-              fieldProps={{ name: "file" }}
+              fieldProps={{
+                name: "file",
+                customRequest: async (options: any) => {
+                  try {
+                    const file = options.file as File;
+                    if (!file) throw new Error("empty file");
+                    const res = await uploadFileToMinIO(file);
+                    options.onSuccess(res, new XMLHttpRequest());
+                  } catch (e) {
+                    options.onError(e as Error);
+                    void message.error((e as Error).message);
+                  }
+                }
+              }}
             />
           </FormSection>
 
