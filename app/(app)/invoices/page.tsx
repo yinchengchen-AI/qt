@@ -1,13 +1,16 @@
 "use client";
 import { ProTable } from "@ant-design/pro-components";
-import { Button } from "antd";
+import { Button, App as AntdApp } from "antd";
+import { DownloadOutlined } from "@ant-design/icons";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { useRef } from "react";
 import { Page } from "@/components/page";
 import { PageHeader } from "@/components/page-header";
 import { StatusTag } from "@/components/status-tag";
 import { useStatusValueEnum } from "@/lib/use-status-enum";
 import { makeListRequest } from "@/lib/use-list-request";
+import { downloadExcel } from "@/lib/excel-client";
 import { CurrencyCell, DateCell, PercentCell } from "@/components/table-cells";
 
 type Row = {
@@ -25,6 +28,22 @@ type Row = {
 export default function InvoicesPage() {
   const router = useRouter();
   const statusEnum = useStatusValueEnum("invoice");
+  const searchRef = useRef<Record<string, unknown>>({});
+  const { message } = AntdApp.useApp();
+
+  const handleExport = async () => {
+    const qs = new URLSearchParams();
+    for (const [k, v] of Object.entries(searchRef.current)) {
+      if (v == null || v === "") continue;
+      qs.set(k, String(v));
+    }
+    try {
+      await downloadExcel(`/api/invoices/export${qs.toString() ? `?${qs}` : ""}`, "invoices.xlsx");
+      message.success("已开始下载");
+    } catch (e) {
+      message.error((e as Error).message);
+    }
+  };
 
   return (
     <Page>
@@ -32,9 +51,14 @@ export default function InvoicesPage() {
         title="开票管理"
         subtitle="合同开票申请、审核、实际开票与红冲;按状态 / 客户 / 合同筛选"
         actions={
-          <Button key="add" type="primary" onClick={() => router.push("/invoices/new")}>
-            新建开票
-          </Button>
+          <>
+            <Button key="export" icon={<DownloadOutlined />} onClick={handleExport}>
+              导出 Excel
+            </Button>
+            <Button key="add" type="primary" onClick={() => router.push("/invoices/new")}>
+              新建开票
+            </Button>
+          </>
         }
       />
       <ProTable<Row>
@@ -42,13 +66,20 @@ export default function InvoicesPage() {
         search={{ labelWidth: "auto" }}
         pagination={{ pageSize: 20 }}
         cardBordered={false}
-        request={makeListRequest<Row>("/api/invoices")}
+        request={async (params) => {
+          searchRef.current = {
+            keyword: params.keyword,
+            status: params.status,
+            contractId: params.contractId
+          };
+          return makeListRequest<Row>("/api/invoices")(params);
+        }}
         columns={[
           {
             title: "发票号",
             dataIndex: "invoiceNo",
             width: 200,
-            render: (_, r) => <Link href={`/invoices/${r.id}`}>{r.invoiceNo}</Link>
+            render: (_, r) => r.invoiceNo ? <Link href={`/invoices/${r.id}`}>{r.invoiceNo}</Link> : <Link href={`/invoices/${r.id}`}>未开</Link>
           },
           { title: "客户", dataIndex: "customerName", width: 180 },
           { title: "金额(含税)", dataIndex: "amount", width: 140, render: (_, r) => <CurrencyCell value={r.amount} /> },
@@ -59,7 +90,7 @@ export default function InvoicesPage() {
           {
             title: "状态",
             dataIndex: "status",
-            width: 110,
+            width: 100,
             valueEnum: statusEnum,
             render: (_, r) => <StatusTag status={r.status} domain="invoice" />
           }

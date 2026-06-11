@@ -1,13 +1,16 @@
 "use client";
 import { ProTable } from "@ant-design/pro-components";
-import { Button } from "antd";
+import { Button, App as AntdApp } from "antd";
+import { DownloadOutlined } from "@ant-design/icons";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { useRef } from "react";
 import { Page } from "@/components/page";
 import { PageHeader } from "@/components/page-header";
 import { StatusTag } from "@/components/status-tag";
 import { useStatusValueEnum } from "@/lib/use-status-enum";
 import { makeListRequest } from "@/lib/use-list-request";
+import { downloadExcel } from "@/lib/excel-client";
 import { CurrencyCell, DateCell } from "@/components/table-cells";
 
 type Row = {
@@ -25,6 +28,22 @@ type Row = {
 export default function ProjectsPage() {
   const router = useRouter();
   const statusEnum = useStatusValueEnum("project");
+  const searchRef = useRef<Record<string, unknown>>({});
+  const { message } = AntdApp.useApp();
+
+  const handleExport = async () => {
+    const qs = new URLSearchParams();
+    for (const [k, v] of Object.entries(searchRef.current)) {
+      if (v == null || v === "") continue;
+      qs.set(k, String(v));
+    }
+    try {
+      await downloadExcel(`/api/projects/export${qs.toString() ? `?${qs}` : ""}`, "projects.xlsx");
+      message.success("已开始下载");
+    } catch (e) {
+      message.error((e as Error).message);
+    }
+  };
 
   return (
     <Page>
@@ -32,9 +51,14 @@ export default function ProjectsPage() {
         title="项目管理"
         subtitle="从合同拆解出的可执行项目,跟踪起止期、预算与执行进度"
         actions={
-          <Button key="add" type="primary" onClick={() => router.push("/projects/new")}>
-            新建项目
-          </Button>
+          <>
+            <Button key="export" icon={<DownloadOutlined />} onClick={handleExport}>
+              导出 Excel
+            </Button>
+            <Button key="add" type="primary" onClick={() => router.push("/projects/new")}>
+              新建项目
+            </Button>
+          </>
         }
       />
       <ProTable<Row>
@@ -42,7 +66,14 @@ export default function ProjectsPage() {
         search={{ labelWidth: "auto" }}
         pagination={{ pageSize: 20 }}
         cardBordered={false}
-        request={makeListRequest<Row>("/api/projects")}
+        request={async (params) => {
+          searchRef.current = {
+            keyword: params.keyword,
+            status: params.status,
+            contractId: params.contractId
+          };
+          return makeListRequest<Row>("/api/projects")(params);
+        }}
         columns={[
           {
             title: "项目编号",

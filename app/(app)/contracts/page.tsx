@@ -1,14 +1,17 @@
 "use client";
 import { ProTable } from "@ant-design/pro-components";
-import { Button } from "antd";
+import { Button, App as AntdApp } from "antd";
+import { DownloadOutlined } from "@ant-design/icons";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { useRef } from "react";
 import { Page } from "@/components/page";
 import { PageHeader } from "@/components/page-header";
 import { StatusTag } from "@/components/status-tag";
 import { useStatusValueEnum } from "@/lib/use-status-enum";
 import { makeListRequest } from "@/lib/use-list-request";
 import { useDict } from "@/lib/dict-client";
+import { downloadExcel } from "@/lib/excel-client";
 import { CurrencyCell, DateCell } from "@/components/table-cells";
 
 type Row = {
@@ -25,12 +28,26 @@ type Row = {
 export default function ContractsPage() {
   const router = useRouter();
   const statusEnum = useStatusValueEnum("contract");
-  // 服务类型字典来自 /api/dictionaries?category=SERVICE_TYPE,
-  // valueEnum 让筛选下拉也显示中文;render 里再做一次 code→label 兜底渲染
   const serviceTypeDict = useDict("SERVICE_TYPE");
   const serviceTypeEnum = Object.fromEntries(
     serviceTypeDict.map((d) => [d.code, { text: d.label }])
   );
+  const searchRef = useRef<Record<string, unknown>>({});
+  const { message } = AntdApp.useApp();
+
+  const handleExport = async () => {
+    const qs = new URLSearchParams();
+    for (const [k, v] of Object.entries(searchRef.current)) {
+      if (v == null || v === "") continue;
+      qs.set(k, String(v));
+    }
+    try {
+      await downloadExcel(`/api/contracts/export${qs.toString() ? `?${qs}` : ""}`, "contracts.xlsx");
+      message.success("已开始下载");
+    } catch (e) {
+      message.error((e as Error).message);
+    }
+  };
 
   return (
     <Page>
@@ -38,9 +55,14 @@ export default function ContractsPage() {
         title="合同管理"
         subtitle="从草稿、审批、生效到执行/终止的全生命周期;支持按客户、状态筛选"
         actions={
-          <Button key="add" type="primary" onClick={() => router.push("/contracts/new")}>
-            新建合同
-          </Button>
+          <>
+            <Button key="export" icon={<DownloadOutlined />} onClick={handleExport}>
+              导出 Excel
+            </Button>
+            <Button key="add" type="primary" onClick={() => router.push("/contracts/new")}>
+              新建合同
+            </Button>
+          </>
         }
       />
       <ProTable<Row>
@@ -48,7 +70,14 @@ export default function ContractsPage() {
         search={{ labelWidth: "auto" }}
         pagination={{ pageSize: 20, showSizeChanger: true }}
         cardBordered={false}
-        request={makeListRequest<Row>("/api/contracts")}
+        request={async (params) => {
+          searchRef.current = {
+            keyword: params.keyword,
+            status: params.status,
+            customerId: params.customerId
+          };
+          return makeListRequest<Row>("/api/contracts")(params);
+        }}
         columns={[
           {
             title: "合同号",

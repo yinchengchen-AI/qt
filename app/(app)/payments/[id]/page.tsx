@@ -11,6 +11,8 @@ import { PageHeader } from "@/components/page-header";
 import { DetailPageSkeleton } from "@/components/detail-page-skeleton";
 import { StatusTag } from "@/components/status-tag";
 import { useActionCall } from "@/lib/use-action-call";
+import { FilePdfOutlined } from "@ant-design/icons";
+import { openPrintWindow } from "@/lib/print-client";
 import { useUserName } from "@/lib/user-lookup";
 import { CurrencyCell, DateTimeCell } from "@/components/table-cells";
 
@@ -65,6 +67,7 @@ export default function PaymentDetailPage() {
         meta={<StatusTag status={payment.status} domain="payment" />}
         actions={
           <Space>
+            <Button key="pdf" icon={<FilePdfOutlined />} onClick={() => openPrintWindow(`/api/payments/${id}/pdf`)}>导出 PDF</Button>
             {status === "PLANNED" && <Button type="primary" onClick={askConfirm} disabled={!isFinance}>财务确认</Button>}
             {status === "CONFIRMED" && isFinance && (
               <>

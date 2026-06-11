@@ -12,6 +12,8 @@ import { DetailPageSkeleton } from "@/components/detail-page-skeleton";
 import { StatusTag } from "@/components/status-tag";
 import { useActionCall } from "@/lib/use-action-call";
 import { CurrencyCell, DateTimeCell, PercentCell } from "@/components/table-cells";
+import { FilePdfOutlined } from "@ant-design/icons";
+import { openPrintWindow } from "@/lib/print-client";
 import { AttachmentList } from "@/components/file/attachment-list";
 const INVOICE_TYPE_MAP: Record<string, string> = { VAT_SPECIAL: "增值税专用发票", VAT_GENERAL: "增值税普通发票", VAT_ELECTRONIC: "增值税电子专票", ELEC_NORMAL: "电子普通发票" };
 const TITLE_TYPE_MAP: Record<string, string> = { COMPANY: "公司", PERSONAL: "个人" };
@@ -72,6 +74,7 @@ export default function InvoiceDetailPage() {
         meta={<StatusTag status={invoice.status} domain="invoice" />}
         actions={
           <Space>
+            <Button key="pdf" icon={<FilePdfOutlined />} onClick={() => openPrintWindow(`/api/invoices/${id}/pdf`)}>导出 PDF</Button>
             {status === "DRAFT" && <Button type="primary" onClick={() => run("submit")}>提交</Button>}
             {status === "PENDING_FINANCE" && isFinance && (
               <>

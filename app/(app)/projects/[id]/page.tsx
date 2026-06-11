@@ -11,6 +11,8 @@ import { PageHeader } from "@/components/page-header";
 import { DetailPageSkeleton } from "@/components/detail-page-skeleton";
 import { StatusTag } from "@/components/status-tag";
 import { useActionCall } from "@/lib/use-action-call";
+import { FilePdfOutlined } from "@ant-design/icons";
+import { openPrintWindow } from "@/lib/print-client";
 import { useUserName } from "@/lib/user-lookup";
 import { ProgressLogDrawer } from "@/components/file/progress-log-drawer";
 import { CurrencyCell, DateTimeCell } from "@/components/table-cells";
@@ -66,6 +68,7 @@ export default function ProjectDetailPage() {
                 记录进度
               </Button>
             )}
+            <Button key="pdf" icon={<FilePdfOutlined />} onClick={() => openPrintWindow(`/api/projects/${id}/pdf`)}>导出 PDF</Button>
             {["PLANNED", "SUSPENDED"].includes(project.status) && (
               <Button onClick={() => router.push(`/projects/${id}/edit`)}>编辑</Button>
             )}

@@ -1,15 +1,18 @@
 "use client";
 import { ProTable } from "@ant-design/pro-components";
-import { Tag, Button } from "antd";
+import { Tag, Button, App as AntdApp } from "antd";
+import { DownloadOutlined } from "@ant-design/icons";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useSWRConfig } from "swr";
+import { useRef } from "react";
 import { Page } from "@/components/page";
 import { PageHeader } from "@/components/page-header";
 import { StatusTag } from "@/components/status-tag";
 import { useDict } from "@/lib/dict-client";
 import { useStatusValueEnum } from "@/lib/use-status-enum";
 import { makeListRequest } from "@/lib/use-list-request";
+import { downloadExcel } from "@/lib/excel-client";
 import { DateCell } from "@/components/table-cells";
 
 type Customer = {
@@ -34,6 +37,24 @@ export default function CustomersPage() {
   const { mutate } = useSWRConfig();
   const customerTypeDict = useDict("CUSTOMER_TYPE");
   const statusEnum = useStatusValueEnum("customer");
+  // 用 ref 拿当前表格的查询参数(关键字/状态/等级),导出时一并带上
+  const searchRef = useRef<Record<string, unknown>>({});
+  const { message } = AntdApp.useApp();
+
+  const handleExport = async () => {
+    const qs = new URLSearchParams();
+    for (const [k, v] of Object.entries(searchRef.current)) {
+      if (v == null || v === "") continue;
+      qs.set(k, String(v));
+    }
+    const url = `/api/customers/export${qs.toString() ? `?${qs}` : ""}`;
+    try {
+      await downloadExcel(url, "customers.xlsx");
+      message.success("已开始下载");
+    } catch (e) {
+      message.error((e as Error).message);
+    }
+  };
 
   return (
     <Page>
@@ -41,9 +62,14 @@ export default function CustomersPage() {
         title="客户管理"
         subtitle="线索录入、签约、跟进与等级维护;支持按地区 / 类型 / 等级筛选"
         actions={
-          <Button key="add" type="primary" onClick={() => router.push("/customers/new")}>
-            新建客户
-          </Button>
+          <>
+            <Button key="export" icon={<DownloadOutlined />} onClick={handleExport}>
+              导出 Excel
+            </Button>
+            <Button key="add" type="primary" onClick={() => router.push("/customers/new")}>
+              新建客户
+            </Button>
+          </>
         }
       />
       <ProTable<Customer>
@@ -51,7 +77,15 @@ export default function CustomersPage() {
         search={{ labelWidth: "auto" }}
         pagination={{ pageSize: 20, showSizeChanger: true }}
         cardBordered={false}
-        request={makeListRequest<Customer>("/api/customers")}
+        request={async (params) => {
+          // 记下当前查询参数,导出时复用
+          searchRef.current = {
+            keyword: params.keyword,
+            status: params.status,
+            level: params.level
+          };
+          return makeListRequest<Customer>("/api/customers")(params);
+        }}
         columns={[
           { title: "客户编号", dataIndex: "code", width: 180 },
           {
@@ -90,7 +124,6 @@ export default function CustomersPage() {
             title: "创建时间",
             dataIndex: "createdAt",
             width: 140,
-
             render: (_, r) => <DateCell value={r.createdAt} />
           }
         ]}

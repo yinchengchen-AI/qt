@@ -11,6 +11,8 @@ import { PageHeader } from "@/components/page-header";
 import { DetailPageSkeleton } from "@/components/detail-page-skeleton";
 import { StatusTag } from "@/components/status-tag";
 import { useActionCall } from "@/lib/use-action-call";
+import { FilePdfOutlined } from "@ant-design/icons";
+import { openPrintWindow } from "@/lib/print-client";
 import { CurrencyCell, DateTimeCell, PercentCell } from "@/components/table-cells";
 import { AttachmentList } from "@/components/file/attachment-list";
 
@@ -53,8 +55,13 @@ export default function ContractDetailPage() {
         meta={<StatusTag status={contract.status} domain="contract" />}
         actions={
           <Space>
-            {status === "DRAFT" && <Button onClick={() => router.push(`/contracts/${id}/edit`)}>编辑</Button>}
-            {status === "DRAFT" && <Button type="primary" onClick={() => run("submit")}>提交审批</Button>}
+            <Button key="pdf" icon={<FilePdfOutlined />} onClick={() => openPrintWindow(`/api/contracts/${id}/pdf`)}>导出 PDF</Button>
+            {status === "DRAFT" && (
+              <>
+                <Button onClick={() => router.push(`/contracts/${id}/edit`)}>编辑</Button>
+                <Button type="primary" onClick={() => run("submit")}>提交审批</Button>
+              </>
+            )}
             {status === "PENDING_REVIEW" && roleCode !== "ADMIN" && <Button onClick={() => run("withdraw")}>撤回</Button>}
             {status === "PENDING_REVIEW" && roleCode === "ADMIN" && (
               <>

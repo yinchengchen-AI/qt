@@ -1,7 +1,7 @@
 "use client";
 import { ProCard, ProDescriptions, ProTable } from "@ant-design/pro-components";
 import { Tag, Button, Space } from "antd";
-import { PlusOutlined } from "@ant-design/icons";
+import { PlusOutlined, FilePdfOutlined } from "@ant-design/icons";
 import { useParams, useRouter } from "next/navigation";
 import useSWR from "swr";
 import { useState } from "react";
@@ -13,6 +13,7 @@ import { useDict } from "@/lib/dict-client";
 import { useUserName } from "@/lib/user-lookup";
 import { CurrencyCell, DateCell, DateTimeCell } from "@/components/table-cells";
 import { FollowUpDrawer } from "@/components/file/follow-up-drawer";
+import { openPrintWindow } from "@/lib/print-client";
 
 type Customer = {
   id: string; code: string; name: string; shortName: string | null;
@@ -78,6 +79,7 @@ export default function CustomerDetailPage() {
         subtitle="客户基础信息、跟进记录与关联合同"
         actions={
           <Space>
+            <Button key="pdf" icon={<FilePdfOutlined />} onClick={() => openPrintWindow(`/api/customers/${id}/pdf`)}>导出 PDF</Button>
             <Button key="followup" icon={<PlusOutlined />} onClick={() => setFollowUpOpen(true)}>
               新增跟进
             </Button>
