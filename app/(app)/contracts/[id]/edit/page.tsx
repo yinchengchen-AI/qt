@@ -218,13 +218,13 @@ export default function EditContractPage() {
               客户不可更换,合同编号不可改;如需大改建议作废当前合同后新建。
             </Text>
           </Space>
-        </FormCard>
-        <SubmitBar
-          onSubmit={() => formRef.current?.submit()}
-          onCancel={() => router.push(`/contracts/${id}`)}
-          submitText="保存修改"
-        />
-      </ProForm>
+          <SubmitBar
+            onSubmit={() => formRef.current?.submit()}
+            onCancel={() => router.push(`/contracts/${id}`)}
+            submitText="保存修改"
+          />
+        </ProForm>
+      </FormCard>
     </Page>
   );
 }

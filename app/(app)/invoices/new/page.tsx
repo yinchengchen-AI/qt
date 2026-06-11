@@ -302,13 +302,13 @@ export default function NewInvoicePage() {
               草稿状态可编辑;提交后 <Tag color="blue">草稿 → 财务待审</Tag> 由财务审核。
             </Text>
           </Space>
-        </FormCard>
-        <SubmitBar
-          onSubmit={() => formRef.current?.submit()}
-          onCancel={() => router.push("/invoices")}
-          submitText="创建开票"
-        />
-      </ProForm>
+          <SubmitBar
+            onSubmit={() => formRef.current?.submit()}
+            onCancel={() => router.push("/invoices")}
+            submitText="创建开票"
+          />
+        </ProForm>
+      </FormCard>
     </Page>
   );
 }

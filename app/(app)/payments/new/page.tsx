@@ -218,13 +218,13 @@ export default function NewPaymentPage() {
               财务确认后变 <Tag color="processing">已确认</Tag>,可对账。
             </Text>
           </Space>
-        </FormCard>
-        <SubmitBar
-          onSubmit={() => formRef.current?.submit()}
-          onCancel={() => router.push("/payments")}
-          submitText="登记回款"
-        />
-      </ProForm>
+          <SubmitBar
+            onSubmit={() => formRef.current?.submit()}
+            onCancel={() => router.push("/payments")}
+            submitText="登记回款"
+          />
+        </ProForm>
+      </FormCard>
     </Page>
   );
 }

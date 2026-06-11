@@ -220,13 +220,13 @@ export default function NewContractPage() {
               草稿状态可编辑;提交审批后 <Tag color="blue">草稿 → 待审批</Tag> 不可直接改,需撤回。
             </Text>
           </Space>
-        </FormCard>
-        <SubmitBar
-          onSubmit={() => formRef.current?.submit()}
-          onCancel={() => router.push("/contracts")}
-          submitText="保存草稿"
-        />
-      </ProForm>
+          <SubmitBar
+            onSubmit={() => formRef.current?.submit()}
+            onCancel={() => router.push("/contracts")}
+            submitText="保存草稿"
+          />
+        </ProForm>
+      </FormCard>
     </Page>
   );
 }

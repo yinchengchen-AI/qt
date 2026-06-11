@@ -155,13 +155,13 @@ export default function EditProjectPage() {
               项目预算为参考值,合同总额是最终结算依据。
             </Text>
           </Space>
-        </FormCard>
-        <SubmitBar
-          onSubmit={() => formRef.current?.submit()}
-          onCancel={() => router.push(`/projects/${id}`)}
-          submitText="保存修改"
-        />
-      </ProForm>
+          <SubmitBar
+            onSubmit={() => formRef.current?.submit()}
+            onCancel={() => router.push(`/projects/${id}`)}
+            submitText="保存修改"
+          />
+        </ProForm>
+      </FormCard>
     </Page>
   );
 }

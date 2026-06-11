@@ -202,13 +202,13 @@ export default function NewProjectPage() {
               创建后可手动 <Tag>开始</Tag> <Tag>取消</Tag>。
             </Text>
           </Space>
-        </FormCard>
-        <SubmitBar
-          onSubmit={() => formRef.current?.submit()}
-          onCancel={() => router.push("/projects")}
-          submitText="创建项目"
-        />
-      </ProForm>
+          <SubmitBar
+            onSubmit={() => formRef.current?.submit()}
+            onCancel={() => router.push("/projects")}
+            submitText="创建项目"
+          />
+        </ProForm>
+      </FormCard>
     </Page>
   );
 }

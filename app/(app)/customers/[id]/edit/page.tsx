@@ -57,7 +57,7 @@ export default function EditCustomerPage() {
     const codes: string[] = [];
     let current: DivisionNode[] | undefined = DIVISIONS;
     for (const label of [data.province, data.city]) {
-      const node = current?.find((n) => n.label === label);
+      const node: DivisionNode | undefined = current?.find((n) => n.label === label);
       if (!node) break;
       codes.push(node.value);
       current = node.children;
