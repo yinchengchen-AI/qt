@@ -1,11 +1,14 @@
-﻿// ESLint flat config — uses the next+typescript flat configs shipped by
+// ESLint flat config — uses the next+typescript flat configs shipped by
 // `eslint-config-next@16` (which already export flat-config arrays).
 //
 // Next 16 removed `next lint`; we invoke `eslint .` directly.
+//
+// 注:`nextCoreWebVitals` 内部已经注册了 `react-hooks` 插件,这里不能再
+// 重复声明 `plugins: { "react-hooks": ... }`,否则 ESLint 9 flat-config
+// 会抛 "Cannot redefine plugin \"react-hooks\""。
 
 import ts from "eslint-config-next/typescript";
 import nextCoreWebVitals from "eslint-config-next/core-web-vitals";
-import reactHooks from "eslint-plugin-react-hooks";
 
 const config = [
   {
@@ -30,10 +33,8 @@ const config = [
       "scripts/_*.mjs"
     ]
   },
-  // next 推荐档(含 react / jsx-a11y / @next/eslint-plugin-next)
+  // next 推荐档(含 react / jsx-a11y / @next/eslint-plugin-next / react-hooks)
   ...nextCoreWebVitals,
-  // 显式注册 react-hooks 插件,让后面的 react-hooks/* 规则名可解析
-  { plugins: { "react-hooks": reactHooks } },
   // typescript 推荐档(typescript-eslint)
   ...ts,
   // 业务代码微调:以下规则一律降为 warn,不阻塞 lint
