@@ -39,6 +39,7 @@ const config = [
   ...ts,
   // 业务代码微调:以下规则一律降为 warn,不阻塞 lint
   {
+    files: ["**/*.{js,jsx,mjs,ts,tsx,mts,cts}"],
     rules: {
       "@typescript-eslint/no-unused-vars": [
         "warn",
