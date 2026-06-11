@@ -70,7 +70,9 @@ export function invalidateAuthCache(uid: string): void {
 export const authOptions: AuthOptions = {
   session: { strategy: "jwt", maxAge: 8 * 60 * 60 },
   pages: { signIn: "/login" },
-  useSecureCookies: process.env.NODE_ENV === "production",
+  // 当前 Nginx 为 HTTP 反代，不能使用 Secure Cookie，否则浏览器拒收导致登录后无法跳转
+  // 待配置 HTTPS 后改回: process.env.NODE_ENV === "production"
+  useSecureCookies: false,
   providers: [
     CredentialsProvider({
       name: "Credentials",
