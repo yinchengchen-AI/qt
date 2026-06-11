@@ -14,7 +14,7 @@ import { useParams, useRouter } from "next/navigation";
 import useSWR from "swr";
 import { Page } from "@/components/page";
 import { PageHeader } from "@/components/page-header";
-import { FormSection, FormGrid, FormCard } from "@/components/form";
+import { FormSection, FormGrid, FormCard, SubmitBar } from "@/components/form";
 import { FormPageSkeleton } from "@/components/form-page-skeleton";
 
 const { Text } = Typography;
@@ -155,8 +155,13 @@ export default function EditProjectPage() {
               项目预算为参考值,合同总额是最终结算依据。
             </Text>
           </Space>
-        </ProForm>
-      </FormCard>
+        </FormCard>
+        <SubmitBar
+          onSubmit={() => formRef.current?.submit()}
+          onCancel={() => router.push(`/projects/${id}`)}
+          submitText="保存修改"
+        />
+      </ProForm>
     </Page>
   );
 }

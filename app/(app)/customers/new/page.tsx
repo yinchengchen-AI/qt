@@ -8,13 +8,14 @@ import {
   ProFormSelect,
   ProFormTextArea
 } from "@ant-design/pro-components";
-import { App as AntdApp } from "antd";
+import { App as AntdApp, Form, Input } from "antd";
 import { useRouter } from "next/navigation";
 import { useDict } from "@/lib/dict-client";
 import { useStatusOptions } from "@/lib/use-status-enum";
 import { Page } from "@/components/page";
 import { PageHeader } from "@/components/page-header";
 import { FormSection, FormGrid, FormCard, SubmitBar } from "@/components/form";
+import { LocationCascader } from "@/components/form/LocationCascader";
 import { isValidCreditCode } from "@/lib/credit-code";
 
 export default function NewCustomerPage() {
@@ -24,6 +25,7 @@ export default function NewCustomerPage() {
   const customerType = useDict("CUSTOMER_TYPE");
   const industryDict = useDict("CUSTOMER_INDUSTRY");
   const sourceDict = useDict("CUSTOMER_SOURCE");
+  const scaleDict = useDict("CUSTOMER_SCALE");
   // 新建不允许 FROZEN
   const statusOptions = useStatusOptions("customer", (c) => c !== "FROZEN");
 
@@ -102,6 +104,15 @@ export default function NewCustomerPage() {
                 fieldProps={{ size: "large" }}
               />
               <ProFormSelect
+                name="scale"
+                label="客户规模"
+                placeholder="请选择规模"
+                options={scaleDict.map((d) => ({ value: d.code, label: d.label }))}
+                showSearch
+                allowClear
+                fieldProps={{ size: "large" }}
+              />
+              <ProFormSelect
                 name="industry"
                 label="行业"
                 placeholder="请选择行业"
@@ -129,27 +140,35 @@ export default function NewCustomerPage() {
             />
           </FormSection>
 
-          <FormSection title="位置与联系" description="联系人是日常对接人;支持后续在详情页维护更多联系人">
-            <FormGrid columns={2}>
-              <ProFormText
-                name="province"
-                label="所在省份"
-                placeholder="如:浙江省"
-                rules={[{ required: true, message: "请输入省份" }, { max: 20 }]}
-                fieldProps={{ size: "large", maxLength: 20 }}
+        <FormSection title="位置与联系" description="级联选择省 / 市 / 区后自动填充到详细地址">
+            <div style={{ marginBottom: 16 }}>
+              <div style={{ marginBottom: 8, fontWeight: 500, fontSize: 13, color: "rgba(0,0,0,0.88)" }}>
+                所在地 <span style={{ color: "#ff4d4f" }}>*</span>
+              </div>
+              <LocationCascader
+                onChange={(labels) => {
+                  formRef.current?.setFieldsValue({
+                    province: labels[0] || "",
+                    city: labels[1] || "",
+                    town: labels[3] || "",
+                    address: labels.filter(Boolean).join("")
+                  });
+                }}
               />
-              <ProFormText
-                name="city"
-                label="所在城市"
-                placeholder="如:杭州市"
-                rules={[{ required: true, message: "请输入城市" }, { max: 40 }]}
-                fieldProps={{ size: "large", maxLength: 40 }}
-              />
-            </FormGrid>
+            </div>
+            <Form.Item name="province" rules={[{ required: true, message: "请选择所在地" }]} noStyle>
+              <Input type="hidden" />
+            </Form.Item>
+            <Form.Item name="city" rules={[{ required: true, message: "请选择所在地" }]} noStyle>
+              <Input type="hidden" />
+            </Form.Item>
+            <Form.Item name="town" noStyle>
+              <Input type="hidden" />
+            </Form.Item>
             <ProFormTextArea
               name="address"
               label="详细地址"
-              placeholder="街道名 + 门牌号 / 园区 + 楼栋"
+              placeholder="级联选择后自动填充;可继续补充门牌号 / 楼层等信息"
               fieldProps={{ size: "large", maxLength: 200, showCount: true, autoSize: { minRows: 1, maxRows: 3 } }}
             />
             <FormGrid columns={2}>

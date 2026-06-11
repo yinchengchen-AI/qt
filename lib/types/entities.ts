@@ -72,6 +72,7 @@ export type Invoice = {
   bankName: string | null;
   bankAccount: string | null;
   address: string | null;
+  town: string | null;
   phone: string | null;
   remark: string | null;
   status: string;
@@ -150,6 +151,7 @@ export type Customer = {
   province: string;
   city: string;
   address: string | null;
+  town: string | null;
   ownerUserId: string;
   createdAt: string;
   updatedAt: string;

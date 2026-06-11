@@ -40,8 +40,9 @@ export default function CustomerDetailPage() {
   const router = useRouter();
   const customerType = useDict("CUSTOMER_TYPE");
   const industryDict = useDict("CUSTOMER_INDUSTRY");
-  const sourceDict = useDict("CUSTOMER_SOURCE");
-  const methodDict = useDict("FOLLOW_METHOD");
+ const sourceDict = useDict("CUSTOMER_SOURCE");
+  const scaleDict = useDict("CUSTOMER_SCALE");
+ const methodDict = useDict("FOLLOW_METHOD");
   const resultDict = useDict("FOLLOW_RESULT");
   const { data, error, isLoading, mutate } = useSWR<Customer>(`/api/customers/${id}`);
   const { data: followUps, mutate: mutateFollowUps } = useSWR<FollowUp[]>(`/api/customers/${id}/follow-ups`);
@@ -69,8 +70,9 @@ export default function CustomerDetailPage() {
   }
   const typeLabel = customerType.find((d) => d.code === data.customerType)?.label ?? data.customerType;
   const industryLabel = data.industry ? (industryDict.find((d) => d.code === data.industry)?.label ?? data.industry) : "—";
-  const sourceLabel = data.sourceChannel ? (sourceDict.find((d) => d.code === data.sourceChannel)?.label ?? data.sourceChannel) : "—";
-  return (
+ const sourceLabel = data.sourceChannel ? (sourceDict.find((d) => d.code === data.sourceChannel)?.label ?? data.sourceChannel) : "—";
+  const scaleLabel = data.scale ? (scaleDict.find((d) => d.code === data.scale)?.label ?? data.scale) : "—";
+ return (
     <Page>
       <PageHeader
         back={() => router.push("/customers")}
@@ -95,8 +97,9 @@ export default function CustomerDetailPage() {
           { title: "客户全称", dataIndex: "name" },
           { title: "简称", dataIndex: "shortName" },
           { title: "统一社会信用代码", dataIndex: "unifiedSocialCreditCode" },
-          { title: "类型", dataIndex: "customerType", render: () => typeLabel },
-          { title: "行业", dataIndex: "industry", render: () => industryLabel },
+         { title: "类型", dataIndex: "customerType", render: () => typeLabel },
+          { title: "客户规模", dataIndex: "scale", render: () => scaleLabel },
+         { title: "行业", dataIndex: "industry", render: () => industryLabel },
           { title: "客户来源", dataIndex: "sourceChannel", render: () => sourceLabel },
           { title: "所在地区", dataIndex: "province", render: (_, r) => `${r.province} / ${r.city}` },
           { title: "详细地址", dataIndex: "address" },

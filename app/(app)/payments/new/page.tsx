@@ -11,7 +11,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { useRef, useState } from "react";
 import { Page } from "@/components/page";
 import { PageHeader } from "@/components/page-header";
-import { FormSection, FormGrid, FormCard } from "@/components/form";
+import { FormSection, FormGrid, FormCard, SubmitBar } from "@/components/form";
 
 const { Text } = Typography;
 
@@ -218,8 +218,13 @@ export default function NewPaymentPage() {
               财务确认后变 <Tag color="processing">已确认</Tag>,可对账。
             </Text>
           </Space>
-        </ProForm>
-      </FormCard>
+        </FormCard>
+        <SubmitBar
+          onSubmit={() => formRef.current?.submit()}
+          onCancel={() => router.push("/payments")}
+          submitText="登记回款"
+        />
+      </ProForm>
     </Page>
   );
 }

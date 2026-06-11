@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import {
   ProForm,
@@ -8,7 +8,7 @@ import {
   ProFormSelect,
   ProFormTextArea
 } from "@ant-design/pro-components";
-import { App as AntdApp } from "antd";
+import { App as AntdApp, Form, Input } from "antd";
 import { useParams, useRouter } from "next/navigation";
 import useSWR from "swr";
 import { useDict } from "@/lib/dict-client";
@@ -16,6 +16,8 @@ import { useStatusOptions } from "@/lib/use-status-enum";
 import { Page } from "@/components/page";
 import { PageHeader } from "@/components/page-header";
 import { FormSection, FormGrid, FormCard, SubmitBar } from "@/components/form";
+import { LocationCascader } from "@/components/form/LocationCascader";
+import { DIVISIONS, type DivisionNode } from "@/lib/china-divisions";
 import { FormPageSkeleton } from "@/components/form-page-skeleton";
 import { isValidCreditCode } from "@/lib/credit-code";
 
@@ -41,13 +43,27 @@ export default function EditCustomerPage() {
   const router = useRouter();
   const { message } = AntdApp.useApp();
   const formRef = useRef<any>(null);
+  const [cascadeValue, setCascadeValue] = useState<string[]>([]);
   const customerType = useDict("CUSTOMER_TYPE");
   const industryDict = useDict("CUSTOMER_INDUSTRY");
   const sourceDict = useDict("CUSTOMER_SOURCE");
+  const scaleDict = useDict("CUSTOMER_SCALE");
   const statusOptions = useStatusOptions("customer");
   const { data, isLoading } = // eslint-disable-next-line @typescript-eslint/no-explicit-any -- edit page reads many dynamic fields
   useSWR<any>(`/api/customers/${id}`);
 
+  useEffect(() => {
+    if (!data) return;
+    const codes: string[] = [];
+    let current: DivisionNode[] | undefined = DIVISIONS;
+    for (const label of [data.province, data.city]) {
+      const node = current?.find((n) => n.label === label);
+      if (!node) break;
+      codes.push(node.value);
+      current = node.children;
+    }
+    setCascadeValue(codes);
+  }, [data]);
   if (isLoading || !data) {
     return (
       <Page compact>
@@ -75,6 +91,7 @@ export default function EditCustomerPage() {
           customerType: data.customerType,
           industry: data.industry,
           sourceChannel: data.sourceChannel,
+          scale: data.scale,
           status: data.status,
           contactName: data.contactName,
           contactTitle: data.contactTitle,
@@ -143,6 +160,15 @@ export default function EditCustomerPage() {
                 fieldProps={{ size: "large" }}
               />
               <ProFormSelect
+                name="scale"
+                label="客户规模"
+                placeholder="请选择规模"
+                options={scaleDict.map((d) => ({ value: d.code, label: d.label }))}
+                showSearch
+                allowClear
+                fieldProps={{ size: "large" }}
+              />
+              <ProFormSelect
                 name="industry"
                 label="行业"
                 placeholder="请选择行业"
@@ -169,24 +195,36 @@ export default function EditCustomerPage() {
             />
           </FormSection>
 
-          <FormSection title="位置与联系" description="支持后续在详情页维护更多联系人">
-            <FormGrid columns={2}>
-              <ProFormText
-                name="province"
-                label="所在省份"
-                rules={[{ required: true, message: "请输入省份" }, { max: 20 }]}
-                fieldProps={{ size: "large", maxLength: 20 }}
+          <FormSection title="位置与联系" description="选择省 / 市 / 区后自动填充">
+            <div style={{ marginBottom: 16 }}>
+              <div style={{ marginBottom: 8, fontWeight: 500, fontSize: 13, color: "rgba(0,0,0,0.88)" }}>
+                所在地 <span style={{ color: "#ff4d4f" }}>*</span>
+              </div>
+              <LocationCascader
+                value={cascadeValue}
+                onChange={(labels) => {
+                  formRef.current?.setFieldsValue({
+                    province: labels[0] || "",
+                    city: labels[1] || "",
+                    town: labels[3] || "",
+                    address: labels.filter(Boolean).join("")
+                  });
+                }}
               />
-              <ProFormText
-                name="city"
-                label="所在城市"
-                rules={[{ required: true, message: "请输入城市" }, { max: 40 }]}
-                fieldProps={{ size: "large", maxLength: 40 }}
-              />
-            </FormGrid>
+            </div>
+            <Form.Item name="province" rules={[{ required: true, message: "请选择所在地" }]} noStyle>
+              <Input type="hidden" />
+            </Form.Item>
+            <Form.Item name="city" rules={[{ required: true, message: "请选择所在地" }]} noStyle>
+              <Input type="hidden" />
+            </Form.Item>
+            <Form.Item name="town" noStyle>
+              <Input type="hidden" />
+            </Form.Item>
             <ProFormTextArea
               name="address"
               label="详细地址"
+              placeholder="级联选择后自动填充;可继续补充门牌号 / 楼层等信息"
               fieldProps={{ size: "large", maxLength: 200, showCount: true, autoSize: { minRows: 1, maxRows: 3 } }}
             />
             <FormGrid columns={2}>
