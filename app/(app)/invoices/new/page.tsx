@@ -4,7 +4,7 @@ import {
   ProFormText,
   ProFormSelect,
   ProFormDigit,
-  ProFormDatePicker,
+  ProFormDatePicker
 } from "@ant-design/pro-components";
 import { App as AntdApp, Space, Tag, Typography } from "antd";
 import { useRouter } from "next/navigation";
@@ -29,17 +29,21 @@ const TITLE_TYPE_OPTIONS = [
   { value: "PERSONAL", label: "个人" }
 ];
 
+// Customer 实际字段(name / 统一社会信用代码 / 地址 / 联系电话),
+// 选合同后把这些带进抬头字段;bankName / bankAccount 在客户主数据里没有,保持空
 type Customer = {
   id: string;
   name: string;
+  unifiedSocialCreditCode: string | null;
+  address: string | null;
   contactPhone: string;
   contactEmail: string | null;
-  address: string | null;
 };
 
 export default function NewInvoicePage() {
   const router = useRouter();
   const { message } = AntdApp.useApp();
+  const [form] = ProForm.useForm();
   const [pickedCustomer, setPickedCustomer] = useState<Customer | null>(null);
   const [titleType, setTitleType] = useState<"COMPANY" | "PERSONAL">("COMPANY");
 
@@ -48,7 +52,7 @@ export default function NewInvoicePage() {
       <PageHeader
         back={() => router.push("/invoices")}
         title="新建开票"
-        subtitle="为已生效合同申请开票，提交后由财务审核"
+        subtitle="为已生效合同申请开票,提交后由财务审核"
       />
       <FormCard
         headerHint={
@@ -58,6 +62,7 @@ export default function NewInvoicePage() {
         }
       >
         <ProForm
+          form={form}
           layout="vertical"
           initialValues={{
             invoiceType: "VAT_SPECIAL",
@@ -66,7 +71,6 @@ export default function NewInvoicePage() {
             titleType: "COMPANY"
           }}
           onFinish={async (values) => {
-            // 新上传的附件:从 ProFormUploadButton 拿 response(同合同模式)
             const newlyUploaded = (values.attachments ?? [])
               .map((f: { response?: { id?: string; name?: string; mimeType?: string; size?: number; uploadedBy?: string; uploadedAt?: string } }) => f.response)
               .filter((r: { id?: string } | undefined): r is { id: string; name: string; mimeType: string; size: number; uploadedBy: string; uploadedAt: string } => Boolean(r && r.id));
@@ -100,7 +104,37 @@ export default function NewInvoicePage() {
               placeholder="搜索合同编号 / 标题"
               showSearch
               rules={[{ required: true, message: "请选择合同" }]}
-              fieldProps={{ size: "large", optionFilterProp: "label" }}
+              fieldProps={{
+                size: "large",
+                optionFilterProp: "label",
+                // 选合同 → 拉客户详情 → 写抬头字段
+                onChange: async (_: unknown, opt: unknown) => {
+                  const o = opt as { customerId?: string } | undefined;
+                  if (!o?.customerId) {
+                    setPickedCustomer(null);
+                    return;
+                  }
+                  try {
+                    const r = await fetch(`/api/customers/${o.customerId}`, {
+                      credentials: "include"
+                    });
+                    const j = await r.json();
+                    if (j.code !== 0) return;
+                    const customer = j.data as Customer;
+                    setPickedCustomer(customer);
+                    // 写抬头字段:客户全称/统一社会信用代码/地址/电话
+                    // bankName / bankAccount 在客户主数据里没有,不动
+                    form.setFieldsValue({
+                      titleName: customer.name,
+                      taxNo: customer.unifiedSocialCreditCode ?? undefined,
+                      address: customer.address ?? undefined,
+                      phone: customer.contactPhone ?? undefined
+                    });
+                  } catch {
+                    /* ignore */
+                  }
+                }
+              }}
               request={async (params: { keyWords?: string }) => {
                 const qs = new URLSearchParams();
                 qs.set("pageSize", "50");
@@ -121,25 +155,6 @@ export default function NewInvoicePage() {
                   customerId: c.customerId,
                   customerName: c.customerName
                 }));
-              }}
-              onChange={async (
-                _: unknown,
-                opt: { customerId?: string; customerName?: string } | unknown
-              ) => {
-                const o = opt as { customerId?: string } | undefined;
-                if (!o?.customerId) {
-                  setPickedCustomer(null);
-                  return;
-                }
-                try {
-                  const r = await fetch(`/api/customers/${o.customerId}`, {
-                    credentials: "include"
-                  });
-                  const j = await r.json();
-                  if (j.code === 0) setPickedCustomer(j.data as Customer);
-                } catch {
-                  /* ignore */
-                }
               }}
             />
           </FormSection>
