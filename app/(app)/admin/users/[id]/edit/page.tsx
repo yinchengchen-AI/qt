@@ -31,8 +31,8 @@ export default function EditUserPage() {
   const router = useRouter();
   const { message } = AntdApp.useApp();
   const { data, isLoading } = useSWR<User>(`/api/users/${id}`);
-  const { data: rolesResp } = useSWR<{ data: { list: Role[] } }>("/api/roles?pageSize=100");
-  const roleOptions = (rolesResp?.data?.list ?? []).map((r) => ({
+  const { data: rolesResp } = useSWR<{ list: Role[] }>("/api/roles?pageSize=100");
+  const roleOptions = (rolesResp?.list ?? []).map((r) => ({
     value: r.id,
     label: r.name
   }));
