@@ -6,16 +6,20 @@ import { emit } from "@/server/events/bus";
 export type JobResult = { job: string; created: number; scanned: number; durationMs: number };
 
 export async function runAllJobs(now = new Date()): Promise<JobResult[]> {
+  const admins = await prisma.user.findMany({
+    where: { role: { code: "ADMIN" }, deletedAt: null, status: "ACTIVE" },
+    select: { id: true }
+  });
   return Promise.all([
-    contractExpiringJob(now),
-    invoiceOverdueJob(now),
-    projectDueJob(now),
+    contractExpiringJob(now, admins),
+    invoiceOverdueJob(now, admins),
+    projectDueJob(now, admins),
     customerInactiveJob(now)
   ]);
 }
 
 // CONTRACT_EXPIRING: endDate - 30/7/1 天，每天扫一次
-export async function contractExpiringJob(now: Date): Promise<JobResult> {
+export async function contractExpiringJob(now: Date, admins?: { id: string }[]): Promise<JobResult> {
   const t0 = Date.now();
   const targets = [30, 7, 1];
   let created = 0;
@@ -48,11 +52,11 @@ export async function contractExpiringJob(now: Date): Promise<JobResult> {
         }
       });
       if (exists) continue;
-      const admins = await prisma.user.findMany({ where: { role: { code: "ADMIN" }, deletedAt: null, status: "ACTIVE" }, select: { id: true } });
+      const adminList = admins ?? await prisma.user.findMany({ where: { role: { code: "ADMIN" }, deletedAt: null, status: "ACTIVE" }, select: { id: true } });
       await emit(prisma, {
         type: "CONTRACT_EXPIRING",
         payload: { contractId: c.id, contractNo: c.contractNo, endDate: c.endDate, daysLeft: days },
-        receivers: Array.from(new Set([c.ownerUserId, ...admins.map((a) => a.id)]))
+        receivers: Array.from(new Set([c.ownerUserId, ...adminList.map((a) => a.id)]))
       });
       created++;
     }
@@ -61,7 +65,7 @@ export async function contractExpiringJob(now: Date): Promise<JobResult> {
 }
 
 // INVOICE_OVERDUE_PAYMENT: actualIssueDate + 30 天，未全额回款
-export async function invoiceOverdueJob(now: Date): Promise<JobResult> {
+export async function invoiceOverdueJob(now: Date, admins?: { id: string }[]): Promise<JobResult> {
   const t0 = Date.now();
   const cutoff = new Date(now);
   cutoff.setDate(cutoff.getDate() - 30);
@@ -86,7 +90,7 @@ export async function invoiceOverdueJob(now: Date): Promise<JobResult> {
     const remaining = Number(inv.amount) - paid;
     if (remaining <= 0.01) continue;
     const daysOverdue = Math.floor((now.getTime() - new Date(inv.actualIssueDate!).getTime()) / 86400_000);
-    const admins = await prisma.user.findMany({ where: { role: { code: "ADMIN" }, deletedAt: null, status: "ACTIVE" }, select: { id: true } });
+    const adminList = admins ?? await prisma.user.findMany({ where: { role: { code: "ADMIN" }, deletedAt: null, status: "ACTIVE" }, select: { id: true } });
     // 找财务
     const finance = await prisma.user.findMany({ where: { role: { code: "FINANCE" }, deletedAt: null, status: "ACTIVE" }, select: { id: true } });
     const todayStart = new Date(now);
@@ -98,7 +102,7 @@ export async function invoiceOverdueJob(now: Date): Promise<JobResult> {
     await emit(prisma, {
       type: "INVOICE_OVERDUE_PAYMENT",
       payload: { invoiceId: inv.id, invoiceNo: inv.invoiceNo, customerName: inv.customerName, daysOverdue, remaining: remaining.toFixed(2) },
-      receivers: Array.from(new Set([inv.contract.ownerUserId, ...admins.map((a) => a.id), ...finance.map((f) => f.id)]))
+      receivers: Array.from(new Set([inv.contract.ownerUserId, ...adminList.map((a) => a.id), ...finance.map((f) => f.id)]))
     });
     created++;
   }
@@ -106,7 +110,7 @@ export async function invoiceOverdueJob(now: Date): Promise<JobResult> {
 }
 
 // PROJECT_DUE: endDate - 7 天
-export async function projectDueJob(now: Date): Promise<JobResult> {
+export async function projectDueJob(now: Date, admins?: { id: string }[]): Promise<JobResult> {
   const t0 = Date.now();
   const dayStart = new Date(now);
   dayStart.setHours(0, 0, 0, 0);
@@ -130,11 +134,11 @@ export async function projectDueJob(now: Date): Promise<JobResult> {
       where: { type: "PROJECT_DUE", receiverUserId: p.managerUserId, createdAt: { gte: todayStart }, link: { path: ["id"], equals: p.id } }
     });
     if (exists) continue;
-    const admins = await prisma.user.findMany({ where: { role: { code: "ADMIN" }, deletedAt: null, status: "ACTIVE" }, select: { id: true } });
+    const adminList = admins ?? await prisma.user.findMany({ where: { role: { code: "ADMIN" }, deletedAt: null, status: "ACTIVE" }, select: { id: true } });
     await emit(prisma, {
       type: "PROJECT_DUE",
       payload: { projectId: p.id, projectNo: p.projectNo, contractNo: p.contract.contractNo, daysLeft: 7 },
-      receivers: Array.from(new Set([p.managerUserId, p.contract.ownerUserId, ...admins.map((a) => a.id)]))
+      receivers: Array.from(new Set([p.managerUserId, p.contract.ownerUserId, ...adminList.map((a) => a.id)]))
     });
     created++;
   }

@@ -342,11 +342,11 @@ export default function LoginPage() {
               <span className={styles.tickerBlink} />
               STATUS · NOMINAL
             </span>
-            <span className={styles.tickerSep}>//</span>
+            <span className={styles.tickerSep}>{"//"}</span>
             <span className={styles.narrativeFootItem}>SECTOR 04</span>
-            <span className={styles.tickerSep}>//</span>
+            <span className={styles.tickerSep}>{"//"}</span>
             <span className={styles.narrativeFootItem}>T+ {formatStamp(clock)}</span>
-            <span className={styles.tickerSep}>//</span>
+            <span className={styles.tickerSep}>{"//"}</span>
             <span className={styles.narrativeFootItem}>ALERTS 0</span>
           </div>
         </section>

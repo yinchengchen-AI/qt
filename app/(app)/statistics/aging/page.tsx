@@ -59,7 +59,7 @@ export default function AgingPage() {
   const totalOverdue = useMemo(() => BUCKETS.reduce((s, b) => s + (buckets[b] ?? 0), 0), [buckets]);
 
   const kpiItems: StatItem[] = [
-    { label: "应收总额", value: formatCurrency(totalOverdue), prefix: "¥", description: `共 ${rows.length} 张超期发票`, delta: { value: `最高风险 ${formatCurrency(buckets["90+"] ?? 0)}`, direction: buckets["90+"] > 0 ? "down" : "up" } },
+    { label: "应收总额", value: formatCurrency(totalOverdue), prefix: "¥", description: `共 ${rows.length} 张超期发票`, delta: { value: `最高风险 ${formatCurrency(buckets["90+"] ?? 0)}`, direction: (buckets["90+"] ?? 0) > 0 ? "down" : "up" } },
     ...BUCKETS.map((b) => ({
       label: BUCKET_META[b].label,
       value: formatCurrency(buckets[b] ?? 0),

@@ -14,8 +14,8 @@ export type StatItem = {
 
 type Props = {
   items: StatItem[];
-  /** 桌面列数:2 / 3 / 4 / 6,默认 4 */
-  columns?: 2 | 3 | 4 | 6;
+  /** 桌面列数:2 / 3 / 4 / 5 / 6,默认 4 */
+  columns?: 2 | 3 | 4 | 5 | 6;
   loading?: boolean;
   className?: string;
 };
@@ -24,6 +24,7 @@ const SPAN_MAP: Record<number, { xs: number; sm: number; md: number; lg: number;
   2: { xs: 24, sm: 12, md: 12, lg: 12, xl: 12 },
   3: { xs: 24, sm: 12, md: 8, lg: 8, xl: 8 },
   4: { xs: 24, sm: 12, md: 12, lg: 6, xl: 6 },
+  5: { xs: 24, sm: 12, md: 8, lg: 4, xl: 4 },
   6: { xs: 24, sm: 12, md: 8, lg: 4, xl: 4 }
 };
 

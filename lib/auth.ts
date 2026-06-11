@@ -1,4 +1,4 @@
-﻿// NextAuth v4 配置（JWT + Credentials；不挂 PrismaAdapter，简化 P0 阶段）
+// NextAuth v4 配置（JWT + Credentials；不挂 PrismaAdapter，简化 P0 阶段）
 import type { AuthOptions } from "next-auth";
 import CredentialsProvider from "next-auth/providers/credentials";
 import bcrypt from "bcrypt";
@@ -67,12 +67,18 @@ export function invalidateAuthCache(uid: string): void {
   userCache.delete(uid);
 }
 
+const isProd = process.env.NODE_ENV === "production";
+const forceHttps = !!process.env.FORCE_HTTPS;
+if (isProd && !forceHttps) {
+  console.warn("[AUTH] 生产环境使用非 Secure Cookie，请尽快配置 HTTPS 并设置 FORCE_HTTPS=true");
+}
+
 export const authOptions: AuthOptions = {
   session: { strategy: "jwt", maxAge: 8 * 60 * 60 },
   pages: { signIn: "/login" },
   // 当前 Nginx 为 HTTP 反代，不能使用 Secure Cookie，否则浏览器拒收导致登录后无法跳转
-  // 待配置 HTTPS 后改回: process.env.NODE_ENV === "production"
-  useSecureCookies: false,
+  // 生产环境默认要求 HTTPS；若尚未配置，需显式设置 FORCE_HTTPS 来保持非 Secure
+  useSecureCookies: isProd ? forceHttps : false,
   providers: [
     CredentialsProvider({
       name: "Credentials",
