@@ -1,14 +1,18 @@
 "use client";
 import { ProCard, ProDescriptions, ProTable } from "@ant-design/pro-components";
 import { Button, Space } from "antd";
+import { PlusOutlined } from "@ant-design/icons";
 import { useParams, useRouter } from "next/navigation";
 import type { Project as ProjectEntity } from "@/lib/types/entities";
 import useSWR from "swr";
+import { useState } from "react";
 import { Page } from "@/components/page";
 import { PageHeader } from "@/components/page-header";
 import { DetailPageSkeleton } from "@/components/detail-page-skeleton";
 import { StatusTag } from "@/components/status-tag";
 import { useActionCall } from "@/lib/use-action-call";
+import { useUserName } from "@/lib/user-lookup";
+import { ProgressLogDrawer } from "@/components/file/progress-log-drawer";
 import { CurrencyCell, DateTimeCell } from "@/components/table-cells";
 
 const ACTION_LABEL: Record<string, string> = {
@@ -23,6 +27,7 @@ export default function ProjectDetailPage() {
   const { data, isLoading, mutate } = useSWR<ProjectEntity>(`/api/projects/${id}`);
   const project = data;
   const { run } = useActionCall({ baseUrl: `/api/projects/${id}`, reload: () => mutate() });
+  const [progressOpen, setProgressOpen] = useState(false);
 
   if (isLoading || !project) {
     return (
@@ -44,6 +49,8 @@ export default function ProjectDetailPage() {
   })();
 
   const contractNo = project.contract?.contractNo ?? project.contractNo ?? "-";
+  // 项目已结束 / 关闭后禁止再记进度(状态机不允许)
+  const canLogProgress = ["PLANNED", "IN_PROGRESS", "SUSPENDED"].includes(project.status);
 
   return (
     <Page>
@@ -54,6 +61,11 @@ export default function ProjectDetailPage() {
         meta={<StatusTag status={project.status} domain="project" />}
         actions={
           <Space>
+            {canLogProgress && (
+              <Button key="progress" icon={<PlusOutlined />} onClick={() => setProgressOpen(true)}>
+                记录进度
+              </Button>
+            )}
             {["PLANNED", "SUSPENDED"].includes(project.status) && (
               <Button onClick={() => router.push(`/projects/${id}/edit`)}>编辑</Button>
             )}
@@ -85,12 +97,37 @@ export default function ProjectDetailPage() {
       </ProCard>
       <PageHeader level="section" title="进度日志" />
       <ProCard>
-        <ProTable rowKey="id" search={false} options={false} pagination={{ pageSize: 10 }} dataSource={project.progressLogs ?? []} columns={[
-          { title: "时间", dataIndex: "at", valueType: "dateTime", width: 180, render: (_, r) => <DateTimeCell value={r.at as string} /> },
-          { title: "进度", dataIndex: "percent", width: 100, render: (v) => `${v as number}%` },
-          { title: "说明", dataIndex: "remark" }
-        ]} />
+        <ProTable
+          rowKey="id"
+          search={false}
+          options={false}
+          pagination={{ pageSize: 10 }}
+          dataSource={project.progressLogs ?? []}
+          columns={[
+            { title: "时间", dataIndex: "at", valueType: "dateTime", width: 180, render: (_, r) => <DateTimeCell value={r.at as string} /> },
+            { title: "进度", dataIndex: "percent", width: 100, render: (v) => `${v as number}%` },
+            {
+              title: "操作人",
+              dataIndex: "userId",
+              width: 120,
+              render: (_, r) => <ProgressUserName id={r.userId as string} />
+            },
+            { title: "说明", dataIndex: "remark" }
+          ]}
+        />
       </ProCard>
+      <ProgressLogDrawer
+        projectId={id}
+        open={progressOpen}
+        onClose={() => setProgressOpen(false)}
+        onSaved={() => mutate()}
+      />
     </Page>
   );
+}
+
+// 拆出来是因为 useUserName 必须在 hook 顶层调用;写成内联 render 会破坏 hooks 规则
+function ProgressUserName({ id }: { id: string }) {
+  const name = useUserName(id, "—");
+  return <span>{name}</span>;
 }

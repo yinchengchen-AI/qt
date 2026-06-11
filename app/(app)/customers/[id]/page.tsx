@@ -1,14 +1,18 @@
 "use client";
 import { ProCard, ProDescriptions, ProTable } from "@ant-design/pro-components";
-import { Tag, Button } from "antd";
+import { Tag, Button, Space } from "antd";
+import { PlusOutlined } from "@ant-design/icons";
 import { useParams, useRouter } from "next/navigation";
 import useSWR from "swr";
+import { useState } from "react";
 import { Page } from "@/components/page";
 import { PageHeader } from "@/components/page-header";
 import { DetailPageSkeleton } from "@/components/detail-page-skeleton";
 import { StatusTag } from "@/components/status-tag";
 import { useDict } from "@/lib/dict-client";
+import { useUserName } from "@/lib/user-lookup";
 import { CurrencyCell, DateCell, DateTimeCell } from "@/components/table-cells";
+import { FollowUpDrawer } from "@/components/file/follow-up-drawer";
 
 type Customer = {
   id: string; code: string; name: string; shortName: string | null;
@@ -16,6 +20,16 @@ type Customer = {
   scale: string | null; level: string; status: string; contactPhone: string;
   contactEmail: string | null; province: string; city: string; address: string | null;
   creditLimitAmount: string | null; paymentTermDays: number; createdAt: string;
+};
+
+type FollowUp = {
+  id: string;
+  followAt: string;
+  method: string;
+  content: string;
+  result: string | null;
+  nextFollowAt: string | null;
+  userId: string;
 };
 
 export default function CustomerDetailPage() {
@@ -26,9 +40,12 @@ export default function CustomerDetailPage() {
   const customerLevel = useDict("CUSTOMER_LEVEL");
   const industryDict = useDict("CUSTOMER_INDUSTRY");
   const sourceDict = useDict("CUSTOMER_SOURCE");
+  const methodDict = useDict("FOLLOW_METHOD");
+  const resultDict = useDict("FOLLOW_RESULT");
   const { data, error, isLoading, mutate } = useSWR<Customer>(`/api/customers/${id}`);
-  const { data: followUps } = useSWR<Array<Record<string, unknown>>>(`/api/customers/${id}/follow-ups`);
+  const { data: followUps, mutate: mutateFollowUps } = useSWR<FollowUp[]>(`/api/customers/${id}/follow-ups`);
   const { data: contracts } = useSWR<Array<Record<string, unknown>>>(`/api/customers/${id}/contracts`);
+  const [followUpOpen, setFollowUpOpen] = useState(false);
 
   if (error) {
     return (
@@ -60,9 +77,14 @@ export default function CustomerDetailPage() {
         title={`${data.name} (${data.code})`}
         subtitle="客户基础信息、跟进记录与关联合同"
         actions={
-          <Button key="edit" type="primary" onClick={() => router.push(`/customers/${id}/edit`)}>
-            编辑
-          </Button>
+          <Space>
+            <Button key="followup" icon={<PlusOutlined />} onClick={() => setFollowUpOpen(true)}>
+              新增跟进
+            </Button>
+            <Button key="edit" type="primary" onClick={() => router.push(`/customers/${id}/edit`)}>
+              编辑
+            </Button>
+          </Space>
         }
         meta={data.status ? <StatusTag status={data.status} domain="customer" /> : null}
       />
@@ -87,12 +109,41 @@ export default function CustomerDetailPage() {
       </ProCard>
       <PageHeader level="section" title="跟进记录" />
       <ProCard>
-        <ProTable rowKey="id" search={false} options={false} pagination={{ pageSize: 5 }} dataSource={followUps ?? []} columns={[
-          { title: "时间", dataIndex: "followAt", valueType: "dateTime", width: 180, render: (_, r) => <DateTimeCell value={r.followAt as string} /> },
-          { title: "方式", dataIndex: "method", width: 100 },
-          { title: "内容", dataIndex: "content" },
-          { title: "结果", dataIndex: "result", width: 100 }
-        ]} />
+        <ProTable<FollowUp>
+          rowKey="id"
+          search={false}
+          options={false}
+          pagination={{ pageSize: 5 }}
+          dataSource={followUps ?? []}
+          columns={[
+            { title: "时间", dataIndex: "followAt", valueType: "dateTime", width: 180, render: (_, r) => <DateTimeCell value={r.followAt} /> },
+            {
+              title: "方式",
+              dataIndex: "method",
+              width: 100,
+              render: (_, r) => methodDict.find((d) => d.code === r.method)?.label ?? r.method
+            },
+            { title: "内容", dataIndex: "content" },
+            {
+              title: "结果",
+              dataIndex: "result",
+              width: 100,
+              render: (_, r) => r.result ? (resultDict.find((d) => d.code === r.result)?.label ?? r.result) : "—"
+            },
+            {
+              title: "跟进人",
+              dataIndex: "userId",
+              width: 100,
+              render: (_, r) => <FollowUpUserName id={r.userId} />
+            },
+            {
+              title: "下次跟进",
+              dataIndex: "nextFollowAt",
+              width: 160,
+              render: (_, r) => r.nextFollowAt ? <DateTimeCell value={r.nextFollowAt} /> : "—"
+            }
+          ]}
+        />
       </ProCard>
       <PageHeader level="section" title="关联合同" />
       <ProCard>
@@ -104,6 +155,19 @@ export default function CustomerDetailPage() {
           { title: "状态", dataIndex: "status", width: 100, render: (_, r) => <StatusTag status={r.status as string} domain="contract" /> }
         ]} />
       </ProCard>
+      <FollowUpDrawer
+        customerId={id}
+        open={followUpOpen}
+        onClose={() => setFollowUpOpen(false)}
+        onSaved={() => mutateFollowUps()}
+      />
     </Page>
   );
+}
+
+// 把 userId 解析成姓名;组件拆出来是因为 useUserName 必须在 SWR 数据解析后调用,
+// 直接写在 render 闭包里行不通(SWR 初始为 undefined → useUserName 拿不到 id)
+function FollowUpUserName({ id }: { id: string }) {
+  const name = useUserName(id, "—");
+  return <span>{name}</span>;
 }

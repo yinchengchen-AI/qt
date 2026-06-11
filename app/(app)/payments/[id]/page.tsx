@@ -11,7 +11,10 @@ import { PageHeader } from "@/components/page-header";
 import { DetailPageSkeleton } from "@/components/detail-page-skeleton";
 import { StatusTag } from "@/components/status-tag";
 import { useActionCall } from "@/lib/use-action-call";
+import { useUserName } from "@/lib/user-lookup";
 import { CurrencyCell, DateTimeCell } from "@/components/table-cells";
+
+// 收款方式 code→label 兜底映射,字典未拉到时(初次 SSR)还能渲染中文
 const METHOD_MAP: Record<string, string> = { BANK_TRANSFER: "银行转账", CHECK: "支票", CASH: "现金", WECHAT: "微信", ALIPAY: "支付宝", OTHER: "其他" };
 
 export default function PaymentDetailPage() {
@@ -24,6 +27,9 @@ export default function PaymentDetailPage() {
   const [bankRefNo, setBankRefNo] = useState("");
   const [reason, setReason] = useState("");
   const { run } = useActionCall({ baseUrl: `/api/payments/${id}`, reload: () => mutate() });
+  // 后端存的是 userId,前端要展示姓名;查不到时 fallback 到原 id
+  const recorderName = useUserName(payment?.recorderUserId ?? null, "—");
+  const reconcileName = useUserName(payment?.reconcileUserId ?? null, "—");
 
   if (isLoading || !payment) {
     return (
@@ -78,8 +84,8 @@ export default function PaymentDetailPage() {
           { title: "到账日", dataIndex: "receivedAt", render: (v) => <DateTimeCell value={v as string} /> },
           { title: "银行流水号", dataIndex: "bankRefNo" },
           { title: "收款行", dataIndex: "bankName" },
-          { title: "登记人", dataIndex: "recorderUserId" },
-          { title: "对账人", dataIndex: "reconcileUserId" },
+          { title: "登记人", dataIndex: "recorderUserId", render: () => recorderName },
+          { title: "对账人", dataIndex: "reconcileUserId", render: () => reconcileName },
           { title: "对账时间", dataIndex: "reconciledAt", render: (v) => <DateTimeCell value={v as string} /> },
           { title: "备注", dataIndex: "remark" }
         ]} />

@@ -87,7 +87,7 @@ export type Project = {
   customerId: string;
   customerName: string;
   attachments: AttachmentSnapshot[];
-  progressLogs: { id: string; at: string; percent: number; note?: string | null }[];
+  progressLogs: { id: string; projectId: string; userId: string; percent: number; remark: string; at: string }[];
 };
 
 export type PaymentAllocation = {
@@ -114,6 +114,10 @@ export type Payment = {
   bankName: string | null;
   remark: string | null;
   status: string;
+  // 登记人 / 对账人,后端存的是 userId,前端用 useUserName 转姓名
+  recorderUserId: string;
+  reconcileUserId: string | null;
+  reconciledAt: string | null;
   attachments: AttachmentSnapshot[];
   invoice: Invoice | null;
   allocations: PaymentAllocation[];

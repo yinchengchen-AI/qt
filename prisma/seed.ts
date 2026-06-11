@@ -439,6 +439,23 @@ async function main() {
     { category: "CUSTOMER_SOURCE", code: "GOV_REFERRAL", label: "政府推荐", sort: 10 },
     { category: "CUSTOMER_SOURCE", code: "REPEAT", label: "老客户", sort: 11 },
     { category: "CUSTOMER_SOURCE", code: "OTHER", label: "其他", sort: 99 },
+    // 收款方式 - 列表 / 详情 / Drawer 都要
+    { category: "PAYMENT_RECEIVE_METHOD", code: "BANK_TRANSFER", label: "银行转账", sort: 1 },
+    { category: "PAYMENT_RECEIVE_METHOD", code: "CHECK", label: "支票", sort: 2 },
+    { category: "PAYMENT_RECEIVE_METHOD", code: "CASH", label: "现金", sort: 3 },
+    { category: "PAYMENT_RECEIVE_METHOD", code: "WECHAT", label: "微信", sort: 4 },
+    { category: "PAYMENT_RECEIVE_METHOD", code: "ALIPAY", label: "支付宝", sort: 5 },
+    { category: "PAYMENT_RECEIVE_METHOD", code: "OTHER", label: "其他", sort: 99 },
+    // 跟进方式 / 结果 - 客户详情页的"新增跟进"要用
+    { category: "FOLLOW_METHOD", code: "VISIT", label: "上门拜访", sort: 1 },
+    { category: "FOLLOW_METHOD", code: "CALL", label: "电话", sort: 2 },
+    { category: "FOLLOW_METHOD", code: "WECHAT", label: "微信", sort: 3 },
+    { category: "FOLLOW_METHOD", code: "EMAIL", label: "邮件", sort: 4 },
+    { category: "FOLLOW_METHOD", code: "OTHER", label: "其他", sort: 99 },
+    { category: "FOLLOW_RESULT", code: "INTENT", label: "有意向", sort: 1 },
+    { category: "FOLLOW_RESULT", code: "NO_INTENT", label: "无意向", sort: 2 },
+    { category: "FOLLOW_RESULT", code: "PENDING", label: "待定", sort: 3 },
+    { category: "FOLLOW_RESULT", code: "SIGNED", label: "已签约", sort: 4 },
   ];
   for (const d of dictDefs) {
     await prisma.dictionary.upsert({

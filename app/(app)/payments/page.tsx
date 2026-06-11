@@ -8,6 +8,7 @@ import { PageHeader } from "@/components/page-header";
 import { StatusTag } from "@/components/status-tag";
 import { useStatusValueEnum } from "@/lib/use-status-enum";
 import { makeListRequest } from "@/lib/use-list-request";
+import { useDict } from "@/lib/dict-client";
 import { CurrencyCell, DateTimeCell } from "@/components/table-cells";
 
 type Row = {
@@ -23,6 +24,9 @@ type Row = {
 export default function PaymentsPage() {
   const router = useRouter();
   const statusEnum = useStatusValueEnum("payment");
+  // 收款方式字典来自 /api/dictionaries?category=PAYMENT_RECEIVE_METHOD
+  const methodDict = useDict("PAYMENT_RECEIVE_METHOD");
+  const methodEnum = Object.fromEntries(methodDict.map((d) => [d.code, { text: d.label }]));
 
   return (
     <Page>
@@ -49,7 +53,13 @@ export default function PaymentsPage() {
             render: (_, r) => <Link href={`/payments/${r.id}`}>{r.paymentNo}</Link>
           },
           { title: "金额", dataIndex: "amount", width: 140, render: (_, r) => <CurrencyCell value={r.amount} /> },
-          { title: "方式", dataIndex: "method", width: 100 },
+          {
+            title: "方式",
+            dataIndex: "method",
+            width: 100,
+            valueEnum: methodEnum,
+            render: (_, r) => methodDict.find((d) => d.code === r.method)?.label ?? r.method
+          },
           { title: "到账日", dataIndex: "receivedAt", valueType: "dateTime", width: 180, render: (_, r) => <DateTimeCell value={r.receivedAt} /> },
           { title: "银行流水号", dataIndex: "bankRefNo", width: 200 },
           {
