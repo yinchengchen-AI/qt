@@ -1,5 +1,6 @@
 // 杭州企泰 P1 端到端测试（Node 18+；fetch + cookie jar）
 import { writeFileSync } from 'node:fs';
+import pg from 'pg';
 
 const BASE = 'http://localhost:3000';
 const results = [];
@@ -75,6 +76,20 @@ const sales = new Session('sales');
 try {
   const meAdmin = await admin.login('admin', '123456');
   log('admin login', !!meAdmin?.id, `id=${meAdmin?.id} role=${meAdmin?.roleCode}`);
+
+  // 上游把 createContract 改为 resolveAttachmentSnapshots:前端传的 attachment.id 必须在 Attachment 表里真实存在
+  // MinIO 未启 → /api/files/presign-upload 返回 503,所以这里直接用 pg 插一条占位 Attachment
+  const pgClient = new pg.Client({ connectionString: 'postgresql://qitai:qitai_pass@localhost:5432/qt_biz' });
+  await pgClient.connect();
+  const stampAttach = Date.now();
+  const objectKey = `e2e/contract-${stampAttach}.pdf`;
+  const { rows: [attRow] } = await pgClient.query(
+    `INSERT INTO "Attachment" (id, "objectKey", bucket, "originalName", "mimeType", size, "uploadedById", "uploadedAt") VALUES (gen_random_uuid()::text, $1, 'e2e', $2, 'application/pdf', 1024, $3, now()) RETURNING id`,
+    [objectKey, 'E2E盖章合同.pdf', meAdmin.id]
+  );
+  const e2eAttachmentId = attRow.id;
+  await pgClient.end();
+  log('setup attachment', !!e2eAttachmentId, `id=${e2eAttachmentId}`);
   const meSales = await sales.login('sales', '123456');
   log('sales login', !!meSales?.id, `id=${meSales?.id} role=${meSales?.roleCode}`);
 
@@ -109,7 +124,7 @@ try {
       startDate: new Date().toISOString(),
       endDate: new Date(Date.now() + 90 * 86400_000).toISOString(),
       totalAmount: 100000, taxRate: 0.06, paymentMethod: 'BY_PHASE',
-      attachments: [{ id: 'a1', name: '盖章合同.pdf', url: 'https://files.example.com/contract-1.pdf', mimeType: 'application/pdf', size: 1024, uploadedBy: 'admin', uploadedAt: new Date().toISOString() }] },
+      attachments: [{ id: e2eAttachmentId, name: '盖章合同.pdf', url: 'https://files.example.com/contract-1.pdf', mimeType: 'application/pdf', size: 1024, uploadedBy: 'admin', uploadedAt: new Date().toISOString() }] },
   });
   const contractId = newContract.body?.data?.id;
   log('create contract', newContract.status === 200 && !!contractId, `status=${newContract.status} id=${contractId} no=${newContract.body?.data?.contractNo}`);
