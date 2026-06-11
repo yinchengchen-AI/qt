@@ -88,16 +88,43 @@ npm run dev
 - 4 角色 RBAC(ADMIN/SALES/FINANCE/OPS)+ SALES 行级隔离
 - 软删除 / 操作日志 / Cron 定时任务
 - 登录页 + 顶部导航 重做(品牌 logo 配色、统计数字区、面包屑) 
+- 部门管理(树形 CRUD + seed 关联 + user form 字段对齐)
+- 行业 / 客户来源 / 部门 等数据字典(白名单 + `useDict` 接入)
 
-**质量基线**
+**质量基线(2026-06-11 重测)**
 
 - `npm run typecheck` 0 errors
-- `npm run lint` 0 errors / 0 warnings(历史 137 条全清)
+- `npm run lint` 0 errors / 20 warnings(react-hooks 等未启用规则已降噪,剩 20 个 `@typescript-eslint/no-unused-vars` / `no-explicit-any` 业务 warnings,不阻塞)
 - `npm test` 17/17 通过
-- `npm run build` 成功
+- `npm run build` 成功(6 个表单页 JSX 嵌套修复后)
 - dev server `/login` `/dashboard` `/contracts` 200
 
+**生产硬化(2026-06-11 落盘)**
+
+- **fix(forms)**:6 个表单页(`contracts/new` `contracts/[id]/edit` `invoices/new` `payments/new` `projects/new` `projects/[id]/edit`)修复 `</FormCard>` 早关导致 `SubmitBar` 漂在 `ProForm` 外的 JSX 嵌套错位;`build` 从"6 个页面解析失败"恢复到成功
+- **fix(eslint)**:ESLint flat-config 修好(原本 `react-hooks/exhaustive-deps` 找不到 plugin,lint 直接抛 TypeError);`eslint.config.mjs` → `eslint.config.js`,降噪未启用的 `react-hooks/*` 规则
+- **fix(next-env)**:Next 16 路径从 `.next/dev/types/routes.d.ts` 迁回 `.next/types/routes.d.ts`
+- **fix(auth)**:生产环境 `useSecureCookies` 默认按 `FORCE_HTTPS` 决定,显式开启才走 Secure Cookie;非生产仍走 HTTP(适配反代)
+- **fix(cron)**:`/api/jobs/run-all` 生产环境强制 `CRON_SECRET`,缺失时 500 告警并拒绝执行,杜绝误用
+- **refactor(jobs)**:`runAllJobs` 预取 admin 列表一次,3 个 job 复用(N+1 → 1)
+- **fix(statistics)**:账龄页 `buckets["90+"]` 在空桶时 `undefined > 0` 类型不安全,统一 `(buckets["90+"] ?? 0) > 0`
+- **feat(components)**:`EmptyState.height` 支持直接传入数字(px);`StatGrid.columns` 新增 5 列档
+- **docs(review)**:落盘 `docs/部署前代码审查 — qt-biz v0.1.0.md`,3 P0 阻断 + 4 P1 风险全部修复
+
 ## 最近更新
+
+### v0.1.0(2026-06-11)生产硬化
+
+- **fix(forms)**:6 个表单页 `</FormCard>` 早关导致 `SubmitBar` 漂出 `ProForm`,`build` 恢复
+- **fix(eslint)**:flat-config `react-hooks` 找不到 plugin 修好,`eslint.config.mjs → eslint.config.js`
+- **fix(auth)**:生产 `useSecureCookies` 按 `FORCE_HTTPS` 决定
+- **fix(cron)**:`/api/jobs/run-all` 生产强制 `CRON_SECRET`,缺失 500 告警
+- **refactor(jobs)**:admin 列表复用,N+1 → 1
+- **fix(statistics)**:账龄页空桶 `buckets["90+"]` 兜底
+- **feat(components)**:EmptyState 支持 px 数字高度,StatGrid 新增 5 列
+- **chore(scripts)**:`generate-divisions.cjs` 加 `eslint-disable` 注释
+- **fix(login)**:ticker 分隔符 `//` 字面量包起来,消歧义
+- **docs(review)**:落盘 `docs/部署前代码审查 — qt-biz v0.1.0.md`
 
 ### v0.1.0(2026-06-11)上线前清理
 
