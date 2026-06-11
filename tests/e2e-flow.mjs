@@ -1,6 +1,5 @@
 // 杭州企泰 P1 端到端测试（Node 18+；fetch + cookie jar）
 import { writeFileSync } from 'node:fs';
-import pg from 'pg';
 
 const BASE = 'http://localhost:3000';
 const results = [];
@@ -78,17 +77,46 @@ try {
   log('admin login', !!meAdmin?.id, `id=${meAdmin?.id} role=${meAdmin?.roleCode}`);
 
   // 上游把 createContract 改为 resolveAttachmentSnapshots:前端传的 attachment.id 必须在 Attachment 表里真实存在
-  // MinIO 未启 → /api/files/presign-upload 返回 503,所以这里直接用 pg 插一条占位 Attachment
-  const pgClient = new pg.Client({ connectionString: 'postgresql://qitai:qitai_pass@localhost:5432/qt_biz' });
-  await pgClient.connect();
+  // 走真 presign-upload + PUT 流程(MinIO 必须已起;不起则 fail-fast 报 503)
   const stampAttach = Date.now();
-  const objectKey = `e2e/contract-${stampAttach}.pdf`;
-  const { rows: [attRow] } = await pgClient.query(
-    `INSERT INTO "Attachment" (id, "objectKey", bucket, "originalName", "mimeType", size, "uploadedById", "uploadedAt") VALUES (gen_random_uuid()::text, $1, 'e2e', $2, 'application/pdf', 1024, $3, now()) RETURNING id`,
-    [objectKey, 'E2E盖章合同.pdf', meAdmin.id]
+  const fakePdfName = `e2e-contract-${stampAttach}.pdf`;
+  // 一个最小但合法的 PDF-1.4(1 页 / Helvetica "Hello E2E")
+  const fakePdfBytes = new TextEncoder().encode(
+    "%PDF-1.4\n" +
+    "1 0 obj<</Type/Catalog/Pages 2 0 R>>endobj\n" +
+    "2 0 obj<</Type/Pages/Kids[3 0 R]/Count 1>>endobj\n" +
+    "3 0 obj<</Type/Page/Parent 2 0 R/MediaBox[0 0 612 792]/Contents 4 0 R/Resources<</Font<</F1 5 0 R>>>>>>endobj\n" +
+    "4 0 obj<</Length 56>>stream\n" +
+    "BT /F1 24 Tf 100 700 Td (Hello E2E) Tj ET\n" +
+    "endstream\nendobj\n" +
+    "5 0 obj<</Type/Font/Subtype/Type1/BaseFont/Helvetica>>endobj\n" +
+    "xref\n0 6\n" +
+    "0000000000 65535 f \n0000000009 00000 n \n0000000056 00000 n \n" +
+    "0000000111 00000 n \n0000000218 00000 n \n0000000330 00000 n \n" +
+    "trailer<</Size 6/Root 1 0 R>>\nstartxref\n394\n%%EOF\n"
   );
-  const e2eAttachmentId = attRow.id;
-  await pgClient.end();
+  const presignRes = await admin.req('/api/files/presign-upload', {
+    method: 'POST',
+    body: {
+      filename: fakePdfName,
+      mimeType: 'application/pdf',
+      size: fakePdfBytes.byteLength
+    }
+  });
+  if (presignRes.status !== 200 || presignRes.body?.code !== 0) {
+    log('setup attachment (presign)', false, `status=${presignRes.status} body=${JSON.stringify(presignRes.body).slice(0, 200)}`);
+    throw new Error('presign-upload 失败,需先 docker compose -f docker-compose.minio.yml up -d 并在 .env 配好 MINIO_*');
+  }
+  const { attachmentId: e2eAttachmentId, url: e2ePutUrl } = presignRes.body.data;
+  const putRes = await fetch(e2ePutUrl, {
+    method: 'PUT',
+    headers: { 'content-type': 'application/pdf', 'content-length': String(fakePdfBytes.byteLength) },
+    body: fakePdfBytes
+  });
+  if (!putRes.ok) {
+    log('setup attachment (PUT MinIO)', false, `status=${putRes.status}`);
+    throw new Error('PUT 到 MinIO 失败');
+  }
   log('setup attachment', !!e2eAttachmentId, `id=${e2eAttachmentId}`);
   const meSales = await sales.login('sales', '123456');
   log('sales login', !!meSales?.id, `id=${meSales?.id} role=${meSales?.roleCode}`);

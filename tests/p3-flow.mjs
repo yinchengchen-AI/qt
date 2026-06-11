@@ -57,6 +57,49 @@ class Session {
   }
 }
 
+
+// 上传一个最小合法 PDF 并返回 attachments 数组元素(走真 presign-upload + PUT,与生产链路一致)
+// 用法: const att = await uploadTestAttachment(admin, '盖章.pdf');
+async function uploadTestAttachment(session, name = 'test.pdf') {
+  const fakePdfBytes = new TextEncoder().encode(
+    "%PDF-1.4\n" +
+    "1 0 obj<</Type/Catalog/Pages 2 0 R>>endobj\n" +
+    "2 0 obj<</Type/Pages/Kids[3 0 R]/Count 1>>endobj\n" +
+    "3 0 obj<</Type/Page/Parent 2 0 R/MediaBox[0 0 612 792]/Contents 4 0 R/Resources<</Font<</F1 5 0 R>>>>>>endobj\n" +
+    "4 0 obj<</Length 56>>stream\n" +
+    "BT /F1 24 Tf 100 700 Td (Hello E2E) Tj ET\n" +
+    "endstream\nendobj\n" +
+    "5 0 obj<</Type/Font/Subtype/Type1/BaseFont/Helvetica>>endobj\n" +
+    "xref\n0 6\n" +
+    "0000000000 65535 f \n0000000009 00000 n \n0000000056 00000 n \n" +
+    "0000000111 00000 n \n0000000218 00000 n \n0000000330 00000 n \n" +
+    "trailer<</Size 6/Root 1 0 R>>\nstartxref\n394\n%%EOF\n"
+  );
+  const presign = await session.req("/api/files/presign-upload", {
+    method: "POST",
+    body: { filename: name, mimeType: "application/pdf", size: fakePdfBytes.byteLength }
+  });
+  if (presign.status !== 200 || presign.body?.code !== 0) {
+    throw new Error("presign-upload 失败: " + JSON.stringify(presign.body));
+  }
+  const { attachmentId, url } = presign.body.data;
+  const put = await fetch(url, {
+    method: "PUT",
+    headers: { "content-type": "application/pdf", "content-length": String(fakePdfBytes.byteLength) },
+    body: fakePdfBytes
+  });
+  if (!put.ok) throw new Error("PUT MinIO 失败: HTTP " + put.status);
+  return {
+    id: attachmentId,
+    name,
+    mimeType: "application/pdf",
+    size: fakePdfBytes.byteLength,
+    uploadedBy: "admin",
+    uploadedAt: new Date().toISOString()
+  };
+}
+
+
 const admin = new Session("admin");
 const sales = new Session("sales");
 
@@ -167,7 +210,7 @@ try {
       endDate: new Date(Date.now() + 365 * 86400_000).toISOString(),
       totalAmount: 100000,
       taxRate: 0.06,
-      attachments: [{ id: "a1", name: "contract.pdf", url: "https://example.com/c.pdf", mimeType: "application/pdf", size: 1024, uploadedBy: "u1", uploadedAt: new Date().toISOString() }],
+      attachments: [await uploadTestAttachment(admin, "contract.pdf")],
       paymentMethod: "LUMP_SUM"
     }
   });
@@ -233,7 +276,7 @@ try {
       endDate: new Date(Date.now() + 365 * 86400_000).toISOString(),
       totalAmount: 100000,
       taxRate: 0.06,
-      attachments: [{ id: "a1", name: "contract.pdf", url: "https://example.com/c.pdf", mimeType: "application/pdf", size: 1024, uploadedBy: "u1", uploadedAt: new Date().toISOString() }],
+      attachments: [await uploadTestAttachment(admin, "contract.pdf")],
       paymentMethod: "LUMP_SUM"
     }
   });
