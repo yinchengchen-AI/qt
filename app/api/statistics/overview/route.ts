@@ -34,6 +34,19 @@ export async function GET(req: Request) {
       })
     ]);
 
+    const townRows = await prisma.customer.findMany({
+      where: { deletedAt: null, town: { not: null } } as Prisma.CustomerWhereInput,
+      select: { town: true }
+    });
+    const townMap: Record<string, number> = {};
+    for (const r of townRows) {
+      const k = r.town || "";
+      townMap[k] = (townMap[k] || 0) + 1;
+    }
+    const townDistribution = Object.entries(townMap)
+      .map(([town, count]) => ({ town, count }))
+      .sort((a, b) => b.count - a.count);
+
     return ok({
       overview,
       series,
@@ -42,7 +55,8 @@ export async function GET(req: Request) {
       projects: {
         total: projectStats.reduce((s, x) => s + x._count._all, 0),
         byStatus: projectStats.map(x => ({ status: x.status, count: x._count._all }))
-      }
+      },
+      townDistribution
     });
   } catch (e) {
     return err(e);

@@ -2,7 +2,7 @@
 import { ProCard } from "@ant-design/pro-components";
 import { Column } from "@ant-design/charts";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Button, Space, DatePicker, App as AntdApp, Typography, Tag } from "antd";
+import { Button, Col, DatePicker, Row, Space, App as AntdApp, Typography, Tag } from "antd";
 import { DownloadOutlined } from "@ant-design/icons";
 import dayjs from "dayjs";
 import { Page } from "@/components/page";
@@ -101,39 +101,47 @@ export default function PerformancePage() {
         <>
           <StatGrid items={kpis} columns={4} loading={loading && rows.length === 0} />
 
-          <Space size={16} style={{ width: "100%", marginTop: 24 }} wrap>
-            <ProCard title="合同额排行" style={{ flex: 1, minWidth: 300 }}>
+          <Row gutter={16} style={{ marginTop: 24 }}>
+            <Col xs={24} lg={12}>
+            <ProCard title="合同额排行">
               {contractChartData.length > 0 ? (
-                <Column data={contractChartData} xField="name" yField="value" height={260} colorField="type"
+                <Column data={contractChartData} xField="name" yField="value" height={380} colorField="type"
                   label={{ text: (d: Record<string, unknown>) => formatCompact(d.value as number), style: { fontSize: 10 } }}
                 />
-              ) : <EmptyState empty title="暂无数据" height={260} />}
+              ) : <EmptyState empty title="暂无数据" height={380} />}
             </ProCard>
-            <ProCard title="已开票排行" style={{ flex: 1, minWidth: 300 }}>
+            </Col>
+            <Col xs={24} lg={12}>
+            <ProCard title="已开票排行">
               {invoiceChartData.length > 0 ? (
-                <Column data={invoiceChartData} xField="name" yField="value" height={260} colorField="type"
+                <Column data={invoiceChartData} xField="name" yField="value" height={380} colorField="type"
                   label={{ text: (d: Record<string, unknown>) => formatCompact(d.value as number), style: { fontSize: 10 } }}
                 />
-              ) : <EmptyState empty title="暂无数据" height={260} />}
+              ) : <EmptyState empty title="暂无数据" height={380} />}
             </ProCard>
-          </Space>
+            </Col>
+          </Row>
 
-          <Space size={16} style={{ width: "100%", marginTop: 16 }} wrap>
-            <ProCard title="已回款排行" style={{ flex: 1, minWidth: 300 }}>
+          <Row gutter={16} style={{ marginTop: 16 }}>
+            <Col xs={24} lg={12}>
+            <ProCard title="已回款排行">
               {paymentChartData.length > 0 ? (
-                <Column data={paymentChartData} xField="name" yField="value" height={260} colorField="type"
+                <Column data={paymentChartData} xField="name" yField="value" height={380} colorField="type"
                   label={{ text: (d: Record<string, unknown>) => formatCompact(d.value as number), style: { fontSize: 10 } }}
                 />
-              ) : <EmptyState empty title="暂无数据" height={260} />}
+              ) : <EmptyState empty title="暂无数据" height={380} />}
             </ProCard>
-            <ProCard title="合同数量排行" style={{ flex: 1, minWidth: 300 }}>
+            </Col>
+            <Col xs={24} lg={12}>
+            <ProCard title="合同数量排行">
               {rows.length > 0 ? (
-                <Column data={rows.map(r => ({ name: r.name, value: r.contractCount }))} xField="name" yField="value" height={260}
+                <Column data={rows.map(r => ({ name: r.name, value: r.contractCount }))} xField="name" yField="value" height={380}
                   label={{ text: (d: Record<string, unknown>) => String(d.value), style: { fontSize: 10 } }}
                 />
-              ) : <EmptyState empty title="暂无数据" height={260} />}
+              ) : <EmptyState empty title="暂无数据" height={380} />}
             </ProCard>
-          </Space>
+            </Col>
+          </Row>
 
           <div style={{ marginTop: 32 }}>
             <PageHeader level="section" title="业绩明细" />

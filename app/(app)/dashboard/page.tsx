@@ -1,8 +1,9 @@
 "use client";
 import { useEffect, useState } from "react";
 import { ProCard } from "@ant-design/pro-components";
-import { Column, Pie } from "@ant-design/charts";
-import { Space, Typography, Badge, Tag, theme } from "antd";
+import { Column } from "@ant-design/charts";
+import { Col, Row, Space, Typography, Badge, Tag, theme } from "antd";
+import { formatStatus } from "@/lib/status";
 import { Page } from "@/components/page";
 import { PageHeader } from "@/components/page-header";
 import { StatGrid, type StatItem } from "@/components/stat-grid";
@@ -17,6 +18,7 @@ const { useToken } = theme;
 type DashboardData = {
   overview: { contractAmount: number; invoiceAmount: number; paymentAmount: number; unpaidAmount: number; invoiceRate: number; paymentRate: number; contractCount: number; invoiceCount: number; paymentCount: number };
   distribution: { byScale: { key: string; count: number }[]; byType: { key: string; count: number }[]; byStatus: { key: string; count: number }[] };
+  townDistribution: { town: string | null; count: number }[];
   agingBuckets: Record<string, number>;
   customers: { total: number; newThisMonth: number };
   projects: { total: number; byStatus: { status: string; count: number }[] };
@@ -24,10 +26,6 @@ type DashboardData = {
   invoices: { total: number; byStatus: { status: string; count: number; totalAmount: number }[] };
   payments: { total: number; byStatus: { status: string; count: number; totalAmount: number }[] };
   topCustomers: { id: string; name: string; code: string; total: number; contractCount: number }[];
-};
-
-const CUSTOMER_STATUS_LABEL: Record<string, string> = {
-  LEAD: "潜在客户", NEGOTIATING: "洽谈中", SIGNED: "已签约", LOST: "已流失", FROZEN: "已冻结"
 };
 
 export default function DashboardPage() {
@@ -95,11 +93,10 @@ export default function DashboardPage() {
     }
   ];
 
-  // ── 客户分布（环形图）──
-  const custByStatusData = dist.byStatus.map(x => ({ type: CUSTOMER_STATUS_LABEL[x.key] ?? x.key, count: x.count }));
+  const townData = data.townDistribution;
 
   // ── 项目状态分布 ──
-  const projectStatusData = proj.byStatus.map(x => ({ status: x.status, count: x.count }));
+  const projectStatusData = proj.byStatus.map(x => ({ status: formatStatus(x.status, "project").label, count: x.count }));
 
   // ── 合同状态分布 ──
   const contractStatusData = cont.byStatus.map(x => ({ status: x.status, count: x.count }));
@@ -113,37 +110,39 @@ export default function DashboardPage() {
       </section>
 
       {/*** 客户 + 项目 分布 ***/}
-      <Space size={16} style={{ width: "100%", marginBottom: 24 }} wrap>
-        <ProCard title="客户状态分布" style={{ flex: 1, minWidth: 300 }}>
-          {custByStatusData.length > 0 ? (
-            <Pie
-              data={custByStatusData}
-              angleField="count"
-              colorField="type"
-              radius={0.7}
-              innerRadius={0.5}
-              height={220}
-              label={{ text: (d: Record<string, unknown>) => `${d.count}`, style: { fontSize: 11 } }}
-              legend={{ color: { title: false, position: "bottom", layout: { justifyContent: "center" } } }}
-            />
-          ) : <EmptyState empty title="暂无可展示数据" height={220} />}
-        </ProCard>
-        <ProCard title="项目状态分布" style={{ flex: 1, minWidth: 300 }}>
+      <Row gutter={16} style={{ marginBottom: 24 }}>
+        <Col xs={24} lg={12}>
+          <ProCard title="客户区域分布" subTitle="按镇街分组">
+            {townData.length > 0 ? (
+              <Column
+                data={townData}
+                xField="town"
+                yField="count"
+                height={420}
+                colorField="town"
+                label={{ text: (d: Record<string, unknown>) => String(d.count), style: { fontSize: 11 } }}
+                xAxis={{ label: { autoRotate: true, autoHide: false } }}
+              />
+            ) : <EmptyState empty title="暂无区域分布数据" description="客户所在地尚未录入镇街信息" height={420} />}
+          </ProCard>
+        </Col>
+        <Col xs={24} lg={12}>
+        <ProCard title="项目状态分布">
           {projectStatusData.length > 0 ? (
             <Column
               data={projectStatusData}
               xField="status"
               yField="count"
-              height={220}
+              height={420}
               colorField="status"
             />
-          ) : <EmptyState empty title="暂无项目数据" height={220} />}
+          ) : <EmptyState empty title="暂无项目数据" height={420} />}
         </ProCard>
-      </Space>
-
-      {/*** 合同 / 发票 / 回款 状态 ***/}
-      <Space size={16} style={{ width: "100%", marginBottom: 24 }} wrap>
-        <ProCard title="合同状态" style={{ flex: 1, minWidth: 280 }}>
+        </Col>
+      </Row>
+      <Row gutter={16} style={{ marginBottom: 24 }}>
+        <Col xs={24} lg={8}>
+        <ProCard title="合同状态">
           {contractStatusData.length > 0 ? contractStatusData.map((s) => (
             <div key={s.status} style={{ display: "flex", justifyContent: "space-between", padding: "6px 0", borderBottom: "1px solid #f0f0f0" }}>
               <StatusTag status={s.status} domain="contract" />
@@ -151,7 +150,9 @@ export default function DashboardPage() {
             </div>
           )) : <EmptyState empty title="暂无数据" height={100} />}
         </ProCard>
-        <ProCard title="开票概况" style={{ flex: 1, minWidth: 280 }}>
+        </Col>
+        <Col xs={24} lg={8}>
+        <ProCard title="开票概况">
           {inv.byStatus.map((s) => (
             <div key={s.status} style={{ display: "flex", justifyContent: "space-between", padding: "6px 0", borderBottom: "1px solid #f0f0f0" }}>
               <StatusTag status={s.status} domain="invoice" />
@@ -162,7 +163,9 @@ export default function DashboardPage() {
             </div>
           ))}
         </ProCard>
-        <ProCard title="回款概况" style={{ flex: 1, minWidth: 280 }}>
+        </Col>
+        <Col xs={24} lg={8}>
+        <ProCard title="回款概况">
           {pay.byStatus.map((s) => (
             <div key={s.status} style={{ display: "flex", justifyContent: "space-between", padding: "6px 0", borderBottom: "1px solid #f0f0f0" }}>
               <StatusTag status={s.status} domain="payment" />
@@ -173,7 +176,8 @@ export default function DashboardPage() {
             </div>
           ))}
         </ProCard>
-      </Space>
+        </Col>
+      </Row>
 
       {/*** Top 客户 ***/}
       <ProCard title="Top 5 客户（按合同额）" style={{ marginBottom: 24 }}>

@@ -206,6 +206,7 @@ export default function EditCustomerPage() {
                   formRef.current?.setFieldsValue({
                     province: labels[0] || "",
                     city: labels[1] || "",
+                    town: labels[3] || "",
                     address: labels.filter(Boolean).join("")
                   });
                 }}
@@ -215,6 +216,9 @@ export default function EditCustomerPage() {
               <Input type="hidden" />
             </Form.Item>
             <Form.Item name="city" rules={[{ required: true, message: "请选择所在地" }]} noStyle>
+              <Input type="hidden" />
+            </Form.Item>
+            <Form.Item name="town" noStyle>
               <Input type="hidden" />
             </Form.Item>
             <ProFormTextArea

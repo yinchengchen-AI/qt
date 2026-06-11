@@ -10,6 +10,7 @@ import { PageHeader } from "@/components/page-header";
 import { StatGrid, type StatItem } from "@/components/stat-grid";
 import { EmptyState } from "@/components/empty-state";
 import { formatCurrency } from "@/lib/format";
+import { formatStatus } from "@/lib/status";
 
 const { Text } = Typography;
 
@@ -22,6 +23,7 @@ type DistItem = { key: string; count: number };
 type Resp = {
   overview: Overview; series: Series;
   customers: { total: number; newThisMonth: number };
+  townDistribution: { town: string | null; count: number }[];
   projects: { total: number; byStatus: { status: string; count: number }[] };
   distribution: { byScale: DistItem[]; byType: DistItem[]; byStatus: DistItem[] };
 };
@@ -86,7 +88,7 @@ export default function OverviewPage() {
   ];
 
   const custDistData = dist?.byStatus.map(x => ({ type: CUST_STATUS_LABEL[x.key] ?? x.key, count: x.count })) ?? [];
-  const projData = proj?.byStatus.map(x => ({ status: x.status, count: x.count })) ?? [];
+  const projData = proj?.byStatus.map(x => ({ status: formatStatus(x.status, "project").label, count: x.count })) ?? [];
 
   return (
     <Page>
@@ -107,14 +109,14 @@ export default function OverviewPage() {
           <StatGrid items={kpis} columns={5} loading={loading && !data} />
 
           <div style={{ marginTop: 24 }}>
-            <PageHeader level="section" title="客户状态分布" />
+            <PageHeader level="section" title="客户区域分布" subtitle="按镇街分组" />
             <ProCard>
-              {custDistData.length > 0 ? (
-                <Pie data={custDistData} angleField="count" colorField="type" radius={0.65} innerRadius={0.45} height={260}
-                  label={{ text: (d: Record<string, unknown>) => `${d.type}: ${d.count}`, style: { fontSize: 11 } }}
-                  legend={{ color: { title: false, position: "bottom", layout: { justifyContent: "center" } } }}
+              {data && data.townDistribution && data.townDistribution.length > 0 ? (
+                <Column data={data.townDistribution} xField="town" yField="count" height={320} colorField="town"
+                  label={{ text: (d: Record<string, unknown>) => String(d.count), style: { fontSize: 11 } }}
+                  xAxis={{ label: { autoRotate: true, autoHide: false } }}
                 />
-              ) : <EmptyState empty title="暂无可展示数据" height={260} />}
+              ) : <EmptyState empty title="暂无区域分布数据" description="客户所在地尚未录入镇街信息" height={320} />}
             </ProCard>
           </div>
 

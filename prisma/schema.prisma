@@ -69,6 +69,8 @@ model Customer {
   province                String
   city                    String
   address                 String?
+  town                    String?
+
   // 主联系人信息(姓名 / 职务 / 电话);废除原 creditLimitAmount / paymentTermDays / contactEmail
   contactName             String?
   contactTitle            String?
