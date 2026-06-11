@@ -5,7 +5,6 @@ import {
   ProFormSelect,
   ProFormDigit,
   ProFormDatePicker,
-  ProFormUploadButton
 } from "@ant-design/pro-components";
 import { App as AntdApp, Space, Typography } from "antd";
 import { StatusTag } from "@/components/status-tag";
@@ -17,6 +16,7 @@ import { PageHeader } from "@/components/page-header";
 import { FormSection, FormGrid, FormCard } from "@/components/form";
 import { FormPageSkeleton } from "@/components/form-page-skeleton";
 import { proCustomRequest } from "@/lib/upload-client";
+import { PreviewableProFormUploadButton as UploadButton } from "@/components/file/pro-form-upload-button";
 import { AttachmentList, type AttachmentItem } from "@/components/file/attachment-list";
 
 const { Text } = Typography;
@@ -196,7 +196,7 @@ export default function EditContractPage() {
                 allowDelete={false}
                 showHeader={false}
               />
-              <ProFormUploadButton
+              <UploadButton
                 name="attachments"
                 label="新增附件"
                 max={5}

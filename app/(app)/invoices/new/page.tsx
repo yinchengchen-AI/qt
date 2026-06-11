@@ -5,7 +5,6 @@ import {
   ProFormSelect,
   ProFormDigit,
   ProFormDatePicker,
-  ProFormUploadButton
 } from "@ant-design/pro-components";
 import { App as AntdApp, Space, Tag, Typography } from "antd";
 import { useRouter } from "next/navigation";
@@ -14,6 +13,7 @@ import { Page } from "@/components/page";
 import { PageHeader } from "@/components/page-header";
 import { FormSection, FormGrid, FormCard } from "@/components/form";
 import { proCustomRequest } from "@/lib/upload-client";
+import { PreviewableProFormUploadButton as UploadButton } from "@/components/file/pro-form-upload-button";
 
 const { Text } = Typography;
 
@@ -265,7 +265,7 @@ export default function NewInvoicePage() {
             description="电子发票 PDF、银行回单等(可选,先传可后改);保存后会跟发票绑定"
           >
             <FormGrid columns={1}>
-              <ProFormUploadButton
+              <UploadButton
                 name="attachments"
                 label="上传附件"
                 max={5}

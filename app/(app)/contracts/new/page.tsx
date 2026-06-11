@@ -5,12 +5,12 @@ import {
   ProFormSelect,
   ProFormDigit,
   ProFormDatePicker,
-  ProFormUploadButton
 } from "@ant-design/pro-components";
 import { App as AntdApp, Space, Tag, Typography } from "antd";
 import { useRouter } from "next/navigation";
 import { useDict } from "@/lib/dict-client";
 import { proCustomRequest } from "@/lib/upload-client";
+import { PreviewableProFormUploadButton as UploadButton } from "@/components/file/pro-form-upload-button";
 import { Page } from "@/components/page";
 import { PageHeader } from "@/components/page-header";
 import { FormSection, FormGrid, FormCard } from "@/components/form";
@@ -204,7 +204,7 @@ export default function NewContractPage() {
           </FormSection>
 
           <FormSection title="合同附件" description="至少 1 个盖章 PDF 后才能提交审批">
-            <ProFormUploadButton
+            <UploadButton
               name="attachments"
               label="上传"
               max={5}
