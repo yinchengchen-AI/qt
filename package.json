@@ -31,6 +31,7 @@
     "@prisma/client": "7.8.0",
     "antd": "6.4.3",
     "bcrypt": "6.0.0",
+    "china-area-data": "^5.0.1",
     "clsx": "^2.1.1",
     "dayjs": "1.11.21",
     "dotenv": "^17.4.2",
@@ -63,10 +64,5 @@
   },
   "engines": {
     "node": ">=20.9.0"
-  },
-  "pnpm": {
-    "overrides": {
-      "rc-util": "5.44.4"
-    }
   }
 }

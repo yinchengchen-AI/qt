@@ -6,14 +6,20 @@ import { requirePermission, RESOURCE, ACTION } from "@/lib/permissions";
 import { getCustomer, listFollowUps, listCustomerContracts } from "@/server/services/customer";
 import { prisma } from "@/lib/prisma";
 import { renderPrintHtml, type PrintDoc } from "@/lib/print-html";
+import { ALLOWED_DICTIONARY_CATEGORIES } from "@/lib/dictionary-categories";
+import { CUSTOMER_STATUS_MAP } from "@/lib/enum-maps";
 
 export async function GET(_req: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
     const user = await requireSession();
     requirePermission(user.roleCode, RESOURCE.CUSTOMER, ACTION.EXPORT);
     const { id } = await params;
-    const [c, followUps, contracts, owner] = await Promise.all([
+    const [c, dictItems, followUps, contracts, owner] = await Promise.all([
       getCustomer(user, id),
+      prisma.dictionary.findMany({
+        where: { category: { in: [...ALLOWED_DICTIONARY_CATEGORIES] }, isActive: true },
+        select: { category: true, code: true, label: true }
+      }),
       listFollowUps(user, id),
       listCustomerContracts(user, id),
       // 负责人姓名
@@ -22,19 +28,24 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
         return u;
       })()
     ]);
+    const dict: Record<string, string> = { ...CUSTOMER_STATUS_MAP };
+    for (const i of dictItems) dict[`${i.category}::${i.code}`] = i.label;
+    const label = (cat: string, code?: string | null) => code ? (dict[`${cat}::${code}`] ?? code) : "";
+
 
     const doc: PrintDoc = {
       title: `客户档案 - ${c.name}`,
-      subtitle: `客户编号 ${c.code} · 状态 ${c.status}`,
+      subtitle: `客户编号 ${c.code} · 状态 ${label("CUSTOMER_STATUS", c.status)}`,
       mainRows: [
         { label: "客户编号", value: c.code },
         { label: "客户全称", value: c.name },
         { label: "简称", value: c.shortName },
         { label: "统一社会信用代码", value: c.unifiedSocialCreditCode },
-        { label: "类型", value: c.customerType },
-        { label: "行业", value: c.industry },
-        { label: "客户来源", value: c.sourceChannel },
-        { label: "状态", value: c.status },
+        { label: "类型", value: label("CUSTOMER_TYPE", c.customerType) },
+        { label: "规模", value: label("CUSTOMER_SCALE", c.scale) },
+        { label: "行业", value: label("CUSTOMER_INDUSTRY", c.industry) },
+        { label: "客户来源", value: label("CUSTOMER_SOURCE", c.sourceChannel) },
+        { label: "状态", value: label("CUSTOMER_STATUS", c.status) },
         { label: "客户负责人", value: owner ? `${owner.name} (${owner.employeeNo})` : c.ownerUserId },
         { label: "联系人", value: [c.contactName, c.contactTitle].filter(Boolean).join(" · ") || "—" },
         { label: "联系电话", value: c.contactPhone },

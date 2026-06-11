@@ -12,7 +12,7 @@ import { useRouter } from "next/navigation";
 import { useRef, useState } from "react";
 import { Page } from "@/components/page";
 import { PageHeader } from "@/components/page-header";
-import { FormSection, FormGrid, FormCard } from "@/components/form";
+import { FormSection, FormGrid, FormCard, SubmitBar } from "@/components/form";
 
 const { Text } = Typography;
 
@@ -202,8 +202,13 @@ export default function NewProjectPage() {
               创建后可手动 <Tag>开始</Tag> <Tag>取消</Tag>。
             </Text>
           </Space>
-        </ProForm>
-      </FormCard>
+        </FormCard>
+        <SubmitBar
+          onSubmit={() => formRef.current?.submit()}
+          onCancel={() => router.push("/projects")}
+          submitText="创建项目"
+        />
+      </ProForm>
     </Page>
   );
 }

@@ -15,7 +15,7 @@ import { proCustomRequest } from "@/lib/upload-client";
 import { PreviewableProFormUploadButton as UploadButton } from "@/components/file/pro-form-upload-button";
 import { Page } from "@/components/page";
 import { PageHeader } from "@/components/page-header";
-import { FormSection, FormGrid, FormCard } from "@/components/form";
+import { FormSection, FormGrid, FormCard, SubmitBar } from "@/components/form";
 
 const { Text } = Typography;
 
@@ -54,10 +54,7 @@ export default function NewContractPage() {
         <ProForm
           formRef={formRef}
           layout="vertical"
-          submitter={{
-            searchConfig: { resetText: "重置", submitText: "保存草稿" },
-            resetButtonProps: { style: { display: "none" } }
-          }}
+          submitter={false}
           onFinish={async (values) => {
             const payload = {
               ...values,
@@ -223,8 +220,13 @@ export default function NewContractPage() {
               草稿状态可编辑;提交审批后 <Tag color="blue">草稿 → 待审批</Tag> 不可直接改,需撤回。
             </Text>
           </Space>
-        </ProForm>
-      </FormCard>
+        </FormCard>
+        <SubmitBar
+          onSubmit={() => formRef.current?.submit()}
+          onCancel={() => router.push("/contracts")}
+          submitText="保存草稿"
+        />
+      </ProForm>
     </Page>
   );
 }

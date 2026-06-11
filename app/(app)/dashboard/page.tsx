@@ -1,186 +1,200 @@
 "use client";
 import { useEffect, useState } from "react";
-import { Progress, Space, Typography } from "antd";
-import { ArrowRightOutlined } from "@ant-design/icons";
+import { ProCard } from "@ant-design/pro-components";
+import { Column, Pie } from "@ant-design/charts";
+import { Space, Typography, Badge, Tag, theme } from "antd";
 import { Page } from "@/components/page";
 import { PageHeader } from "@/components/page-header";
 import { StatGrid, type StatItem } from "@/components/stat-grid";
+import { EmptyState } from "@/components/empty-state";
 import { formatCompact, formatCurrency } from "@/lib/format";
+import { CurrencyCell } from "@/components/table-cells";
+import { StatusTag } from "@/components/status-tag";
 
-const { Text } = Typography;
+const { Text, Title } = Typography;
+const { useToken } = theme;
 
-type Summary = {
-  overview: {
-    contractAmount: number;
-    invoiceAmount: number;
-    paymentAmount: number;
-    unpaidAmount: number;
-    invoiceRate: number;
-    paymentRate: number;
-    contractCount: number;
-    invoiceCount: number;
-    paymentCount: number;
-  };
-  distribution: {
-    byLevel: { key: string; count: number }[];
-    byType: { key: string; count: number }[];
-    byStatus: { key: string; count: number }[];
-  };
-  agingBuckets: { "0-30": number; "31-60": number; "61-90": number; "90+": number };
+type DashboardData = {
+  overview: { contractAmount: number; invoiceAmount: number; paymentAmount: number; unpaidAmount: number; invoiceRate: number; paymentRate: number; contractCount: number; invoiceCount: number; paymentCount: number };
+  distribution: { byScale: { key: string; count: number }[]; byType: { key: string; count: number }[]; byStatus: { key: string; count: number }[] };
+  agingBuckets: Record<string, number>;
+  customers: { total: number; newThisMonth: number };
+  projects: { total: number; byStatus: { status: string; count: number }[] };
+  contracts: { byStatus: { status: string; count: number; totalAmount: number }[] };
+  invoices: { total: number; byStatus: { status: string; count: number; totalAmount: number }[] };
+  payments: { total: number; byStatus: { status: string; count: number; totalAmount: number }[] };
+  topCustomers: { id: string; name: string; code: string; total: number; contractCount: number }[];
 };
 
-const AGING_COLOR: Record<string, string> = {
-  "0-30": "#52c41a",
-  "31-60": "#1677ff",
-  "61-90": "#faad14",
-  "90+": "#ff4d4f"
-};
-
-const AGING_LABEL: Record<string, string> = {
-  "0-30": "0 — 30 天",
-  "31-60": "31 — 60 天",
-  "61-90": "61 — 90 天",
-  "90+": "90 天以上"
+const CUSTOMER_STATUS_LABEL: Record<string, string> = {
+  LEAD: "潜在客户", NEGOTIATING: "洽谈中", SIGNED: "已签约", LOST: "已流失", FROZEN: "已冻结"
 };
 
 export default function DashboardPage() {
-  const [data, setData] = useState<Summary | null>(null);
+  const [data, setData] = useState<DashboardData | null>(null);
+  const [loading, setLoading] = useState(true);
+  const { token } = useToken();
 
   useEffect(() => {
     fetch("/api/dashboard/summary", { credentials: "include" })
       .then((r) => r.json())
       .then((j) => {
         if (j.code === 0) setData(j.data);
-      });
+      })
+      .finally(() => setLoading(false));
   }, []);
 
-  if (!data) {
+  if (loading || !data) {
     return (
       <Page>
-        <PageHeader title="业务总览" subtitle="核心经营指标的实时快照 — 合同、开票、回款、应收账龄。" />
-        <StatGrid columns={4} loading items={[{}, {}, {}, {}] as StatItem[]} />
-        <div style={{ height: 16 }} />
-        <StatGrid columns={4} loading items={[{}, {}, {}, {}] as StatItem[]} />
+        <PageHeader title="业务总览" subtitle="实时经营数据快照 — 客户、合同、项目、开票、回款" />
+        <StatGrid columns={5} loading items={[{},{},{},{},{}] as StatItem[]} />
+        <div style={{ height: 24 }} />
+        <StatGrid columns={3} loading items={[{},{},{}] as StatItem[]} />
       </Page>
     );
   }
 
-  const { overview: o, agingBuckets: a } = data;
+  const { overview: o, customers: cust, projects: proj, invoices: inv, payments: pay, contracts: cont, distribution: dist, agingBuckets: a, topCustomers: top } = data;
 
-  const kpis: StatItem[] = [
+  // ── 五大维度 KPI ──
+  const kpiItems: StatItem[] = [
+    {
+      label: "客户总数",
+      value: cust.total,
+      suffix: "家",
+      description: `本月新增 ${cust.newThisMonth} 家`,
+      delta: { value: `+${cust.newThisMonth} 本月新增`, direction: "up" }
+    },
     {
       label: "合同总额",
       value: formatCompact(o.contractAmount),
-      description: `完整数值 ¥${formatCurrency(o.contractAmount).replace("¥", "")} · 共 ${o.contractCount} 份合同`
+      suffix: "元",
+      description: `共 ${o.contractCount} 份有效合同`
+    },
+    {
+      label: "项目总数",
+      value: proj.total,
+      suffix: "个",
+      description: `进行中 ${proj.byStatus.find(s => s.status === "IN_PROGRESS")?.count ?? 0} 个`,
+      delta: { value: `${((proj.byStatus.find(s => s.status === "COMPLETED")?.count ?? 0) / Math.max(proj.total, 1) * 100).toFixed(0)}% 完成`, direction: "flat" }
     },
     {
       label: "已开票额",
       value: formatCompact(o.invoiceAmount),
-      description: `开票率 ${o.invoiceRate}% · ${o.invoiceCount} 张`
+      suffix: "元",
+      description: `开票率 ${o.invoiceRate}% · ${o.invoiceCount} 张`,
+      delta: { value: `待审 ${inv.byStatus.find(s => s.status === "PENDING_APPROVAL")?.count ?? 0} 张`, direction: "flat" }
     },
     {
       label: "已回款额",
       value: formatCompact(o.paymentAmount),
-      description: `回款率 ${o.paymentRate}% · ${o.paymentCount} 笔`
-    },
-    {
-      label: "未回款额",
-      value: formatCompact(o.unpaidAmount),
-      description: "应收账款余额"
+      suffix: "元",
+      description: `回款率 ${o.paymentRate}% · ${o.paymentCount} 笔`,
+      delta: { value: "应收 " + formatCompact(o.unpaidAmount), direction: o.unpaidAmount > 0 ? "down" : "up" }
     }
   ];
 
-  const totalAging = (a["0-30"] ?? 0) + (a["31-60"] ?? 0) + (a["61-90"] ?? 0) + (a["90+"] ?? 0);
-  const agingKeys = ["0-30", "31-60", "61-90", "90+"] as const;
+  // ── 客户分布（环形图）──
+  const custByStatusData = dist.byStatus.map(x => ({ type: CUSTOMER_STATUS_LABEL[x.key] ?? x.key, count: x.count }));
+
+  // ── 项目状态分布 ──
+  const projectStatusData = proj.byStatus.map(x => ({ status: x.status, count: x.count }));
+
+  // ── 合同状态分布 ──
+  const contractStatusData = cont.byStatus.map(x => ({ status: x.status, count: x.count }));
 
   return (
     <Page>
-      <PageHeader
-        title="业务总览"
-        subtitle="核心经营指标的实时快照 — 合同、开票、回款、应收账龄。"
-        actions={
-          <a
-            href="/statistics/overview"
-            style={{
-              fontSize: 13,
-              color: "#1677ff",
-              textDecoration: "none",
-              display: "inline-flex",
-              alignItems: "center",
-              gap: 4,
-              transition: "opacity 160ms"
-            }}
-            onMouseEnter={(e) => (e.currentTarget.style.opacity = "0.72")}
-            onMouseLeave={(e) => (e.currentTarget.style.opacity = "1")}
-          >
-            深入统计 <ArrowRightOutlined style={{ fontSize: 11 }} />
-          </a>
-        }
-      />
+      <PageHeader title="业务总览" subtitle="实时经营数据快照 — 客户、合同、项目、开票、回款" />
 
       <section style={{ marginBottom: 24 }}>
-        <StatGrid items={kpis} columns={4} />
+        <StatGrid items={kpiItems} columns={5} />
       </section>
 
-      <section>
-        <PageHeader level="section" title="应收账款账龄" />
-        <StatGrid
-          items={agingKeys.map((k) => ({
-            label: AGING_LABEL[k],
-            value: formatCurrency(a[k] ?? 0).replace("¥", ""),
-            prefix: "¥",
-            description:
-              totalAging > 0
-                ? `占比 ${(((a[k] ?? 0) / totalAging) * 100).toFixed(1)}%`
-                : "—"
-          }))}
-          columns={4}
-        />
+      {/*** 客户 + 项目 分布 ***/}
+      <Space size={16} style={{ width: "100%", marginBottom: 24 }} wrap>
+        <ProCard title="客户状态分布" style={{ flex: 1, minWidth: 300 }}>
+          {custByStatusData.length > 0 ? (
+            <Pie
+              data={custByStatusData}
+              angleField="count"
+              colorField="type"
+              radius={0.7}
+              innerRadius={0.5}
+              height={220}
+              label={{ text: (d: Record<string, unknown>) => `${d.count}`, style: { fontSize: 11 } }}
+              legend={{ color: { title: false, position: "bottom", layout: { justifyContent: "center" } } }}
+            />
+          ) : <EmptyState empty title="暂无可展示数据" height={220} />}
+        </ProCard>
+        <ProCard title="项目状态分布" style={{ flex: 1, minWidth: 300 }}>
+          {projectStatusData.length > 0 ? (
+            <Column
+              data={projectStatusData}
+              xField="status"
+              yField="count"
+              height={220}
+              colorField="status"
+            />
+          ) : <EmptyState empty title="暂无项目数据" height={220} />}
+        </ProCard>
+      </Space>
 
-        {totalAging > 0 ? (
-          <Space direction="vertical" size={12} style={{ width: "100%", marginTop: 16 }}>
-            {agingKeys.map((k) => {
-              const v = a[k] ?? 0;
-              const pct = (v / totalAging) * 100;
-              return (
-                <div key={k}>
-                  <div
-                    style={{
-                      display: "flex",
-                      justifyContent: "space-between",
-                      marginBottom: 4,
-                      fontSize: 12
-                    }}
-                  >
-                    <Text type="secondary">{AGING_LABEL[k]}</Text>
-                    <Text type="secondary">
-                      {pct.toFixed(1)}% · ¥{formatCurrency(v).replace("¥", "")}
-                    </Text>
+      {/*** 合同 / 发票 / 回款 状态 ***/}
+      <Space size={16} style={{ width: "100%", marginBottom: 24 }} wrap>
+        <ProCard title="合同状态" style={{ flex: 1, minWidth: 280 }}>
+          {contractStatusData.length > 0 ? contractStatusData.map((s) => (
+            <div key={s.status} style={{ display: "flex", justifyContent: "space-between", padding: "6px 0", borderBottom: "1px solid #f0f0f0" }}>
+              <StatusTag status={s.status} domain="contract" />
+              <Text strong>{s.count} 份</Text>
+            </div>
+          )) : <EmptyState empty title="暂无数据" height={100} />}
+        </ProCard>
+        <ProCard title="开票概况" style={{ flex: 1, minWidth: 280 }}>
+          {inv.byStatus.map((s) => (
+            <div key={s.status} style={{ display: "flex", justifyContent: "space-between", padding: "6px 0", borderBottom: "1px solid #f0f0f0" }}>
+              <StatusTag status={s.status} domain="invoice" />
+              <Space>
+                <Text strong>{s.count} 张</Text>
+                <Text type="secondary">{formatCurrency(s.totalAmount).replace("¥", "¥")}</Text>
+              </Space>
+            </div>
+          ))}
+        </ProCard>
+        <ProCard title="回款概况" style={{ flex: 1, minWidth: 280 }}>
+          {pay.byStatus.map((s) => (
+            <div key={s.status} style={{ display: "flex", justifyContent: "space-between", padding: "6px 0", borderBottom: "1px solid #f0f0f0" }}>
+              <StatusTag status={s.status} domain="payment" />
+              <Space>
+                <Text strong>{s.count} 笔</Text>
+                <Text type="secondary">{formatCurrency(s.totalAmount).replace("¥", "¥")}</Text>
+              </Space>
+            </div>
+          ))}
+        </ProCard>
+      </Space>
+
+      {/*** Top 客户 ***/}
+      <ProCard title="Top 5 客户（按合同额）" style={{ marginBottom: 24 }}>
+        {top.length > 0 ? (
+          <Space direction="vertical" style={{ width: "100%" }} size={0}>
+            {top.map((c, i) => (
+              <div key={c.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "10px 0", borderBottom: i < top.length - 1 ? "1px solid #f0f0f0" : "none" }}>
+                <Space>
+                  <Badge count={i + 1} style={{ backgroundColor: i < 3 ? token.colorPrimary : token.colorTextTertiary, fontSize: 11 }} />
+                  <div>
+                    <Text strong>{c.name}</Text>
+                    <br />
+                    <Text type="secondary" style={{ fontSize: 12 }}>{c.code} · {c.contractCount} 份合同</Text>
                   </div>
-                  <Progress
-                    percent={Number(pct.toFixed(1))}
-                    showInfo={false}
-                    strokeColor={AGING_COLOR[k]}
-                    size="small"
-                  />
-                </div>
-              );
-            })}
+                </Space>
+                <Text strong style={{ fontSize: 16, color: token.colorPrimary }}>{formatCompact(c.total)}</Text>
+              </div>
+            ))}
           </Space>
-        ) : null}
-      </section>
-
-      <div
-        style={{
-          marginTop: 32,
-          paddingTop: 16,
-          borderTop: "1px solid #f0f0f0",
-          fontSize: 12,
-          color: "rgba(0, 0, 0, 0.45)"
-        }}
-      >
-        数据每分钟自动刷新 · 截止 {new Date().toLocaleString("zh-CN")}
-      </div>
+        ) : <EmptyState empty title="暂无客户数据" height={120} />}
+      </ProCard>
     </Page>
   );
 }

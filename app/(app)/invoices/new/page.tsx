@@ -11,7 +11,7 @@ import { useRouter } from "next/navigation";
 import { useRef, useState } from "react";
 import { Page } from "@/components/page";
 import { PageHeader } from "@/components/page-header";
-import { FormSection, FormGrid, FormCard } from "@/components/form";
+import { FormSection, FormGrid, FormCard, SubmitBar } from "@/components/form";
 import { proCustomRequest } from "@/lib/upload-client";
 import { PreviewableProFormUploadButton as UploadButton } from "@/components/file/pro-form-upload-button";
 
@@ -302,8 +302,13 @@ export default function NewInvoicePage() {
               草稿状态可编辑;提交后 <Tag color="blue">草稿 → 财务待审</Tag> 由财务审核。
             </Text>
           </Space>
-        </ProForm>
-      </FormCard>
+        </FormCard>
+        <SubmitBar
+          onSubmit={() => formRef.current?.submit()}
+          onCancel={() => router.push("/invoices")}
+          submitText="创建开票"
+        />
+      </ProForm>
     </Page>
   );
 }

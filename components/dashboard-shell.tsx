@@ -496,8 +496,11 @@ const CRUMB_LABEL: Record<string, string> = {
   admin: "系统管理",
   users: "用户管理",
   roles: "角色权限",
+  departments: "部门管理",
   dictionaries: "数据字典",
-  "operation-logs": "操作日志"
+  "operation-logs": "操作日志",
+  new: "新建",
+  edit: "编辑"
 };
 
 function Crumbs({ pathname }: { pathname: string }) {

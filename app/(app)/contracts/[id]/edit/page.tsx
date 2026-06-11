@@ -15,7 +15,7 @@ import useSWR from "swr";
 import { useDict } from "@/lib/dict-client";
 import { Page } from "@/components/page";
 import { PageHeader } from "@/components/page-header";
-import { FormSection, FormGrid, FormCard } from "@/components/form";
+import { FormSection, FormGrid, FormCard, SubmitBar } from "@/components/form";
 import { FormPageSkeleton } from "@/components/form-page-skeleton";
 import { proCustomRequest } from "@/lib/upload-client";
 import { PreviewableProFormUploadButton as UploadButton } from "@/components/file/pro-form-upload-button";
@@ -218,8 +218,13 @@ export default function EditContractPage() {
               客户不可更换,合同编号不可改;如需大改建议作废当前合同后新建。
             </Text>
           </Space>
-        </ProForm>
-      </FormCard>
+        </FormCard>
+        <SubmitBar
+          onSubmit={() => formRef.current?.submit()}
+          onCancel={() => router.push(`/contracts/${id}`)}
+          submitText="保存修改"
+        />
+      </ProForm>
     </Page>
   );
 }
