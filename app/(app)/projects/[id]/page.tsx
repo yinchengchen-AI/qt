@@ -20,8 +20,8 @@ export default function ProjectDetailPage() {
   const params = useParams();
   const id = String(params.id);
   const router = useRouter();
-  const { data, isLoading, mutate } = useSWR<{ data: ProjectEntity }>(`/api/projects/${id}`);
-  const project = data?.data;
+  const { data, isLoading, mutate } = useSWR<ProjectEntity>(`/api/projects/${id}`);
+  const project = data;
   const { run } = useActionCall({ baseUrl: `/api/projects/${id}`, reload: () => mutate() });
 
   if (isLoading || !project) {

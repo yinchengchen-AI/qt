@@ -20,8 +20,8 @@ export default function ContractDetailPage() {
   const params = useParams();  const id = String(params.id);
   const router = useRouter();
   const { data: session } = useSession();
-  const { data, isLoading, mutate } = useSWR<{ data: ContractEntity }>(`/api/contracts/${id}`);
-  const contract = data?.data;
+  const { data, isLoading, mutate } = useSWR<ContractEntity>(`/api/contracts/${id}`);
+  const contract = data;
   const [comment, setComment] = useState("");
   const { run } = useActionCall({ baseUrl: `/api/contracts/${id}`, reload: () => mutate() });
 

@@ -19,8 +19,8 @@ export default function PaymentDetailPage() {
   const id = String(params.id);
   const router = useRouter();
   const { data: session } = useSession();
-  const { data, isLoading, mutate } = useSWR<{ data: PaymentEntity }>(`/api/payments/${id}`);
-  const payment = data?.data;
+  const { data, isLoading, mutate } = useSWR<PaymentEntity>(`/api/payments/${id}`);
+  const payment = data;
   const [bankRefNo, setBankRefNo] = useState("");
   const [reason, setReason] = useState("");
   const { run } = useActionCall({ baseUrl: `/api/payments/${id}`, reload: () => mutate() });

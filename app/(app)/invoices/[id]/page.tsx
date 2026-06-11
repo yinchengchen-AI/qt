@@ -21,8 +21,8 @@ export default function InvoiceDetailPage() {
   const id = String(params.id);
   const router = useRouter();
   const { data: session } = useSession();
-  const { data, isLoading, mutate } = useSWR<{ data: InvoiceEntity }>(`/api/invoices/${id}`);
-  const invoice = data?.data;
+  const { data, isLoading, mutate } = useSWR<InvoiceEntity>(`/api/invoices/${id}`);
+  const invoice = data;
   const [reason, setReason] = useState("");
   const [invoiceNo, setInvoiceNo] = useState("");
   const { run } = useActionCall({ baseUrl: `/api/invoices/${id}`, reload: () => mutate() });

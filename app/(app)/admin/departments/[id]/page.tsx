@@ -38,7 +38,7 @@ export default function DepartmentDetailPage() {
   const id = String(params.id);
   const router = useRouter();
   const { data, error, isLoading, mutate } = useSWR<Dept>(`/api/departments/${id}`);
-  const { data: membersData } = useSWR<{ data: { list: User[]; total: number } }>(
+  const { data: membersData } = useSWR<{ list: User[]; total: number }>(
     data ? `/api/users?pageSize=50&departmentId=${id}` : null
   );
 
@@ -117,8 +117,8 @@ export default function DepartmentDetailPage() {
         rowKey="id"
         search={false}
         loading={!membersData}
-        pagination={{ pageSize: 50, total: membersData?.data?.total ?? 0, showSizeChanger: false }}
-        dataSource={membersData?.data?.list ?? []}
+        pagination={{ pageSize: 50, total: membersData?.total ?? 0, showSizeChanger: false }}
+        dataSource={membersData?.list ?? []}
         columns={memberColumns}
       />
     </Page>
