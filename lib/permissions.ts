@@ -41,7 +41,8 @@ const R_EXPORT: Action[] = ["READ", "EXPORT"];
 // 内置角色默认权限（P0 阶段硬编码；后续允许后台编辑）
 export const ROLE_PERMISSIONS: Record<RoleCode, Permission[]> = {
   ADMIN: Object.values(RESOURCE).map((resource) =>
-    resource === RESOURCE.STATISTICS
+    resource === RESOURCE.STATISTICS || resource === RESOURCE.CUSTOMER || resource === RESOURCE.CONTRACT ||
+    resource === RESOURCE.PROJECT || resource === RESOURCE.INVOICE || resource === RESOURCE.PAYMENT
       ? { resource, actions: [...CRUD, ACTION.EXPORT] }
       : { resource, actions: CRUD }
   ),
@@ -49,11 +50,11 @@ export const ROLE_PERMISSIONS: Record<RoleCode, Permission[]> = {
     { resource: RESOURCE.DEPARTMENT, actions: R },
     { resource: RESOURCE.USER, actions: R },
     { resource: RESOURCE.DICTIONARY, actions: R },
-    { resource: RESOURCE.CUSTOMER, actions: CRU },
-    { resource: RESOURCE.CONTRACT, actions: CRU },
-    { resource: RESOURCE.PROJECT, actions: CRU },
-    { resource: RESOURCE.INVOICE, actions: CR },
-    { resource: RESOURCE.PAYMENT, actions: CR },
+    { resource: RESOURCE.CUSTOMER, actions: [...CRU, ACTION.EXPORT] },
+    { resource: RESOURCE.CONTRACT, actions: [...CRU, ACTION.EXPORT] },
+    { resource: RESOURCE.PROJECT, actions: [...CRU, ACTION.EXPORT] },
+    { resource: RESOURCE.INVOICE, actions: [...CR, ACTION.EXPORT] },
+    { resource: RESOURCE.PAYMENT, actions: [...CR, ACTION.EXPORT] },
     { resource: RESOURCE.STATISTICS, actions: R },
     { resource: RESOURCE.MESSAGE, actions: CRUD },
     { resource: RESOURCE.ANNOUNCEMENT, actions: R }
@@ -62,11 +63,11 @@ export const ROLE_PERMISSIONS: Record<RoleCode, Permission[]> = {
     { resource: RESOURCE.DEPARTMENT, actions: R },
     { resource: RESOURCE.USER, actions: R },
     { resource: RESOURCE.DICTIONARY, actions: R },
-    { resource: RESOURCE.CUSTOMER, actions: R },
-    { resource: RESOURCE.CONTRACT, actions: R },
-    { resource: RESOURCE.PROJECT, actions: R },
-    { resource: RESOURCE.INVOICE, actions: CRUD },
-    { resource: RESOURCE.PAYMENT, actions: CRUD },
+    { resource: RESOURCE.CUSTOMER, actions: [...R, ACTION.EXPORT] },
+    { resource: RESOURCE.CONTRACT, actions: [...R, ACTION.EXPORT] },
+    { resource: RESOURCE.PROJECT, actions: [...R, ACTION.EXPORT] },
+    { resource: RESOURCE.INVOICE, actions: [...CRUD, ACTION.EXPORT] },
+    { resource: RESOURCE.PAYMENT, actions: [...CRUD, ACTION.EXPORT] },
     { resource: RESOURCE.STATISTICS, actions: R_EXPORT },
     { resource: RESOURCE.MESSAGE, actions: CRUD },
     { resource: RESOURCE.ANNOUNCEMENT, actions: R }
@@ -76,11 +77,11 @@ export const ROLE_PERMISSIONS: Record<RoleCode, Permission[]> = {
     { resource: RESOURCE.USER, actions: R },
     { resource: RESOURCE.DICTIONARY, actions: R },
     // CUSTOMER 金额字段不触碰（P1 阶段在 service 层显式过滤）
-    { resource: RESOURCE.CUSTOMER, actions: CRU },
-    { resource: RESOURCE.CONTRACT, actions: R },
-    { resource: RESOURCE.PROJECT, actions: CRU },
-    { resource: RESOURCE.INVOICE, actions: R },
-    { resource: RESOURCE.PAYMENT, actions: R },
+    { resource: RESOURCE.CUSTOMER, actions: [...CRU, ACTION.EXPORT] },
+    { resource: RESOURCE.CONTRACT, actions: [...R, ACTION.EXPORT] },
+    { resource: RESOURCE.PROJECT, actions: [...CRU, ACTION.EXPORT] },
+    { resource: RESOURCE.INVOICE, actions: [...R, ACTION.EXPORT] },
+    { resource: RESOURCE.PAYMENT, actions: [...R, ACTION.EXPORT] },
     { resource: RESOURCE.STATISTICS, actions: R },
     { resource: RESOURCE.MESSAGE, actions: CRUD },
     { resource: RESOURCE.ANNOUNCEMENT, actions: CRUD }
