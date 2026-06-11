@@ -5,10 +5,7 @@ import { requirePermission, RESOURCE, ACTION } from "@/lib/permissions";
 import { getContract } from "@/server/services/contract";
 import { prisma } from "@/lib/prisma";
 import { renderPrintHtml, type PrintDoc } from "@/lib/print-html";
-
-const PAYMENT_METHOD_MAP: Record<string, string> = {
-  LUMP_SUM: "一次性", BY_PHASE: "按阶段", BY_MONTH: "按月", BY_QUARTER: "按季"
-};
+import { PAYMENT_METHOD_MAP, SERVICE_TYPE_MAP, CONTRACT_STATUS_MAP, PROJECT_STATUS_MAP, REVIEW_ACTION_MAP } from "@/lib/enum-maps";
 
 export async function GET(_req: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
@@ -29,7 +26,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
         { label: "合同号", value: c.contractNo },
         { label: "合同标题", value: c.title },
         { label: "客户", value: c.customerName },
-        { label: "服务类型", value: c.serviceType },
+        { label: "服务类型", value: SERVICE_TYPE_MAP[c.serviceType] ?? c.serviceType },
         { label: "签订日", value: new Date(c.signDate).toLocaleDateString("zh-CN") },
         { label: "服务起期", value: new Date(c.startDate).toLocaleDateString("zh-CN") },
         { label: "服务止期", value: new Date(c.endDate).toLocaleDateString("zh-CN") },
@@ -39,7 +36,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
         { label: "不含税金额", value: Number(c.amountExcludingTax).toFixed(2) },
         { label: "付款方式", value: PAYMENT_METHOD_MAP[c.paymentMethod] ?? c.paymentMethod },
         { label: "业务员", value: owner ? `${owner.name} (${owner.employeeNo})` : c.ownerUserId },
-        { label: "状态", value: c.status },
+        { label: "状态", value: CONTRACT_STATUS_MAP[c.status] ?? c.status },
         { label: "审批人", value: reviewer ? `${reviewer.name} (${reviewer.employeeNo})` : (c.reviewerId ?? "—") },
         { label: "审批时间", value: c.reviewAt ? new Date(c.reviewAt).toLocaleString("zh-CN") : "—" },
         { label: "审批意见", value: c.reviewComment ?? "—" }
@@ -48,7 +45,16 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
         {
           title: "拆分项目",
           rows: projects.length
-            ? projects.map((p) => ({ label: p.projectNo, value: `${p.name} · ${p.status}` }))
+            ? projects.map((p) => ({ label: p.projectNo, value: `${p.name} · ${PROJECT_STATUS_MAP[p.status] ?? p.status}` }))
+            : [{ label: "(无)", value: "" }]
+        },
+        {
+          title: "审批记录",
+          rows: c.reviewLogs && c.reviewLogs.length
+            ? c.reviewLogs.map((l) => ({
+                label: new Date(l.at).toLocaleString("zh-CN"),
+                value: `${REVIEW_ACTION_MAP[l.action] ?? l.action} · ${l.reviewerName || l.reviewerId}${l.comment ? " · " + l.comment : ""}`
+              }))
             : [{ label: "(无)", value: "" }]
         }
       ]

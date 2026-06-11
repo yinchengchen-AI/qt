@@ -18,9 +18,10 @@ import { openPrintWindow } from "@/lib/print-client";
 type Customer = {
   id: string; code: string; name: string; shortName: string | null;
   unifiedSocialCreditCode: string | null; customerType: string; industry: string | null; sourceChannel: string | null;
-  scale: string | null; level: string; status: string; contactPhone: string;
-  contactEmail: string | null; province: string; city: string; address: string | null;
-  creditLimitAmount: string | null; paymentTermDays: number; createdAt: string;
+  scale: string | null; status: string;
+  contactName: string | null; contactTitle: string | null; contactPhone: string;
+  province: string; city: string; address: string | null;
+  createdAt: string;
 };
 
 type FollowUp = {
@@ -38,7 +39,6 @@ export default function CustomerDetailPage() {
   const id = String(params.id);
   const router = useRouter();
   const customerType = useDict("CUSTOMER_TYPE");
-  const customerLevel = useDict("CUSTOMER_LEVEL");
   const industryDict = useDict("CUSTOMER_INDUSTRY");
   const sourceDict = useDict("CUSTOMER_SOURCE");
   const methodDict = useDict("FOLLOW_METHOD");
@@ -68,7 +68,6 @@ export default function CustomerDetailPage() {
     );
   }
   const typeLabel = customerType.find((d) => d.code === data.customerType)?.label ?? data.customerType;
-  const levelLabel = customerLevel.find((d) => d.code === data.level)?.label ?? data.level;
   const industryLabel = data.industry ? (industryDict.find((d) => d.code === data.industry)?.label ?? data.industry) : "—";
   const sourceLabel = data.sourceChannel ? (sourceDict.find((d) => d.code === data.sourceChannel)?.label ?? data.sourceChannel) : "—";
   return (
@@ -97,15 +96,13 @@ export default function CustomerDetailPage() {
           { title: "简称", dataIndex: "shortName" },
           { title: "统一社会信用代码", dataIndex: "unifiedSocialCreditCode" },
           { title: "类型", dataIndex: "customerType", render: () => typeLabel },
-          { title: "等级", dataIndex: "level", render: () => <Tag>{levelLabel}</Tag> },
           { title: "行业", dataIndex: "industry", render: () => industryLabel },
           { title: "客户来源", dataIndex: "sourceChannel", render: () => sourceLabel },
           { title: "所在地区", dataIndex: "province", render: (_, r) => `${r.province} / ${r.city}` },
           { title: "详细地址", dataIndex: "address" },
+          { title: "联系人姓名", dataIndex: "contactName", render: (v) => (v as string) || "—" },
+          { title: "联系人职务", dataIndex: "contactTitle", render: (v) => (v as string) || "—" },
           { title: "联系电话", dataIndex: "contactPhone" },
-          { title: "邮箱", dataIndex: "contactEmail" },
-          { title: "授信额度", dataIndex: "creditLimitAmount", render: (v) => <CurrencyCell value={v as string} /> },
-          { title: "账期(天)", dataIndex: "paymentTermDays" },
           { title: "创建时间", dataIndex: "createdAt", render: (v) => <DateCell value={v as string} /> }
         ]} />
       </ProCard>

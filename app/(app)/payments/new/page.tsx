@@ -8,7 +8,7 @@ import {
 } from "@ant-design/pro-components";
 import { App as AntdApp, Space, Tag, Typography } from "antd";
 import { useRouter, useSearchParams } from "next/navigation";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { Page } from "@/components/page";
 import { PageHeader } from "@/components/page-header";
 import { FormSection, FormGrid, FormCard } from "@/components/form";
@@ -46,6 +46,7 @@ export default function NewPaymentPage() {
   const presetContract = search.get("contractId") ?? undefined;
   const presetInvoice = search.get("invoiceId") ?? undefined;
   const { message } = AntdApp.useApp();
+  const formRef = useRef<any>(null);
   const [pickedContract, setPickedContract] = useState<Contract | null>(null);
 
   return (
@@ -63,6 +64,8 @@ export default function NewPaymentPage() {
         }
       >
         <ProForm
+          submitter={false}
+          formRef={formRef}
           layout="vertical"
           initialValues={{
             contractId: presetContract,

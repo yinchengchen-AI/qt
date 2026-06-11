@@ -9,8 +9,6 @@ export type CustomerType = (typeof CUSTOMER_TYPE)[number];
 export const CUSTOMER_SCALE = ["LARGE", "MEDIUM", "SMALL", "MICRO"] as const;
 export type CustomerScale = (typeof CUSTOMER_SCALE)[number];
 
-export const CUSTOMER_LEVEL = ["A", "B", "C", "D"] as const;
-export type CustomerLevel = (typeof CUSTOMER_LEVEL)[number];
 
 export const CUSTOMER_STATUS = ["LEAD", "NEGOTIATING", "SIGNED", "LOST", "FROZEN"] as const;
 export type CustomerStatus = (typeof CUSTOMER_STATUS)[number];

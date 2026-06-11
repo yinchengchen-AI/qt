@@ -1,4 +1,6 @@
 "use client";
+
+import { useRef } from "react";
 import {
   ProForm,
   ProFormText,
@@ -22,6 +24,7 @@ export default function EditProjectPage() {
   const id = String(params.id);
   const router = useRouter();
   const { message } = AntdApp.useApp();
+  const formRef = useRef<any>(null);
   const { data, isLoading } = // eslint-disable-next-line @typescript-eslint/no-explicit-any -- edit page reads many dynamic fields
   useSWR<any>(`/api/projects/${id}`);
 
@@ -56,6 +59,8 @@ export default function EditProjectPage() {
       />
       <FormCard headerHint="所属合同不可改;项目止期必须晚于起期且不超过合同止期">
         <ProForm
+          submitter={false}
+          formRef={formRef}
           layout="vertical"
           initialValues={{
             name: data.name,

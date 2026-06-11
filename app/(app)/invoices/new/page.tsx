@@ -8,7 +8,7 @@ import {
 } from "@ant-design/pro-components";
 import { App as AntdApp, Space, Tag, Typography } from "antd";
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { Page } from "@/components/page";
 import { PageHeader } from "@/components/page-header";
 import { FormSection, FormGrid, FormCard } from "@/components/form";
@@ -36,13 +36,15 @@ type Customer = {
   name: string;
   unifiedSocialCreditCode: string | null;
   address: string | null;
+  contactName: string | null;
+  contactTitle: string | null;
   contactPhone: string;
-  contactEmail: string | null;
 };
 
 export default function NewInvoicePage() {
   const router = useRouter();
   const { message } = AntdApp.useApp();
+  const formRef = useRef<any>(null);
   const [form] = ProForm.useForm();
   const [pickedCustomer, setPickedCustomer] = useState<Customer | null>(null);
   const [titleType, setTitleType] = useState<"COMPANY" | "PERSONAL">("COMPANY");
@@ -62,6 +64,8 @@ export default function NewInvoicePage() {
         }
       >
         <ProForm
+          submitter={false}
+          formRef={formRef}
           form={form}
           layout="vertical"
           initialValues={{

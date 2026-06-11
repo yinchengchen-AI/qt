@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { CUSTOMER_LEVEL, CUSTOMER_SCALE, CUSTOMER_TYPE } from "@/types/enums";
+import { CUSTOMER_SCALE, CUSTOMER_TYPE } from "@/types/enums";
 import { isValidCreditCode } from "@/lib/credit-code";
 
 export const customerCreateSchema = z.object({
@@ -16,13 +16,11 @@ export const customerCreateSchema = z.object({
   province: z.string().min(1, "请输入省份").max(20),
   city: z.string().min(1, "请输入城市").max(40),
   address: z.string().max(200).optional(),
+  contactName: z.string().max(50).optional(),
+  contactTitle: z.string().max(50).optional(),
   contactPhone: z.string().min(5, "请输入联系电话").max(20),
-  contactEmail: z.string().email("邮箱格式错误").optional().or(z.literal("")),
   sourceChannel: z.string().max(50).optional(),
-  level: z.enum(CUSTOMER_LEVEL).default("C"),
-  ownerUserId: z.string().optional(),
-  creditLimitAmount: z.number().nonnegative().optional(),
-  paymentTermDays: z.number().int().min(0).max(365).default(30)
+  ownerUserId: z.string().optional()
 });
 
 export const customerUpdateSchema = customerCreateSchema.partial();

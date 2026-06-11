@@ -10,7 +10,7 @@ export type ListResult<T> = { data: T[]; total: number; success: true };
 const KNOWN_KEYS = new Set([
   "keyword",
   "status",
-  "level",
+  "scale",
   "customerId",
   "customerType",
   "serviceType",

@@ -69,14 +69,13 @@ model Customer {
   province                String
   city                    String
   address                 String?
+  // 主联系人信息(姓名 / 职务 / 电话);废除原 creditLimitAmount / paymentTermDays / contactEmail
+  contactName             String?
+  contactTitle            String?
   contactPhone            String
-  contactEmail            String?
   sourceChannel           String?
-  level                   String    @default("C") // A | B | C | D
   ownerUserId             String
   status                  String    @default("LEAD") // LEAD | NEGOTIATING | SIGNED | LOST | FROZEN
-  creditLimitAmount       Decimal?  @db.Decimal(18, 2)
-  paymentTermDays         Int       @default(30)
   createdAt               DateTime  @default(now()) @db.Timestamptz(6)
   updatedAt               DateTime  @updatedAt @db.Timestamptz(6)
   createdById             String
@@ -90,7 +89,6 @@ model Customer {
 
   @@index([ownerUserId])
   @@index([status])
-  @@index([level])
   @@index([customerType])
 }
 

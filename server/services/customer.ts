@@ -19,15 +19,15 @@ function ownershipWhere(user: SessionUser): Prisma.CustomerWhereInput {
 
 export async function listCustomers(
   user: SessionUser,
-  params: { page: number; pageSize: number; keyword?: string; status?: string; level?: string }
+  params: { page: number; pageSize: number; keyword?: string; status?: string; scale?: string }
 ) {
   requirePermission(user.roleCode, RESOURCE.CUSTOMER, ACTION.READ);
-  const { page, pageSize, keyword, status, level } = params;
+  const { page, pageSize, keyword, status, scale } = params;
   const where: Prisma.CustomerWhereInput = {
     ...ownershipWhere(user),
     deletedAt: null,
     ...(status ? { status } : {}),
-    ...(level ? { level } : {}),
+    ...(scale ? { scale } : {}),
     ...(keyword
       ? {
           OR: [
@@ -72,9 +72,9 @@ export async function createCustomer(user: SessionUser, input: CustomerCreateInp
       industry: input.industry || null,
       scale: input.scale || null,
       address: input.address || null,
-      contactEmail: input.contactEmail || null,
+      contactName: input.contactName || null,
+      contactTitle: input.contactTitle || null,
       sourceChannel: input.sourceChannel || null,
-      creditLimitAmount: input.creditLimitAmount ?? null,
       createdById: user.id,
       updatedById: user.id
     }
@@ -94,9 +94,9 @@ export async function updateCustomer(user: SessionUser, id: string, input: Custo
       industry: input.industry || null,
       scale: input.scale || null,
       address: input.address || null,
-      contactEmail: input.contactEmail || null,
+      contactName: input.contactName ?? null,
+      contactTitle: input.contactTitle ?? null,
       sourceChannel: input.sourceChannel || null,
-      creditLimitAmount: input.creditLimitAmount ?? null,
       updatedById: user.id
     }
   });

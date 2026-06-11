@@ -15,8 +15,7 @@ import { CurrencyCell, DateTimeCell, PercentCell } from "@/components/table-cell
 import { FilePdfOutlined } from "@ant-design/icons";
 import { openPrintWindow } from "@/lib/print-client";
 import { AttachmentList } from "@/components/file/attachment-list";
-const INVOICE_TYPE_MAP: Record<string, string> = { VAT_SPECIAL: "增值税专用发票", VAT_GENERAL: "增值税普通发票", VAT_ELECTRONIC: "增值税电子专票", ELEC_NORMAL: "电子普通发票" };
-const TITLE_TYPE_MAP: Record<string, string> = { COMPANY: "公司", PERSONAL: "个人" };
+import { INVOICE_TYPE_MAP, TITLE_TYPE_MAP } from "@/lib/enum-maps";
 
 export default function InvoiceDetailPage() {
   const params = useParams();

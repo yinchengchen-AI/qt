@@ -181,9 +181,9 @@ export async function getTopCustomers(user: SessionUser, metric: "contract" | "p
   requirePermission(user.roleCode, RESOURCE.STATISTICS, ACTION.READ);
   const customers = await prisma.customer.findMany({
     where: { deletedAt: null },
-    select: { id: true, name: true, code: true, level: true, customerType: true }
+    select: { id: true, name: true, code: true, scale: true, customerType: true }
   });
-  const result: Array<{ id: string; name: string; code: string; level: string; total: number; paymentTotal: number; invoiceTotal: number; contractCount: number }> = [];
+  const result: Array<{ id: string; name: string; code: string; scale: string | null; total: number; paymentTotal: number; invoiceTotal: number; contractCount: number }> = [];
   for (const c of customers) {
     const [contractAgg, invoiceAgg, paymentAgg, contractCount] = await Promise.all([
       prisma.contract.aggregate({
@@ -206,7 +206,7 @@ export async function getTopCustomers(user: SessionUser, metric: "contract" | "p
       id: c.id,
       name: c.name,
       code: c.code,
-      level: c.level,
+      scale: c.scale,
       total: round2(total),
       invoiceTotal: round2(Number(invoiceAgg._sum.amount ?? 0)),
       paymentTotal: round2(Number(paymentAgg._sum.amount ?? 0)),
@@ -275,13 +275,13 @@ export async function getSalesPerformance(user: SessionUser, targetUserId?: stri
 // 6. 客户分布
 export async function getCustomerDistribution(user: SessionUser) {
   requirePermission(user.roleCode, RESOURCE.STATISTICS, ACTION.READ);
-  const [byLevel, byType, byStatus] = await Promise.all([
-    prisma.customer.groupBy({ by: ["level"], where: { deletedAt: null }, _count: { _all: true } }),
+  const [byScale, byType, byStatus] = await Promise.all([
+    prisma.customer.groupBy({ by: ["scale"], where: { deletedAt: null }, _count: { _all: true } }),
     prisma.customer.groupBy({ by: ["customerType"], where: { deletedAt: null }, _count: { _all: true } }),
     prisma.customer.groupBy({ by: ["status"], where: { deletedAt: null }, _count: { _all: true } })
   ]);
   return {
-    byLevel: byLevel.map((x) => ({ key: x.level, count: x._count._all })),
+    byScale: byScale.map((x) => ({ key: x.scale, count: x._count._all })),
     byType: byType.map((x) => ({ key: x.customerType, count: x._count._all })),
     byStatus: byStatus.map((x) => ({ key: x.status, count: x._count._all }))
   };

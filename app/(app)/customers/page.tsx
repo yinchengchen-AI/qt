@@ -21,7 +21,9 @@ type Customer = {
   name: string;
   shortName: string | null;
   customerType: string;
-  level: string;
+  scale: string | null;
+  industry: string | null;
+  sourceChannel: string | null;
   status: string;
   ownerUserId: string;
   contactPhone: string;
@@ -30,12 +32,14 @@ type Customer = {
   createdAt: string;
 };
 
-const LEVEL_COLOR: Record<string, string> = { A: "red", B: "orange", C: "blue", D: "default" };
 
 export default function CustomersPage() {
   const router = useRouter();
   const { mutate } = useSWRConfig();
   const customerTypeDict = useDict("CUSTOMER_TYPE");
+  const customerScaleDict = useDict("CUSTOMER_SCALE");
+  const industryDict = useDict("CUSTOMER_INDUSTRY");
+  const sourceDict = useDict("CUSTOMER_SOURCE");
   const statusEnum = useStatusValueEnum("customer");
   // 用 ref 拿当前表格的查询参数(关键字/状态/等级),导出时一并带上
   const searchRef = useRef<Record<string, unknown>>({});
@@ -82,7 +86,6 @@ export default function CustomersPage() {
           searchRef.current = {
             keyword: params.keyword,
             status: params.status,
-            level: params.level
           };
           return makeListRequest<Customer>("/api/customers")(params);
         }}
@@ -101,10 +104,22 @@ export default function CustomersPage() {
             valueEnum: Object.fromEntries(customerTypeDict.map((d) => [d.code, { text: d.label }]))
           },
           {
-            title: "等级",
-            dataIndex: "level",
+            title: "规模",
+            dataIndex: "scale",
             width: 80,
-            render: (_, r) => <Tag color={LEVEL_COLOR[r.level] ?? "default"}>{r.level}</Tag>
+            render: (_, r) => r.scale ? (customerScaleDict.find((d) => d.code === r.scale)?.label ?? r.scale) : "—"
+          },
+          {
+            title: "行业",
+            dataIndex: "industry",
+            width: 120,
+            render: (_, r) => r.industry ? (industryDict.find((d) => d.code === r.industry)?.label ?? r.industry) : "—"
+          },
+          {
+            title: "来源",
+            dataIndex: "sourceChannel",
+            width: 120,
+            render: (_, r) => r.sourceChannel ? (sourceDict.find((d) => d.code === r.sourceChannel)?.label ?? r.sourceChannel) : "—"
           },
           {
             title: "状态",

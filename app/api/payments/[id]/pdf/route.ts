@@ -1,14 +1,12 @@
 // 回款详情 → 打印页 HTML
 import { err } from "@/lib/api";
 import { requireSession } from "@/lib/session";
+import { METHOD_MAP } from "@/lib/enum-maps";
 import { requirePermission, RESOURCE, ACTION } from "@/lib/permissions";
 import { getPayment } from "@/server/services/payment";
 import { prisma } from "@/lib/prisma";
 import { renderPrintHtml, type PrintDoc } from "@/lib/print-html";
 
-const METHOD_MAP: Record<string, string> = {
-  BANK_TRANSFER: "银行转账", CHECK: "支票", CASH: "现金", WECHAT: "微信", ALIPAY: "支付宝", OTHER: "其他"
-};
 
 export async function GET(_req: Request, { params }: { params: Promise<{ id: string }> }) {
   try {

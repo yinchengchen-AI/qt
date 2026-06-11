@@ -15,9 +15,9 @@ import { FilePdfOutlined } from "@ant-design/icons";
 import { openPrintWindow } from "@/lib/print-client";
 import { useUserName } from "@/lib/user-lookup";
 import { CurrencyCell, DateTimeCell } from "@/components/table-cells";
+import { METHOD_MAP } from "@/lib/enum-maps";
 
 // 收款方式 code→label 兜底映射,字典未拉到时(初次 SSR)还能渲染中文
-const METHOD_MAP: Record<string, string> = { BANK_TRANSFER: "银行转账", CHECK: "支票", CASH: "现金", WECHAT: "微信", ALIPAY: "支付宝", OTHER: "其他" };
 
 export default function PaymentDetailPage() {
   const params = useParams();

@@ -1,17 +1,12 @@
 // 发票详情 → 打印页 HTML
 import { err } from "@/lib/api";
 import { requireSession } from "@/lib/session";
+import { INVOICE_TYPE_MAP } from "@/lib/enum-maps";
 import { requirePermission, RESOURCE, ACTION } from "@/lib/permissions";
 import { getInvoice } from "@/server/services/invoice";
 import { prisma } from "@/lib/prisma";
 import { renderPrintHtml, type PrintDoc } from "@/lib/print-html";
 
-const INVOICE_TYPE_MAP: Record<string, string> = {
-  VAT_SPECIAL: "增值税专用发票",
-  VAT_GENERAL: "增值税普通发票",
-  VAT_ELECTRONIC: "增值税电子专票",
-  ELEC_NORMAL: "电子普通发票"
-};
 const TITLE_TYPE_MAP: Record<string, string> = { COMPANY: "公司", PERSONAL: "个人" };
 
 export async function GET(_req: Request, { params }: { params: Promise<{ id: string }> }) {

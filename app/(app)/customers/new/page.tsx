@@ -1,23 +1,27 @@
 "use client";
-import { StepsForm, ProFormText, ProFormSelect, ProFormDigit } from "@ant-design/pro-components";
-import { App as AntdApp, Space, Tag, Typography } from "antd";
+
+import { useRef } from "react";
+
+import {
+  ProForm,
+  ProFormText,
+  ProFormSelect,
+  ProFormTextArea
+} from "@ant-design/pro-components";
+import { App as AntdApp } from "antd";
 import { useRouter } from "next/navigation";
 import { useDict } from "@/lib/dict-client";
 import { useStatusOptions } from "@/lib/use-status-enum";
 import { Page } from "@/components/page";
 import { PageHeader } from "@/components/page-header";
-import { FormSection, FormGrid, FormCard } from "@/components/form";
-import { RegionFields } from "@/components/form/RegionFields";
-
-const { Text } = Typography;
-
-const STEP_TITLES = ["基本信息", "位置与联系", "财务与等级"];
+import { FormSection, FormGrid, FormCard, SubmitBar } from "@/components/form";
+import { isValidCreditCode } from "@/lib/credit-code";
 
 export default function NewCustomerPage() {
   const router = useRouter();
   const { message } = AntdApp.useApp();
+  const formRef = useRef<any>(null);
   const customerType = useDict("CUSTOMER_TYPE");
-  const customerLevel = useDict("CUSTOMER_LEVEL");
   const industryDict = useDict("CUSTOMER_INDUSTRY");
   const sourceDict = useDict("CUSTOMER_SOURCE");
   // 新建不允许 FROZEN
@@ -28,200 +32,159 @@ export default function NewCustomerPage() {
       <PageHeader
         back={() => router.push("/customers")}
         title="新建客户"
-        subtitle="线索录入 → 位置与联系 → 财务与等级;带 * 必填"
+        subtitle="客户编号、创建人、创建时间由系统自动生成"
       />
-      <FormCard headerHint="客户编号、创建人、创建时间由系统自动生成,无需填写">
-        <StepsForm
-          onFinish={async (values) => {
-            const res = await fetch("/api/customers", {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              credentials: "include",
-              body: JSON.stringify(values)
-            });
-            const j = await res.json();
-            if (j.code !== 0) {
-              message.error(j.message);
-              return false;
-            }
-            message.success("创建成功");
-            router.push(`/customers/${j.data.id}`);
-            return true;
-          }}
+      <ProForm
+          formRef={formRef}
+        layout="vertical"
+        submitter={false}
+        onFinish={async (values) => {
+          const res = await fetch("/api/customers", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            credentials: "include",
+            body: JSON.stringify(values)
+          });
+          const j = await res.json();
+          if (j.code !== 0) {
+            message.error(j.message);
+            return false;
+          }
+          message.success("创建成功");
+          router.push(`/customers/${j.data.id}`);
+          return true;
+        }}
+      >
+        <FormCard headerHint="标 * 为必填;所有字典项在「系统管理 → 数据字典」维护">
+          <FormSection title="客户基础信息" description="用于合同 / 发票 / 报告抬头">
+            <ProFormText
+              name="name"
+              label="客户全称"
+              placeholder="如:杭州阿里巴巴有限公司"
+              rules={[
+                { required: true, message: "客户全称为必填" },
+                { min: 2, max: 100 }
+              ]}
+              fieldProps={{ size: "large", maxLength: 100, showCount: true }}
+            />
+            <FormGrid columns={2}>
+              <ProFormText
+                name="shortName"
+                label="简称"
+                placeholder="用于列表展示"
+                fieldProps={{ size: "large", maxLength: 50, showCount: true }}
+              />
+              <ProFormText
+                name="unifiedSocialCreditCode"
+                label="统一社会信用代码"
+                placeholder="18 位;企业必填,政府单位可空"
+                rules={[
+                  {
+                    validator: async (_, value) => {
+                      if (!value) return;
+                      if (!isValidCreditCode(value)) throw new Error("统一社会信用代码格式错误");
+                    }
+                  }
+                ]}
+                fieldProps={{ size: "large", maxLength: 18 }}
+              />
+            </FormGrid>
+          </FormSection>
 
-        >
-          {/* ========== Step 1: 基本信息 ========== */}
-          <StepsForm.StepForm
-            name="base"
-            title={STEP_TITLES[0]}
-            onFinish={async () => true}
-          >
-            <FormSection
-              title="客户全称与简称"
-              description="用于合同 / 发票 / 报告抬头"
-            >
-              <FormGrid columns={1}>
-                <ProFormText
-                  name="name"
-                  label="客户全称"
-                  placeholder="如:杭州阿里巴巴有限公司"
-                  rules={[
-                    { required: true, message: "客户全称为必填" },
-                    { min: 2, max: 100 }
-                  ]}
-                  fieldProps={{ size: "large" }}
-                />
-                <ProFormText
-                  name="shortName"
-                  label="简称"
-                  placeholder="用于列表展示;可空"
-                  fieldProps={{ size: "large", maxLength: 50, showCount: true }}
-                />
-              </FormGrid>
-            </FormSection>
+          <FormSection title="类型与规模" description="类型决定后续合同/项目可走的流程;规模用于客户分层维护">
+            <FormGrid columns={2}>
+              <ProFormSelect
+                name="customerType"
+                label="客户类型"
+                placeholder="请选择"
+                options={customerType.map((d) => ({ value: d.code, label: d.label }))}
+                rules={[{ required: true, message: "请选择客户类型" }]}
+                fieldProps={{ size: "large" }}
+              />
+              <ProFormSelect
+                name="industry"
+                label="行业"
+                placeholder="请选择行业"
+                options={industryDict.map((d) => ({ value: d.code, label: d.label }))}
+                showSearch
+                allowClear
+                fieldProps={{ size: "large" }}
+              />
+              <ProFormSelect
+                name="sourceChannel"
+                label="客户来源"
+                placeholder="请选择客户来源"
+                options={sourceDict.map((d) => ({ value: d.code, label: d.label }))}
+                showSearch
+                allowClear
+                fieldProps={{ size: "large" }}
+              />
+            </FormGrid>
+            <ProFormSelect
+              name="status"
+              label="客户状态"
+              initialValue="LEAD"
+              options={statusOptions}
+              fieldProps={{ size: "large" }}
+            />
+          </FormSection>
 
-            <FormSection
-              title="类型与等级"
-              description="等级影响后续折扣 / 信用账期默认"
-            >
-              <FormGrid columns={2}>
-                <ProFormSelect
-                  name="customerType"
-                  label="客户类型"
-                  placeholder="请选择"
-                  options={customerType.map((d) => ({ value: d.code, label: d.label }))}
-                  rules={[{ required: true, message: "请选择客户类型" }]}
-                  fieldProps={{ size: "large" }}
-                />
-                <ProFormSelect
-                  name="level"
-                  label="客户等级"
-                  placeholder="默认 C 级"
-                  initialValue="C"
-                  options={customerLevel.map((d) => ({ value: d.code, label: d.label }))}
-                  fieldProps={{ size: "large" }}
-                />
-                <ProFormSelect
-                  name="industry"
-                  label="行业"
-                  placeholder="请选择行业"
-                  options={industryDict.map((d) => ({ value: d.code, label: d.label }))}
-                  showSearch
-                  allowClear
-                  fieldProps={{ size: "large" }}
-                />
-                <ProFormSelect
-                  name="sourceChannel"
-                  label="客户来源"
-                  placeholder="请选择客户来源"
-                  options={sourceDict.map((d) => ({ value: d.code, label: d.label }))}
-                  showSearch
-                  allowClear
-                  fieldProps={{ size: "large" }}
-                />
-              </FormGrid>
-            </FormSection>
-          </StepsForm.StepForm>
+          <FormSection title="位置与联系" description="联系人是日常对接人;支持后续在详情页维护更多联系人">
+            <FormGrid columns={2}>
+              <ProFormText
+                name="province"
+                label="所在省份"
+                placeholder="如:浙江省"
+                rules={[{ required: true, message: "请输入省份" }, { max: 20 }]}
+                fieldProps={{ size: "large", maxLength: 20 }}
+              />
+              <ProFormText
+                name="city"
+                label="所在城市"
+                placeholder="如:杭州市"
+                rules={[{ required: true, message: "请输入城市" }, { max: 40 }]}
+                fieldProps={{ size: "large", maxLength: 40 }}
+              />
+            </FormGrid>
+            <ProFormTextArea
+              name="address"
+              label="详细地址"
+              placeholder="街道名 + 门牌号 / 园区 + 楼栋"
+              fieldProps={{ size: "large", maxLength: 200, showCount: true, autoSize: { minRows: 1, maxRows: 3 } }}
+            />
+            <FormGrid columns={2}>
+              <ProFormText
+                name="contactName"
+                label="联系人姓名"
+                placeholder="如:王经理"
+                fieldProps={{ size: "large", maxLength: 50 }}
+              />
+              <ProFormText
+                name="contactTitle"
+                label="联系人职务"
+                placeholder="如:安全总监"
+                fieldProps={{ size: "large", maxLength: 50 }}
+              />
+            </FormGrid>
+            <ProFormText
+              name="contactPhone"
+              label="联系电话"
+              placeholder="手机或座机"
+              rules={[
+                { required: true, message: "请输入联系电话" },
+                { pattern: /^[\d\-\s+()]{5,20}$/, message: "电话号码格式不正确" }
+              ]}
+              fieldProps={{ size: "large", maxLength: 20 }}
+            />
+          </FormSection>
+        </FormCard>
 
-          {/* ========== Step 2: 位置与联系 ========== */}
-          <StepsForm.StepForm
-            name="region"
-            title={STEP_TITLES[1]}
-            onFinish={async () => true}
-          >
-            <FormSection
-              title="所在地区"
-              description="当前仅支持杭州市(区/县 + 街道)"
-            >
-              <RegionFields required />
-            </FormSection>
-
-            <FormSection title="详细地址与联系方式">
-              <FormGrid columns={1}>
-                <ProFormText
-                  name="address"
-                  label="详细地址"
-                  placeholder="街道名 + 门牌号(可空)"
-                  fieldProps={{ size: "large", maxLength: 200, showCount: true }}
-                />
-                <FormGrid columns={2}>
-                  <ProFormText
-                    name="contactPhone"
-                    label="联系电话"
-                    placeholder="手机或座机"
-                    rules={[
-                      { required: true, message: "请输入联系电话" },
-                      { pattern: /^[\d\-\s+()]{5,20}$/, message: "电话号码格式不正确" }
-                    ]}
-                    fieldProps={{ size: "large", maxLength: 20 }}
-                  />
-                  <ProFormText
-                    name="contactEmail"
-                    label="邮箱"
-                    placeholder="如:contact@example.com(可空)"
-                    rules={[{ type: "email", message: "邮箱格式不正确" }]}
-                    fieldProps={{ size: "large", maxLength: 120 }}
-                  />
-                </FormGrid>
-              </FormGrid>
-            </FormSection>
-          </StepsForm.StepForm>
-
-          {/* ========== Step 3: 财务与等级 ========== */}
-          <StepsForm.StepForm
-            name="finance"
-            title={STEP_TITLES[2]}
-            onFinish={async () => true}
-          >
-            <FormSection
-              title="授信与账期"
-              description="新建后可在客户详情页调整;不影响初始状态"
-            >
-              <FormGrid columns={2}>
-                <ProFormDigit
-                  name="creditLimitAmount"
-                  label="授信额度"
-                  placeholder="0 表示不授信"
-                  min={0}
-                  fieldProps={{
-                    size: "large",
-                    precision: 2,
-                    prefix: "¥",
-                    addonAfter: "元"
-                  }}
-                />
-                <ProFormDigit
-                  name="paymentTermDays"
-                  label="账期"
-                  placeholder="默认 30 天"
-                  initialValue={30}
-                  min={0}
-                  max={365}
-                  fieldProps={{ size: "large", suffix: "天" }}
-                />
-              </FormGrid>
-            </FormSection>
-
-            <FormSection title="初始状态">
-              <FormGrid columns={1}>
-                <ProFormSelect
-                  name="status"
-                  label="初始状态"
-                  options={statusOptions}
-                  initialValue="LEAD"
-                  fieldProps={{ size: "large" }}
-                />
-                <Space>
-                  <Text type="secondary" style={{ fontSize: 12 }}>
-                    新建客户默认 <Tag color="blue">线索</Tag>。如已签约请选
-                    <Tag color="green">已签约</Tag>
-                  </Text>
-                </Space>
-              </FormGrid>
-            </FormSection>
-          </StepsForm.StepForm>
-        </StepsForm>
-      </FormCard>
+        <SubmitBar
+          onSubmit={() => formRef.current?.submit()}
+          onCancel={() => router.push("/customers")}
+          submitText="创建客户"
+        />
+      </ProForm>
     </Page>
   );
 }

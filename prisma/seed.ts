@@ -30,25 +30,24 @@ async function seedBusinessData() {
 
   // ===== 客户 (12) =====
   const custDefs = [
-    { code: "QT-C-202606-0001", name: "鸿鹄工业制造有限公司", shortName: "鸿鹄工业", customerType: "ENTERPRISE", industry: "MANUFACTURING", scale: "LARGE", level: "A", sourceChannel: "REFERRAL", province: "江苏省", city: "苏州市", address: "工业园区东购商街 88 号", contactPhone: "13912340001", contactEmail: "wangzq@hongu.cn", creditLimitAmount: 800000, paymentTermDays: 30, finalStatus: "SIGNED", ownerId: sales.id },
-    { code: "QT-C-202606-0002", name: "瑞安化工集团股份有限公司", shortName: "瑞安化工", customerType: "ENTERPRISE", industry: "CHEMICAL", scale: "LARGE", level: "B", sourceChannel: "EXHIBITION", province: "江苏省", city: "常州市", address: "化工园区江水路 168 号", contactPhone: "13912340002", contactEmail: "zhaojg@ruianchem.com", creditLimitAmount: 500000, paymentTermDays: 45, finalStatus: "SIGNED", ownerId: sales.id },
-    { code: "QT-C-202606-0003", name: "碧海建设集团有限公司", shortName: "碧海建设", customerType: "ENTERPRISE", industry: "CONSTRUCTION", scale: "LARGE", level: "A", sourceChannel: "BIDDING", province: "江苏省", city: "南京市", address: "建邺区反审街 12 号", contactPhone: "13912340003", contactEmail: "sunml@bihai.cn", creditLimitAmount: 600000, paymentTermDays: 30, finalStatus: "NEGOTIATING", ownerId: sales.id },
-    { code: "QT-C-202606-0004", name: "远景能源股份有限公司", shortName: "远景能源", customerType: "ENTERPRISE", industry: "ENERGY", scale: "LARGE", level: "A", sourceChannel: "COLD_VISIT", province: "宁夏回族自治区", city: "银川市", address: "能源路 1 号", contactPhone: "13912340004", contactEmail: "zhougong@yuanjing.com", creditLimitAmount: 1200000, paymentTermDays: 60, finalStatus: "SIGNED", ownerId: sales.id },
-    { code: "QT-C-202606-0005", name: "锦城矿业有限责任公司", shortName: "锦城矿业", customerType: "ENTERPRISE", industry: "MINING", scale: "MEDIUM", level: "B", sourceChannel: "GOV_REFERRAL", province: "陕西省", city: "西安市", address: "锦城路 56 号", contactPhone: "13912340005", contactEmail: "zhengzong@jinchengmine.com", creditLimitAmount: 300000, paymentTermDays: 30, finalStatus: "NEGOTIATING", ownerId: admin.id },
-    { code: "QT-C-202606-0006", name: "顺通运输股份公司", shortName: "顺通运输", customerType: "ENTERPRISE", industry: "TRANSPORTATION", scale: "MEDIUM", level: "C", sourceChannel: "WEBSITE", province: "江苏省", city: "南通市", address: "物流园 5 号", contactPhone: "13912340006", contactEmail: null, creditLimitAmount: null, paymentTermDays: 30, finalStatus: "LEAD", ownerId: sales.id },
-    { code: "QT-C-202606-0007", name: "云仓物流科技有限公司", shortName: "云仓物流", customerType: "ENTERPRISE", industry: "WAREHOUSING", scale: "MEDIUM", level: "C", sourceChannel: "PHONE", province: "上海市", city: "浦东新区", address: "沿海工业区锡德路 320 号", contactPhone: "13912340007", contactEmail: "feng@yuncangwl.com", creditLimitAmount: 200000, paymentTermDays: 30, finalStatus: "SIGNED", ownerId: sales.id },
-    { code: "QT-C-202606-0008", name: "汇金商业贸易有限公司", shortName: "汇金贸易", customerType: "ENTERPRISE", industry: "COMMERCE", scale: "SMALL", level: "C", sourceChannel: "MEDIA", province: "浙江省", city: "杭州市", address: "滨江区中河上街 26 号", contactPhone: "13912340008", contactEmail: null, creditLimitAmount: null, paymentTermDays: 0, finalStatus: "LOST", ownerId: admin.id },
-    { code: "QT-C-202606-0009", name: "明德教育投资有限公司", shortName: "明德教育", customerType: "ENTERPRISE", industry: "EDUCATION", scale: "MEDIUM", level: "B", sourceChannel: "GOV_REFERRAL", province: "北京市", city: "海淀区", address: "中关村大街 18 号", contactPhone: "13912340009", contactEmail: "yangxz@mingde-edu.com", creditLimitAmount: 100000, paymentTermDays: 30, finalStatus: "SIGNED", ownerId: sales.id },
-    { code: "QT-C-202606-0010", name: "市应急管理局", shortName: "市应急局", customerType: "GOV", industry: "GOVERNMENT", scale: null, level: "A", sourceChannel: "GOV_REFERRAL", province: "江苏省", city: "南京市", address: "应急指挥中心大厦", contactPhone: "13912340010", contactEmail: null, creditLimitAmount: null, paymentTermDays: 0, finalStatus: "SIGNED", ownerId: admin.id },
-    { code: "QT-C-202606-0011", name: "锦绣酒店管理有限公司", shortName: "锦绣酒店", customerType: "ENTERPRISE", industry: "F_AND_B", scale: "SMALL", level: "D", sourceChannel: "SOCIAL_MEDIA", province: "江苏省", city: "苏州市", address: "观前街 188 号", contactPhone: "13912340011", contactEmail: null, creditLimitAmount: null, paymentTermDays: 0, finalStatus: "FROZEN", ownerId: ops.id },
-    { code: "QT-C-202606-0012", name: "青云信息技术有限公司", shortName: "青云科技", customerType: "ENTERPRISE", industry: "IT", scale: "SMALL", level: "A", sourceChannel: "PARTNER", province: "浙江省", city: "杭州市", address: "未来科技城 9 号楼", contactPhone: "13912340012", contactEmail: "zhuzong@qingyun-it.com", creditLimitAmount: 400000, paymentTermDays: 30, finalStatus: "NEGOTIATING", ownerId: sales.id },
+    { code: "QT-C-202606-0001", name: "鸿鹄工业制造有限公司", shortName: "鸿鹄工业", customerType: "ENTERPRISE", industry: "MANUFACTURING", scale: "LARGE", sourceChannel: "REFERRAL", province: "江苏省", city: "苏州市", address: "工业园区东购商街 88 号", contactPhone: "13912340001", contactName: "王志强", contactTitle: "安全总监", finalStatus: "SIGNED", ownerId: sales.id },
+    { code: "QT-C-202606-0002", name: "瑞安化工集团股份有限公司", shortName: "瑞安化工", customerType: "ENTERPRISE", industry: "CHEMICAL", scale: "LARGE", sourceChannel: "EXHIBITION", province: "江苏省", city: "常州市", address: "化工园区江水路 168 号", contactPhone: "13912340002", contactName: "赵建国", contactTitle: "EHS 经理", finalStatus: "SIGNED", ownerId: sales.id },
+    { code: "QT-C-202606-0003", name: "碧海建设集团有限公司", shortName: "碧海建设", customerType: "ENTERPRISE", industry: "CONSTRUCTION", scale: "LARGE", sourceChannel: "BIDDING", province: "江苏省", city: "南京市", address: "建邺区反审街 12 号", contactPhone: "13912340003", contactName: "孙茂林", contactTitle: "总经理", finalStatus: "NEGOTIATING", ownerId: sales.id },
+    { code: "QT-C-202606-0004", name: "远景能源股份有限公司", shortName: "远景能源", customerType: "ENTERPRISE", industry: "ENERGY", scale: "LARGE", sourceChannel: "COLD_VISIT", province: "宁夏回族自治区", city: "银川市", address: "能源路 1 号", contactPhone: "13912340004", contactName: "周工", contactTitle: "生产副总", finalStatus: "SIGNED", ownerId: sales.id },
+    { code: "QT-C-202606-0005", name: "锦城矿业有限责任公司", shortName: "锦城矿业", customerType: "ENTERPRISE", industry: "MINING", scale: "MEDIUM", sourceChannel: "GOV_REFERRAL", province: "陕西省", city: "西安市", address: "锦城路 56 号", contactPhone: "13912340005", contactName: "郑总", contactTitle: "安全部长", finalStatus: "NEGOTIATING", ownerId: admin.id },
+    { code: "QT-C-202606-0006", name: "顺通运输股份公司", shortName: "顺通运输", customerType: "ENTERPRISE", industry: "TRANSPORTATION", scale: "MEDIUM", sourceChannel: "WEBSITE", province: "江苏省", city: "南通市", address: "物流园 5 号", contactPhone: "13912340006", contactName: "", contactTitle: "", finalStatus: "LEAD", ownerId: sales.id },
+    { code: "QT-C-202606-0007", name: "云仓物流科技有限公司", shortName: "云仓物流", customerType: "ENTERPRISE", industry: "WAREHOUSING", scale: "MEDIUM", sourceChannel: "PHONE", province: "上海市", city: "浦东新区", address: "沿海工业区锡德路 320 号", contactPhone: "13912340007", contactName: "冯经理", contactTitle: "仓储主管", finalStatus: "SIGNED", ownerId: sales.id },
+    { code: "QT-C-202606-0008", name: "汇金商业贸易有限公司", shortName: "汇金贸易", customerType: "ENTERPRISE", industry: "COMMERCE", scale: "SMALL", sourceChannel: "MEDIA", province: "浙江省", city: "杭州市", address: "滨江区中河上街 26 号", contactPhone: "13912340008", contactName: "", contactTitle: "", finalStatus: "LOST", ownerId: admin.id },
+    { code: "QT-C-202606-0009", name: "明德教育投资有限公司", shortName: "明德教育", customerType: "ENTERPRISE", industry: "EDUCATION", scale: "MEDIUM", sourceChannel: "GOV_REFERRAL", province: "北京市", city: "海淀区", address: "中关村大街 18 号", contactPhone: "13912340009", contactName: "杨学之", contactTitle: "投资总监", finalStatus: "SIGNED", ownerId: sales.id },
+    { code: "QT-C-202606-0010", name: "市应急管理局", shortName: "市应急局", customerType: "GOV", industry: "GOVERNMENT", scale: null, sourceChannel: "GOV_REFERRAL", province: "江苏省", city: "南京市", address: "应急指挥中心大厦", contactPhone: "13912340010", contactName: "", contactTitle: "", finalStatus: "SIGNED", ownerId: admin.id },
+    { code: "QT-C-202606-0011", name: "锦绣酒店管理有限公司", shortName: "锦绣酒店", customerType: "ENTERPRISE", industry: "F_AND_B", scale: "SMALL", sourceChannel: "SOCIAL_MEDIA", province: "江苏省", city: "苏州市", address: "观前街 188 号", contactPhone: "13912340011", contactName: "", contactTitle: "", finalStatus: "FROZEN", ownerId: ops.id },
+    { code: "QT-C-202606-0012", name: "青云信息技术有限公司", shortName: "青云科技", customerType: "ENTERPRISE", industry: "IT", scale: "SMALL", sourceChannel: "PARTNER", province: "浙江省", city: "杭州市", address: "未来科技城 9 号楼", contactPhone: "13912340012", contactName: "朱总", contactTitle: "CTO", finalStatus: "NEGOTIATING", ownerId: sales.id },
   ];
   const customers = await Promise.all(custDefs.map((c) => prisma.customer.create({ data: {
     code: c.code, name: c.name, shortName: c.shortName,
-    customerType: c.customerType, industry: c.industry, scale: c.scale, level: c.level,
+    customerType: c.customerType, industry: c.industry, scale: c.scale,
     sourceChannel: c.sourceChannel, province: c.province, city: c.city, address: c.address,
-    contactPhone: c.contactPhone, contactEmail: c.contactEmail,
-    creditLimitAmount: c.creditLimitAmount, paymentTermDays: c.paymentTermDays,
+    contactName: c.contactName ?? null, contactTitle: c.contactTitle ?? null, contactPhone: c.contactPhone,
     status: "LEAD", ownerUserId: c.ownerId,
     createdById: c.ownerId, updatedById: c.ownerId
   } })));
@@ -406,10 +405,14 @@ async function main() {
     { category: "CUSTOMER_TYPE", code: "ENTERPRISE", label: "企业", sort: 1 },
     { category: "CUSTOMER_TYPE", code: "GOV", label: "政府", sort: 2 },
     { category: "CUSTOMER_TYPE", code: "OTHER", label: "其他", sort: 3 },
-    { category: "CUSTOMER_LEVEL", code: "A", label: "A 级", sort: 1 },
-    { category: "CUSTOMER_LEVEL", code: "B", label: "B 级", sort: 2 },
-    { category: "CUSTOMER_LEVEL", code: "C", label: "C 级", sort: 3 },
-    { category: "CUSTOMER_LEVEL", code: "D", label: "D 级", sort: 4 },
+
+
+
+    // 客户规模 - LARGE 大型 | MEDIUM 中型 | SMALL 小型 | MICRO 微型
+    { category: "CUSTOMER_SCALE", code: "LARGE",  label: "大型", sort: 1 },
+    { category: "CUSTOMER_SCALE", code: "MEDIUM", label: "中型", sort: 2 },
+    { category: "CUSTOMER_SCALE", code: "SMALL",  label: "小型", sort: 3 },
+    { category: "CUSTOMER_SCALE", code: "MICRO",  label: "微型", sort: 4 },
     { category: "CUSTOMER_INDUSTRY", code: "MANUFACTURING", label: "制造业", sort: 1 },
     { category: "CUSTOMER_INDUSTRY", code: "CHEMICAL", label: "化工", sort: 2 },
     { category: "CUSTOMER_INDUSTRY", code: "CONSTRUCTION", label: "建筑/房地产", sort: 3 },

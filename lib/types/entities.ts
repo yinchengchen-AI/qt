@@ -39,6 +39,16 @@ export type Contract = {
   reviewComment: string | null;
   reviewerId: string | null;
   reviewAt: string | null;
+  reviewLogs: ContractReviewLog[];
+};
+
+export type ContractReviewLog = {
+  id: string;
+  action: string;          // SUBMIT | APPROVE | REJECT | WITHDRAW
+  comment: string | null;
+  at: string;              // ISO
+  reviewerId: string;
+  reviewerName: string;
 };
 
 export type Invoice = {
@@ -130,22 +140,17 @@ export type Customer = {
   shortName: string | null;
   unifiedSocialCreditCode: string | null;
   customerType: string;
-  customerLevel: string;
   industry: string | null;
   scale: string | null;
-  source: string | null;
+  sourceChannel: string | null;
   status: string;
-  contactPerson: string | null;
-  contactPhone: string | null;
-  contactEmail: string | null;
-  addressProvince: string | null;
-  addressCity: string | null;
-  addressDistrict: string | null;
-  addressDetail: string | null;
-  registeredCapital: string | null;
-  establishedAt: string | null;
-  paymentTermDays: number;
-  creditLimitAmount: string | null;
-  remark: string | null;
-  attachments: AttachmentSnapshot[];
+  contactName: string | null;
+  contactTitle: string | null;
+  contactPhone: string;
+  province: string;
+  city: string;
+  address: string | null;
+  ownerUserId: string;
+  createdAt: string;
+  updatedAt: string;
 };

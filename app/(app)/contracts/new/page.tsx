@@ -1,4 +1,6 @@
 "use client";
+
+import { useRef } from "react";
 import {
   ProForm,
   ProFormText,
@@ -30,15 +32,15 @@ type Customer = {
   name: string;
   shortName: string | null;
   status: string;
+  contactName: string | null;
+  contactTitle: string | null;
   contactPhone: string;
-  contactEmail: string | null;
-  paymentTermDays: number;
-  creditLimitAmount: string | null;
 };
 
 export default function NewContractPage() {
   const router = useRouter();
   const { message } = AntdApp.useApp();
+  const formRef = useRef<any>(null);
   const serviceType = useDict("SERVICE_TYPE");
 
   return (
@@ -50,6 +52,7 @@ export default function NewContractPage() {
       />
       <FormCard headerHint="选客户后会自动带出联系电话 / 邮箱 / 账期;服务止期必须晚于起期,建议不少于 30 天">
         <ProForm
+          formRef={formRef}
           layout="vertical"
           submitter={{
             searchConfig: { resetText: "重置", submitText: "保存草稿" },
@@ -111,8 +114,8 @@ export default function NewContractPage() {
                       label: `${c.code} · ${c.name}`,
                       // 业务字段,回填到其它字段
                       contactPhone: c.contactPhone,
-                      contactEmail: c.contactEmail,
-                      paymentTermDays: c.paymentTermDays
+                      contactName: c.contactName,
+                      contactTitle: c.contactTitle,
                     }));
                 }}
               />

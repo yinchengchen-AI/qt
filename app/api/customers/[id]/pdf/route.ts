@@ -32,17 +32,14 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
         { label: "简称", value: c.shortName },
         { label: "统一社会信用代码", value: c.unifiedSocialCreditCode },
         { label: "类型", value: c.customerType },
-        { label: "等级", value: c.level },
         { label: "行业", value: c.industry },
         { label: "客户来源", value: c.sourceChannel },
         { label: "状态", value: c.status },
         { label: "客户负责人", value: owner ? `${owner.name} (${owner.employeeNo})` : c.ownerUserId },
+        { label: "联系人", value: [c.contactName, c.contactTitle].filter(Boolean).join(" · ") || "—" },
         { label: "联系电话", value: c.contactPhone },
-        { label: "邮箱", value: c.contactEmail },
         { label: "所在地区", value: [c.province, c.city].filter(Boolean).join(" / ") },
         { label: "详细地址", value: c.address },
-        { label: "授信额度", value: c.creditLimitAmount ? Number(c.creditLimitAmount).toFixed(2) : "" },
-        { label: "账期(天)", value: c.paymentTermDays },
         { label: "创建时间", value: new Date(c.createdAt).toLocaleString("zh-CN") }
       ],
       sections: [

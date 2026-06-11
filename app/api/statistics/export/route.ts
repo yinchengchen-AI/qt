@@ -44,7 +44,6 @@ export async function GET(req: Request) {
       const buf = await exportToXlsx(data, [
         { header: "客户编号", key: "code", width: 20 },
         { header: "客户名称", key: "name", width: 30 },
-        { header: "等级", key: "level", width: 8 },
         { header: "合同数", key: "contractCount", width: 10 },
         { header: "合同额", key: "total", width: 18, formatter: (v) => Number(v).toFixed(2) },
         { header: "已开票额", key: "invoiceTotal", width: 18, formatter: (v) => Number(v).toFixed(2) },

@@ -108,9 +108,39 @@ export async function listContracts(
 
 export async function getContract(user: SessionUser, id: string) {
   requirePermission(user.roleCode, RESOURCE.CONTRACT, ACTION.READ);
-  const c = await prisma.contract.findFirst({ where: { id, deletedAt: null, ...ownershipWhere(user) } });
+  const c = await prisma.contract.findFirst({
+    where: { id, deletedAt: null, ...ownershipWhere(user) },
+    include: {
+      reviewLogs: {
+        orderBy: { at: "asc" },
+        include: {
+          // reviewer 名字取出来,前端不用再 useUserName 单查
+          // 这里不直接 include user 表,避免越权拿到 user;由 service 内做白名单投影
+        }
+      }
+    }
+  });
   if (!c) throw new ApiError(ERROR_CODES.NOT_FOUND, "合同不存在", 404);
-  return c;
+  // 投影 reviewer 姓名(批量查避免 N+1),只返回 id + name
+  const reviewerIds = Array.from(new Set(c.reviewLogs.map((l) => l.reviewerId).filter(Boolean)));
+  const reviewers = reviewerIds.length
+    ? await prisma.user.findMany({
+        where: { id: { in: reviewerIds } },
+        select: { id: true, name: true }
+      })
+    : [];
+  const nameById = new Map(reviewers.map((u) => [u.id, u.name]));
+  return {
+    ...c,
+    reviewLogs: c.reviewLogs.map((l) => ({
+      id: l.id,
+      action: l.action,
+      comment: l.comment,
+      at: l.at,
+      reviewerId: l.reviewerId,
+      reviewerName: nameById.get(l.reviewerId) ?? ""
+    }))
+  };
 }
 
 export async function createContract(user: SessionUser, input: ContractCreateInput) {

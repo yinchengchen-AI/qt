@@ -1,4 +1,6 @@
 "use client";
+
+import { useRef } from "react";
 import {
   ProForm,
   ProFormText,
@@ -33,6 +35,7 @@ export default function EditContractPage() {
   const id = String(params.id);
   const router = useRouter();
   const { message } = AntdApp.useApp();
+  const formRef = useRef<any>(null);
   const { data, isLoading } = // eslint-disable-next-line @typescript-eslint/no-explicit-any -- edit page reads many dynamic fields
   useSWR<any>(`/api/contracts/${id}`);
   const serviceType = useDict("SERVICE_TYPE");
@@ -68,6 +71,8 @@ export default function EditContractPage() {
       />
       <FormCard headerHint={`客户：${data.customerName}（${data.customerId}）。客户一旦签约不可更换,如需换客户请新建合同。`}>
         <ProForm
+          submitter={false}
+          formRef={formRef}
           layout="vertical"
           initialValues={{
             title: data.title,

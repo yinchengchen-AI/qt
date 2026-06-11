@@ -1,21 +1,13 @@
 "use client";
 
-import { Suspense, useState } from "react";
-import { App as AntdApp, Button, Checkbox, Form, Input, Typography, Space, Divider } from "antd";
-import {
-  LockOutlined,
-  UserOutlined,
-  WarningOutlined,
-  LineChartOutlined,
-  BuildOutlined,
-  TrophyOutlined,
-  SafetyCertificateOutlined
-} from "@ant-design/icons";
+import { Suspense, useEffect, useState } from "react";
+import { App as AntdApp, Button, Checkbox, Form, Input, Typography } from "antd";
+import { LockOutlined, UserOutlined, SafetyCertificateOutlined } from "@ant-design/icons";
 import { signIn } from "next-auth/react";
 import { useRouter, useSearchParams } from "next/navigation";
 import styles from "./login.module.css";
 
-const { Title, Text, Link: AntdLink } = Typography;
+const { Text } = Typography;
 
 const ERROR_MAP: Record<string, string> = {
   CredentialsSignin: "工号或密码错误，请重试",
@@ -30,7 +22,7 @@ function mapAuthError(code?: string | null) {
 }
 
 // 仅开发/预览环境开放快速填充;生产构建时 NODE_ENV 会被静态替换为 "production",
-// Next.js 的 dead-code elimination 会把整段 `[]` 折掉,DOM 上不会渲染测试卡。
+// Next.js 的 dead-code elimination 会把整段折掉,DOM 上不会渲染测试卡。
 const QUICK_ACCOUNTS: { no: string; label: string }[] =
   process.env.NODE_ENV !== "production"
     ? [
@@ -107,25 +99,14 @@ function LoginForm() {
       initialValues={{ employeeNo: "", password: "" }}
       onFinish={handleFinish}
     >
-      <header style={{ marginBottom: 16 }}>
-        <Title level={2} style={{ margin: 0, fontWeight: 600 }}>
-          欢迎登录
-        </Title>
-        <Text type="secondary">请使用工号与密码进入业务管理系统</Text>
+      <header className={styles.formHead}>
+        <h2 className={styles.formTitle}>欢迎回来</h2>
+        <p className={styles.formSubtitle}>请使用工号与密码进入业务管理系统</p>
       </header>
 
       {error ? (
-        <div
-          style={{
-            marginBottom: 16,
-            padding: "8px 12px",
-            background: "#fff2f0",
-            border: 1,
-            borderRadius: 6,
-            color: "#cf1322",
-            fontSize: 13
-          }}
-        >
+        <div className={styles.error} role="alert">
+          <LockOutlined style={{ fontSize: 13 }} />
           {error}
         </div>
       ) : null}
@@ -134,11 +115,12 @@ function LoginForm() {
         label="工号"
         name="employeeNo"
         rules={[{ required: true, message: "请输入工号" }]}
+        style={{ marginBottom: 14 }}
       >
         <Input
           size="large"
           name="employeeNo"
-          prefix={<UserOutlined />}
+          prefix={<UserOutlined style={{ color: "#9CA3AF" }} />}
           placeholder="请输入工号"
           autoFocus
           autoComplete="username"
@@ -149,39 +131,41 @@ function LoginForm() {
         label="密码"
         name="password"
         rules={[{ required: true, message: "请输入密码" }]}
-        style={{ marginTop: 4 }}
+        style={{ marginBottom: 10 }}
       >
         <Input.Password
           size="large"
           name="password"
-          prefix={<LockOutlined />}
+          prefix={<LockOutlined style={{ color: "#9CA3AF" }} />}
           placeholder="请输入密码"
           autoComplete="current-password"
         />
       </Form.Item>
 
-      <div
-        style={{
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "space-between",
-          margin: "-4px 0 16px"
-        }}
-      >
+      <div className={styles.formRow}>
         <Checkbox
           checked={remember}
           onChange={(e) => setRemember(e.target.checked)}
           disabled={loading}
+          className={styles.remember}
         >
-          记住我
+          7 天内自动登录
         </Checkbox>
-        <AntdLink href="mailto:it@qt.com" style={{ fontSize: 13 }}>
+        <a className={styles.forgot} href="mailto:it@qt.com">
           忘记密码？
-        </AntdLink>
+        </a>
       </div>
 
-      <Form.Item style={{ marginBottom: 16 }}>
-        <Button type="primary" htmlType="submit" size="large" block loading={loading}>
+      <Form.Item style={{ marginBottom: 0 }}>
+        <Button
+          type="primary"
+          htmlType="submit"
+          size="large"
+          block
+          loading={loading}
+          className={styles.submit}
+          style={{ background: "#0A1C33", borderColor: "#0A1C33" }}
+        >
           登 录
         </Button>
       </Form.Item>
@@ -203,146 +187,191 @@ function LoginForm() {
       ) : null}
 
       <div className={styles.foot}>
-        <Space separator={<Divider orientation="vertical" />}>
-          <span>© 2026 杭州企泰安全科技</span>
-          <a
-            href="https://beian.miit.gov.cn"
-            target="_blank"
-            rel="noreferrer"
-            suppressHydrationWarning
-          >
-            {process.env.NEXT_PUBLIC_BEIAN_NO ?? "浙ICP备 0000000 号"}
-          </a>
-        </Space>
+        © 2026 杭州企泰安全科技有限公司
       </div>
     </Form>
   );
 }
 
-function BrandMark({ size = 44 }: { size?: number }) {
+/* 数字从 0 滚动到目标值 */
+function useCountUp(target: number, duration = 1400, delay = 300) {
+  const [value, setValue] = useState(0);
+  useEffect(() => {
+    let raf = 0;
+    const t = setTimeout(() => {
+      const start = performance.now();
+      const tick = (now: number) => {
+        const t = Math.min((now - start) / duration, 1);
+        const eased = 1 - Math.pow(1 - t, 3);
+        setValue(Math.round(target * eased));
+        if (t < 1) raf = requestAnimationFrame(tick);
+      };
+      raf = requestAnimationFrame(tick);
+    }, delay);
+    return () => {
+      clearTimeout(t);
+      cancelAnimationFrame(raf);
+    };
+  }, [target, duration, delay]);
+  return value;
+}
+
+function useClock() {
+  const [now, setNow] = useState<Date | null>(null);
+  useEffect(() => {
+    setNow(new Date());
+    const id = setInterval(() => setNow(new Date()), 1000);
+    return () => clearInterval(id);
+  }, []);
+  return now;
+}
+
+function Stat({ value, suffix }: { value: number; suffix?: string }) {
+  const v = useCountUp(value, 1400, 400);
+  return (
+    <>
+      {v}
+      {suffix}
+    </>
+  );
+}
+
+function formatStamp(d: Date | null) {
+  if (!d) return "----.--.-- --:--";
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}.${pad(d.getMonth() + 1)}.${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
+/* 企泰 logo */
+function BrandMark({ size = 28 }: { size?: number }) {
   return (
     <svg
       width={size}
-      height={size * 0.75}
-      viewBox="0 0 64 48"
+      height={size}
+      viewBox="0 0 48 48"
       xmlns="http://www.w3.org/2000/svg"
       aria-hidden="true"
     >
       <defs>
-        <mask id={`brand-mark-${size}`}>
+        <mask id={`bm-${size}-v2`}>
           <rect width="48" height="48" fill="white" />
           <rect x="24" y="14" width="24" height="20" fill="black" />
         </mask>
       </defs>
-      <rect width="48" height="48" rx="6" fill="#ffffff" mask={`url(#brand-mark-${size})`} />
+      <rect width="48" height="48" rx="6" fill="#0A1C33" mask={`url(#bm-${size}-v2)`} />
       <rect x="32" y="28" width="20" height="20" rx="3" fill="#E11A2A" />
-      <rect x="58" y="14" width="6" height="6" rx="1" fill="#ffffff" />
+      <rect x="58" y="14" width="6" height="6" rx="1" fill="#0A1C33" transform="translate(-48 0)" />
     </svg>
   );
 }
 
-function BrandPanel() {
-  return (
-    <aside className={styles.brandSide} aria-hidden="true">
-      <svg
-        className={styles.brandMark}
-        viewBox="0 0 64 48"
-        xmlns="http://www.w3.org/2000/svg"
-        aria-hidden="true"
-      >
-        <defs>
-          <mask id="brand-mark-deco">
-            <rect width="48" height="48" fill="white" />
-            <rect x="24" y="14" width="24" height="20" fill="black" />
-          </mask>
-        </defs>
-        <rect width="48" height="48" rx="6" fill="#ffffff" mask="url(#brand-mark-deco)" />
-        <rect x="32" y="28" width="20" height="20" rx="3" fill="#E11A2A" />
-        <rect x="58" y="14" width="6" height="6" rx="1" fill="#ffffff" />
-      </svg>
-      <div className={styles.brandGlow} />
-
-      <div className={styles.brandInner}>
-        <div className={styles.brandLogo}>
-          <BrandMark size={44} />
-          <span className={styles.brandLogoText}>
-            <span className={styles.brandLogoCn}>企泰安全</span>
-            <span className={styles.brandLogoEn}>Qitai Safety</span>
-          </span>
-        </div>
-
-        <div>
-          <div className={styles.brandAccent} />
-          <h2 className={styles.brandHeadline}>让安全管理更高效</h2>
-          <p className={styles.brandSub}>
-            为生产经营单位提供专业的安全管理咨询服务,覆盖隐患排查、风险评估、体系建设、培训演练全流程业务。
-          </p>
-        </div>
-
-        <ul className={styles.capabilities}>
-          <li className={styles.capability}>
-            <span className={styles.capabilityIcon}><WarningOutlined /></span>
-            隐患排查治理
-          </li>
-          <li className={styles.capability}>
-            <span className={styles.capabilityIcon}><LineChartOutlined /></span>
-            风险评估管控
-          </li>
-          <li className={styles.capability}>
-            <span className={styles.capabilityIcon}><BuildOutlined /></span>
-            体系建设咨询
-          </li>
-          <li className={styles.capability}>
-            <span className={styles.capabilityIcon}><TrophyOutlined /></span>
-            培训演练服务
-          </li>
-        </ul>
-
-        <div className={styles.stats}>
-          <div className={styles.stat}>
-            <div className={styles.statValue}>
-              <span className={styles.statNum}>10</span>
-              <span className={styles.statSuffix}>+</span>
-            </div>
-            <div className={styles.statLabel}>年行业经验</div>
-          </div>
-          <div className={styles.statDivider} aria-hidden="true" />
-          <div className={styles.stat}>
-            <div className={styles.statValue}>
-              <span className={styles.statNum}>3</span>
-            </div>
-            <div className={styles.statLabel}>ISO 体系认证</div>
-          </div>
-          <div className={styles.statDivider} aria-hidden="true" />
-          <div className={styles.stat}>
-            <div className={styles.statValue}>
-              <span className={styles.statNum}>8</span>
-              <span className={styles.statSuffix}>+</span>
-            </div>
-            <div className={styles.statLabel}>服务行业</div>
-          </div>
-        </div>
-
-        <div className={styles.brandFoot}>
-          <SafetyCertificateOutlined />
-          等保三级 · 合规部署
-        </div>
-      </div>
-    </aside>
-  );
-}
-
 export default function LoginPage() {
+  const clock = useClock();
   return (
     <div className={styles.page}>
-      <BrandPanel />
-      <main className={styles.formSide}>
-        <div className={styles.formBody}>
+      <div className={styles.bgLayer} />
+      <div className={styles.bgMark}>QT</div>
+
+      {/* 顶栏 */}
+      <header className={styles.topBar}>
+        <div className={styles.topBarLeft}>
+          <BrandMark size={28} />
+          <span className={styles.topBarLogoCn}>
+            <span>企泰安全</span>
+            <span className={styles.topBarLogoSub}>QITAI SAFETY · 业务管理系统</span>
+          </span>
+        </div>
+        <div className={styles.topBarRight}>
+          <span className={styles.secureBadge}>
+            <SafetyCertificateOutlined style={{ fontSize: 11 }} />
+            SECURE 256-BIT
+          </span>
+          <span className={styles.statusDot} />
+          <Text type="secondary" style={{ fontSize: 12 }}>服务正常</Text>
+        </div>
+      </header>
+
+      {/* 主区 */}
+      <main className={styles.main}>
+        {/* 左:叙事 */}
+        <section className={styles.narrative} aria-label="品牌叙事">
+          <div className={styles.eyebrow}>
+            <span>EST <strong>2015</strong></span>
+            <span>· 安全生产服务 ·</span>
+            <span><strong>A</strong> 级信用</span>
+          </div>
+
+          <h1 className={styles.headline}>
+            让安全管理<br />
+            <em>有据可循</em>
+          </h1>
+
+          <p className={styles.sub}>
+            浙江省 A 级安全生产社会化服务机构,临平区首家。
+            10 年深耕,服务 20+ 政府部门与 2,500+ 生产经营单位,
+            把每一次现场检查、风险评估与体系建设都沉淀为可追溯的数据资产。
+          </p>
+
+          <div className={styles.stats}>
+            <span className={styles.statChip}>
+              <strong>
+                <Stat value={22} />
+              </strong>
+              名注册安全工程师
+            </span>
+            <span className={styles.statChip}>
+              <strong>
+                <Stat value={2547} />
+              </strong>
+              家企业服务
+            </span>
+            <span className={styles.statChip}>
+              <strong>
+                <Stat value={20} suffix="+" />
+              </strong>
+              政府部门
+            </span>
+            <span className={`${styles.statChip} ${styles.statChipAccent}`}>
+              <strong>A</strong>
+              级信用 · 浙江
+            </span>
+          </div>
+
+          <div className={styles.narrativeFoot}>
+            <span className={styles.narrativeFootItem}>
+              <span className={styles.tickerBlink} />
+              STATUS · NOMINAL
+            </span>
+            <span className={styles.tickerSep}>//</span>
+            <span className={styles.narrativeFootItem}>SECTOR 04</span>
+            <span className={styles.tickerSep}>//</span>
+            <span className={styles.narrativeFootItem}>T+ {formatStamp(clock)}</span>
+            <span className={styles.tickerSep}>//</span>
+            <span className={styles.narrativeFootItem}>ALERTS 0</span>
+          </div>
+        </section>
+
+        {/* 右:表单卡 */}
+        <section className={styles.formCard} aria-label="登录">
           <Suspense fallback={null}>
             <LoginForm />
           </Suspense>
-        </div>
+        </section>
       </main>
+
+      {/* 页脚 */}
+      <footer className={styles.footer}>
+        <span>© 2026 杭州企泰安全科技有限公司 · 业务管理系统 v2.0</span>
+        <a
+          className={styles.beian}
+          href="https://beian.miit.gov.cn"
+          target="_blank"
+          rel="noreferrer"
+          suppressHydrationWarning
+        >
+          {process.env.NEXT_PUBLIC_BEIAN_NO ?? "浙ICP备 0000000 号"}
+        </a>
+      </footer>
     </div>
   );
 }

@@ -9,7 +9,7 @@ import {
 } from "@ant-design/pro-components";
 import { App as AntdApp, Space, Tag, Typography } from "antd";
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { Page } from "@/components/page";
 import { PageHeader } from "@/components/page-header";
 import { FormSection, FormGrid, FormCard } from "@/components/form";
@@ -31,6 +31,7 @@ type Contract = {
 export default function NewProjectPage() {
   const router = useRouter();
   const { message } = AntdApp.useApp();
+  const formRef = useRef<any>(null);
   const [contractEnd, setContractEnd] = useState<string | null>(null);
   const [contractStart, setContractStart] = useState<string | null>(null);
 
@@ -43,6 +44,8 @@ export default function NewProjectPage() {
       />
       <FormCard headerHint="选合同后,项目起止期自动限制在该合同的服务期内;止期必须晚于起期">
         <ProForm
+          submitter={false}
+          formRef={formRef}
           layout="vertical"
           onFinish={async (values) => {
             const payload = {

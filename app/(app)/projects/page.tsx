@@ -9,6 +9,8 @@ import { Page } from "@/components/page";
 import { PageHeader } from "@/components/page-header";
 import { StatusTag } from "@/components/status-tag";
 import { useStatusValueEnum } from "@/lib/use-status-enum";
+import { useDict } from "@/lib/dict-client";
+import { SERVICE_TYPE_MAP } from "@/lib/enum-maps";
 import { makeListRequest } from "@/lib/use-list-request";
 import { downloadExcel } from "@/lib/excel-client";
 import { CurrencyCell, DateCell } from "@/components/table-cells";
@@ -18,7 +20,8 @@ type Row = {
   projectNo: string;
   name: string;
   contractId?: string;
-  contract?: { contractNo: string };
+  contract?: { contractNo: string; serviceType?: string };
+  serviceType?: string;
   startDate: string;
   endDate: string;
   budgetAmount?: string;
@@ -28,6 +31,7 @@ type Row = {
 export default function ProjectsPage() {
   const router = useRouter();
   const statusEnum = useStatusValueEnum("project");
+  const serviceTypeDict = useDict("SERVICE_TYPE");
   const searchRef = useRef<Record<string, unknown>>({});
   const { message } = AntdApp.useApp();
 
@@ -83,6 +87,16 @@ export default function ProjectsPage() {
           },
           { title: "项目名称", dataIndex: "name", width: 220 },
           { title: "所属合同", dataIndex: ["contract", "contractNo"], width: 180 },
+          {
+            title: "服务类型",
+            dataIndex: "serviceType",
+            width: 110,
+            render: (_, r) => {
+              const code = r.serviceType ?? r.contract?.serviceType;
+              if (!code) return "—";
+              return serviceTypeDict.find((d) => d.code === code)?.label ?? SERVICE_TYPE_MAP[code] ?? code;
+            }
+          },
           { title: "起期", dataIndex: "startDate", valueType: "date", width: 110, render: (_, r) => <DateCell value={r.startDate} /> },
           { title: "止期", dataIndex: "endDate", valueType: "date", width: 110, render: (_, r) => <DateCell value={r.endDate} /> },
           { title: "预算(元)", dataIndex: "budgetAmount", width: 120, render: (_, r) => <CurrencyCell value={r.budgetAmount ?? ""} /> },

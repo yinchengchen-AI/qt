@@ -27,7 +27,6 @@ const SENSITIVE_KEYS = new Set([
   "wechatWorkId",
   "phone",
   "contactPhone",
-  "contactEmail",
   "email"
 ]);
 function redact<T>(v: T): T {
