@@ -4,6 +4,7 @@ import { App as AntdApp, Button, Tag, Modal, Space } from "antd";
 import { useRouter } from "next/navigation";
 import { useSWRConfig } from "swr";
 import { useState } from "react";
+import { copyToClipboard } from "@/lib/copy";
 import { Page } from "@/components/page";
 import { PageHeader } from "@/components/page-header";
 import { DateTimeCell } from "@/components/table-cells";
@@ -177,14 +178,17 @@ export default function UsersPage() {
         onCancel={() => setResetting(null)}
         onOk={async () => {
           if (resetting?.newPassword) {
-            try {
-              await navigator.clipboard.writeText(resetting.newPassword);
+            const ok = await copyToClipboard(resetting.newPassword);
+            if (ok) {
               message.success("已复制到剪贴板");
-            } catch {
-              /* ignore */
+              setResetting(null);
+            } else {
+              // 复制失败: 不关 modal, 让用户手动选 + Ctrl+C 兜底
+              message.error("自动复制失败,请用鼠标选中下方密码框后按 Ctrl+C");
             }
+          } else {
+            setResetting(null);
           }
-          setResetting(null);
         }}
         okText="复制"
         cancelText="关闭"

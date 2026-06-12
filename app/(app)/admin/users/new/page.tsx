@@ -2,6 +2,7 @@
 import { ProForm, ProFormText, ProFormSelect } from "@ant-design/pro-components";
 import { App as AntdApp, Modal, Space, Tag, Typography, Button, Input } from "antd";
 import { CopyOutlined } from "@ant-design/icons";
+import { copyToClipboard } from "@/lib/copy";
 import { useRouter } from "next/navigation";
 import useSWR from "swr";
 import { Page } from "@/components/page";
@@ -61,9 +62,10 @@ export default function NewUserPage() {
                       <Input readOnly value={initialPassword} style={{ width: "calc(100% - 80px)" }} />
                       <Button
                         icon={<CopyOutlined />}
-                        onClick={() => {
-                          void navigator.clipboard.writeText(initialPassword);
-                          message.success("已复制");
+                        onClick={async () => {
+                          const ok = await copyToClipboard(initialPassword);
+                          if (ok) message.success("已复制");
+                          else message.error("自动复制失败,请用鼠标选中后按 Ctrl+C");
                         }}
                       >
                         复制
