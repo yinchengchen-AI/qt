@@ -19,6 +19,9 @@ npx prisma generate
 echo "==> pnpm build"
 pnpm build
 
+echo "==> pnpm seed (idempotent: customer check + workflow lock-if-in-use)"
+pnpm seed
+
 echo "==> systemctl restart qt-app"
 systemctl restart qt-app
 

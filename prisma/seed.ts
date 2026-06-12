@@ -212,6 +212,18 @@ const WORKFLOW_TEMPLATE_TYPES = Object.keys(TEMPLATE_META);
 
 async function seedWorkflowTemplates() {
   const admin = await prisma.user.findUniqueOrThrow({ where: { employeeNo: "admin" } });
+
+  // 护栏: 如果已有任何 WorkflowTaskInstance (非软删) 在跑, 模板就不要再覆盖重建了 —
+  // 重建会 deleteMany(stage) 级联删 task, 进而把指向这些 task 的 instance 全部干掉,
+  // 正在执行的工作流会丢历史.  此时只更新模板的 name/description 元数据, 跳过 stage/task.
+  const inUseInstanceCount = await prisma.workflowTaskInstance.count({
+    where: { deletedAt: null }
+  });
+  const locked = inUseInstanceCount > 0;
+  if (locked) {
+    console.log(`⚠️  已有 ${inUseInstanceCount} 条 WorkflowTaskInstance 在跑, 模板 stage/task 不覆盖 (只更新元数据)`);
+  }
+
   for (const serviceType of WORKFLOW_TEMPLATE_TYPES) {
     const def = buildTemplate(serviceType);
     // 用 serviceType + isActive 组合作为唯一 key, 找到就 update 覆盖, 找不到就 create
@@ -236,7 +248,8 @@ async function seedWorkflowTemplates() {
           }
         });
 
-    // 清理旧 stage(级联删 task),重新灌入
+    // 清理旧 stage(级联删 task),重新灌入 — 但有 in-use instance 时跳过 (见上方护栏)
+    if (locked) continue;
     await prisma.workflowStage.deleteMany({ where: { templateId: tpl.id } });
     for (let si = 0; si < def.stages.length; si++) {
       const s = def.stages[si];
@@ -272,6 +285,10 @@ async function seedWorkflowTemplates() {
         });
       }
     }
+  }
+  if (locked) {
+    console.log(`⏭️  Workflow 模板 seed 跳过重建: ${WORKFLOW_TEMPLATE_TYPES.length} 份已存在, 元数据已更新`);
+    return;
   }
   const totalTasks = WORKFLOW_TEMPLATE_TYPES.reduce(
     (sum, t) => sum + (EXECUTE_BY_TYPE[t]?.length || 0) + COMMON_PREP_TASKS.length + COMMON_REQ_TASKS.length + COMMON_CONTRACT_TASKS.length + COMMON_FOLLOWUP_TASKS.length,
