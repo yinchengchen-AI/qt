@@ -20,6 +20,7 @@ import {
   ThunderboltOutlined,
   UserOutlined
 } from "@ant-design/icons";
+import { TaskDrawer } from "./task-drawer";
 import {
   WORKFLOW_PHASE_MAP,
   WORKFLOW_TASK_STATUS_MAP,
@@ -56,6 +57,10 @@ type TaskInstance = {
   remark: string | null;
   parentInstanceId: string | null;
   phase: string;
+  attachments: unknown;
+  projectId: string;
+  projectNo: string;
+  projectName: string;
 };
 
 type Stage = {
@@ -101,6 +106,7 @@ const STATUS_ICON: Record<string, React.ReactNode> = {
 };
 
 export function WorkflowSection({ projectId, canEdit }: { projectId: string; canEdit: boolean }) {
+  const [drawerTask, setDrawerTask] = useState<TaskInstance | null>(null);
   const { message } = AntdApp.useApp();
   const { data, isLoading, mutate } = useSWR<WorkflowDto>(`/api/projects/${projectId}/workflow`);
   const { isMobile } = useResponsive();
@@ -193,15 +199,16 @@ export function WorkflowSection({ projectId, canEdit }: { projectId: string; can
         {s.tasks.map((t) => {
           const ps = phaseStates?.find((x) => x.phase === t.phase);
           return (
-            <TaskCard
-              key={t.id}
-              task={t}
-              canEdit={canEdit}
-              busy={busy === t.id}
-              phaseState={ps?.state}
-              lockReason={ps?.lockReason}
-              onAction={(action, body) => callTask(t.id, action, body)}
-            />
+            <div key={t.id} onClick={() => setDrawerTask(t)} style={{ cursor: "pointer" }}>
+              <TaskCard
+                task={t}
+                canEdit={canEdit}
+                busy={busy === t.id}
+                phaseState={ps?.state}
+                lockReason={ps?.lockReason}
+                onAction={(action, body) => callTask(t.id, action, body)}
+              />
+            </div>
           );
         })}
       </div>
@@ -245,9 +252,11 @@ export function WorkflowSection({ projectId, canEdit }: { projectId: string; can
         bordered={!isMobile}
         size={isMobile ? "small" : "middle"}
       />
+      <TaskDrawer task={drawerTask} open={!!drawerTask} onClose={() => setDrawerTask(null)} onChanged={() => mutate()} canEdit={canEdit} />
     </div>
   );
 }
+
 
 function TaskCard({
   task,

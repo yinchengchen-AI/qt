@@ -332,3 +332,77 @@ export async function cloneAsNewVersion(user: SessionUser, sourceId: string) {
     return newTpl;
   });
 }
+
+// =====================================================
+// P5: 任务实例迁移(让旧任务可被删)
+// admin 专用:把 fromTask 下的所有 instance 迁到 toTask
+// 约束:必须在同一模板下
+// =====================================================
+export async function migrateTaskInstances(
+  user: SessionUser,
+  fromTaskId: string,
+  toTaskId: string
+): Promise<{ migratedInstances: number; migratedProjects: number }> {
+  requirePermission(user.roleCode, RESOURCE.WORKFLOW_TEMPLATE, ACTION.UPDATE);
+  if (fromTaskId === toTaskId) {
+    throw new ApiError(ERROR_CODES.VALIDATION_FAILED, "源任务和目标任务不能相同", 400);
+  }
+  return prisma.$transaction(async (tx) => {
+    const from = await tx.workflowTask.findFirst({
+      where: { id: fromTaskId },
+      include: { stage: { include: { template: true } } }
+    });
+    const to = await tx.workflowTask.findFirst({
+      where: { id: toTaskId },
+      include: { stage: { include: { template: true } } }
+    });
+    if (!from || !to) throw new ApiError(ERROR_CODES.NOT_FOUND, "任务不存在", 404);
+    if (from.stage.templateId !== to.stage.templateId) {
+      throw new ApiError(
+        ERROR_CODES.VALIDATION_FAILED,
+        "源任务和目标任务必须属于同一模板(同一 serviceType + 同一版本)",
+        422
+      );
+    }
+    // 找所有 from 任务的实例,改 taskId
+    const instances = await tx.workflowTaskInstance.findMany({
+      where: { taskId: fromTaskId, deletedAt: null },
+      select: { id: true, projectId: true }
+    });
+    if (instances.length === 0) {
+      throw new ApiError(ERROR_CODES.VALIDATION_FAILED, "源任务无运行实例,无需迁移", 400);
+    }
+    // 校验冲突:同一 projectId + toTaskId 已有实例则跳过
+    const conflicts = await tx.workflowTaskInstance.findMany({
+      where: { taskId: toTaskId, projectId: { in: Array.from(new Set(instances.map((i) => i.projectId))) }, deletedAt: null },
+      select: { projectId: true }
+    });
+    const conflictSet = new Set(conflicts.map((c) => c.projectId));
+    const safe = instances.filter((i) => !conflictSet.has(i.projectId));
+    if (safe.length === 0) {
+      throw new ApiError(
+        ERROR_CODES.VALIDATION_FAILED,
+        "所有项目都已经存在目标任务的实例,无法迁移",
+        409
+      );
+    }
+    // 改 taskId
+    const ids = safe.map((i) => i.id);
+    const r = await tx.workflowTaskInstance.updateMany({
+      where: { id: { in: ids } },
+      data: { taskId: toTaskId }
+    });
+    await audit(tx, {
+      actorId: user.id,
+      action: "WORKFLOW_TEMPLATE_TASK_MIGRATE",
+      entity: "WorkflowTask",
+      entityId: fromTaskId,
+      before: { fromTaskCode: from.code, fromTaskName: from.name, instanceCount: instances.length },
+      after: { toTaskCode: to.code, toTaskName: to.name, migrated: r.count, conflicts: conflictSet.size }
+    });
+    return {
+      migratedInstances: r.count,
+      migratedProjects: new Set(safe.map((i) => i.projectId)).size
+    };
+  });
+}

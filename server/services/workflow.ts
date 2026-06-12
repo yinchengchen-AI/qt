@@ -166,6 +166,9 @@ export type ProjectWorkflowDto = {
       parentInstanceId: string | null;
       createdAt: string;
       updatedAt: string;
+      projectId: string;
+      projectNo: string;
+      projectName: string;
     }>;
   }>;
   totals: { total: number; pending: number; inProgress: number; completed: number; skipped: number; blocked: number };
@@ -194,7 +197,7 @@ export async function getProjectWorkflow(user: SessionUser, projectId: string): 
   const instances = await prisma.workflowTaskInstance.findMany({
     where: { projectId, deletedAt: null },
     orderBy: [{ createdAt: "asc" }],
-    include: { task: { include: { stage: true } } }
+    include: { task: { include: { stage: true } }, project: { select: { id: true, projectNo: true, name: true } } }
   });
 
   if (instances.length === 0) {
@@ -255,7 +258,10 @@ export async function getProjectWorkflow(user: SessionUser, projectId: string): 
       attachments: ins.attachments,
       parentInstanceId: ins.parentInstanceId,
       createdAt: ins.createdAt.toISOString(),
-      updatedAt: ins.updatedAt.toISOString()
+      updatedAt: ins.updatedAt.toISOString(),
+      projectId: ins.projectId,
+      projectNo: ins.project.projectNo,
+      projectName: ins.project.name
     });
     totals.total++;
     if (ins.status === "PENDING") totals.pending++;
@@ -1085,4 +1091,90 @@ export async function getTaskHistory(user: SessionUser, instanceId: string): Pro
       diff: l.diff ? (l.diff as { before: unknown; after: unknown }) : null
     }))
   };
+}
+
+// =====================================================
+// P5: 任务附件管理 + 实例迁移
+// =====================================================
+type AttachmentItem = { id: string; name: string; mimeType: string; size: number; uploadedBy?: string; uploadedAt?: string };
+
+function readAttachments(att: unknown): AttachmentItem[] {
+  if (!att) return [];
+  if (Array.isArray(att)) return att as AttachmentItem[];
+  if (typeof att === "object") {
+    const items = (att as { items?: unknown }).items;
+    if (Array.isArray(items)) return items as AttachmentItem[];
+  }
+  return [];
+}
+
+function writeAttachments(items: AttachmentItem[]): Prisma.InputJsonValue {
+  return { items } as Prisma.InputJsonValue;
+}
+
+export async function addTaskAttachment(
+  user: SessionUser,
+  instanceId: string,
+  attachmentId: string
+): Promise<{ id: string; attachments: AttachmentItem[] }> {
+  requirePermission(user.roleCode, RESOURCE.PROJECT, ACTION.UPDATE);
+  return prisma.$transaction(async (tx) => {
+    const ins = await loadInstanceForUpdate(tx, user, instanceId);
+    // 校验 attachment 存在(不限定 contractId/invoiceId,允许工作流附件)
+    const att = await tx.attachment.findFirst({ where: { id: attachmentId, deletedAt: null } });
+    if (!att) throw new ApiError(ERROR_CODES.NOT_FOUND, "附件不存在", 404);
+    const items = readAttachments(ins.attachments);
+    if (items.some((x) => x.id === attachmentId)) {
+      return { id: ins.id, attachments: items }; // idempotent
+    }
+    const newItem: AttachmentItem = {
+      id: att.id,
+      name: att.originalName,
+      mimeType: att.mimeType,
+      size: att.size,
+      uploadedBy: user.id,
+      uploadedAt: new Date().toISOString()
+    };
+    const next = [...items, newItem];
+    const updated = await tx.workflowTaskInstance.update({
+      where: { id: instanceId },
+      data: { attachments: writeAttachments(next) }
+    });
+    await audit(tx, {
+      actorId: user.id,
+      action: "WORKFLOW_TASK_ATTACHMENT_ADD",
+      entity: "WorkflowTaskInstance",
+      entityId: instanceId,
+      after: { attachmentId, name: att.originalName }
+    });
+    return { id: updated.id, attachments: next };
+  });
+}
+
+export async function removeTaskAttachment(
+  user: SessionUser,
+  instanceId: string,
+  attachmentId: string
+): Promise<{ id: string; attachments: AttachmentItem[] }> {
+  requirePermission(user.roleCode, RESOURCE.PROJECT, ACTION.UPDATE);
+  return prisma.$transaction(async (tx) => {
+    const ins = await loadInstanceForUpdate(tx, user, instanceId);
+    const items = readAttachments(ins.attachments);
+    const next = items.filter((x) => x.id !== attachmentId);
+    if (next.length === items.length) {
+      return { id: ins.id, attachments: items }; // idempotent
+    }
+    const updated = await tx.workflowTaskInstance.update({
+      where: { id: instanceId },
+      data: { attachments: writeAttachments(next) }
+    });
+    await audit(tx, {
+      actorId: user.id,
+      action: "WORKFLOW_TASK_ATTACHMENT_REMOVE",
+      entity: "WorkflowTaskInstance",
+      entityId: instanceId,
+      before: { attachmentId }
+    });
+    return { id: updated.id, attachments: next };
+  });
 }

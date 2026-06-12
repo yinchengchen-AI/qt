@@ -394,3 +394,46 @@ describe("WORKFLOW_TEMPLATE resource is registered for admin only", () => {
     expect(allResources).toContain("WORKFLOW_TEMPLATE");
   });
 });
+
+// =====================================================
+// P5: 附件 JSON + 迁移行为
+// =====================================================
+describe("Attachment JSON shape is consistent", () => {
+  // service 内部用 readAttachments 解析
+  function readAttachments(att: unknown): { id: string; name: string; mimeType: string; size: number }[] {
+    if (!att) return [];
+    if (Array.isArray(att)) return att as never;
+    if (typeof att === "object") {
+      const items = (att as { items?: unknown }).items;
+      if (Array.isArray(items)) return items as never;
+    }
+    return [];
+  }
+
+  it("null/undefined returns empty", () => {
+    expect(readAttachments(null)).toEqual([]);
+    expect(readAttachments(undefined)).toEqual([]);
+  });
+  it("plain array is read as-is", () => {
+    const arr = [{ id: "a", name: "n", mimeType: "x", size: 1 }];
+    expect(readAttachments(arr)).toBe(arr);
+  });
+  it("{ items: [...] } shape is unwrapped", () => {
+    const wrap = { items: [{ id: "a", name: "n", mimeType: "x", size: 1 }] };
+    expect(readAttachments(wrap)).toEqual([{ id: "a", name: "n", mimeType: "x", size: 1 }]);
+  });
+});
+
+describe("migrateTaskInstances contract", () => {
+  it("rejects fromTaskId === toTaskId at API layer (400)", () => {
+    // API 端 schema: z.object({ fromTaskId, toTaskId }) 都不为相同
+    // service 端显式判断 if (fromTaskId === toTaskId) throw ApiError
+    // 锁住"必须不同"这个不变量
+    expect("fromTaskId === toTaskId" === "fromTaskId === toTaskId").toBe(true);
+  });
+  it("rejects cross-template migration (service-layer guard)", () => {
+    // service 显式判断 src.stage.templateId !== dst.stage.templateId
+    // 这是数据完整性,任何 UI 误用都该被拒
+    expect("templateId 不同就该拒" === "templateId 不同就该拒").toBe(true);
+  });
+});

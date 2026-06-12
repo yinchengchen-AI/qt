@@ -15,6 +15,7 @@ const bodySchema = z.object({
   size: z.number().int().positive(),
   contractId: z.string().optional().nullable(),
   invoiceId: z.string().optional().nullable()
+  // 注:contractId / invoiceId 都为 null 时,仍允许上传(给工作流任务等场景用)
 });
 
 export async function POST(req: Request) {

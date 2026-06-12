@@ -23,7 +23,7 @@ import {
   Tag,
   Typography
 } from "antd";
-import { EditOutlined, DeleteOutlined, PlusOutlined } from "@ant-design/icons";
+import { EditOutlined, DeleteOutlined, PlusOutlined, SwapOutlined } from "@ant-design/icons";
 import { Page } from "@/components/page";
 import { PageHeader } from "@/components/page-header";
 import {
@@ -85,6 +85,7 @@ export default function TemplateDetailPage() {
   const [editingMeta, setEditingMeta] = useState(false);
   const [editingTask, setEditingTask] = useState<Task | null>(null);
   const [addingToStage, setAddingToStage] = useState<string | null>(null);
+  const [migratingFrom, setMigratingFrom] = useState<Task | null>(null);
   const [metaForm] = Form.useForm();
   const [taskForm] = Form.useForm();
 
@@ -167,7 +168,7 @@ export default function TemplateDetailPage() {
   const onDeleteTask = (t: Task) => {
     modal.confirm({
       title: "删除任务「" + t.name + "」?",
-      content: "无实例引用时才能删除。若有正在使用的项目,会拒绝。",
+      content: "无实例引用时才能删除。若有正在使用的项目,会拒绝。如需迁移实例,请用「迁移到其他任务」。",
       okType: "danger",
       onOk: async () => {
         const r = await fetch("/api/admin/workflow-templates/" + id + "/tasks/" + t.id, { method: "DELETE", credentials: "include" });
@@ -178,6 +179,9 @@ export default function TemplateDetailPage() {
       }
     });
   };
+
+  // 任务迁移(让被引用任务可被删除)
+  // 实际迁移操作改用 MigrationModal 组件(下方声明)——这里只触发打开
 
   return (
     <Page>
@@ -240,6 +244,7 @@ export default function TemplateDetailPage() {
                     extra={
                       <Space>
                         <Button size="small" type="text" icon={<EditOutlined />} onClick={() => openEditTask(t)}>编辑</Button>
+                        <Button size="small" type="text" icon={<SwapOutlined />} onClick={() => setMigratingFrom(t)}>迁移</Button>
                         <Button size="small" type="text" danger icon={<DeleteOutlined />} onClick={() => onDeleteTask(t)}>删除</Button>
                       </Space>
                     }
@@ -313,7 +318,41 @@ export default function TemplateDetailPage() {
       >
         <TaskFormFields form={taskForm} onFinish={onUpdateTask} />
       </Modal>
+      {migratingFrom && (
+        <MigrationModal
+          fromTask={migratingFrom}
+          candidates={data!.stages.flatMap((s) => s.tasks).filter((x) => x.id !== migratingFrom.id).map((c) => {
+            const stage = data!.stages.find((s) => s.tasks.some((x) => x.id === c.id));
+            return { id: c.id, label: "[" + (WORKFLOW_PHASE_MAP[stage?.phase ?? ""] ?? stage?.phase) + "] " + c.name + " (" + c.code + ")" };
+          })}
+          onClose={() => setMigratingFrom(null)}
+          onMigrated={() => mutate()}
+        />
+      )}
     </Page>
+  );
+}
+
+function MigrationModal({ fromTask, candidates, onClose, onMigrated }: { fromTask: Task; candidates: { id: string; label: string }[]; onClose: () => void; onMigrated: () => void }) {
+  const [target, setTarget] = useState<string | undefined>(candidates[0]?.id);
+  const { message } = AntdApp.useApp();
+  const [busy, setBusy] = useState(false);
+  return (
+    <Modal open title={"迁移「" + fromTask.name + "」的实例"} onCancel={onClose} onOk={async () => {
+      if (!target) { message.warning("请选择目标任务"); return; }
+      setBusy(true);
+      try {
+        const r = await fetch("/api/admin/workflow-templates/tasks/migrate", { method: "POST", headers: { "Content-Type": "application/json" }, credentials: "include", body: JSON.stringify({ fromTaskId: fromTask.id, toTaskId: target }) });
+        const j = await r.json();
+        if (j.code !== 0) { message.error(j.message); return; }
+        message.success("已迁移 " + j.data.migratedInstances + " 个实例(跨 " + j.data.migratedProjects + " 个项目)");
+        onMigrated();
+        onClose();
+      } finally { setBusy(false); }
+    }} okText="执行迁移" confirmLoading={busy}>
+      <p>把引用「" + fromTask.name + "」的所有实例改挂到目标任务,即可删除旧任务。</p>
+      <Select value={target} onChange={setTarget} style={{ width: "100%" }} options={candidates} />
+    </Modal>
   );
 }
 
