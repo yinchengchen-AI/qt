@@ -470,10 +470,12 @@ async function seedBusinessData() {
     [8, 30, '信息资产清册完成', 8, 'sales']
   ];
   for (const pl of progressLogDefs) {
-    const pIdx = pl[0], percent = pl[1], remark = pl[2], daysAgo = pl[3], userEmp = pl[4];
+    const pIdx = pl[0], remark = pl[2], daysAgo = pl[3], userEmp = pl[4];
     const u = userEmp === 'admin' ? admin : (userEmp === 'sales' ? sales : (userEmp === 'finance' ? finance : ops));
+    // 注: 2026-06-13 drop_progress_log_percent 迁移后, percent 字段从表上消失
+    // 进度语义改为读时从 WorkflowTaskInstance 派生 (P13 refactor)
     await prisma.projectProgressLog.create({ data: {
-      projectId: projects[pIdx].rec.id, userId: u.id, percent, remark, at: days(daysAgo)
+      projectId: projects[pIdx].rec.id, userId: u.id, remark, at: days(daysAgo)
     } });
   }
   console.log('  done progressLogs', progressLogDefs.length);
