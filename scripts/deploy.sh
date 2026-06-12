@@ -13,6 +13,9 @@ echo "==> prisma migrate deploy (with MIGRATION_DATABASE_URL)"
 set -a; . ./.env; set +a
 DATABASE_URL="$MIGRATION_DATABASE_URL" npx prisma migrate deploy
 
+echo "==> prisma generate (sync client to current schema; postinstall only runs patch-package)"
+npx prisma generate
+
 echo "==> pnpm build"
 pnpm build
 
