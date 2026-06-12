@@ -58,9 +58,17 @@ const MENU: MenuItem[] = [
   { path: "/customers", name: "客户管理", icon: <TeamOutlined /> },
   { path: "/contracts", name: "合同管理", icon: <FileTextOutlined /> },
   { path: "/projects", name: "项目管理", icon: <ProjectOutlined /> },
-  { path: "/workflow", name: "我的工作流", icon: <PlayCircleOutlined /> },
-  { path: "/workflow/board", name: "工作流看板", icon: <AppstoreOutlined /> },
-  { path: "/workflow/notifications", name: "工作流通知", icon: <NotificationOutlined /> },
+  {
+    path: "/workflow",
+    name: "我的工作流",
+    icon: <PlayCircleOutlined />,
+    children: [
+      { path: "/workflow", name: "任务列表" },
+      { path: "/workflow/board", name: "看板视图" },
+      { path: "/workflow/notifications", name: "通知中心" },
+      { path: "/workflow/follow-ups", name: "跟进 360" }
+    ]
+  },
   { path: "/invoices", name: "开票管理", icon: <BookOutlined /> },
   { path: "/payments", name: "回款管理", icon: <PayCircleOutlined /> },
   {
@@ -74,8 +82,15 @@ const MENU: MenuItem[] = [
       { path: "/statistics/workflow", name: "工作流概览" }
     ]
   },
-  { path: "/messages", name: "消息中心", icon: <BellOutlined /> },
-  { path: "/announcements", name: "公告", icon: <NotificationOutlined /> },
+  {
+    path: "/messages",
+    name: "消息与公告",
+    icon: <BellOutlined />,
+    children: [
+      { path: "/messages", name: "消息中心" },
+      { path: "/announcements", name: "公告" }
+    ]
+  },
   {
     path: "/admin",
     name: "系统管理",
@@ -689,6 +704,7 @@ const CRUMB_LABEL: Record<string, string> = {
   workflow: "我的工作流",
   "workflow/board": "工作流看板",
   "workflow/notifications": "工作流通知",
+  "workflow/follow-ups": "跟进 360",
   "statistics/workflow": "工作流概览",
   "admin/workflow-templates": "工作流模板",
   "admin/trash": "回收站",
