@@ -406,3 +406,305 @@ export async function migrateTaskInstances(
     };
   });
 }
+
+// =====================================================
+// P6: 阶段 CRUD
+// =====================================================
+import { WORKFLOW_PHASE_ORDER } from "@/types/enums";
+
+export type StageInput = {
+  phase: string;
+  code: string;
+  name: string;
+  sort: number;
+  description?: string | null;
+  isRequired?: boolean;
+};
+
+export async function addStage(user: SessionUser, templateId: string, input: StageInput) {
+  requirePermission(user.roleCode, RESOURCE.WORKFLOW_TEMPLATE, ACTION.UPDATE);
+  return prisma.$transaction(async (tx) => {
+    const tpl = await tx.workflowTemplate.findFirst({ where: { id: templateId, deletedAt: null } });
+    if (!tpl) throw new ApiError(ERROR_CODES.NOT_FOUND, "模板不存在", 404);
+    if (!WORKFLOW_PHASE_ORDER.includes(input.phase as never)) {
+      throw new ApiError(ERROR_CODES.VALIDATION_FAILED, `phase 必须是 ${WORKFLOW_PHASE_ORDER.join("/")}`, 400);
+    }
+    const dup = await tx.workflowStage.findFirst({
+      where: { templateId, code: input.code } as Prisma.WorkflowStageWhereInput
+    });
+    if (dup) throw new ApiError(ERROR_CODES.VALIDATION_FAILED, `阶段编码 ${input.code} 在该模板下已存在`, 422);
+    // sort 处理:同 phase 内插到指定位置,后续阶段 sort 顺延
+    const samePhase = await tx.workflowStage.findMany({
+      where: { templateId, phase: input.phase },
+      orderBy: { sort: "asc" }
+    });
+    const insertIdx = Math.max(0, Math.min(input.sort, samePhase.length));
+    // 把 >= insertIdx 的同 phase 阶段 sort+1(本 phase 内重排)
+    for (let i = insertIdx; i < samePhase.length; i++) {
+      await tx.workflowStage.update({ where: { id: samePhase[i]!.id }, data: { sort: i + 1 } });
+    }
+    const created = await tx.workflowStage.create({
+      data: {
+        templateId,
+        phase: input.phase,
+        code: input.code,
+        name: input.name,
+        sort: insertIdx,
+        description: input.description ?? null,
+        isRequired: input.isRequired ?? true
+      }
+    });
+    // 后续 phase 的阶段 sort 也顺移(保持全局顺序)
+    // 简化:不处理跨 phase 移位,只在本 phase 内重排
+    await audit(tx, {
+      actorId: user.id,
+      action: "WORKFLOW_TEMPLATE_STAGE_ADD",
+      entity: "WorkflowStage",
+      entityId: created.id,
+      after: { templateId, phase: input.phase, code: input.code, name: input.name }
+    });
+    return created;
+  });
+}
+
+export async function updateStage(
+  user: SessionUser,
+  stageId: string,
+  input: Partial<Omit<StageInput, "phase">> & { code?: string; name?: string; sort?: number; description?: string | null; isRequired?: boolean }
+) {
+  requirePermission(user.roleCode, RESOURCE.WORKFLOW_TEMPLATE, ACTION.UPDATE);
+  return prisma.$transaction(async (tx) => {
+    const s = await tx.workflowStage.findFirst({ where: { id: stageId } });
+    if (!s) throw new ApiError(ERROR_CODES.NOT_FOUND, "阶段不存在", 404);
+    if (input.code && input.code !== s.code) {
+      const dup = await tx.workflowStage.findFirst({
+        where: { templateId: s.templateId, code: input.code, id: { not: stageId } }
+      });
+      if (dup) throw new ApiError(ERROR_CODES.VALIDATION_FAILED, `阶段编码 ${input.code} 在该模板下已存在`, 422);
+    }
+    const data: Prisma.WorkflowStageUpdateInput = {};
+    if (input.code !== undefined) data.code = input.code;
+    if (input.name !== undefined) data.name = input.name;
+    if (input.description !== undefined) data.description = input.description;
+    if (input.isRequired !== undefined) data.isRequired = input.isRequired;
+    if (input.sort !== undefined && input.sort !== s.sort) {
+      // 重排:同 phase 内
+      const samePhase = await tx.workflowStage.findMany({
+        where: { templateId: s.templateId, phase: s.phase },
+        orderBy: { sort: "asc" }
+      });
+      const cur = samePhase.findIndex((x) => x.id === s.id);
+      if (cur >= 0) {
+        const newIdx = Math.max(0, Math.min(input.sort, samePhase.length - 1));
+        // 移除当前位置
+        const arr = samePhase.filter((x) => x.id !== s.id);
+        arr.splice(newIdx, 0, s);
+        for (let i = 0; i < arr.length; i++) {
+          await tx.workflowStage.update({ where: { id: arr[i]!.id }, data: { sort: i } });
+        }
+        data.sort = newIdx;
+      }
+    }
+    const updated = await tx.workflowStage.update({ where: { id: stageId }, data });
+    await audit(tx, {
+      actorId: user.id,
+      action: "WORKFLOW_TEMPLATE_STAGE_UPDATE",
+      entity: "WorkflowStage",
+      entityId: stageId,
+      before: { name: s.name, code: s.code, isRequired: s.isRequired },
+      after: { name: updated.name, code: updated.code, isRequired: updated.isRequired }
+    });
+    return updated;
+  });
+}
+
+export async function deleteStage(user: SessionUser, stageId: string) {
+  requirePermission(user.roleCode, RESOURCE.WORKFLOW_TEMPLATE, ACTION.UPDATE);
+  return prisma.$transaction(async (tx) => {
+    const s = await tx.workflowStage.findFirst({ where: { id: stageId } });
+    if (!s) throw new ApiError(ERROR_CODES.NOT_FOUND, "阶段不存在", 404);
+    const taskCount = await tx.workflowTask.count({ where: { stageId } });
+    if (taskCount > 0) {
+      throw new ApiError(
+        ERROR_CODES.VALIDATION_FAILED,
+        `该阶段有 ${taskCount} 个任务,请先删除/迁移任务`,
+        409
+      );
+    }
+    await tx.workflowStage.delete({ where: { id: stageId } });
+    // 后续 sort 顺移
+    const samePhase = await tx.workflowStage.findMany({
+      where: { templateId: s.templateId, phase: s.phase, sort: { gt: s.sort } },
+      orderBy: { sort: "asc" }
+    });
+    for (let i = 0; i < samePhase.length; i++) {
+      await tx.workflowStage.update({ where: { id: samePhase[i]!.id }, data: { sort: s.sort + i } });
+    }
+    await audit(tx, {
+      actorId: user.id,
+      action: "WORKFLOW_TEMPLATE_STAGE_DELETE",
+      entity: "WorkflowStage",
+      entityId: stageId,
+      before: { code: s.code, name: s.name, phase: s.phase }
+    });
+    return { id: stageId };
+  });
+}
+
+// =====================================================
+// P6: 模板导入 / 导出(JSON)
+// =====================================================
+export type ExportedTemplate = {
+  schemaVersion: 1;
+  serviceType: string;
+  name: string;
+  description?: string | null;
+  isActive?: boolean;
+  stages: Array<{
+    phase: string;
+    code: string;
+    name: string;
+    sort: number;
+    description?: string | null;
+    isRequired?: boolean;
+    tasks: Array<{
+      code: string;
+      name: string;
+      sort: number;
+      description?: string | null;
+      requiredRole?: string | null;
+      requiresDeliverable?: boolean;
+      requiresOnsite?: boolean;
+      requiresTwoStepReview?: boolean;
+      isRecurring?: boolean;
+      recurrenceUnit?: string | null;
+      recurrenceInterval?: number | null;
+      estimateDays?: number | null;
+    }>;
+  }>;
+};
+
+export async function exportTemplate(user: SessionUser, id: string): Promise<ExportedTemplate> {
+  requirePermission(user.roleCode, RESOURCE.WORKFLOW_TEMPLATE, ACTION.READ);
+  const tpl = await prisma.workflowTemplate.findFirst({
+    where: { id, deletedAt: null },
+    include: { stages: { orderBy: { sort: "asc" }, include: { tasks: { orderBy: { sort: "asc" } } } } }
+  });
+  if (!tpl) throw new ApiError(ERROR_CODES.NOT_FOUND, "模板不存在", 404);
+  return {
+    schemaVersion: 1,
+    serviceType: tpl.serviceType,
+    name: tpl.name,
+    description: tpl.description,
+    isActive: tpl.isActive,
+    stages: tpl.stages.map((s) => ({
+      phase: s.phase,
+      code: s.code,
+      name: s.name,
+      sort: s.sort,
+      description: s.description,
+      isRequired: s.isRequired,
+      tasks: s.tasks.map((t) => ({
+        code: t.code,
+        name: t.name,
+        sort: t.sort,
+        description: t.description,
+        requiredRole: t.requiredRole,
+        requiresDeliverable: t.requiresDeliverable,
+        requiresOnsite: t.requiresOnsite,
+        requiresTwoStepReview: t.requiresTwoStepReview,
+        isRecurring: t.isRecurring,
+        recurrenceUnit: t.recurrenceUnit,
+        recurrenceInterval: t.recurrenceInterval,
+        estimateDays: t.estimateDays
+      }))
+    }))
+  };
+}
+
+export async function importTemplate(
+  user: SessionUser,
+  input: { data: ExportedTemplate; newActive?: boolean }
+): Promise<{ id: string; serviceType: string; version: number; isActive: boolean; stageCount: number; taskCount: number }> {
+  requirePermission(user.roleCode, RESOURCE.WORKFLOW_TEMPLATE, ACTION.CREATE);
+  if (input.data.schemaVersion !== 1) {
+    throw new ApiError(ERROR_CODES.VALIDATION_FAILED, `不支持的 schemaVersion:${input.data.schemaVersion}`, 400);
+  }
+  if (!input.data.serviceType || !WORKFLOW_PHASE_ORDER.includes(input.data.serviceType as never) && !/^[A-Z_]+$/.test(input.data.serviceType)) {
+    throw new ApiError(ERROR_CODES.VALIDATION_FAILED, "serviceType 不合法", 400);
+  }
+  for (const s of input.data.stages) {
+    if (!WORKFLOW_PHASE_ORDER.includes(s.phase as never)) {
+      throw new ApiError(ERROR_CODES.VALIDATION_FAILED, `stage.phase 必须属于 ${WORKFLOW_PHASE_ORDER.join("/")},收到:${s.phase}`, 400);
+    }
+  }
+  return prisma.$transaction(async (tx) => {
+    // 新建模板:version 自增,isActive 由 caller 决定(默认开)
+    const maxVer = await tx.workflowTemplate.aggregate({
+      where: { serviceType: input.data.serviceType, deletedAt: null },
+      _max: { version: true }
+    });
+    const newVer = (maxVer._max.version ?? 0) + 1;
+    const shouldActivate = input.newActive ?? input.data.isActive;
+    if (shouldActivate) {
+      await tx.workflowTemplate.updateMany({
+        where: { serviceType: input.data.serviceType, isActive: true, deletedAt: null },
+        data: { isActive: false }
+      });
+    }
+    const tpl = await tx.workflowTemplate.create({
+      data: {
+        serviceType: input.data.serviceType,
+        name: input.data.name,
+        description: input.data.description,
+        version: newVer,
+        isActive: shouldActivate,
+        createdById: user.id
+      }
+    });
+    let stageCount = 0;
+    let taskCount = 0;
+    for (const s of input.data.stages) {
+      const stage = await tx.workflowStage.create({
+        data: {
+          templateId: tpl.id,
+          phase: s.phase,
+          code: s.code,
+          name: s.name,
+          sort: s.sort,
+          description: s.description,
+          isRequired: s.isRequired
+        }
+      });
+      stageCount++;
+      for (const t of s.tasks) {
+        await tx.workflowTask.create({
+          data: {
+            stageId: stage.id,
+            code: t.code,
+            name: t.name,
+            sort: t.sort,
+            description: t.description,
+            requiredRole: t.requiredRole,
+            requiresDeliverable: t.requiresDeliverable,
+            requiresOnsite: t.requiresOnsite,
+            requiresTwoStepReview: t.requiresTwoStepReview,
+            isRecurring: t.isRecurring,
+            recurrenceUnit: t.recurrenceUnit,
+            recurrenceInterval: t.recurrenceInterval,
+            estimateDays: t.estimateDays
+          }
+        });
+        taskCount++;
+      }
+    }
+    await audit(tx, {
+      actorId: user.id,
+      action: "WORKFLOW_TEMPLATE_IMPORT",
+      entity: "WorkflowTemplate",
+      entityId: tpl.id,
+      after: { serviceType: tpl.serviceType, version: newVer, stageCount, taskCount, isActive: shouldActivate }
+    });
+    return { id: tpl.id, serviceType: tpl.serviceType, version: newVer, isActive: !!shouldActivate, stageCount, taskCount };
+  });
+}

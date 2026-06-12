@@ -18,12 +18,13 @@ import {
   Modal,
   Select,
   Skeleton,
+  Upload,
   Space,
   Switch,
   Tag,
   Typography
 } from "antd";
-import { EditOutlined, DeleteOutlined, PlusOutlined, SwapOutlined } from "@ant-design/icons";
+import { DeleteOutlined, DownloadOutlined, EditOutlined, PlusOutlined, SwapOutlined, UploadOutlined } from "@ant-design/icons";
 import { Page } from "@/components/page";
 import { PageHeader } from "@/components/page-header";
 import {
@@ -32,7 +33,7 @@ import {
   SERVICE_TYPE_MAP,
   WORKFLOW_REQUIRED_ROLE_MAP
 } from "@/lib/enum-maps";
-import { WORKFLOW_RECURRENCE_UNIT } from "@/types/enums";
+import { WORKFLOW_PHASE_ORDER, WORKFLOW_RECURRENCE_UNIT } from "@/types/enums";
 
 const { Text } = Typography;
 
@@ -86,6 +87,10 @@ export default function TemplateDetailPage() {
   const [editingTask, setEditingTask] = useState<Task | null>(null);
   const [addingToStage, setAddingToStage] = useState<string | null>(null);
   const [migratingFrom, setMigratingFrom] = useState<Task | null>(null);
+  const [editingStage, setEditingStage] = useState<Stage | null>(null);
+  const [addingStage, setAddingStage] = useState(false);
+  const [stageForm] = Form.useForm();
+  const [importing, setImporting] = useState(false);
   const [metaForm] = Form.useForm();
   const [taskForm] = Form.useForm();
 
@@ -179,6 +184,91 @@ export default function TemplateDetailPage() {
       }
     });
   };
+  const openEditStage = (s: Stage) => {
+    stageForm.setFieldsValue({ code: s.code, name: s.name, sort: s.sort, description: s.description ?? "", isRequired: s.isRequired });
+    setEditingStage(s);
+  };
+  const onSubmitStage = async (vals: Record<string, unknown>) => {
+    if (editingStage) {
+      const r = await fetch("/api/admin/workflow-templates/" + id + "/stages/" + editingStage.id, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify(vals)
+      });
+      const j = await r.json();
+      if (j.code !== 0) return message.error(j.message);
+      message.success("已保存");
+      setEditingStage(null);
+    } else {
+      const r = await fetch("/api/admin/workflow-templates/" + id + "/stages", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify(vals)
+      });
+      const j = await r.json();
+      if (j.code !== 0) return message.error(j.message);
+      message.success("已添加");
+      setAddingStage(false);
+    }
+    await mutate();
+  };
+  const onDeleteStage = (s: Stage) => {
+    modal.confirm({
+      title: "删除阶段「" + s.name + "」?",
+      content: "该阶段必须没有任何任务,否则拒绝删除。",
+      okType: "danger",
+      onOk: async () => {
+        const r = await fetch("/api/admin/workflow-templates/" + id + "/stages/" + s.id, { method: "DELETE", credentials: "include" });
+        const j = await r.json();
+        if (j.code !== 0) return message.error(j.message);
+        message.success("已删除");
+        await mutate();
+      }
+    });
+  };
+
+  // 导出:GET JSON 文件
+  const onExport = async () => {
+    const r = await fetch("/api/admin/workflow-templates/" + id + "/export", { credentials: "include" });
+    const j = await r.json();
+    if (j.code !== 0) return message.error(j.message);
+    const blob = new Blob([JSON.stringify(j.data, null, 2)], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `template-${data.serviceType}-v${data.version}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  // 导入:从 JSON 文件新建一份
+  const onImport = async (file: File) => {
+    setImporting(true);
+    try {
+      const text = await file.text();
+      const json = JSON.parse(text);
+      const r = await fetch("/api/admin/workflow-templates/import", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ data: json })
+      });
+      const j = await r.json();
+      if (j.code !== 0) { message.error(j.message); return false; }
+      message.success(`已导入:${j.data.stageCount} 阶段 / ${j.data.taskCount} 任务 (新版本 v${j.data.version})`);
+      router.push("/admin/workflow-templates");
+      return false;
+    } catch (e) {
+      const err = e as { message?: string };
+
+      message.error("导入失败:" + (err.message ?? String(e)));
+      return false;
+    } finally {
+      setImporting(false);
+    }
+  };
 
   // 任务迁移(让被引用任务可被删除)
   // 实际迁移操作改用 MigrationModal 组件(下方声明)——这里只触发打开
@@ -200,6 +290,12 @@ export default function TemplateDetailPage() {
         }
       />
 
+      <div style={{ marginBottom: 12, display: "flex", gap: 8, alignItems: "center" }}>
+        <Button icon={<DownloadOutlined />} onClick={onExport}>导出 JSON</Button>
+        <Upload accept=".json" showUploadList={false} beforeUpload={onImport}>
+          <Button icon={<UploadOutlined />} loading={importing}>从 JSON 导入(新版本)</Button>
+        </Upload>
+      </div>
       <Alert
         type="info"
         showIcon
@@ -218,8 +314,11 @@ export default function TemplateDetailPage() {
             label: (
               <Space>
                 <Text strong>{WORKFLOW_PHASE_MAP[s.phase] ?? s.name}</Text>
+                <Text type="secondary" style={{ fontSize: 12 }}>({s.name})</Text>
                 <Tag>{s.tasks.length} 任务</Tag>
                 {s.isRequired ? <Tag color="red">required</Tag> : <Tag color="default">可选</Tag>}
+                <Button size="small" type="text" icon={<EditOutlined />} onClick={(ev) => { ev.stopPropagation(); openEditStage(s); }}>编辑</Button>
+                <Button size="small" type="text" danger icon={<DeleteOutlined />} onClick={(ev) => { ev.stopPropagation(); onDeleteStage(s); }}>删除</Button>
               </Space>
             ),
             children: (
@@ -317,6 +416,37 @@ export default function TemplateDetailPage() {
         width={640}
       >
         <TaskFormFields form={taskForm} onFinish={onUpdateTask} />
+      </Modal>
+      <Modal
+        open={addingStage || editingStage !== null}
+        title={editingStage ? "编辑阶段" : "添加阶段"}
+        onCancel={() => { setAddingStage(false); setEditingStage(null); }}
+        onOk={() => stageForm.submit()}
+        okText="保存"
+      >
+        <Form form={stageForm} layout="vertical" onFinish={onSubmitStage}
+          initialValues={{ sort: 999, isRequired: true }}>
+          {!editingStage && (
+            <Form.Item name="phase" label="阶段" rules={[{ required: true }]}>
+              <Select options={WORKFLOW_PHASE_ORDER.map((p) => ({ value: p, label: WORKFLOW_PHASE_MAP[p] + " (" + p + ")" }))} />
+            </Form.Item>
+          )}
+          <Form.Item name="code" label="阶段编码" rules={[{ required: true, max: 50, pattern: /^[A-Z0-9_]+$/ }]}>
+            <Input placeholder="例如:EXECUTE_EXTRA" />
+          </Form.Item>
+          <Form.Item name="name" label="阶段名称" rules={[{ required: true, max: 100 }]}>
+            <Input placeholder="例如:补充实施" />
+          </Form.Item>
+          <Form.Item name="sort" label="排序(同 phase 内)">
+            <InputNumber min={0} max={99} style={{ width: "100%" }} />
+          </Form.Item>
+          <Form.Item name="description" label="描述">
+            <Input.TextArea rows={2} maxLength={2000} showCount />
+          </Form.Item>
+          <Form.Item name="isRequired" label="是否必填" valuePropName="checked">
+            <Select options={[{ value: true, label: "必填(required)" }, { value: false, label: "可选" }]} />
+          </Form.Item>
+        </Form>
       </Modal>
       {migratingFrom && (
         <MigrationModal

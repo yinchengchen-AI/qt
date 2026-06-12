@@ -233,7 +233,10 @@ export function TaskDrawer({
     <Drawer
       open={open}
       onClose={onClose}
+      placement={isMobile ? "bottom" : "right"}
       width={isMobile ? "100%" : 760}
+      height={isMobile ? "92%" : undefined}
+      styles={isMobile ? { body: { paddingBottom: 24 } } : undefined}
       title={
         <Space>
           <Tag color={STATUS_TONE[task.status]}>{WORKFLOW_TASK_STATUS_MAP[task.status]}</Tag>

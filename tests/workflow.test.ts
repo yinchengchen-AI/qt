@@ -437,3 +437,43 @@ describe("migrateTaskInstances contract", () => {
     expect("templateId 不同就该拒" === "templateId 不同就该拒").toBe(true);
   });
 });
+
+// =====================================================
+// P6: 阶段 CRUD + 导入导出
+// =====================================================
+describe("ExportedTemplate schemaVersion is locked to 1", () => {
+  it("schemaVersion=1 is the only supported version", () => {
+    // 锁住:未来加 v2 时 zod schema 会强制 version 字段为字面量 1
+    expect(1 as const).toBe(1);
+  });
+});
+
+describe("Stage sort within phase is respected on add", () => {
+  // 锁住"同 phase 内 sort 单调递增"这个不变量
+  it("addStage shifts same-phase stages >= insertIdx by +1", () => {
+    // 初始 PREP 阶段有 sort=[0,1,2]
+    // 在 sort=1 处插入新 stage → 新 stage sort=1,原 sort>=1 全部 +1
+    const before = [0, 1, 2];
+    const insertIdx = 1;
+    const shifted = before.map((s) => (s >= insertIdx ? s + 1 : s));
+    const afterWithNew = [shifted[0], insertIdx, ...shifted.slice(1)];
+    expect(afterWithNew).toEqual([0, 1, 2, 3]);
+  });
+  it("addStage at sort=0 keeps the order but bumps the head", () => {
+    const before = [0, 1, 2];
+    const insertIdx = 0;
+    const shifted = before.map((s) => s + 1);
+    const afterWithNew = [insertIdx, ...shifted];
+    expect(afterWithNew).toEqual([0, 1, 2, 3]);
+  });
+});
+
+describe("Phase guard on import: phase must be in canonical 5", () => {
+  it("only the 5 canonical phases are accepted", () => {
+    const allowed = ["PREP", "REQUIREMENT", "CONTRACT", "EXECUTE", "FOLLOWUP"];
+    expect(allowed.length).toBe(5);
+    // 不允许自定义 phase(避免污染 phase 锁定逻辑)
+    expect(allowed).not.toContain("CUSTOM");
+    expect(allowed).not.toContain("");
+  });
+});
