@@ -246,7 +246,7 @@ export default function WorkflowBoardPage() {
                   </Text>
                 ) : (
                   sorted.map((t) => {
-                    const canDrag = !isLocked && (t.status === "PENDING" || t.status === "IN_PROGRESS" || t.status === "BLOCKED");
+                    const canDrag = !isMobile && !isLocked && (t.status === "PENDING" || t.status === "IN_PROGRESS" || t.status === "BLOCKED");
                     return (
                       <div
                         key={t.id}

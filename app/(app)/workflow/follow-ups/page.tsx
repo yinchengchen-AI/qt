@@ -3,7 +3,7 @@
 import useSWR from "swr";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { App as AntdApp, Button, Card, Empty, Segmented, Select, Skeleton, Space, Table, Tag, Typography } from "antd";
+import { Card, Empty, Segmented, Skeleton, Space, Table, Tag, Typography } from "antd";
 import type { ColumnsType } from "antd/es/table";
 import { ClockCircleOutlined } from "@ant-design/icons";
 import { Page } from "@/components/page";

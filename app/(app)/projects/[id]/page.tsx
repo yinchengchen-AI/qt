@@ -37,6 +37,7 @@ export default function ProjectDetailPage() {
   const project = data;
   const { run } = useActionCall({ baseUrl: `/api/projects/${id}`, reload: () => mutate() });
   const [progressOpen, setProgressOpen] = useState(false);
+  const [upgradeOpen, setUpgradeOpen] = useState(false);
 
   if (isLoading || !project) {
     return (
@@ -62,7 +63,6 @@ export default function ProjectDetailPage() {
   const canLogProgress = ["PLANNED", "IN_PROGRESS", "SUSPENDED"].includes(project.status);
   // 工作流任务实例:同上,结束态不允许流转
   const canEditWorkflow = ["PLANNED", "IN_PROGRESS", "SUSPENDED"].includes(project.status);
-  const [upgradeOpen, setUpgradeOpen] = useState(false);
 
   return (
     <Page>

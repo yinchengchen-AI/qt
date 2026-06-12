@@ -3,9 +3,9 @@
 import useSWR from "swr";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { App as AntdApp, Button, Empty, Modal, Popconfirm, Skeleton, Space, Table, Tag, Typography } from "antd";
-import { UndoOutlined, DeleteOutlined } from "@ant-design/icons";
+import { App as AntdApp, Button, Empty, Popconfirm, Skeleton, Table, Tag, Typography } from "antd";
 import type { ColumnsType } from "antd/es/table";
+import { UndoOutlined } from "@ant-design/icons";
 import { Page } from "@/components/page";
 import { PageHeader } from "@/components/page-header";
 import { useResponsive } from "@/lib/use-breakpoint";

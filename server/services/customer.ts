@@ -365,6 +365,7 @@ export async function getFollowUpOverview(
 
   const daysAgo = params.days ? new Date(Date.now() - params.days * 86400000) : new Date(Date.now() - 180 * 86400000);
   const followFilter: Record<string, unknown> = {
+    followAt: { gte: daysAgo },
     customerId: { in: customerIds },
     deletedAt: null
   };
