@@ -303,7 +303,7 @@ export function TaskDrawer({
       {/* 备注 */}
       <Title level={5}>备注</Title>
       {canEdit ? (
-        <Space direction="vertical" style={{ width: "100%", marginBottom: 16 }}>
+        <Space orientation="vertical" style={{ width: "100%", marginBottom: 16 }}>
           <TextArea
             rows={3}
             value={remarkDraft ?? task.remark ?? ""}
@@ -335,7 +335,7 @@ export function TaskDrawer({
       {attachments.length === 0 ? (
         <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无附件" />
       ) : (
-        <Space direction="vertical" size={4} style={{ width: "100%", marginBottom: 16 }}>
+        <Space orientation="vertical" size={4} style={{ width: "100%", marginBottom: 16 }}>
           {attachments.map((a) => (
             <div key={a.id} style={{ display: "flex", alignItems: "center", gap: 8, padding: 6, background: "#fafafa", borderRadius: 4 }}>
               <PaperClipOutlined />
@@ -358,7 +358,7 @@ export function TaskDrawer({
       ) : !hist || hist.items.length === 0 ? (
         <Empty description="暂无活动" />
       ) : (
-        <Space direction="vertical" size={12} style={{ width: "100%" }}>
+        <Space orientation="vertical" size={12} style={{ width: "100%" }}>
           {hist.items.map((h) => {
             const diffRows = diffForDisplay(h.diff);
             return (

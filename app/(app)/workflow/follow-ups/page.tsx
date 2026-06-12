@@ -143,7 +143,7 @@ export default function FollowUpOverviewPage() {
               <Statistic title="待定" value={data.totals.pending} valueStyle={{ fontSize: 22, color: "#faad14" }} />
             </Card>
             <Card size="small">
-              <Space direction="vertical" size={4}>
+              <Space orientation="vertical" size={4}>
                 {data.byMethod.slice(0, 3).map((m) => (
                   <Space key={m.method} size={4}>
                     <Tag color={METHOD_COLOR[m.method]} style={{ margin: 0, fontSize: 10 }}>{METHOD_LABEL[m.method] ?? m.method}</Tag>

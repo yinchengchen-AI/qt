@@ -124,7 +124,7 @@ export function UpgradeModal({
             icon={<ExclamationCircleOutlined />}
             message="升级会丢失当前所有实例的状态"
             description={
-              <Space direction="vertical" size={2}>
+              <Space orientation="vertical" size={2}>
                 <Text>
                   当前 <Text strong>{data.current?.name}</Text> v
                   <Tag>{data.current?.version}</Tag>({data.current?.instanceCount} 实例)
@@ -141,7 +141,7 @@ export function UpgradeModal({
             style={{ marginBottom: 16 }}
           />
           {data.diff && (
-            <Space direction="vertical" size={8}>
+            <Space orientation="vertical" size={8}>
               <Space size={4} wrap>
                 <Tag color="green" icon={<ArrowRightOutlined />}>
                   +{data.diff.totals.added} 新增

@@ -66,7 +66,7 @@ export function MyTasksWidget() {
       {items.length === 0 ? (
         <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无待办,可以去喝杯咖啡 ☕" />
       ) : (
-        <Space direction="vertical" style={{ width: "100%" }} size={8}>
+        <Space orientation="vertical" style={{ width: "100%" }} size={8}>
           {items.map((t) => (
             <div
               key={t.id}

@@ -191,7 +191,7 @@ export default function DashboardPage() {
       {/*** Top 客户 ***/}
       <ProCard title="Top 5 客户（按合同额）" style={{ marginBottom: 24 }}>
         {top.length > 0 ? (
-          <Space direction="vertical" style={{ width: "100%" }} size={0}>
+          <Space orientation="vertical" style={{ width: "100%" }} size={0}>
             {top.map((c, i) => (
               <div key={c.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "10px 0", borderBottom: i < top.length - 1 ? "1px solid #f0f0f0" : "none", gap: 8, flexWrap: "wrap" }}>
                 <Space>

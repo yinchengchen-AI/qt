@@ -214,7 +214,7 @@ export default function WorkflowBoardPage() {
               </div>
 
               <Space
-                direction="vertical"
+                orientation="vertical"
                 size={4}
                 style={{ display: "flex", padding: "0 8px" }}
               >

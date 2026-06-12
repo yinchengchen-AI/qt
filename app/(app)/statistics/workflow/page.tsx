@@ -221,7 +221,7 @@ export default function WorkflowStatsPage() {
                 title: "任务",
                 dataIndex: "taskName",
                 render: (v: string, r) => (
-                  <Space direction="vertical" size={2}>
+                  <Space orientation="vertical" size={2}>
                     <Text strong>{v}</Text>
                     <Space size={4}>
                       <Tag>{WORKFLOW_PHASE_MAP[r.phase] ?? r.phase}</Tag>
@@ -238,7 +238,7 @@ export default function WorkflowStatsPage() {
                 dataIndex: "projectName",
                 render: (v: string, r) => (
                   <a onClick={() => router.push(`/projects/${r.projectId}`)} style={{ cursor: "pointer" }}>
-                    <Space direction="vertical" size={2}>
+                    <Space orientation="vertical" size={2}>
                       <Text>{v}</Text>
                       <Text type="secondary" style={{ fontSize: 12 }}>{r.projectNo}</Text>
                     </Space>

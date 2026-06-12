@@ -486,7 +486,7 @@ function TaskHistory({ taskId, isAdmin }: { taskId: string; isAdmin: boolean }) 
           ) : !data || data.items.length === 0 ? (
             <Text type="secondary" style={{ fontSize: 12 }}>暂无活动</Text>
           ) : (
-            <Space direction="vertical" size={6} style={{ width: "100%" }}>
+            <Space orientation="vertical" size={6} style={{ width: "100%" }}>
               {data.items.map((h) => (
                 <div key={h.id} style={{ fontSize: 12, borderBottom: "1px solid #f5f5f5", paddingBottom: 4 }}>
                   <Space size={4} wrap>

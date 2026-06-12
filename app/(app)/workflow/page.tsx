@@ -156,7 +156,7 @@ export default function MyTasksPage() {
               dataIndex: "status",
               width: 110,
               render: (v: string, r) => (
-                <Space direction="vertical" size={2}>
+                <Space orientation="vertical" size={2}>
                   <Tag color={WORKFLOW_TASK_STATUS_TONE[v]} icon={STATUS_ICON[v]}>
                     {WORKFLOW_TASK_STATUS_MAP[v]}
                   </Tag>
@@ -171,7 +171,7 @@ export default function MyTasksPage() {
               dataIndex: "taskName",
               onCell: (r: MyTask) => ({ onClick: () => setDrawerTask(r), style: { cursor: "pointer" } }),
               render: (v: string, r) => (
-                <Space direction="vertical" size={2}>
+                <Space orientation="vertical" size={2}>
                   <Text strong>{v}</Text>
                   <Space size={4} wrap>
                     <Tag>{WORKFLOW_PHASE_MAP[r.phase] ?? r.phaseName}</Tag>
@@ -193,7 +193,7 @@ export default function MyTasksPage() {
               width: 220,
               render: (v: string, r) => (
                 <a onClick={() => router.push(`/projects/${r.projectId}`)} style={{ cursor: "pointer" }}>
-                  <Space direction="vertical" size={2}>
+                  <Space orientation="vertical" size={2}>
                     <Text>{v}</Text>
                     <Text type="secondary" style={{ fontSize: 12 }}>{r.projectNo}</Text>
                   </Space>

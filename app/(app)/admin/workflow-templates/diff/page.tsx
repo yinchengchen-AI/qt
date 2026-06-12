@@ -144,7 +144,7 @@ export default function TemplateDiffPage() {
       {data.stages.length === 0 ? (
         <Empty description="两个版本完全相同" />
       ) : (
-        <Space direction="vertical" size={12} style={{ width: "100%" }}>
+        <Space orientation="vertical" size={12} style={{ width: "100%" }}>
           {data.stages.map((s, idx) => {
             const title: string = String(s.after?.name ?? s.before?.name ?? s.after?.code ?? s.before?.code ?? "?");
             const phase = (s.after?.phase ?? s.before?.phase) as string | undefined;
