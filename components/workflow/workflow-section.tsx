@@ -12,11 +12,13 @@ import {
   CheckCircleOutlined,
   ClockCircleOutlined,
   ExclamationCircleOutlined,
+  HistoryOutlined,
   LockOutlined,
   PlayCircleOutlined,
   ReloadOutlined,
   StopOutlined,
-  ThunderboltOutlined
+  ThunderboltOutlined,
+  UserOutlined
 } from "@ant-design/icons";
 import {
   WORKFLOW_PHASE_MAP,
@@ -318,6 +320,7 @@ function TaskCard({
           {task.remark}
         </div>
       )}
+      <TaskHistory taskId={task.id} isAdmin={true} />
     </div>
   );
 }
@@ -430,6 +433,72 @@ function TaskActions({
     return null;
   }
   return <Space wrap size={4}>{buttons}</Space>;
+}
+
+
+
+type HistoryEntry = {
+  id: string;
+  action: string;
+  actorId: string;
+  actorName: string | null;
+  at: string;
+  diff: { before: unknown; after: unknown } | null;
+};
+
+const ACTION_LABEL: Record<string, string> = {
+  WORKFLOW_INSTANTIATE: "模板实例化",
+  WORKFLOW_TASK_START: "开始任务",
+  WORKFLOW_TASK_COMPLETE: "完成任务",
+  WORKFLOW_TASK_BLOCK: "阻塞任务",
+  WORKFLOW_TASK_UNBLOCK: "解除阻塞",
+  WORKFLOW_TASK_SKIP: "跳过任务",
+  WORKFLOW_TASK_ASSIGN: "重新指派",
+  WORKFLOW_TASK_REMARK: "更新备注",
+  WORKFLOW_REVIEW_SUBMIT: "提交校核",
+  WORKFLOW_REVIEW_APPROVE: "审核通过",
+  WORKFLOW_REVIEW_REJECT: "驳回校核",
+  WORKFLOW_RECURRING_GENERATE: "循环生成"
+};
+
+function TaskHistory({ taskId, isAdmin }: { taskId: string; isAdmin: boolean }) {
+  const [open, setOpen] = useState(false);
+  const { data, isLoading } = useSWR<{ items: HistoryEntry[] }>(open ? "/api/workflow-tasks/" + taskId + "/history" : null);
+  if (!isAdmin) return null;
+  return (
+    <div style={{ marginTop: 8, borderTop: "1px dashed #f0f0f0", paddingTop: 6 }}>
+      <Button size="small" type="text" icon={<HistoryOutlined />} onClick={() => setOpen((v) => !v)}>
+        {open ? "收起" : "展开"}活动历史
+      </Button>
+      {open && (
+        <div style={{ marginTop: 6, padding: 8, background: "#fff", borderRadius: 4, maxHeight: 200, overflowY: "auto" }}>
+          {isLoading ? (
+            <Text type="secondary" style={{ fontSize: 12 }}>加载中...</Text>
+          ) : !data || data.items.length === 0 ? (
+            <Text type="secondary" style={{ fontSize: 12 }}>暂无活动</Text>
+          ) : (
+            <Space direction="vertical" size={6} style={{ width: "100%" }}>
+              {data.items.map((h) => (
+                <div key={h.id} style={{ fontSize: 12, borderBottom: "1px solid #f5f5f5", paddingBottom: 4 }}>
+                  <Space size={4} wrap>
+                    <Tag color="blue" style={{ margin: 0 }}>{ACTION_LABEL[h.action] ?? h.action}</Tag>
+                    <Space size={2}>
+                      <UserOutlined />
+                      <span>{h.actorName ?? h.actorId.slice(0, 8)}</span>
+                    </Space>
+                    <Space size={2}>
+                      <ClockCircleOutlined />
+                      <span>{new Date(h.at).toLocaleString("zh-CN")}</span>
+                    </Space>
+                  </Space>
+                </div>
+              ))}
+            </Space>
+          )}
+        </div>
+      )}
+    </div>
+  );
 }
 
 function AssigneeName({ id }: { id: string | null }) {

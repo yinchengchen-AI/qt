@@ -1,0 +1,377 @@
+"use client";
+// P4: 单模板详情 + 任务编辑
+import useSWR from "swr";
+import type { FormInstance } from "antd";
+import { useState } from "react";
+import { useParams, useRouter } from "next/navigation";
+import {
+  App as AntdApp,
+  Alert,
+  Button,
+  Card,
+  Checkbox,
+  Collapse,
+  Empty,
+  Form,
+  Input,
+  InputNumber,
+  Modal,
+  Select,
+  Skeleton,
+  Space,
+  Switch,
+  Tag,
+  Typography
+} from "antd";
+import { EditOutlined, DeleteOutlined, PlusOutlined } from "@ant-design/icons";
+import { Page } from "@/components/page";
+import { PageHeader } from "@/components/page-header";
+import {
+  WORKFLOW_PHASE_MAP,
+  WORKFLOW_RECURRENCE_UNIT_MAP,
+  SERVICE_TYPE_MAP,
+  WORKFLOW_REQUIRED_ROLE_MAP
+} from "@/lib/enum-maps";
+import { WORKFLOW_RECURRENCE_UNIT } from "@/types/enums";
+
+const { Text } = Typography;
+
+type Task = {
+  id: string;
+  code: string;
+  name: string;
+  sort: number;
+  description: string | null;
+  requiredRole: string | null;
+  requiresDeliverable: boolean;
+  requiresOnsite: boolean;
+  requiresTwoStepReview: boolean;
+  isRecurring: boolean;
+  recurrenceUnit: string | null;
+  recurrenceInterval: number | null;
+  estimateDays: number | null;
+};
+
+type Stage = {
+  id: string;
+  phase: string;
+  code: string;
+  name: string;
+  sort: number;
+  description: string | null;
+  isRequired: boolean;
+  taskCount: number;
+  tasks: Task[];
+};
+
+type Template = {
+  id: string;
+  serviceType: string;
+  name: string;
+  version: number;
+  isActive: boolean;
+  description: string | null;
+  createdAt: string;
+  updatedAt: string;
+  stages: Stage[];
+};
+
+export default function TemplateDetailPage() {
+  const params = useParams();
+  const id = String(params.id);
+  const router = useRouter();
+  const { message, modal } = AntdApp.useApp();
+  const { data, isLoading, mutate } = useSWR<Template>("/api/admin/workflow-templates/" + id);
+  const [editingMeta, setEditingMeta] = useState(false);
+  const [editingTask, setEditingTask] = useState<Task | null>(null);
+  const [addingToStage, setAddingToStage] = useState<string | null>(null);
+  const [metaForm] = Form.useForm();
+  const [taskForm] = Form.useForm();
+
+  if (isLoading || !data) {
+    return (
+      <Page>
+        <PageHeader back={() => router.push("/admin/workflow-templates")} title="加载中..." />
+        <Skeleton active />
+      </Page>
+    );
+  }
+
+  const onSaveMeta = async (vals: { name: string; description: string | null; isActive: boolean }) => {
+    const r = await fetch("/api/admin/workflow-templates/" + id, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      credentials: "include",
+      body: JSON.stringify(vals)
+    });
+    const j = await r.json();
+    if (j.code !== 0) return message.error(j.message);
+    message.success("已保存");
+    setEditingMeta(false);
+    await mutate();
+  };
+
+  const openAddTask = (stageId: string) => {
+    taskForm.resetFields();
+    setAddingToStage(stageId);
+  };
+
+  const onAddTask = async (vals: Record<string, unknown>) => {
+    if (!addingToStage) return;
+    const r = await fetch("/api/admin/workflow-templates/" + id + "/tasks", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      credentials: "include",
+      body: JSON.stringify({ ...vals, stageId: addingToStage })
+    });
+    const j = await r.json();
+    if (j.code !== 0) return message.error(j.message);
+    message.success("已添加");
+    setAddingToStage(null);
+    await mutate();
+  };
+
+  const openEditTask = (t: Task) => {
+    taskForm.setFieldsValue({
+      code: t.code,
+      name: t.name,
+      sort: t.sort,
+      description: t.description ?? "",
+      requiredRole: t.requiredRole ?? undefined,
+      requiresDeliverable: t.requiresDeliverable,
+      requiresOnsite: t.requiresOnsite,
+      requiresTwoStepReview: t.requiresTwoStepReview,
+      isRecurring: t.isRecurring,
+      recurrenceUnit: t.recurrenceUnit,
+      recurrenceInterval: t.recurrenceInterval,
+      estimateDays: t.estimateDays
+    });
+    setEditingTask(t);
+  };
+
+  const onUpdateTask = async (vals: Record<string, unknown>) => {
+    if (!editingTask) return;
+    const r = await fetch("/api/admin/workflow-templates/" + id + "/tasks/" + editingTask.id, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      credentials: "include",
+      body: JSON.stringify(vals)
+    });
+    const j = await r.json();
+    if (j.code !== 0) return message.error(j.message);
+    message.success("已保存");
+    setEditingTask(null);
+    await mutate();
+  };
+
+  const onDeleteTask = (t: Task) => {
+    modal.confirm({
+      title: "删除任务「" + t.name + "」?",
+      content: "无实例引用时才能删除。若有正在使用的项目,会拒绝。",
+      okType: "danger",
+      onOk: async () => {
+        const r = await fetch("/api/admin/workflow-templates/" + id + "/tasks/" + t.id, { method: "DELETE", credentials: "include" });
+        const j = await r.json();
+        if (j.code !== 0) return message.error(j.message);
+        message.success("已删除");
+        await mutate();
+      }
+    });
+  };
+
+  return (
+    <Page>
+      <PageHeader
+        back={() => router.push("/admin/workflow-templates")}
+        title={(SERVICE_TYPE_MAP[data.serviceType] ?? data.serviceType) + " · " + data.name}
+        subtitle={"版本 v" + data.version + " · " + (data.isActive ? "已激活" : "未激活")}
+        meta={data.isActive ? <Tag color="success">激活</Tag> : <Tag>未激活</Tag>}
+        actions={
+          <Button icon={<EditOutlined />} onClick={() => {
+            metaForm.setFieldsValue({ name: data.name, description: data.description ?? "", isActive: data.isActive });
+            setEditingMeta(true);
+          }}>
+            编辑元数据
+          </Button>
+        }
+      />
+
+      <Alert
+        type="info"
+        showIcon
+        style={{ marginBottom: 16 }}
+        message="模板修改仅影响新实例化的项目"
+        description="已存在的项目用的是实例化时的快照,不会被本次修改影响。如需旧项目也用新模板,请到项目详情页重新 init(force=true)。"
+      />
+
+      {data.stages.length === 0 ? (
+        <Empty description="此模板暂未配置阶段" />
+      ) : (
+        <Collapse
+          defaultActiveKey={data.stages.map((s) => s.id)}
+          items={data.stages.map((s) => ({
+            key: s.id,
+            label: (
+              <Space>
+                <Text strong>{WORKFLOW_PHASE_MAP[s.phase] ?? s.name}</Text>
+                <Tag>{s.tasks.length} 任务</Tag>
+                {s.isRequired ? <Tag color="red">required</Tag> : <Tag color="default">可选</Tag>}
+              </Space>
+            ),
+            children: (
+              <div>
+                {s.description && <Text type="secondary" style={{ display: "block", marginBottom: 8, fontSize: 12 }}>{s.description}</Text>}
+                {s.tasks.map((t) => (
+                  <Card
+                    key={t.id}
+                    size="small"
+                    style={{ marginBottom: 8 }}
+                    title={
+                      <Space>
+                        <Text strong>{t.name}</Text>
+                        <Tag>{t.code}</Tag>
+                        {t.requiresDeliverable && <Tag color="cyan">交付物</Tag>}
+                        {t.requiresOnsite && <Tag color="gold">现场</Tag>}
+                        {t.requiresTwoStepReview && <Tag color="purple">二审</Tag>}
+                        {t.isRecurring && <Tag color="geekblue">循环</Tag>}
+                        {t.estimateDays && <Tag>预估 {t.estimateDays} 天</Tag>}
+                      </Space>
+                    }
+                    extra={
+                      <Space>
+                        <Button size="small" type="text" icon={<EditOutlined />} onClick={() => openEditTask(t)}>编辑</Button>
+                        <Button size="small" type="text" danger icon={<DeleteOutlined />} onClick={() => onDeleteTask(t)}>删除</Button>
+                      </Space>
+                    }
+                  >
+                    {t.description && <Text type="secondary" style={{ fontSize: 12 }}>{t.description}</Text>}
+                    {t.requiredRole && (
+                      <div style={{ marginTop: 4 }}>
+                        <Text type="secondary" style={{ fontSize: 12 }}>期望角色: </Text>
+                        <Tag>{WORKFLOW_REQUIRED_ROLE_MAP[t.requiredRole] ?? t.requiredRole}</Tag>
+                      </div>
+                    )}
+                    {t.isRecurring && (
+                      <div style={{ marginTop: 4 }}>
+                        <Tag color="geekblue">每 {t.recurrenceInterval ?? 1} {WORKFLOW_RECURRENCE_UNIT_MAP[t.recurrenceUnit ?? ""] ?? t.recurrenceUnit}</Tag>
+                      </div>
+                    )}
+                  </Card>
+                ))}
+                <Button
+                  block
+                  type="dashed"
+                  icon={<PlusOutlined />}
+                  onClick={() => openAddTask(s.id)}
+                >
+                  在 {WORKFLOW_PHASE_MAP[s.phase] ?? s.name} 添加任务
+                </Button>
+              </div>
+            )
+          }))}
+        />
+      )}
+
+      <Modal
+        open={editingMeta}
+        title="编辑模板元数据"
+        onCancel={() => setEditingMeta(false)}
+        onOk={() => metaForm.submit()}
+        okText="保存"
+      >
+        <Form form={metaForm} layout="vertical" onFinish={onSaveMeta}>
+          <Form.Item name="name" label="模板名称" rules={[{ required: true, max: 100 }]}>
+            <Input />
+          </Form.Item>
+          <Form.Item name="description" label="描述">
+            <Input.TextArea rows={3} maxLength={2000} showCount />
+          </Form.Item>
+          <Form.Item name="isActive" label="是否激活" valuePropName="checked">
+            <Switch />
+          </Form.Item>
+        </Form>
+      </Modal>
+
+      <Modal
+        open={addingToStage !== null}
+        title="添加任务"
+        onCancel={() => setAddingToStage(null)}
+        onOk={() => taskForm.submit()}
+        okText="添加"
+        width={640}
+      >
+        <TaskFormFields form={taskForm} onFinish={onAddTask} />
+      </Modal>
+
+      <Modal
+        open={editingTask !== null}
+        title={"编辑任务: " + (editingTask?.name ?? "")}
+        onCancel={() => setEditingTask(null)}
+        onOk={() => taskForm.submit()}
+        okText="保存"
+        width={640}
+      >
+        <TaskFormFields form={taskForm} onFinish={onUpdateTask} />
+      </Modal>
+    </Page>
+  );
+}
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function TaskFormFields({ form, onFinish }: { form: FormInstance<any>; onFinish: (vals: Record<string, unknown>) => void }) {
+  return (
+    <Form form={form} layout="vertical" onFinish={onFinish} initialValues={{ sort: 99, requiresDeliverable: false, requiresOnsite: false, requiresTwoStepReview: false, isRecurring: false }}>
+      <Form.Item name="code" label="任务编码 (英文,模板内唯一)" rules={[{ required: true, max: 50, pattern: /^[A-Z0-9_]+$/ }]}>
+        <Input placeholder="例如:VISIT_INIT" />
+      </Form.Item>
+      <Form.Item name="name" label="任务名称" rules={[{ required: true, max: 100 }]}>
+        <Input placeholder="例如:委托单位初访" />
+      </Form.Item>
+      <Form.Item name="sort" label="排序" rules={[{ required: true }]}>
+        <InputNumber min={0} max={999} style={{ width: "100%" }} />
+      </Form.Item>
+      <Form.Item name="description" label="描述">
+        <Input.TextArea rows={2} maxLength={2000} showCount />
+      </Form.Item>
+      <Form.Item name="requiredRole" label="期望执行角色">
+        <Select allowClear options={Object.entries(WORKFLOW_REQUIRED_ROLE_MAP).map(([v, l]) => ({ value: v, label: l }))} />
+      </Form.Item>
+      <Form.Item name="estimateDays" label="预估天数">
+        <InputNumber min={1} max={365} style={{ width: "100%" }} />
+      </Form.Item>
+      <Space size={16} wrap>
+        <Form.Item name="requiresDeliverable" valuePropName="checked">
+          <Checkbox>需交付物</Checkbox>
+        </Form.Item>
+        <Form.Item name="requiresOnsite" valuePropName="checked">
+          <Checkbox>现场</Checkbox>
+        </Form.Item>
+        <Form.Item name="requiresTwoStepReview" valuePropName="checked">
+          <Checkbox>二审</Checkbox>
+        </Form.Item>
+        <Form.Item name="isRecurring" valuePropName="checked">
+          <Checkbox>循环任务</Checkbox>
+        </Form.Item>
+      </Space>
+      <Form.Item shouldUpdate noStyle>
+        {() => {
+          const isRec = form.getFieldValue("isRecurring");
+          if (!isRec) return null;
+          return (
+            <Space>
+              <Form.Item name="recurrenceUnit" label="周期单位" rules={[{ required: true }]}>
+                <Select
+                  style={{ width: 120 }}
+                  options={WORKFLOW_RECURRENCE_UNIT.map((u) => ({ value: u, label: WORKFLOW_RECURRENCE_UNIT_MAP[u] }))}
+                />
+              </Form.Item>
+              <Form.Item name="recurrenceInterval" label="间隔" rules={[{ required: true }]}>
+                <InputNumber min={1} max={365} />
+              </Form.Item>
+            </Space>
+          );
+        }}
+      </Form.Item>
+    </Form>
+  );
+}

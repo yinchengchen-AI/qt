@@ -1009,3 +1009,80 @@ export async function getOverdueTasks(
   items.sort((a, b) => b.overdueDays - a.overdueDays);
   return { total: items.length, items };
 }
+
+// =====================================================
+// P4: 任务实例活动时间线(查 OperationLog)
+// =====================================================
+export type HistoryEntry = {
+  id: string;
+  action: string;
+  actorId: string;
+  actorName: string | null;
+  at: string;
+  diff: { before: unknown; after: unknown } | null;
+};
+
+const WORKFLOW_INSTANCE_ACTIONS = new Set([
+  "WORKFLOW_INSTANTIATE",
+  "WORKFLOW_TASK_START",
+  "WORKFLOW_TASK_COMPLETE",
+  "WORKFLOW_TASK_BLOCK",
+  "WORKFLOW_TASK_UNBLOCK",
+  "WORKFLOW_TASK_SKIP",
+  "WORKFLOW_TASK_ASSIGN",
+  "WORKFLOW_TASK_REMARK",
+  "WORKFLOW_REVIEW_SUBMIT",
+  "WORKFLOW_REVIEW_APPROVE",
+  "WORKFLOW_REVIEW_REJECT",
+  "WORKFLOW_RECURRING_GENERATE"
+]);
+
+export async function getTaskHistory(user: SessionUser, instanceId: string): Promise<{ items: HistoryEntry[] }> {
+  requirePermission(user.roleCode, RESOURCE.PROJECT, ACTION.READ);
+  // 1. 行级隔离:SALES 只能查自己合同下的实例
+  const ins = await prisma.workflowTaskInstance.findFirst({
+    where: { id: instanceId, deletedAt: null },
+    include: { project: { select: { contractId: true, contract: { select: { ownerUserId: true } } } } }
+  });
+  if (!ins) throw new ApiError(ERROR_CODES.WORKFLOW_TASK_NOT_FOUND, "任务实例不存在", 404);
+  if (user.roleCode === "SALES" && ins.project.contract?.ownerUserId !== user.id) {
+    throw new ApiError(ERROR_CODES.FORBIDDEN, "无权访问该任务", 403);
+  }
+  // 2. 查 OperationLog: 自身 + 父实例(循环生成) + 项目级动作(如 instantiate)
+  const candidateIds = [instanceId];
+  if (ins.parentInstanceId) candidateIds.push(ins.parentInstanceId);
+  // 找该项目下的所有相关 log(主要是 WORKFLOW_INSTANTIATE / WORKFLOW_RECURRING_GENERATE)
+  const allInstanceIds = await prisma.workflowTaskInstance.findMany({
+    where: { projectId: ins.projectId, deletedAt: null },
+    select: { id: true }
+  });
+  candidateIds.push(...allInstanceIds.map((x) => x.id));
+  // 操作人姓名批量查询
+  const logs = await prisma.operationLog.findMany({
+    where: {
+      OR: [
+        { entity: "WorkflowTaskInstance", entityId: { in: candidateIds } },
+        { entity: "Project", entityId: ins.projectId, action: "WORKFLOW_INSTANTIATE" }
+      ],
+      action: { in: Array.from(WORKFLOW_INSTANCE_ACTIONS) }
+    },
+    orderBy: { at: "desc" },
+    take: 100
+  });
+  const actorIds = Array.from(new Set(logs.map((l) => l.actorId)));
+  const actors = await prisma.user.findMany({
+    where: { id: { in: actorIds } },
+    select: { id: true, name: true }
+  });
+  const actorMap = new Map(actors.map((a) => [a.id, a.name]));
+  return {
+    items: logs.map((l) => ({
+      id: l.id,
+      action: l.action,
+      actorId: l.actorId,
+      actorName: actorMap.get(l.actorId) ?? null,
+      at: l.at.toISOString(),
+      diff: l.diff ? (l.diff as { before: unknown; after: unknown }) : null
+    }))
+  };
+}

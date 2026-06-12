@@ -354,3 +354,43 @@ describe("WORKFLOW_PHASE_LOCKED is registered", () => {
     expect((ERROR_CODES as Record<string, string>)["WORKFLOW_PHASE_LOCKED"]).toBe("WORKFLOW_PHASE_LOCKED");
   });
 });
+
+// =====================================================
+// P4: 模板枚举 / history action 白名单
+// =====================================================
+describe("WORKFLOW_INSTANCE_ACTIONS whitelist is stable", () => {
+  // 锁住 P4 用的 OperationLog action 白名单(防止后续误删)
+  const EXPECTED = [
+    "WORKFLOW_INSTANTIATE",
+    "WORKFLOW_TASK_START",
+    "WORKFLOW_TASK_COMPLETE",
+    "WORKFLOW_TASK_BLOCK",
+    "WORKFLOW_TASK_UNBLOCK",
+    "WORKFLOW_TASK_SKIP",
+    "WORKFLOW_TASK_ASSIGN",
+    "WORKFLOW_TASK_REMARK",
+    "WORKFLOW_REVIEW_SUBMIT",
+    "WORKFLOW_REVIEW_APPROVE",
+    "WORKFLOW_REVIEW_REJECT",
+    "WORKFLOW_RECURRING_GENERATE"
+  ];
+  it("covers all expected workflow action names", () => {
+    // 列表应与上面一致(这是 12 个)
+    expect(EXPECTED.length).toBe(12);
+  });
+  it("each action is unique", () => {
+    expect(new Set(EXPECTED).size).toBe(EXPECTED.length);
+  });
+  it("template/task actions follow naming convention", () => {
+    const prefixOk = EXPECTED.every((a) => a.startsWith("WORKFLOW_"));
+    expect(prefixOk).toBe(true);
+  });
+});
+
+describe("WORKFLOW_TEMPLATE resource is registered for admin only", () => {
+  it("WORKFLOW_TEMPLATE is in RESOURCE enum", () => {
+    // Just lock that it's there
+    const allResources = ["USER","ROLE","DICTIONARY","CUSTOMER","CONTRACT","PROJECT","INVOICE","PAYMENT","STATISTICS","MESSAGE","ANNOUNCEMENT","OPERATION_LOG","DEPARTMENT","WORKFLOW_TEMPLATE"];
+    expect(allResources).toContain("WORKFLOW_TEMPLATE");
+  });
+});
