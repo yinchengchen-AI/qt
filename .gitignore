@@ -59,3 +59,9 @@ server.log.err
 
 # docker volumes (local)
 docker-data/
+
+# local runtime artifacts
+backups/
+
+# per-server deploy record (untracked, 保留在服务端)
+docs/*部署记录*.md
