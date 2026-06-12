@@ -74,7 +74,9 @@ const MESSAGE: Record<string, StatusMeta> = {
   INVOICE_OVERDUE_PAYMENT: { label: "开票超期",   tone: "danger" },
   PAYMENT_RECEIVED:        { label: "回款",       tone: "success" },
   PROJECT_DUE:             { label: "项目到期",   tone: "warning" },
-  CUSTOMER_INACTIVE:       { label: "客户静默",   tone: "default" }
+  CUSTOMER_INACTIVE:       { label: "客户静默",   tone: "default" },
+  WORKFLOW_TASK_ASSIGNED:    { label: "任务指派",   tone: "info" },
+  WORKFLOW_REVIEW_REQUESTED: { label: "审阅请求",   tone: "info" },
 };
 
 const ANNOUNCEMENT: Record<string, StatusMeta> = {
