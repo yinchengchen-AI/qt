@@ -21,6 +21,7 @@ import { ownerViaContract } from "@/lib/ownership";
 import { audit } from "@/server/audit";
 import { emit } from "@/server/events/bus";
 import { WORKFLOW_PHASE_ORDER, type WorkflowPhase, type WorkflowTaskAction, type WorkflowTaskStatus, type WorkflowReviewStatus, type WorkflowPhaseState } from "@/types/enums";
+import { computePhaseView, pickMajorityTemplateId, WORKFLOW_PHASE_TO_CN } from "@/lib/workflow-view";
 
 // =====================================================
 // 状态机:合法迁移表
@@ -273,33 +274,24 @@ export async function getProjectWorkflow(user: SessionUser, projectId: string): 
   const stages = Array.from(stageMap.values()).sort((a, b) => a.sort - b.sort);
   for (const s of stages) s.tasks.sort((a, b) => a.sort - b.sort);
 
-  // P3: 阶段顺序状态(供 UI 展示锁定/进度)
-  const phaseInstanceMap = new Map<string, { status: string; stageRequired: boolean }[]>();
-  for (const ins of instances) {
-    const ph = ins.task.stage.phase;
-    if (!phaseInstanceMap.has(ph)) phaseInstanceMap.set(ph, []);
-    phaseInstanceMap.get(ph)!.push({ status: ins.status, stageRequired: ins.task.stage.isRequired });
-  }
-  const phaseStateMap = await computePhaseStatesForProject(prisma, projectId, phaseInstanceMap);
-  // 取每个阶段的 lockReason(若 LOCKED)
-  const phaseStates: ProjectWorkflowDto["phaseStates"] = [];
-  for (const ph of WORKFLOW_PHASE_ORDER) {
-    const ps = phaseStateMap.get(ph) ?? { state: "READY" as WorkflowPhaseState, completed: 0, total: 0 };
-    let lockReason: string | undefined;
-    if (ps.state === "LOCKED") {
-      // 找前一个 required 阶段中的未完成项
-      const idx = WORKFLOW_PHASE_ORDER.indexOf(ph);
-      const prevPhase = idx > 0 ? WORKFLOW_PHASE_ORDER[idx - 1]! : null;
-      if (prevPhase) {
-        const prevItems = phaseInstanceMap.get(prevPhase) ?? [];
-        const unfinishedCount = prevItems.filter(
-          (i) => i.stageRequired && (i.status === "PENDING" || i.status === "IN_PROGRESS" || i.status === "BLOCKED")
-        ).length;
-        lockReason = `前一阶段「${WORKFLOW_PHASE_TO_CN[prevPhase] ?? prevPhase}」还有 ${unfinishedCount} 项任务未完成`;
-      }
-    }
-    phaseStates.push({ phase: ph, ...ps, lockReason });
-  }
+  // P3: 阶段顺序状态(供 UI 展示锁定/进度) — 共享 helper
+  // PARTIAL 判定沿用旧 computePhaseStatesForProject 语义:必须有完成项才算"已开工"
+  const phaseView = computePhaseView(instances, { isPartial: (pv) => pv.completed > 0 });
+  const emptyPv: { state: WorkflowPhaseState; completed: number; total: number; lockReason?: string } = {
+    state: "READY",
+    completed: 0,
+    total: 0
+  };
+  const phaseStates: ProjectWorkflowDto["phaseStates"] = WORKFLOW_PHASE_ORDER.map((ph) => {
+    const pv = phaseView.get(ph) ?? emptyPv;
+    return {
+      phase: ph,
+      state: pv.state,
+      completed: pv.completed,
+      total: pv.total,
+      ...(pv.lockReason ? { lockReason: pv.lockReason } : {})
+    };
+  });
 
   return {
     templateId: template?.id ?? null,
@@ -427,8 +419,7 @@ export async function reviewTask(
       before: { reviewStatus: cur },
       after: { reviewStatus: updated.reviewStatus }
     });
-    return updated;
-    // P2: submit 校核时通知项目负责人 + 管理员去审核
+    // submit 校核时通知项目负责人 + 管理员去审核
     if (action === "submit") {
       const receivers = new Set<string>([ins.project.managerUserId]);
       const admins = await tx.user.findMany({
@@ -451,7 +442,7 @@ export async function reviewTask(
         });
       }
     }
-
+    return updated;
   });
 }
 
@@ -562,14 +553,6 @@ function hasDeliverable(attachments: unknown): boolean {
 // =====================================================
 // P3: 阶段顺序锁定
 // =====================================================
-const WORKFLOW_PHASE_TO_CN: Record<string, string> = {
-  PREP: "前期准备",
-  REQUIREMENT: "需求识别",
-  CONTRACT: "合同签订",
-  EXECUTE: "服务实施",
-  FOLLOWUP: "回访与改进"
-};
-
 type PhaseLockResult = { ok: true } | { ok: false; reason: string };
 
 /**
@@ -606,44 +589,6 @@ async function checkPhaseLock(
     ok: false,
     reason: `前一阶段「${WORKFLOW_PHASE_TO_CN[prevPhase] ?? prevPhase}」还有 ${unfinished.length} 项任务未完成(${unfinished[0]!.task.name}${unfinished.length > 1 ? ` 等` : ""})`
   };
-}
-
-/**
- * 计算项目各阶段的"进度状态",供前端展示
- * phaseInstances 形如 Map<phase, [{status, stageRequired}, ...]>
- * stageRequired 表示该实例所在 stage 是否 required(true=required=阻塞后续)
- */
-async function computePhaseStatesForProject(
-  _tx: Prisma.TransactionClient,
-  _projectId: string,
-  phaseInstances: Map<string, { status: string; stageRequired: boolean }[]>
-): Promise<Map<string, { state: WorkflowPhaseState; completed: number; total: number; lockReason?: string }>> {
-  const result = new Map<string, { state: WorkflowPhaseState; completed: number; total: number; lockReason?: string }>();
-  let prevPhaseUnfinished = false;
-  for (const phase of WORKFLOW_PHASE_ORDER) {
-    const items = phaseInstances.get(phase) ?? [];
-    const total = items.length;
-    const completed = items.filter((i) => i.status === "COMPLETED" || i.status === "SKIPPED").length;
-    // 只有"required stage 里的未完成实例"才阻塞后续
-    const requiredUnfinished = items.some(
-      (i) => i.stageRequired && (i.status === "PENDING" || i.status === "IN_PROGRESS" || i.status === "BLOCKED")
-    );
-    if (total === 0) {
-      result.set(phase, { state: "READY", completed: 0, total: 0 });
-      continue;
-    }
-    if (completed === total) {
-      result.set(phase, { state: "DONE", completed, total });
-    } else if (prevPhaseUnfinished) {
-      result.set(phase, { state: "LOCKED", completed, total });
-    } else if (completed > 0) {
-      result.set(phase, { state: "PARTIAL", completed, total });
-    } else {
-      result.set(phase, { state: "READY", completed, total });
-    }
-    if (requiredUnfinished) prevPhaseUnfinished = true;
-  }
-  return result;
 }
 
 // =====================================================
@@ -1118,16 +1063,9 @@ const WORKFLOW_INSTANCE_ACTIONS = new Set([
 
 export async function getTaskHistory(user: SessionUser, instanceId: string): Promise<{ items: HistoryEntry[] }> {
   requirePermission(user.roleCode, RESOURCE.PROJECT, ACTION.READ);
-  // 1. 行级隔离:SALES 只能查自己合同下的实例
-  const ins = await prisma.workflowTaskInstance.findFirst({
-    where: { id: instanceId, deletedAt: null },
-    include: { project: { select: { contractId: true, contract: { select: { ownerUserId: true } } } } }
-  });
-  if (!ins) throw new ApiError(ERROR_CODES.WORKFLOW_TASK_NOT_FOUND, "任务实例不存在", 404);
-  if (user.roleCode === "SALES" && ins.project.contract?.ownerUserId !== user.id) {
-    throw new ApiError(ERROR_CODES.FORBIDDEN, "无权访问该任务", 403);
-  }
-  // 2. 查 OperationLog: 自身 + 父实例(循环生成) + 项目级动作(如 instantiate)
+  // 行级隔离 + 实例查询统一走 loadInstanceForUpdate(SALES 走合同 owner 校验,非 SALES 直通)
+  const ins = await loadInstanceForUpdate(prisma, user, instanceId);
+  // 查 OperationLog: 自身 + 父实例(循环生成) + 项目级动作(如 instantiate)
   const candidateIds = [instanceId];
   if (ins.parentInstanceId) candidateIds.push(ins.parentInstanceId);
   // 找该项目下的所有相关 log(主要是 WORKFLOW_INSTANTIATE / WORKFLOW_RECURRING_GENERATE)
@@ -1284,25 +1222,13 @@ export async function getProjectUpgradeCheck(
   if (!serviceType) {
     return { needsUpgrade: false, reason: "no-template", current: null, latest: null, serviceType: null, diff: null };
   }
-  // 1. 当前项目用的模板:从 instance.taskId 反推到 task.stage.templateId
-  //    取最常见那个(理论上同 serviceType 下所有 task 都来自同一 active 模板)
-  const templateIdCounts = new Map<string, number>();
-  for (const ins of project.taskInstances) {
-    // ins.task.templateId 我们没在 include 里,加个二次查
-    // 简化:用另一个 query 取所有 task 的 templateId
-  }
-  // 一次性查全部
+  // 1. 当前项目用的模板:从 instance.task.stage.templateId 反推,取最常见那个
+  //    (理论上同 serviceType 下所有 task 都来自同一 active 模板)
   const allInstances = await prisma.workflowTaskInstance.findMany({
     where: { projectId, deletedAt: null },
     include: { task: { include: { stage: { select: { templateId: true } } } } }
   });
-  for (const ins of allInstances) {
-    const tplId = ins.task.stage.templateId;
-    templateIdCounts.set(tplId, (templateIdCounts.get(tplId) ?? 0) + 1);
-  }
-  const currentTplId = templateIdCounts.size > 0
-    ? Array.from(templateIdCounts.entries()).sort((a, b) => b[1] - a[1])[0]![0]
-    : null;
+  const currentTplId = pickMajorityTemplateId(allInstances);
   // 2. 最新激活模板
   const latestTpl = await prisma.workflowTemplate.findFirst({
     where: { serviceType, isActive: true, deletedAt: null },
@@ -1477,28 +1403,15 @@ export async function getProjectKanban(user: SessionUser, projectId: string): Pr
       updatedAt: ins.updatedAt.toISOString()
     });
   }
-  // 计算 phaseState
-  let prevUnfinished = false;
-  for (const ph of WORKFLOW_PHASE_ORDER) {
-    const col = phaseMap.get(ph);
-    if (!col) continue;
-    const isDone = col.byStatus.COMPLETED + col.byStatus.SKIPPED === col.total && col.total > 0;
-    const anyActive = col.byStatus.PENDING + col.byStatus.IN_PROGRESS + col.byStatus.BLOCKED > 0;
-    if (isDone) col.phaseState = "DONE";
-    else if (prevUnfinished) col.phaseState = "LOCKED";
-    else if (anyActive) col.phaseState = "PARTIAL";
-    else col.phaseState = "READY";
-    if (anyActive) {
-      // 是否阻塞后续:只考虑 required 阶段
-      // 简化:任意 active 任务都视为阻塞后续
-      prevUnfinished = true;
-    }
-  }
-  // 重新按 WORKFLOW_PHASE_ORDER 排序
+  // 阶段状态 — 共享 helper;kanban 保留旧版"任意 active 即阻塞后续"的简化语义
+  const phaseView = computePhaseView(instances, { isPhaseBlocking: (pv) => pv.anyActive });
   const orderedCols: KanbanColumn[] = [];
   for (const ph of WORKFLOW_PHASE_ORDER) {
     const col = phaseMap.get(ph);
-    if (col) orderedCols.push(col);
+    if (!col) continue;
+    const pv = phaseView.get(ph);
+    if (pv) col.phaseState = pv.state;
+    orderedCols.push(col);
   }
   // 总计
   const totals = { total: 0, pending: 0, inProgress: 0, completed: 0, blocked: 0 };
@@ -1594,14 +1507,8 @@ export async function exportProjectWorkflow(
   });
   if (!project) throw new ApiError(ERROR_CODES.NOT_FOUND, "项目不存在", 404);
 
-  // 取项目当前用的模板(从 instance.task.stage.templateId 反推)
-  const templateIdCounts = new Map<string, number>();
-  for (const ins of project.taskInstances) {
-    templateIdCounts.set(ins.task.stage.templateId, (templateIdCounts.get(ins.task.stage.templateId) ?? 0) + 1);
-  }
-  const templateId = templateIdCounts.size > 0
-    ? Array.from(templateIdCounts.entries()).sort((a, b) => b[1] - a[1])[0]![0]
-    : null;
+  // 取项目当前用的模板(从 instance.task.stage.templateId 反推,取多数派)
+  const templateId = pickMajorityTemplateId(project.taskInstances);
   const template = templateId
     ? await prisma.workflowTemplate.findUnique({ where: { id: templateId } })
     : null;

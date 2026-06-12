@@ -783,3 +783,171 @@ describe("TemplateChanges is detected via JSON serialization", () => {
     expect(listChanges({ desc: null }, { desc: "X" }, ["desc"])).toEqual(["desc"]);
   });
 });
+
+// =====================================================================
+// 视图聚合 helper(纯函数,无 prisma 依赖)
+// =====================================================================
+import { computePhaseView, pickMajorityTemplateId } from "../lib/workflow-view";
+
+type StubInstance = {
+  status: string;
+  task: { stage: { phase: string; code: string; name: string; sort: number; isRequired: boolean } };
+};
+
+const PHASE_PREP: StubInstance["task"]["stage"] = { phase: "PREP", code: "prep", name: "前期准备", sort: 1, isRequired: true };
+const PHASE_REQ_REQ: StubInstance["task"]["stage"] = { phase: "REQUIREMENT", code: "req", name: "需求识别", sort: 2, isRequired: true };
+const PHASE_REQ_OPT: StubInstance["task"]["stage"] = { phase: "REQUIREMENT", code: "opt", name: "需求(可选)", sort: 3, isRequired: false };
+const PHASE_EXEC: StubInstance["task"]["stage"] = { phase: "EXECUTE", code: "exec", name: "服务实施", sort: 4, isRequired: true };
+
+function ins(status: string, stage: StubInstance["task"]["stage"]): StubInstance {
+  return { status, task: { stage } };
+}
+
+describe("computePhaseView", () => {
+  // workflow 路径用的 isPartial 语义:必须有完成项才算"已开工" — 旧 computePhaseStatesForProject 行为
+  const WORKFLOW_OPTS = { isPartial: (pv: { completed: number }) => pv.completed > 0 };
+
+  it("空实例 → WORKFLOW_PHASE_ORDER 全部 phase 都有条目,状态 READY/0", () => {
+    const view = computePhaseView([], WORKFLOW_OPTS);
+    expect(view.size).toBe(5);
+    for (const [, pv] of view) {
+      expect(pv.state).toBe("READY");
+      expect(pv.total).toBe(0);
+      expect(pv.completed).toBe(0);
+      expect(pv.requiredUnfinishedCount).toBe(0);
+      expect(pv.anyActive).toBe(false);
+    }
+  });
+
+  it("全部完成某 phase → DONE", () => {
+    const view = computePhaseView(
+      [ins("COMPLETED", PHASE_PREP), ins("COMPLETED", PHASE_REQ_REQ)],
+      WORKFLOW_OPTS
+    );
+    expect(view.get("PREP")?.state).toBe("DONE");
+    expect(view.get("PREP")?.total).toBe(1);
+    expect(view.get("PREP")?.completed).toBe(1);
+    expect(view.get("PREP")?.requiredUnfinishedCount).toBe(0);
+    expect(view.get("REQUIREMENT")?.state).toBe("DONE");
+  });
+
+  it("PREP 有 required 未完成 → REQUIREMENT 锁 LOCKED,带 lockReason", () => {
+    const view = computePhaseView(
+      [ins("PENDING", PHASE_PREP), ins("PENDING", PHASE_REQ_REQ)],
+      WORKFLOW_OPTS
+    );
+    // 旧行为:纯 PENDING 的 phase 在 completed>0 策略下显 READY(不是 PARTIAL)
+    expect(view.get("PREP")?.state).toBe("READY");
+    expect(view.get("PREP")?.requiredUnfinishedCount).toBe(1);
+    expect(view.get("REQUIREMENT")?.state).toBe("LOCKED");
+    expect(view.get("REQUIREMENT")?.lockReason).toContain("前期准备");
+    expect(view.get("REQUIREMENT")?.lockReason).toContain("1 项任务未完成");
+  });
+
+  it("non-required stage 里有未完成不阻塞后续(默认 requiredUnfinished 阻塞策略)", () => {
+    const view = computePhaseView(
+      [ins("PENDING", PHASE_REQ_OPT), ins("PENDING", PHASE_REQ_REQ)],
+      WORKFLOW_OPTS
+    );
+    // REQUIREMENT 自身:completed=0 → READY
+    expect(view.get("REQUIREMENT")?.state).toBe("READY");
+    expect(view.get("REQUIREMENT")?.requiredUnfinishedCount).toBe(1);
+    // EXECUTE 是空 phase → 旧行为:永远 READY(不进入 prevBlocking 检查)
+    expect(view.get("EXECUTE")?.state).toBe("READY");
+  });
+
+  it("SKIPPED 计入 completed,不应阻塞后续", () => {
+    const view = computePhaseView(
+      [ins("SKIPPED", PHASE_PREP), ins("PENDING", PHASE_REQ_REQ)],
+      WORKFLOW_OPTS
+    );
+    expect(view.get("PREP")?.state).toBe("DONE");
+    expect(view.get("PREP")?.completed).toBe(1);
+    expect(view.get("PREP")?.requiredUnfinishedCount).toBe(0);
+    expect(view.get("REQUIREMENT")?.state).toBe("READY");
+  });
+
+  it("kanban 模式(isPartial=anyActive):纯 PENDING 的 phase 显 PARTIAL", () => {
+    const view = computePhaseView([ins("PENDING", PHASE_REQ_OPT)], {
+      isPartial: (pv) => pv.anyActive
+    });
+    expect(view.get("REQUIREMENT")?.anyActive).toBe(true);
+    expect(view.get("REQUIREMENT")?.state).toBe("PARTIAL");
+    // EXECUTE 是空 phase → 旧行为:永远 READY
+    expect(view.get("EXECUTE")?.state).toBe("READY");
+  });
+
+  it("kanban 模式:非空 EXECUTE 会被前面的 active REQUIREMENT 阻塞成 LOCKED", () => {
+    const PHASE_EXEC2: StubInstance["task"]["stage"] = { phase: "EXECUTE", code: "exec2", name: "服务2", sort: 5, isRequired: true };
+    const view = computePhaseView(
+      [ins("PENDING", PHASE_REQ_OPT), ins("PENDING", PHASE_EXEC2)],
+      {
+        isPartial: (pv) => pv.anyActive,
+        isPhaseBlocking: (pv) => pv.anyActive
+      }
+    );
+    expect(view.get("REQUIREMENT")?.state).toBe("PARTIAL");
+    expect(view.get("EXECUTE")?.state).toBe("LOCKED");
+  });
+
+  it("byStatus 计数正确", () => {
+    const view = computePhaseView([
+      ins("PENDING", PHASE_PREP),
+      ins("IN_PROGRESS", PHASE_PREP),
+      ins("BLOCKED", PHASE_PREP),
+      ins("COMPLETED", PHASE_PREP),
+      ins("SKIPPED", PHASE_PREP)
+    ]);
+    expect(view.get("PREP")?.byStatus).toEqual({
+      PENDING: 1,
+      IN_PROGRESS: 1,
+      BLOCKED: 1,
+      COMPLETED: 1,
+      SKIPPED: 1
+    });
+    expect(view.get("PREP")?.total).toBe(5);
+  });
+});
+
+describe("pickMajorityTemplateId", () => {
+  it("空输入 → null", () => {
+    expect(pickMajorityTemplateId([])).toBeNull();
+  });
+
+  it("所有实例同一模板 → 该模板 id", () => {
+    const r = pickMajorityTemplateId([
+      { task: { stage: { templateId: "tpl-A" } } },
+      { task: { stage: { templateId: "tpl-A" } } },
+      { task: { stage: { templateId: "tpl-A" } } }
+    ]);
+    expect(r).toBe("tpl-A");
+  });
+
+  it("多数派模板胜出", () => {
+    const r = pickMajorityTemplateId([
+      { task: { stage: { templateId: "tpl-A" } } },
+      { task: { stage: { templateId: "tpl-A" } } },
+      { task: { stage: { templateId: "tpl-B" } } }
+    ]);
+    expect(r).toBe("tpl-A");
+  });
+
+  it("并列时取第一个最大(Map.entries 顺序)", () => {
+    const r = pickMajorityTemplateId([
+      { task: { stage: { templateId: "tpl-A" } } },
+      { task: { stage: { templateId: "tpl-B" } } }
+    ]);
+    // 都是 1 次;Map.entries 顺序: 先 A 后 B;排序后 [A,1] vs [B,1] 保持原序,取第一个 [A,1]
+    expect(r).toBe("tpl-A");
+  });
+
+  it("空 templateId/null templateId 跳过", () => {
+    const r = pickMajorityTemplateId([
+      { task: { stage: { templateId: null } } },
+      { task: { stage: { templateId: "" } } },
+      { task: null },
+      { task: { stage: { templateId: "tpl-A" } } }
+    ]);
+    expect(r).toBe("tpl-A");
+  });
+});
