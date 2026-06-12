@@ -11,7 +11,6 @@ import {
   Dropdown,
   Badge,
   Drawer,
-  List,
   Empty,
   Tooltip,
   Typography,
@@ -561,10 +560,12 @@ export function DashboardShell({ user, children }: Props) {
         {messages.length === 0 ? (
           <Empty description="暂无消息" />
         ) : (
-          <List
-            dataSource={messages}
-            renderItem={(m) => (
-              <List.Item
+          <div>
+            {messages.map((m) => (
+              <div
+                key={m.id}
+                role={m.link ? "button" : undefined}
+                tabIndex={m.link ? 0 : undefined}
                 style={{
                   background: m.readAt ? undefined : token.colorPrimaryBg,
                   borderRadius: 6,
@@ -591,19 +592,25 @@ export function DashboardShell({ user, children }: Props) {
                     setDrawerOpen(false);
                   }
                 }}
+                onKeyDown={
+                  m.link
+                    ? (e) => {
+                        if (e.key === "Enter" || e.key === " ") {
+                          e.preventDefault();
+                          (e.currentTarget as HTMLDivElement).click();
+                        }
+                      }
+                    : undefined
+                }
               >
-                <List.Item.Meta
-                  title={<span style={{ fontSize: 13, fontWeight: 500 }}>{m.title}</span>}
-                  description={
-                    <span style={{ fontSize: 12, color: token.colorTextTertiary }}>
-                      <span style={{ marginRight: 8 }}>{m.type}</span>
-                      <span>{new Date(m.createdAt).toLocaleString("zh-CN")}</span>
-                    </span>
-                  }
-                />
-              </List.Item>
-            )}
-          />
+                <div style={{ fontSize: 13, fontWeight: 500 }}>{m.title}</div>
+                <div style={{ fontSize: 12, color: token.colorTextTertiary, marginTop: 2 }}>
+                  <span style={{ marginRight: 8 }}>{m.type}</span>
+                  <span>{new Date(m.createdAt).toLocaleString("zh-CN")}</span>
+                </div>
+              </div>
+            ))}
+          </div>
         )}
       </Drawer>
     </Layout>
