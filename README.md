@@ -77,7 +77,7 @@ npm run dev
 | `npx prisma migrate dev` | 创建/应用 migration |
 | `npm run seed` | 跑种子 |
 
-## 当前状态:v0.1.0 已上线就绪
+## 当前状态:v0.2.0(2026-06-12)移动端 + 自动登录 待发布
 
 **核心模块**
 
@@ -90,6 +90,8 @@ npm run dev
 - 登录页 + 顶部导航 重做(品牌 logo 配色、统计数字区、面包屑) 
 - 部门管理(树形 CRUD + seed 关联 + user form 字段对齐)
 - 行业 / 客户来源 / 部门 等数据字典(白名单 + `useDict` 接入)
+- **移动端适配**:`<md` 折叠为汉堡 Drawer;列表 / 表单 / 详情 / 统计全场景自适应;`useResponsive` hook 统一断点(Antd 6 默认 xs/sm/md/lg/xl)
+- **「7 天内自动登录」真正生效**:登录页复选框通过自定义 `jwt.encode` 拦截 maxAge 决定 JWT 寿命,勾选 → 7d,不勾选 → 8h
 
 **质量基线(2026-06-11 重测)**
 
@@ -112,6 +114,12 @@ npm run dev
 - **docs(review)**:落盘 `docs/部署前代码审查 — qt-biz v0.1.0.md`,3 P0 阻断 + 4 P1 风险全部修复
 
 ## 最近更新
+
+### v0.2.0(2026-06-12)移动端适配 + 自动登录(待发布)
+
+- **feat(ui): 移动端适配** — `Pad 完整可用 / Phone 优雅降级`。Sider 在 `<md` 折叠为 Drawer(汉堡触发);5 列表页 + 5 详情页 + 3 统计页 + 2 抽屉 + 共享件(`Page` / `PageHeader` / `StatGrid` / `FormSection` / `FormCard` / `SubmitBar`)全部接入 `useResponsive`;`globals.css` 加 safe-area 工具类与 `:focus-visible` 轮廓;`layout.tsx` 新增 `viewport` 与 `themeColor` export。详情见本文「[移动端适配](#移动端适配)」章节
+- **feat(auth): 「7 天内自动登录」真正生效** — 之前复选框是装饰;本轮在 `lib/auth.ts` 自定义 `jwt.encode`,按 `token.remember` 决定 `effectiveMaxAge`(true/缺省 → `session.maxAge=7d`,false → 8h)。`tests/e2e/auto-login.spec.ts` 用 jose 解密 JWE 断言两种情况下 `exp - iat`
+- **chore(playwright)**:新增 `iphone-13` 与 `ipad-portrait` projects(独立 webkit,无 chrome 通道强制);新文件 `tests/e2e/responsive.spec.ts` 覆盖 Shell + 5 列表 + 1 表单的响应式 smoke
 
 ### v0.1.0(2026-06-11)生产硬化
 
@@ -143,6 +151,69 @@ npm run dev
 - **P2**:领域事件总线 + 4 个定时任务 + 统计分析 + xlsx 导出 + 软删除
 - **P1**:五大模块 CRUD + 16 条跨模块校验 + 27/27 e2e
 - **P0**:项目脚手架 + 登录 + 字典种子 + 4 角色权限
+
+## 移动端适配
+
+断点沿用 Antd 6 默认(`xs=480` / `sm=576` / `md=768` / `lg=992` / `xl=1200`),`md` 作为手机 / 平板分水岭。
+
+**Shell 行为**
+
+- `>=md` 桌面:左 232px 固定 Sider + 顶部 64px Header(原有行为)
+- `<md` 手机:Sider 收起,顶栏左侧出现汉堡按钮;点击 → 左抽屉 Drawer(`min(320, 85vw)`),带遮罩;路由切换 / 菜单点击 / 遮罩点击自动关闭
+- 头像 + 用户名 + 角色在 `<sm` 极窄屏隐藏,只保留头像(带 Tooltip)
+- 面包屑在 `<sm` 只显示最后一段,避免挤爆 header
+
+**业务页行为**
+
+| 场景 | 行为 |
+|---|---|
+| 5 列表页 | ProTable 加 `scroll.x: max-content` + sticky 头,移动端搜索栏 `layout: vertical`、分页 `size: small`;首列 `fixed: left` 便于横滑 |
+| 5 详情页 | `ProDescriptions.column` 改为 `{ xs:1, sm:1, md:2, lg:2, xl:3 }`;内嵌 ProTable 同样加 `scroll.x` + sticky |
+| 5 新建/编辑页 | `FormGrid` 在 `<sm` 强制 1 列,`SubmitBar` 移动端块状按钮 + 贴底安全区 |
+| 2 抽屉(跟进 / 进度) | `<md` 改 `placement: bottom`、`width: 100%`、`height: 90%`,符合拇指可达 |
+| 3 统计页 | 图表 `autoFit` + 高度在 `<md` 压缩到 240px;业绩 / 账龄明细在手机端折叠到 Top 5 |
+| 仪表盘 | 5 列 KPI 堆叠;Row/Col 在 `<md` 单列堆叠 |
+
+**触摸与可达性**
+
+- 重要按钮(`size="large"`)在 `<md` 强制 ≥ 40px 命中区
+- 主体加 `.qt-touch` class(`<md` 命中),禁用菜单 hover-to-open 行为
+- `:focus-visible` 沿用 Antd 主色键盘焦点环
+- 移除 `-webkit-tap-highlight-color`,用 Antd 自带 active 态
+
+**viewport meta**(`app/layout.tsx`)
+
+```
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover"/>
+```
+
+**实现要点**
+
+- 单一 hook `lib/use-breakpoint.ts`:薄包装 `antd.Grid.useBreakpoint()`,SSR 安全(首次渲染保守返回桌面,水合后由客户端填入)
+- 不引入 Tailwind / 额外 UI 库;`globals.css` 新增 `.pt-safe` / `.pb-safe` 等 4 个安全区工具类
+- 桌面端零回归:`StatGrid` 既有响应式断点逻辑不破坏;`ProTable.sticky={isMobile}` 桌面关闭,移动开启
+- 唯一行为差异:手机端列表仍是水平滚动,而非卡片流(ProTable 3.1.12-0 beta 的 card 视图 API 暂不稳定,按 plan 接受此 fallback)
+
+## 认证
+
+NextAuth v4 + JWT 策略(不挂 PrismaAdapter,简化 P0 阶段)。
+
+**「7 天内自动登录」**(`lib/auth.ts`)
+
+- 登录页勾选复选框 → JWT 寿命 = 7 天
+- 不勾选 → JWT 寿命 = 8 小时
+- 实现:自定义 `authOptions.jwt.encode`,根据 `token.remember` 拦截 `maxAge` 参数(`true/缺省 → session.maxAge`,`false → 8 * 3600`)
+- e2e:`tests/e2e/auto-login.spec.ts` 用 `jose.jwtDecrypt` + 32 字节 HKDF(与 NextAuth v4 一致)解密 JWE,断言 `exp - iat`
+
+**Cookie 安全**
+
+- 生产 `useSecureCookies` 仅在 `FORCE_HTTPS=true` 时开启;HTTP 反代下保持非 secure 避免登录 cookie 丢失
+- 密码用 bcrypt cost=10 哈希;`lastLoginAt` 每次成功登录更新
+
+**会话失效**
+
+- 角色 / 状态 30s TTL 缓存,admin 改角色 / 禁用户最迟 30s 生效
+- 30s 内复用避免每个请求打 DB
 
 ## 对象存储(MinIO)
 

@@ -69,6 +69,9 @@ function LoginForm() {
       const res = await signIn("credentials", {
         employeeNo,
         password,
+        // NextAuth 在内部把任意非内置字段塞进 creds 传给 authorize;
+        // 这里 "true"/"false" 是字符串,与 authorize 里的归一化逻辑对应
+        remember: remember ? "true" : "false",
         redirect: false
       });
       if (res?.ok) {

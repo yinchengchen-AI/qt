@@ -3,6 +3,7 @@ import type { AuthOptions } from "next-auth";
 import CredentialsProvider from "next-auth/providers/credentials";
 import bcrypt from "bcrypt";
 import { prisma } from "./prisma";
+import { encode as defaultJwtEncode, decode as defaultJwtDecode } from "next-auth/jwt";
 import { ROLE_PERMISSIONS, type Action, type Resource } from "./permissions";
 import type { RoleCode } from "@/types/enums";
 
@@ -23,6 +24,8 @@ declare module "next-auth" {
     name: string;
     email: string;
     roleCode: RoleCode;
+    /** 登录页"7 天内自动登录"勾选状态:false 明确 8h 过期,true/缺省 走 session.maxAge (7d) */
+    remember?: boolean;
   }
 }
 
@@ -31,6 +34,7 @@ declare module "next-auth/jwt" {
     uid: string;
     employeeNo: string;
     roleCode: RoleCode;
+    remember?: boolean;
   }
 }
 
@@ -82,17 +86,38 @@ if (isProd && !forceHttps) {
 }
 
 export const authOptions: AuthOptions = {
-  session: { strategy: "jwt", maxAge: 8 * 60 * 60 },
+  // 7 天作为 cookie 寿命上限;实际 JWT 寿命由 jwt 回调里的 token.exp 决定
+  // (remember=true/缺省 → 7d, remember=false → 8h)
+  session: { strategy: "jwt", maxAge: 7 * 24 * 60 * 60 },
   pages: { signIn: "/login" },
   // 安全 cookie 仅在 HTTPS 下生效,HTTP 下浏览器不存 secure cookie,CSRF token 不匹配,登录后无法跳转
   // 走 nginx HTTP 反代时: 不要设 FORCE_HTTPS (默认 non-secure); 走 HTTPS 时: 设 FORCE_HTTPS=true
   useSecureCookies: isProd ? forceHttps : false,
+  // 自定义 jwt.encode:让"不勾选"登录的 session JWT 寿命 = 8h,勾选 = session.maxAge (7d)
+  // 原因:NextAuth v4 的内置 encode 内部用 setExpirationTime(now() + maxAge) 直接覆盖 exp,
+  // 仅在 jwt 回调里写 token.exp 无效;必须在这里拦截 maxAge
+  jwt: {
+    async encode(params) {
+      const { token, maxAge, ...rest } = params;
+      // token.remember 由 callbacks.jwt 在签发时设置 (true / false / undefined)
+      const effectiveMaxAge = token?.remember === false
+        ? 8 * 60 * 60
+        : maxAge;
+      return await defaultJwtEncode({ ...rest, token, maxAge: effectiveMaxAge });
+    },
+    async decode(params) {
+      return await defaultJwtDecode(params);
+    }
+  },
   providers: [
     CredentialsProvider({
       name: "Credentials",
       credentials: {
         employeeNo: { label: "工号", type: "text" },
-        password: { label: "密码", type: "password" }
+        password: { label: "密码", type: "password" },
+        // 任意非内置字段都会通过 creds 传给 authorize;
+        // "true"/"false" 字符串由 signIn(..., { remember }) 传过来,在 authorize 归一化为 boolean
+        remember: { label: "记住我", type: "text" }
       },
       async authorize(creds) {
         if (!creds?.employeeNo || !creds?.password) return null;
@@ -104,12 +129,16 @@ export const authOptions: AuthOptions = {
         const ok = await bcrypt.compare(creds.password, user.passwordHash);
         if (!ok) return null;
         await prisma.user.update({ where: { id: user.id }, data: { lastLoginAt: new Date() } });
+        // 归一化:signIn(..., { remember }) 在 NextAuth 内部一律是字符串;
+        // undefined 表示前端没传(老登录链路),按"未勾选"处理
+        const remember = creds.remember === "true";
         return {
           id: user.id,
           employeeNo: user.employeeNo,
           name: user.name,
           email: user.email,
-          roleCode: user.role.code as RoleCode
+          roleCode: user.role.code as RoleCode,
+          remember
         };
       }
     })
@@ -121,6 +150,10 @@ export const authOptions: AuthOptions = {
         token.employeeNo = user.employeeNo;
         token.roleCode = user.roleCode;
         token.iat = Math.floor(Date.now() / 1000);
+        token.remember = !!user.remember;
+        // 真正的"压短"在下方 authOptions.jwt.encode 里:它读 token.remember
+        // 决定 effective maxAge (false → 8h, true/缺省 → session.maxAge = 7d)。
+        // 这里不再覆盖 token.exp,因为 NextAuth 内置 encode 会用 setExpirationTime(maxAge) 把它覆盖掉。
       }
       // 缓存查 user,确认仍 ACTIVE;30s 内复用,避免每个请求都打 DB
       if (token.uid) {
