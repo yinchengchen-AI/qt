@@ -17,6 +17,8 @@ import { openPrintWindow } from "@/lib/print-client";
 import { AttachmentList } from "@/components/file/attachment-list";
 import { INVOICE_TYPE_MAP, TITLE_TYPE_MAP } from "@/lib/enum-maps";
 
+const DESC_COL = { xs: 1, sm: 1, md: 2, lg: 2, xl: 3 } as const;
+
 export default function InvoiceDetailPage() {
   const params = useParams();
   const id = String(params.id);
@@ -72,7 +74,7 @@ export default function InvoiceDetailPage() {
         subtitle={`发票类型: ${invoice.invoiceType ?? "-"}`}
         meta={<StatusTag status={invoice.status} domain="invoice" />}
         actions={
-          <Space>
+          <Space wrap>
             <Button key="pdf" icon={<FilePdfOutlined />} onClick={() => openPrintWindow(`/api/invoices/${id}/pdf`)}>导出 PDF</Button>
             {status === "DRAFT" && <Button type="primary" onClick={() => run("submit")}>提交</Button>}
             {status === "PENDING_FINANCE" && isFinance && (
@@ -91,7 +93,7 @@ export default function InvoiceDetailPage() {
         }
       />
       <ProCard>
-        <ProDescriptions<InvoiceEntity> column={2} dataSource={invoice} columns={[
+        <ProDescriptions<InvoiceEntity> column={DESC_COL} dataSource={invoice} columns={[
           { title: "发票号", dataIndex: "invoiceNo" },
           { title: "客户", dataIndex: "customerName" },
           { title: "发票类型", dataIndex: "invoiceType", render: (v) => INVOICE_TYPE_MAP[v as string] ?? v },

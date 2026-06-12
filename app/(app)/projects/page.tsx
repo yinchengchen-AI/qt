@@ -14,6 +14,7 @@ import { SERVICE_TYPE_MAP } from "@/lib/enum-maps";
 import { makeListRequest } from "@/lib/use-list-request";
 import { downloadExcel } from "@/lib/excel-client";
 import { CurrencyCell, DateCell } from "@/components/table-cells";
+import { useResponsive } from "@/lib/use-breakpoint";
 
 type Row = {
   id: string;
@@ -30,6 +31,7 @@ type Row = {
 
 export default function ProjectsPage() {
   const router = useRouter();
+  const { isMobile } = useResponsive();
   const statusEnum = useStatusValueEnum("project");
   const serviceTypeDict = useDict("SERVICE_TYPE");
   const searchRef = useRef<Record<string, unknown>>({});
@@ -67,9 +69,11 @@ export default function ProjectsPage() {
       />
       <ProTable<Row>
         rowKey="id"
-        search={{ labelWidth: "auto" }}
-        pagination={{ pageSize: 20 }}
+        search={{ labelWidth: "auto", defaultCollapsed: isMobile, layout: isMobile ? "vertical" : undefined }}
+        scroll={{ x: 'max-content' }}
+        pagination={{ pageSize: 20, showSizeChanger: !isMobile, size: isMobile ? "small" : undefined }}
         cardBordered={false}
+        sticky={isMobile}
         request={async (params) => {
           searchRef.current = {
             keyword: params.keyword,
@@ -86,6 +90,7 @@ export default function ProjectsPage() {
             dataIndex: "projectNo",
             search: false,
             width: 180,
+            fixed: !isMobile ? "left" : undefined,
             render: (_, r) => <Link href={`/projects/${r.id}`}>{r.projectNo}</Link>
           },
           { title: "项目名称", dataIndex: "name", search: false, width: 220 },
@@ -112,6 +117,10 @@ export default function ProjectsPage() {
             render: (_, r) => <StatusTag status={r.status} domain="project" />
           }
         ]}
+        options={{
+          density: !isMobile,
+          fullScreen: !isMobile
+        }}
       />
     </Page>
   );

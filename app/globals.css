@@ -16,6 +16,11 @@ body {
 
 * { box-sizing: border-box; }
 
+/* Page-level horizontal scroll lock: keep the shell from ever producing
+   a page-level horizontal scrollbar; inner components can still scroll
+   horizontally (ProTable scroll.x, etc.) inside their own containers. */
+html, body { overflow-x: hidden; }
+
 /* Subtle scrollbar — antd default chrome, slightly tightened. */
 ::-webkit-scrollbar { width: 8px; height: 8px; }
 ::-webkit-scrollbar-track { background: transparent; }
@@ -24,6 +29,20 @@ body {
   border-radius: 999px;
 }
 ::-webkit-scrollbar-thumb:hover { background: rgba(0, 0, 0, 0.32); }
+
+/* =============================================================
+   Safe-area utilities — use on sticky header / floating bars so
+   the content never gets covered by iOS notch / home indicator
+   or Android gesture bar.
+   ------------------------------------------------------------- */
+.pt-safe    { padding-top:    env(safe-area-inset-top); }
+.pb-safe    { padding-bottom: env(safe-area-inset-bottom); }
+.pl-safe    { padding-left:   env(safe-area-inset-left); }
+.pr-safe    { padding-right:  env(safe-area-inset-right); }
+.mt-safe    { margin-top:     env(safe-area-inset-top); }
+.mb-safe    { margin-bottom:  env(safe-area-inset-bottom); }
+.ml-safe    { margin-left:    env(safe-area-inset-left); }
+.mr-safe    { margin-right:   env(safe-area-inset-right); }
 
 /* =============================================================
    Page transition: a single soft fade + slight rise. Mounted
@@ -39,6 +58,10 @@ body {
   animation: app-fade-up 220ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
 }
 
+@media (max-width: 767.98px) {
+  .app-anim-in { animation-duration: 160ms; }
+}
+
 /* Stagger helper: child elements float in one after another. */
 .app-stagger > * {
   animation: app-fade-up 260ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
@@ -52,6 +75,38 @@ body {
 .app-stagger > *:nth-child(7) { animation-delay: 260ms; }
 .app-stagger > *:nth-child(8) { animation-delay: 300ms; }
 .app-stagger > *:nth-child(n + 9) { animation-delay: 320ms; }
+
+/* =============================================================
+   Touch ergonomics
+   ------------------------------------------------------------- */
+
+/* Use the Antd primary as the focus ring for keyboard users only.
+   The :focus-visible pseudo lets mouse / touch users skip the ring. */
+:focus-visible {
+  outline: 2px solid #1677ff;
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+/* Remove tap highlight on iOS / Android Webkit; we already have
+   our own active/hover states through Antd. */
+* { -webkit-tap-highlight-color: transparent; }
+
+/* On coarse-pointer devices (mobile), snap to click-only menus:
+   Antd Menu's hover-to-open style is annoying on touch. The .qt-touch
+   class is set on <body> by DashboardShell based on the breakpoint. */
+.qt-touch .ant-menu-submenu-title,
+.qt-touch .ant-menu-item { transition: none !important; }
+
+/* Force ≥40px touch targets on primary actions. Apply via .qt-touch
+   to avoid affecting desktop chrome. */
+@media (max-width: 767.98px) {
+  .qt-touch .ant-btn-lg { min-height: 40px; }
+  .qt-touch .ant-btn:not(.ant-btn-sm):not(.ant-btn-lg) { min-height: 36px; }
+  .qt-touch .ant-input-affix-wrapper-lg,
+  .qt-touch .ant-input-lg,
+  .qt-touch .ant-select-lg .ant-select-selector { min-height: 40px !important; }
+}
 
 /* Respect reduced motion. */
 @media (prefers-reduced-motion: reduce) {

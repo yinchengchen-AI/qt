@@ -16,16 +16,20 @@ import { openPrintWindow } from "@/lib/print-client";
 import { useUserName } from "@/lib/user-lookup";
 import { ProgressLogDrawer } from "@/components/file/progress-log-drawer";
 import { CurrencyCell, DateTimeCell } from "@/components/table-cells";
+import { useResponsive } from "@/lib/use-breakpoint";
 
 const ACTION_LABEL: Record<string, string> = {
   start: "开始", suspend: "暂停", resume: "恢复", deliver: "交付",
   accept: "验收", close: "关闭", cancel: "取消"
 };
 
+const DESC_COL = { xs: 1, sm: 1, md: 2, lg: 2, xl: 3 } as const;
+
 export default function ProjectDetailPage() {
   const params = useParams();
   const id = String(params.id);
   const router = useRouter();
+  const { isMobile } = useResponsive();
   const { data, isLoading, mutate } = useSWR<ProjectEntity>(`/api/projects/${id}`);
   const project = data;
   const { run } = useActionCall({ baseUrl: `/api/projects/${id}`, reload: () => mutate() });
@@ -62,7 +66,7 @@ export default function ProjectDetailPage() {
         subtitle={`所属合同: ${contractNo}`}
         meta={<StatusTag status={project.status} domain="project" />}
         actions={
-          <Space>
+          <Space wrap>
             {canLogProgress && (
               <Button key="progress" icon={<PlusOutlined />} onClick={() => setProgressOpen(true)}>
                 记录进度
@@ -86,7 +90,7 @@ export default function ProjectDetailPage() {
         }
       />
       <ProCard>
-        <ProDescriptions column={2} dataSource={data} columns={[
+        <ProDescriptions column={DESC_COL} dataSource={data} columns={[
           { title: "项目编号", dataIndex: "projectNo" },
           { title: "所属合同", dataIndex: ["contract", "contractNo"], render: () => contractNo },
           { title: "起期", dataIndex: "startDate", render: (v) => <DateTimeCell value={v as string} /> },
@@ -96,7 +100,7 @@ export default function ProjectDetailPage() {
       </ProCard>
       <PageHeader level="section" title="服务范围" />
       <ProCard>
-        <div style={{ whiteSpace: "pre-wrap" }}>{project.serviceScope}</div>
+        <div style={{ whiteSpace: "pre-wrap", wordBreak: "break-word" }}>{project.serviceScope}</div>
       </ProCard>
       <PageHeader level="section" title="进度日志" />
       <ProCard>
@@ -104,8 +108,10 @@ export default function ProjectDetailPage() {
           rowKey="id"
           search={false}
           options={false}
-          pagination={{ pageSize: 10 }}
+          pagination={{ pageSize: 10, size: isMobile ? "small" : undefined }}
           dataSource={project.progressLogs ?? []}
+          scroll={{ x: 'max-content' }}
+          sticky={isMobile}
           columns={[
             { title: "时间", dataIndex: "at", valueType: "dateTime", width: 180, render: (_, r) => <DateTimeCell value={r.at as string} /> },
             { title: "进度", dataIndex: "percent", width: 100, render: (v) => `${v as number}%` },

@@ -18,6 +18,7 @@ import { AttachmentList } from "@/components/file/attachment-list";
 import { useDict } from "@/lib/dict-client";
 import { useUserName } from "@/lib/user-lookup";
 import { PAYMENT_METHOD_MAP, SERVICE_TYPE_MAP, REVIEW_ACTION_MAP } from "@/lib/enum-maps";
+import { useResponsive } from "@/lib/use-breakpoint";
 
 const REVIEW_ACTION_TONE: Record<string, string> = {
   SUBMIT:    "processing",
@@ -26,9 +27,12 @@ const REVIEW_ACTION_TONE: Record<string, string> = {
   WITHDRAW:  "warning"
 };
 
+const DESC_COL = { xs: 1, sm: 1, md: 2, lg: 2, xl: 3 } as const;
+
 export default function ContractDetailPage() {
   const params = useParams();  const id = String(params.id);
   const router = useRouter();
+  const { isMobile } = useResponsive();
   const { data: session } = useSession();
   const { data, isLoading, mutate } = useSWR<ContractEntity>(`/api/contracts/${id}`);
   const contract = data;
@@ -64,7 +68,7 @@ export default function ContractDetailPage() {
         subtitle={`客户: ${contract.customerName} · 服务类型: ${serviceTypeLabel}`}
         meta={<StatusTag status={contract.status} domain="contract" />}
         actions={
-          <Space>
+          <Space wrap>
             <Button key="pdf" icon={<FilePdfOutlined />} onClick={() => openPrintWindow(`/api/contracts/${id}/pdf`)}>导出 PDF</Button>
             {status === "DRAFT" && (
               <>
@@ -86,7 +90,7 @@ export default function ContractDetailPage() {
         }
       />
       <ProCard>
-        <ProDescriptions<ContractEntity> column={2} dataSource={contract} columns={[
+        <ProDescriptions<ContractEntity> column={DESC_COL} dataSource={contract} columns={[
           { title: "合同号", dataIndex: "contractNo" },
           { title: "客户", dataIndex: "customerName" },
           { title: "服务类型", dataIndex: "serviceType", render: () => serviceTypeLabel },
@@ -112,6 +116,8 @@ export default function ContractDetailPage() {
             options={false}
             pagination={false}
             dataSource={contract.reviewLogs}
+            scroll={{ x: 'max-content' }}
+            sticky={isMobile}
             columns={[
               {
                 title: "时间",

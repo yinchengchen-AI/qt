@@ -13,6 +13,7 @@ import { makeListRequest } from "@/lib/use-list-request";
 import { useDict } from "@/lib/dict-client";
 import { downloadExcel } from "@/lib/excel-client";
 import { CurrencyCell, DateTimeCell } from "@/components/table-cells";
+import { useResponsive } from "@/lib/use-breakpoint";
 
 type Row = {
   id: string;
@@ -26,6 +27,7 @@ type Row = {
 
 export default function PaymentsPage() {
   const router = useRouter();
+  const { isMobile } = useResponsive();
   const statusEnum = useStatusValueEnum("payment");
   const methodDict = useDict("PAYMENT_RECEIVE_METHOD");
   const methodEnum = Object.fromEntries(methodDict.map((d) => [d.code, { text: d.label }]));
@@ -64,9 +66,11 @@ export default function PaymentsPage() {
       />
       <ProTable<Row>
         rowKey="id"
-        search={{ labelWidth: "auto" }}
-        pagination={{ pageSize: 20 }}
+        search={{ labelWidth: "auto", defaultCollapsed: isMobile, layout: isMobile ? "vertical" : undefined }}
+        scroll={{ x: 'max-content' }}
+        pagination={{ pageSize: 20, showSizeChanger: !isMobile, size: isMobile ? "small" : undefined }}
         cardBordered={false}
+        sticky={isMobile}
         request={async (params) => {
           searchRef.current = {
             keyword: params.keyword,
@@ -84,6 +88,7 @@ export default function PaymentsPage() {
             dataIndex: "paymentNo",
             search: false,
             width: 200,
+            fixed: !isMobile ? "left" : undefined,
             render: (_, r) => <Link href={`/payments/${r.id}`}>{r.paymentNo}</Link>
           },
           { title: "金额", dataIndex: "amount", search: false, width: 140, render: (_, r) => <CurrencyCell value={r.amount} /> },
@@ -105,6 +110,10 @@ export default function PaymentsPage() {
             render: (_, r) => <StatusTag status={r.status} domain="payment" />
           }
         ]}
+        options={{
+          density: !isMobile,
+          fullScreen: !isMobile
+        }}
       />
     </Page>
   );

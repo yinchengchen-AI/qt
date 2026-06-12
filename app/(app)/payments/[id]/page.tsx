@@ -16,13 +16,17 @@ import { openPrintWindow } from "@/lib/print-client";
 import { useUserName } from "@/lib/user-lookup";
 import { CurrencyCell, DateTimeCell } from "@/components/table-cells";
 import { METHOD_MAP } from "@/lib/enum-maps";
+import { useResponsive } from "@/lib/use-breakpoint";
 
 // 收款方式 code→label 兜底映射,字典未拉到时(初次 SSR)还能渲染中文
+
+const DESC_COL = { xs: 1, sm: 1, md: 2, lg: 2, xl: 3 } as const;
 
 export default function PaymentDetailPage() {
   const params = useParams();
   const id = String(params.id);
   const router = useRouter();
+  const { isMobile } = useResponsive();
   const { data: session } = useSession();
   const { data, isLoading, mutate } = useSWR<PaymentEntity>(`/api/payments/${id}`);
   const payment = data;
@@ -66,7 +70,7 @@ export default function PaymentDetailPage() {
         subtitle={`到账日: ${payment.receivedAt ? new Date(payment.receivedAt).toLocaleString("zh-CN") : "-"}`}
         meta={<StatusTag status={payment.status} domain="payment" />}
         actions={
-          <Space>
+          <Space wrap>
             <Button key="pdf" icon={<FilePdfOutlined />} onClick={() => openPrintWindow(`/api/payments/${id}/pdf`)}>导出 PDF</Button>
             {status === "PLANNED" && <Button type="primary" onClick={askConfirm} disabled={!isFinance}>财务确认</Button>}
             {status === "CONFIRMED" && isFinance && (
@@ -80,7 +84,7 @@ export default function PaymentDetailPage() {
         }
       />
       <ProCard>
-        <ProDescriptions column={2} dataSource={payment} columns={[
+        <ProDescriptions column={DESC_COL} dataSource={payment} columns={[
           { title: "回款号", dataIndex: "paymentNo" },
           { title: "金额", dataIndex: "amount", render: (v) => <CurrencyCell value={v as string} /> },
           { title: "方式", dataIndex: "method", render: (v) => METHOD_MAP[v as string] ?? v },
@@ -97,7 +101,7 @@ export default function PaymentDetailPage() {
         <>
           <PageHeader level="section" title="关联发票" />
           <ProCard>
-            <ProDescriptions column={2} dataSource={payment.invoice} columns={[
+            <ProDescriptions column={DESC_COL} dataSource={payment.invoice} columns={[
               { title: "发票号", dataIndex: "invoiceNo" },
               { title: "金额", dataIndex: "amount", render: (v) => <CurrencyCell value={v as string} /> }
             ]} />
@@ -106,12 +110,15 @@ export default function PaymentDetailPage() {
       )}
       <PageHeader level="section" title="分配明细" />
       <ProCard>
-        <ProTable rowKey="id" search={false} options={false} pagination={false} dataSource={payment.allocations ?? []} columns={[
-          { title: "发票编号", dataIndex: "invoiceId" },
-          { title: "项目编号", dataIndex: "projectId" },
-          { title: "金额", dataIndex: "amount", render: (v) => <CurrencyCell value={v as string} /> },
-          { title: "备注", dataIndex: "remark" }
-        ]} />
+        <ProTable rowKey="id" search={false} options={false} pagination={{ pageSize: isMobile ? 5 : 10, size: isMobile ? "small" : undefined }} dataSource={payment.allocations ?? []}
+          scroll={{ x: 'max-content' }}
+          sticky={isMobile}
+          columns={[
+            { title: "发票编号", dataIndex: "invoiceId" },
+            { title: "项目编号", dataIndex: "projectId" },
+            { title: "金额", dataIndex: "amount", render: (v) => <CurrencyCell value={v as string} /> },
+            { title: "备注", dataIndex: "remark" }
+          ]} />
       </ProCard>
     </Page>
   );

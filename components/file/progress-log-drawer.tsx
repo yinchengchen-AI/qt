@@ -3,6 +3,7 @@
 // (走统一动作入口 projectAction,后端用事务写入 progressLogs 表)
 import { ProForm, ProFormTextArea } from "@ant-design/pro-components";
 import { App as AntdApp, Drawer, Form, Slider, Typography } from "antd";
+import { useResponsive } from "@/lib/use-breakpoint";
 
 export function ProgressLogDrawer(props: {
   projectId: string;
@@ -11,12 +12,15 @@ export function ProgressLogDrawer(props: {
   onSaved: () => void;
 }) {
   const { message } = AntdApp.useApp();
+  const { isMobile } = useResponsive();
   return (
     <Drawer
       open={props.open}
       onClose={props.onClose}
       title="记录项目进度"
-      width={520}
+      // 移动端从底部弹出,占满宽度;桌面端 520px 侧边
+      placement={isMobile ? "bottom" : "right"}
+      styles={{ wrapper: isMobile ? { height: "90%", width: "100%" } : { width: 520 } }}
       destroyOnHidden
     >
       <ProForm

@@ -14,6 +14,7 @@ import { useStatusValueEnum } from "@/lib/use-status-enum";
 import { makeListRequest } from "@/lib/use-list-request";
 import { downloadExcel } from "@/lib/excel-client";
 import { DateCell } from "@/components/table-cells";
+import { useResponsive } from "@/lib/use-breakpoint";
 
 type Customer = {
   id: string;
@@ -36,6 +37,7 @@ type Customer = {
 export default function CustomersPage() {
   const router = useRouter();
   const { mutate } = useSWRConfig();
+  const { isMobile } = useResponsive();
   const customerTypeDict = useDict("CUSTOMER_TYPE");
   const customerScaleDict = useDict("CUSTOMER_SCALE");
   const industryDict = useDict("CUSTOMER_INDUSTRY");
@@ -72,7 +74,7 @@ export default function CustomersPage() {
         subtitle="线索录入、签约、跟进与等级维护;支持按地区 / 类型 / 等级筛选"
         actions={
           <>
-            <Button key="export" icon={<DownloadOutlined />} onClick={handleExport}>
+            <Button key="export" size={isMobile ? "middle" : "middle"} icon={<DownloadOutlined />} onClick={handleExport}>
               导出 Excel
             </Button>
             <Button key="add" type="primary" onClick={() => router.push("/customers/new")}>
@@ -83,9 +85,12 @@ export default function CustomersPage() {
       />
       <ProTable<Customer> actionRef={actionRef}
         rowKey="id"
-        search={{ labelWidth: "auto", defaultCollapsed: false }} debounceTime={400}
-        pagination={{ pageSize: 20, showSizeChanger: true }}
+        search={{ labelWidth: "auto", defaultCollapsed: isMobile, layout: isMobile ? "vertical" : undefined, collapsed: isMobile ? false : undefined }} debounceTime={400}
+        // 移动端横向滚动;Pad/桌面靠列宽自适应
+        scroll={{ x: 'max-content' }}
+        pagination={{ pageSize: 20, showSizeChanger: !isMobile, size: isMobile ? "small" : undefined }}
         cardBordered={false}
+        sticky={isMobile}
         request={async (params) => { console.log("[REQ-keys]", Object.keys(params).join(","), "kw=", JSON.stringify(params.keyword), "status=", JSON.stringify(params.status), "scale=", JSON.stringify(params.scale));
           // 记下当前查询参数,导出时复用
           searchRef.current = {
@@ -98,7 +103,7 @@ export default function CustomersPage() {
         columns={[
           // 搜索专属列:仅在 ProTable 搜索表单里出现,数据来自 params.keyword
           { title: "关键词", dataIndex: "keyword", hideInTable: true, fieldProps: { placeholder: "客户名 / 简称 / 编号", onChange: (e: React.ChangeEvent<HTMLInputElement>) => { if (searchDebounceRef.current) clearTimeout(searchDebounceRef.current); searchDebounceRef.current = setTimeout(() => actionRef.current?.reload(), 400); } } },
-          { title: "客户编号", dataIndex: "code", search: false, width: 180 },
+          { title: "客户编号", dataIndex: "code", search: false, width: 180, fixed: !isMobile ? "left" : undefined },
           {
             title: "客户名称",
             dataIndex: "name",
@@ -158,7 +163,10 @@ export default function CustomersPage() {
           }
         ]}
         options={{
-          reload: () => mutate((k) => typeof k === "string" && k.startsWith("/api/customers"))
+          reload: () => mutate((k) => typeof k === "string" && k.startsWith("/api/customers")),
+          // 移动端隐藏密度/全屏等次要工具按钮,保留刷新
+          density: !isMobile,
+          fullScreen: !isMobile
         }}
       />
     </Page>

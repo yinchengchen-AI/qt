@@ -1,6 +1,6 @@
 "use client";
 import { ProCard, ProDescriptions, ProTable } from "@ant-design/pro-components";
-import { Tag, Button, Space } from "antd";
+import { Button, Space } from "antd";
 import { PlusOutlined, FilePdfOutlined } from "@ant-design/icons";
 import { useParams, useRouter } from "next/navigation";
 import useSWR from "swr";
@@ -14,6 +14,7 @@ import { useUserName } from "@/lib/user-lookup";
 import { CurrencyCell, DateCell, DateTimeCell } from "@/components/table-cells";
 import { FollowUpDrawer } from "@/components/file/follow-up-drawer";
 import { openPrintWindow } from "@/lib/print-client";
+import { useResponsive } from "@/lib/use-breakpoint";
 
 type Customer = {
   id: string; code: string; name: string; shortName: string | null;
@@ -34,15 +35,19 @@ type FollowUp = {
   userId: string;
 };
 
+// 响应式 Descriptions 列数:<md 1 列,>=md 2 列,>=xl 3 列;字段多时铺得开、字段少时不挤压
+const DESC_COL = { xs: 1, sm: 1, md: 2, lg: 2, xl: 3 } as const;
+
 export default function CustomerDetailPage() {
   const params = useParams();
   const id = String(params.id);
   const router = useRouter();
+  const { isMobile } = useResponsive();
   const customerType = useDict("CUSTOMER_TYPE");
   const industryDict = useDict("CUSTOMER_INDUSTRY");
- const sourceDict = useDict("CUSTOMER_SOURCE");
+  const sourceDict = useDict("CUSTOMER_SOURCE");
   const scaleDict = useDict("CUSTOMER_SCALE");
- const methodDict = useDict("FOLLOW_METHOD");
+  const methodDict = useDict("FOLLOW_METHOD");
   const resultDict = useDict("FOLLOW_RESULT");
   const { data, error, isLoading, mutate } = useSWR<Customer>(`/api/customers/${id}`);
   const { data: followUps, mutate: mutateFollowUps } = useSWR<FollowUp[]>(`/api/customers/${id}/follow-ups`);
@@ -70,16 +75,16 @@ export default function CustomerDetailPage() {
   }
   const typeLabel = customerType.find((d) => d.code === data.customerType)?.label ?? data.customerType;
   const industryLabel = data.industry ? (industryDict.find((d) => d.code === data.industry)?.label ?? data.industry) : "—";
- const sourceLabel = data.sourceChannel ? (sourceDict.find((d) => d.code === data.sourceChannel)?.label ?? data.sourceChannel) : "—";
+  const sourceLabel = data.sourceChannel ? (sourceDict.find((d) => d.code === data.sourceChannel)?.label ?? data.sourceChannel) : "—";
   const scaleLabel = data.scale ? (scaleDict.find((d) => d.code === data.scale)?.label ?? data.scale) : "—";
- return (
+  return (
     <Page>
       <PageHeader
         back={() => router.push("/customers")}
         title={`${data.name} (${data.code})`}
         subtitle="客户基础信息、跟进记录与关联合同"
         actions={
-          <Space>
+          <Space wrap>
             <Button key="pdf" icon={<FilePdfOutlined />} onClick={() => openPrintWindow(`/api/customers/${id}/pdf`)}>导出 PDF</Button>
             <Button key="followup" icon={<PlusOutlined />} onClick={() => setFollowUpOpen(true)}>
               新增跟进
@@ -92,14 +97,14 @@ export default function CustomerDetailPage() {
         meta={data.status ? <StatusTag status={data.status} domain="customer" /> : null}
       />
       <ProCard>
-        <ProDescriptions<Customer> column={2} dataSource={data} columns={[
+        <ProDescriptions<Customer> column={DESC_COL} dataSource={data} columns={[
           { title: "客户编号", dataIndex: "code" },
           { title: "客户全称", dataIndex: "name" },
           { title: "简称", dataIndex: "shortName" },
           { title: "统一社会信用代码", dataIndex: "unifiedSocialCreditCode" },
-         { title: "类型", dataIndex: "customerType", render: () => typeLabel },
+          { title: "类型", dataIndex: "customerType", render: () => typeLabel },
           { title: "客户规模", dataIndex: "scale", render: () => scaleLabel },
-         { title: "行业", dataIndex: "industry", render: () => industryLabel },
+          { title: "行业", dataIndex: "industry", render: () => industryLabel },
           { title: "客户来源", dataIndex: "sourceChannel", render: () => sourceLabel },
           { title: "所在地区", dataIndex: "province", render: (_, r) => `${r.province} / ${r.city}` },
           { title: "详细地址", dataIndex: "address" },
@@ -115,8 +120,10 @@ export default function CustomerDetailPage() {
           rowKey="id"
           search={false}
           options={false}
-          pagination={{ pageSize: 5 }}
+          pagination={{ pageSize: 5, size: isMobile ? "small" : undefined }}
           dataSource={followUps ?? []}
+          scroll={{ x: 'max-content' }}
+          sticky={isMobile}
           columns={[
             { title: "时间", dataIndex: "followAt", valueType: "dateTime", width: 180, render: (_, r) => <DateTimeCell value={r.followAt} /> },
             {
@@ -149,13 +156,16 @@ export default function CustomerDetailPage() {
       </ProCard>
       <PageHeader level="section" title="关联合同" />
       <ProCard>
-        <ProTable rowKey="id" search={false} options={false} pagination={{ pageSize: 5 }} dataSource={contracts ?? []} columns={[
-          { title: "合同号", dataIndex: "contractNo", width: 180 },
-          { title: "标题", dataIndex: "title" },
-          { title: "签订日", dataIndex: "signDate", valueType: "date", width: 120, render: (_, r) => <DateCell value={r.signDate as string} /> },
-          { title: "总额(元)", dataIndex: "totalAmount", width: 140, render: (_, r) => <CurrencyCell value={r.totalAmount as string} /> },
-          { title: "状态", dataIndex: "status", width: 100, render: (_, r) => <StatusTag status={r.status as string} domain="contract" /> }
-        ]} />
+        <ProTable rowKey="id" search={false} options={false} pagination={{ pageSize: 5, size: isMobile ? "small" : undefined }} dataSource={contracts ?? []}
+          scroll={{ x: 'max-content' }}
+          sticky={isMobile}
+          columns={[
+            { title: "合同号", dataIndex: "contractNo", width: 180 },
+            { title: "标题", dataIndex: "title" },
+            { title: "签订日", dataIndex: "signDate", valueType: "date", width: 120, render: (_, r) => <DateCell value={r.signDate as string} /> },
+            { title: "总额(元)", dataIndex: "totalAmount", width: 140, render: (_, r) => <CurrencyCell value={r.totalAmount as string} /> },
+            { title: "状态", dataIndex: "status", width: 100, render: (_, r) => <StatusTag status={r.status as string} domain="contract" /> }
+          ]} />
       </ProCard>
       <FollowUpDrawer
         customerId={id}

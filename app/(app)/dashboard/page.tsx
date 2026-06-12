@@ -2,17 +2,17 @@
 import { useEffect, useState } from "react";
 import { ProCard } from "@ant-design/pro-components";
 import { Column } from "@ant-design/charts";
-import { Col, Row, Space, Typography, Badge, Tag, theme } from "antd";
+import { Col, Row, Space, Typography, Badge, theme } from "antd";
 import { formatStatus } from "@/lib/status";
 import { Page } from "@/components/page";
 import { PageHeader } from "@/components/page-header";
 import { StatGrid, type StatItem } from "@/components/stat-grid";
 import { EmptyState } from "@/components/empty-state";
 import { formatCompact, formatCurrency } from "@/lib/format";
-import { CurrencyCell } from "@/components/table-cells";
 import { StatusTag } from "@/components/status-tag";
+import { useResponsive } from "@/lib/use-breakpoint";
 
-const { Text, Title } = Typography;
+const { Text } = Typography;
 const { useToken } = theme;
 
 type DashboardData = {
@@ -29,6 +29,7 @@ type DashboardData = {
 };
 
 export default function DashboardPage() {
+  const { isMobile } = useResponsive();
   const [data, setData] = useState<DashboardData | null>(null);
   const [loading, setLoading] = useState(true);
   const { token } = useToken();
@@ -42,6 +43,9 @@ export default function DashboardPage() {
       .finally(() => setLoading(false));
   }, []);
 
+  // 图表高度在窄屏上压缩,避免单屏只能看到 1-2 根柱子
+  const chartHeight = isMobile ? 280 : 420;
+
   if (loading || !data) {
     return (
       <Page>
@@ -53,7 +57,7 @@ export default function DashboardPage() {
     );
   }
 
-  const { overview: o, customers: cust, projects: proj, invoices: inv, payments: pay, contracts: cont, distribution: dist, agingBuckets: a, topCustomers: top } = data;
+  const { overview: o, customers: cust, projects: proj, invoices: inv, payments: pay, contracts: cont, topCustomers: top } = data;
 
   // ── 五大维度 KPI ──
   const kpiItems: StatItem[] = [
@@ -110,7 +114,7 @@ export default function DashboardPage() {
       </section>
 
       {/*** 客户 + 项目 分布 ***/}
-      <Row gutter={16} style={{ marginBottom: 24 }}>
+      <Row gutter={[16, 16]} style={{ marginBottom: 24 }}>
         <Col xs={24} lg={12}>
           <ProCard title="客户区域分布" subTitle="按镇街分组">
             {townData.length > 0 ? (
@@ -118,64 +122,66 @@ export default function DashboardPage() {
                 data={townData}
                 xField="town"
                 yField="count"
-                height={420}
+                height={chartHeight}
                 colorField="town"
+                autoFit
                 label={{ text: (d: Record<string, unknown>) => String(d.count), style: { fontSize: 11 } }}
                 xAxis={{ label: { autoRotate: true, autoHide: false } }}
               />
-            ) : <EmptyState empty title="暂无区域分布数据" description="客户所在地尚未录入镇街信息" height={420} />}
+            ) : <EmptyState empty title="暂无区域分布数据" description="客户所在地尚未录入镇街信息" height={chartHeight} />}
           </ProCard>
         </Col>
         <Col xs={24} lg={12}>
-        <ProCard title="项目状态分布">
-          {projectStatusData.length > 0 ? (
-            <Column
-              data={projectStatusData}
-              xField="status"
-              yField="count"
-              height={420}
-              colorField="status"
-            />
-          ) : <EmptyState empty title="暂无项目数据" height={420} />}
-        </ProCard>
+          <ProCard title="项目状态分布">
+            {projectStatusData.length > 0 ? (
+              <Column
+                data={projectStatusData}
+                xField="status"
+                yField="count"
+                height={chartHeight}
+                colorField="status"
+                autoFit
+              />
+            ) : <EmptyState empty title="暂无项目数据" height={chartHeight} />}
+          </ProCard>
         </Col>
       </Row>
-      <Row gutter={16} style={{ marginBottom: 24 }}>
+      <Row gutter={[16, 16]} style={{ marginBottom: 24 }}>
         <Col xs={24} lg={8}>
-        <ProCard title="合同状态">
-          {contractStatusData.length > 0 ? contractStatusData.map((s) => (
-            <div key={s.status} style={{ display: "flex", justifyContent: "space-between", padding: "6px 0", borderBottom: "1px solid #f0f0f0" }}>
-              <StatusTag status={s.status} domain="contract" />
-              <Text strong>{s.count} 份</Text>
-            </div>
-          )) : <EmptyState empty title="暂无数据" height={100} />}
-        </ProCard>
+          <ProCard title="合同状态">
+            {contractStatusData.length > 0 ? contractStatusData.map((s) => (
+              <div key={s.status} style={{ display: "flex", justifyContent: "space-between", padding: "6px 0", borderBottom: "1px solid #f0f0f0" }}>
+                <StatusTag status={s.status} domain="contract" />
+                <Text strong>{s.count} 份</Text>
+              </div>
+            )) : <EmptyState empty title="暂无数据" height={100} />}
+          </ProCard>
         </Col>
         <Col xs={24} lg={8}>
-        <ProCard title="开票概况">
-          {inv.byStatus.map((s) => (
-            <div key={s.status} style={{ display: "flex", justifyContent: "space-between", padding: "6px 0", borderBottom: "1px solid #f0f0f0" }}>
-              <StatusTag status={s.status} domain="invoice" />
-              <Space>
-                <Text strong>{s.count} 张</Text>
-                <Text type="secondary">{formatCurrency(s.totalAmount).replace("¥", "¥")}</Text>
-              </Space>
-            </div>
-          ))}
-        </ProCard>
+          <ProCard title="开票概况">
+            {inv.byStatus.map((s) => (
+              <div key={s.status} style={{ display: "flex", justifyContent: "space-between", padding: "6px 0", borderBottom: "1px solid #f0f0f0" }}>
+                <StatusTag status={s.status} domain="invoice" />
+                <Space>
+                  <Text strong>{s.count} 张</Text>
+                  <Text type="secondary">{formatCurrency(s.totalAmount).replace("¥", "¥")}</Text>
+                </Space>
+              </div>
+            ))}
+          </ProCard>
         </Col>
         <Col xs={24} lg={8}>
-        <ProCard title="回款概况">
-          {pay.byStatus.map((s) => (
-            <div key={s.status} style={{ display: "flex", justifyContent: "space-between", padding: "6px 0", borderBottom: "1px solid #f0f0f0" }}>
-              <StatusTag status={s.status} domain="payment" />
-              <Space>
-                <Text strong>{s.count} 笔</Text>
-                <Text type="secondary">{formatCurrency(s.totalAmount).replace("¥", "¥")}</Text>
-              </Space>
-            </div>
-          ))}
-        </ProCard>
+          <ProCard title="回款概况">
+            {pay.byStatus.map((s) => (
+              <div key={s.status} style={{ display: "flex", justifyContent: "space-between", padding: "6px 0", borderBottom: "1px solid #f0f0f0" }}>
+                <StatusTag status={s.status} domain="payment" />
+                <Space>
+                  <Text strong>{s.count} 笔</Text>
+                  <Text type="secondary">{formatCurrency(s.totalAmount).replace("¥", "¥")}</Text>
+                </Space>
+              </div>
+            ))}
+          </ProCard>
         </Col>
       </Row>
 
@@ -184,7 +190,7 @@ export default function DashboardPage() {
         {top.length > 0 ? (
           <Space direction="vertical" style={{ width: "100%" }} size={0}>
             {top.map((c, i) => (
-              <div key={c.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "10px 0", borderBottom: i < top.length - 1 ? "1px solid #f0f0f0" : "none" }}>
+              <div key={c.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "10px 0", borderBottom: i < top.length - 1 ? "1px solid #f0f0f0" : "none", gap: 8, flexWrap: "wrap" }}>
                 <Space>
                   <Badge count={i + 1} style={{ backgroundColor: i < 3 ? token.colorPrimary : token.colorTextTertiary, fontSize: 11 }} />
                   <div>

@@ -13,6 +13,7 @@ import { makeListRequest } from "@/lib/use-list-request";
 import { useDict } from "@/lib/dict-client";
 import { downloadExcel } from "@/lib/excel-client";
 import { CurrencyCell, DateCell } from "@/components/table-cells";
+import { useResponsive } from "@/lib/use-breakpoint";
 
 type Row = {
   id: string;
@@ -27,6 +28,7 @@ type Row = {
 
 export default function ContractsPage() {
   const router = useRouter();
+  const { isMobile } = useResponsive();
   const statusEnum = useStatusValueEnum("contract");
   const serviceTypeDict = useDict("SERVICE_TYPE");
   const serviceTypeEnum = Object.fromEntries(
@@ -67,9 +69,11 @@ export default function ContractsPage() {
       />
       <ProTable<Row>
         rowKey="id"
-        search={{ labelWidth: "auto" }}
-        pagination={{ pageSize: 20, showSizeChanger: true }}
+        search={{ labelWidth: "auto", defaultCollapsed: isMobile, layout: isMobile ? "vertical" : undefined }}
+        scroll={{ x: 'max-content' }}
+        pagination={{ pageSize: 20, showSizeChanger: !isMobile, size: isMobile ? "small" : undefined }}
         cardBordered={false}
+        sticky={isMobile}
         request={async (params) => {
           searchRef.current = {
             keyword: params.keyword,
@@ -86,6 +90,7 @@ export default function ContractsPage() {
             dataIndex: "contractNo",
             search: false,
             width: 180,
+            fixed: !isMobile ? "left" : undefined,
             render: (_, r) => <Link href={`/contracts/${r.id}`}>{r.contractNo}</Link>
           },
           { title: "客户", dataIndex: "customerName", search: false, width: 180 },
@@ -108,6 +113,10 @@ export default function ContractsPage() {
             render: (_, r) => <StatusTag status={r.status} domain="contract" />
           }
         ]}
+        options={{
+          density: !isMobile,
+          fullScreen: !isMobile
+        }}
       />
     </Page>
   );

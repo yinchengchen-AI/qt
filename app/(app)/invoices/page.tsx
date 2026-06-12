@@ -12,6 +12,7 @@ import { useStatusValueEnum } from "@/lib/use-status-enum";
 import { makeListRequest } from "@/lib/use-list-request";
 import { downloadExcel } from "@/lib/excel-client";
 import { CurrencyCell, DateCell, PercentCell } from "@/components/table-cells";
+import { useResponsive } from "@/lib/use-breakpoint";
 
 type Row = {
   id: string;
@@ -27,6 +28,7 @@ type Row = {
 
 export default function InvoicesPage() {
   const router = useRouter();
+  const { isMobile } = useResponsive();
   const statusEnum = useStatusValueEnum("invoice");
   const searchRef = useRef<Record<string, unknown>>({});
   const { message } = AntdApp.useApp();
@@ -63,9 +65,11 @@ export default function InvoicesPage() {
       />
       <ProTable<Row>
         rowKey="id"
-        search={{ labelWidth: "auto" }}
-        pagination={{ pageSize: 20 }}
+        search={{ labelWidth: "auto", defaultCollapsed: isMobile, layout: isMobile ? "vertical" : undefined }}
+        scroll={{ x: 'max-content' }}
+        pagination={{ pageSize: 20, showSizeChanger: !isMobile, size: isMobile ? "small" : undefined }}
         cardBordered={false}
+        sticky={isMobile}
         request={async (params) => {
           searchRef.current = {
             keyword: params.keyword,
@@ -82,6 +86,7 @@ export default function InvoicesPage() {
             dataIndex: "invoiceNo",
             search: false,
             width: 200,
+            fixed: !isMobile ? "left" : undefined,
             render: (_, r) => r.invoiceNo ? <Link href={`/invoices/${r.id}`}>{r.invoiceNo}</Link> : <Link href={`/invoices/${r.id}`}>未开</Link>
           },
           { title: "客户", dataIndex: "customerName", search: false, width: 180 },
@@ -98,6 +103,10 @@ export default function InvoicesPage() {
             render: (_, r) => <StatusTag status={r.status} domain="invoice" />
           }
         ]}
+        options={{
+          density: !isMobile,
+          fullScreen: !isMobile
+        }}
       />
     </Page>
   );

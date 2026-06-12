@@ -8,7 +8,7 @@ type Props = {
 /** 详情页 loading 占位:页面标题 + 卡片 + 描述行,避免跳到居中 spinner。 */
 export function DetailPageSkeleton({ rows = 12 }: Props) {
   return (
-    <Space direction="vertical" size={24} style={{ width: "100%" }}>
+    <Space orientation="vertical" size={24} style={{ width: "100%" }}>
       <div>
         <Skeleton.Input active size="small" style={{ width: 120, marginBottom: 12 }} />
         <Skeleton.Input active size="large" style={{ width: 360, marginBottom: 12 }} />

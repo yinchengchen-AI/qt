@@ -4,6 +4,7 @@ import { App as AntdApp, Empty, Space, Typography, Button, Popconfirm, Tag } fro
 import { DownloadOutlined, DeleteOutlined, EyeOutlined } from "@ant-design/icons";
 import { FileKindBadge, formatBytes } from "./file-icon";
 import { FilePreviewModal, type PreviewableAttachment } from "./file-preview-modal";
+import { useResponsive } from "@/lib/use-breakpoint";
 
 const { Text } = Typography;
 
@@ -26,6 +27,7 @@ export function AttachmentList(props: {
   onDeleted?: (id: string) => void;
 }) {
   const { message } = AntdApp.useApp();
+  const { isMobile } = useResponsive();
   const {
     items,
     allowDelete = true,
@@ -103,16 +105,18 @@ export function AttachmentList(props: {
             <li
               key={a.id}
               style={{
+                // 移动端允许换行:文件名 + 大小 折到上一行,操作按钮折到下一行
                 display: "flex",
-                alignItems: "center",
+                alignItems: isMobile ? "flex-start" : "center",
                 gap: 8,
-                padding: "6px 0",
-                borderBottom: "1px dashed #f0f0f0"
+                padding: isMobile ? "10px 0" : "6px 0",
+                borderBottom: "1px dashed #f0f0f0",
+                flexWrap: "wrap"
               }}
             >
               <FileKindBadge mime={a.mimeType} name={a.name} />
               {isLegacy ? (
-                <Text type="secondary" style={{ flex: 1 }} ellipsis>
+                <Text type="secondary" style={{ flex: 1, minWidth: 0, wordBreak: "break-all" }}>
                   {a.name}
                   <Tag color="default" style={{ marginLeft: 8 }}>
                     历史链接已失效
@@ -128,12 +132,12 @@ export function AttachmentList(props: {
                   style={{ flex: 1, minWidth: 0 }}
                   title={a.name}
                 >
-                  <Text ellipsis style={{ width: "100%" }}>
+                  <Text ellipsis={!isMobile} style={{ width: "100%", wordBreak: "break-all" }}>
                     {a.name}
                   </Text>
                 </a>
               ) : (
-                <Text style={{ flex: 1 }} ellipsis>
+                <Text style={{ flex: 1, minWidth: 0, wordBreak: "break-all" }}>
                   {a.name}
                 </Text>
               )}
@@ -141,7 +145,7 @@ export function AttachmentList(props: {
                 {formatBytes(a.size)}
               </Text>
               {!isLegacy && (
-                <Space size={4} style={{ flexShrink: 0 }}>
+                <Space size={4} style={{ flexShrink: 0, marginLeft: isMobile ? "auto" : 0 }}>
                   {allowPreview && (
                     <Button
                       type="text"

@@ -10,6 +10,7 @@ import { EmptyState } from "@/components/empty-state";
 import { StatusTag } from "@/components/status-tag";
 import { formatCurrency } from "@/lib/format";
 import { Progress, Space, Tag, Typography, theme } from "antd";
+import { useResponsive } from "@/lib/use-breakpoint";
 
 const { Text } = Typography;
 const { useToken } = theme;
@@ -37,6 +38,7 @@ function daysColor(d: number): string {
 }
 
 export default function AgingPage() {
+  const { isMobile } = useResponsive();
   const [buckets, setBuckets] = useState<Record<string, number>>({});
   const [rows, setRows] = useState<AgingRow[]>([]);
   const [loading, setLoading] = useState(true);
@@ -69,6 +71,10 @@ export default function AgingPage() {
   ];
 
   const chartData = BUCKETS.map((b) => ({ bucket: BUCKET_META[b].label, amount: buckets[b] ?? 0, color: BUCKET_META[b].color }));
+  // 移动端显示 Top N,避免大表横向溢出;N>=3 时折叠到 Top 5
+  const TOP_N = isMobile ? 5 : 10;
+  const visibleRows = isMobile && rows.length > TOP_N ? rows.slice(0, TOP_N) : rows;
+  const chartHeight = isMobile ? 240 : 300;
 
   return (
     <Page>
@@ -87,12 +93,12 @@ export default function AgingPage() {
                 const pct = (v / totalOverdue) * 100;
                 return (
                   <div key={b} style={{ marginBottom: 10 }}>
-                    <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4 }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4, gap: 8, flexWrap: "wrap" }}>
                       <Space>
-                        <span style={{ width: 10, height: 10, borderRadius: 2, background: BUCKET_META[b].color, display: "inline-block" }} />
+                        <span style={{ width: 10, height: 10, borderRadius: 2, background: BUCKET_META[b].color, display: "inline-block", flexShrink: 0 }} />
                         <Text style={{ fontSize: 13 }}>{BUCKET_META[b].label}</Text>
                       </Space>
-                      <Space size={12}>
+                      <Space size={12} wrap>
                         <Text style={{ fontSize: 13 }}>{pct.toFixed(1)}%</Text>
                         <Text type="secondary" style={{ fontSize: 12 }}>{formatCurrency(v).replace("¥", "¥")}</Text>
                       </Space>
@@ -118,8 +124,9 @@ export default function AgingPage() {
                   data={chartData}
                   xField="bucket"
                   yField="amount"
-                  height={300}
+                  height={chartHeight}
                   colorField="bucket"
+                  autoFit
                   scale={{ color: { range: ["#52c41a", "#1677ff", "#faad14", "#ff4d4f"] } }}
                   label={{ text: (d: Record<string, unknown>) => formatCurrency(d.amount as number).replace("¥", "¥"), style: { fontSize: 11 } }}
                 />
@@ -130,48 +137,60 @@ export default function AgingPage() {
           </div>
 
           <div style={{ marginTop: 32 }}>
-            <PageHeader level="section" title={`超期明细（共 ${rows.length} 条）`} />
+            <PageHeader
+              level="section"
+              title={`超期明细（共 ${rows.length} 条${isMobile && rows.length > TOP_N ? `, 仅显示前 ${TOP_N} 条` : ""}）`}
+            />
             <ProCard>
-              {rows.length > 0 ? (
-                <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
-                  <thead>
-                    <tr style={{ borderBottom: "2px solid #f0f0f0", textAlign: "left" }}>
-                      <th style={{ padding: "10px 8px" }}>发票号</th>
-                      <th style={{ padding: "10px 8px" }}>客户</th>
-                      <th style={{ padding: "10px 8px", textAlign: "right" }}>逾期天数</th>
-                      <th style={{ padding: "10px 8px", textAlign: "right" }}>剩余未收</th>
-                      <th style={{ padding: "10px 8px" }}>账龄段</th>
-                      <th style={{ padding: "10px 8px" }}>状态</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {rows.map((r) => (
-                      <tr key={r.invoiceId} style={{ borderBottom: "1px solid #f0f0f0" }}>
-                        <td style={{ padding: "10px 8px" }}>
-                          <Link href={`/invoices/${r.invoiceId}`} style={{ color: token.colorPrimary, textDecoration: "none" }}>
-                            {r.invoiceNo}
-                          </Link>
-                        </td>
-                        <td style={{ padding: "10px 8px" }}>{r.customerName}</td>
-                        <td style={{ padding: "10px 8px", textAlign: "right" }}>
-                          <Tag color={daysColor(r.daysOverdue)}>{r.daysOverdue} 天</Tag>
-                        </td>
-                        <td style={{ padding: "10px 8px", textAlign: "right" }}>
-                          <Text strong>{formatCurrency(r.remaining).replace("¥", "¥")}</Text>
-                        </td>
-                        <td style={{ padding: "10px 8px" }}>
-                          <Tag color={BUCKET_META[r.bucket as Bucket]?.color}>{r.bucket}</Tag>
-                        </td>
-                        <td style={{ padding: "10px 8px" }}>
-                          {r.status ? <StatusTag status={r.status} domain="invoice" /> : <Text type="secondary">-</Text>}
-                        </td>
+              {visibleRows.length > 0 ? (
+                <div style={{ overflowX: "auto" }}>
+                  <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13, minWidth: isMobile ? 520 : undefined }}>
+                    <thead>
+                      <tr style={{ borderBottom: "2px solid #f0f0f0", textAlign: "left" }}>
+                        <th style={{ padding: "10px 8px" }}>发票号</th>
+                        <th style={{ padding: "10px 8px" }}>客户</th>
+                        <th style={{ padding: "10px 8px", textAlign: "right" }}>逾期天数</th>
+                        <th style={{ padding: "10px 8px", textAlign: "right" }}>剩余未收</th>
+                        <th style={{ padding: "10px 8px" }}>账龄段</th>
+                        <th style={{ padding: "10px 8px" }}>状态</th>
                       </tr>
-                    ))}
-                  </tbody>
-                </table>
+                    </thead>
+                    <tbody>
+                      {visibleRows.map((r) => (
+                        <tr key={r.invoiceId} style={{ borderBottom: "1px solid #f0f0f0" }}>
+                          <td style={{ padding: "10px 8px" }}>
+                            <Link href={`/invoices/${r.invoiceId}`} style={{ color: token.colorPrimary, textDecoration: "none" }}>
+                              {r.invoiceNo}
+                            </Link>
+                          </td>
+                          <td style={{ padding: "10px 8px" }}>{r.customerName}</td>
+                          <td style={{ padding: "10px 8px", textAlign: "right" }}>
+                            <Tag color={daysColor(r.daysOverdue)}>{r.daysOverdue} 天</Tag>
+                          </td>
+                          <td style={{ padding: "10px 8px", textAlign: "right" }}>
+                            <Text strong>{formatCurrency(r.remaining).replace("¥", "¥")}</Text>
+                          </td>
+                          <td style={{ padding: "10px 8px" }}>
+                            <Tag color={BUCKET_META[r.bucket as Bucket]?.color}>{r.bucket}</Tag>
+                          </td>
+                          <td style={{ padding: "10px 8px" }}>
+                            {r.status ? <StatusTag status={r.status} domain="invoice" /> : <Text type="secondary">-</Text>}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
               ) : (
                 <EmptyState empty title="暂无数据" description="当前没有待回款发票" height="tall" />
               )}
+              {isMobile && rows.length > TOP_N ? (
+                <div style={{ marginTop: 12, textAlign: "center" }}>
+                  <Link href="/invoices" style={{ color: token.colorPrimary, fontSize: 13 }}>
+                    查看全部 {rows.length} 条 →
+                  </Link>
+                </div>
+              ) : null}
             </ProCard>
           </div>
         </>

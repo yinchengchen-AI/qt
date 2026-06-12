@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 import { Card, Col, Row, Skeleton, Typography } from "antd";
+import { useResponsive } from "@/lib/use-breakpoint";
 
 const { Text } = Typography;
 
@@ -20,19 +21,23 @@ type Props = {
   className?: string;
 };
 
+// 桌面列数 → 响应式 span 配置。xs 一律铺满一列,sm 半列,md/lg/xl 按桌面列数走
 const SPAN_MAP: Record<number, { xs: number; sm: number; md: number; lg: number; xl: number }> = {
   2: { xs: 24, sm: 12, md: 12, lg: 12, xl: 12 },
-  3: { xs: 24, sm: 12, md: 8, lg: 8, xl: 8 },
-  4: { xs: 24, sm: 12, md: 12, lg: 6, xl: 6 },
-  5: { xs: 24, sm: 12, md: 8, lg: 4, xl: 4 },
-  6: { xs: 24, sm: 12, md: 8, lg: 4, xl: 4 }
+  3: { xs: 24, sm: 12, md: 8,  lg: 8,  xl: 8  },
+  4: { xs: 24, sm: 12, md: 12, lg: 6,  xl: 6  },
+  5: { xs: 24, sm: 12, md: 12, lg: 8,  xl: 8  },
+  6: { xs: 24, sm: 12, md: 8,  lg: 8,  xl: 4  }
 };
 
 export function StatGrid({ items, columns = 4, loading, className }: Props) {
+  const { isMobile } = useResponsive();
   const span = SPAN_MAP[columns] ?? SPAN_MAP[4]!;
   const s = { xs: span.xs ?? 24, sm: span.sm ?? 12, md: span.md ?? 12, lg: span.lg ?? 12, xl: span.xl ?? 12 };
+  const cardPadding = isMobile ? 14 : 20;
+  const valueFontSize = isMobile ? 22 : 26;
   return (
-    <Row gutter={[16, 16]} className={["app-stagger", className].filter(Boolean).join(" ")}>
+    <Row gutter={[isMobile ? 8 : 16, isMobile ? 8 : 16]} className={["app-stagger", className].filter(Boolean).join(" ")}>
       {items.map((it, i) => {
         const deltaColor =
           it.delta?.direction === "up"
@@ -42,7 +47,7 @@ export function StatGrid({ items, columns = 4, loading, className }: Props) {
               : undefined;
         return (
           <Col key={i} xs={s.xs} sm={s.sm} md={s.md} lg={s.lg} xl={s.xl}>
-            <Card size="small" hoverable styles={{ body: { padding: 20 } }}>
+            <Card size="small" hoverable styles={{ body: { padding: cardPadding } }}>
               {loading ? (
                 <Skeleton active paragraph={{ rows: 2 }} title={false} />
               ) : (
@@ -56,13 +61,13 @@ export function StatGrid({ items, columns = 4, loading, className }: Props) {
                       alignItems: "baseline",
                       gap: 6,
                       marginTop: 6,
-                      fontSize: 26,
+                      fontSize: valueFontSize,
                       fontWeight: 600,
                       lineHeight: 1.2
                     }}
                   >
                     {it.prefix ? <span style={{ fontSize: 16, color: "#00000073" }}>{it.prefix}</span> : null}
-                    <span>{it.value}</span>
+                    <span style={{ minWidth: 0, wordBreak: "break-all" }}>{it.value}</span>
                     {it.suffix ? <span style={{ fontSize: 13, color: "#00000073" }}>{it.suffix}</span> : null}
                   </div>
                   {it.description ? (

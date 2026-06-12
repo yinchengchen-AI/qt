@@ -1,6 +1,7 @@
 "use client";
-import { Card, Space, Typography } from "antd";
+import { Card, Row, Col, Button, Space, Typography } from "antd";
 import type { ReactNode } from "react";
+import { useResponsive } from "@/lib/use-breakpoint";
 
 const { Title, Text } = Typography;
 
@@ -24,7 +25,8 @@ export function FormSection({ title, description, icon, children, gap = 24 }: Pr
           gap: 10,
           marginBottom: 12,
           paddingBottom: 8,
-          borderBottom: "1px solid #f0f0f0"
+          borderBottom: "1px solid #f0f0f0",
+          flexWrap: "wrap"
         }}
       >
         {icon ? (
@@ -51,25 +53,26 @@ export function FormSection({ title, description, icon, children, gap = 24 }: Pr
           </Text>
         ) : null}
       </div>
-      <Space direction="vertical" size={16} style={{ width: "100%" }}>
+      <Space orientation="vertical" size={16} style={{ width: "100%" }}>
         {children}
       </Space>
     </div>
   );
 }
 
-/** 把一组 ProForm.Item 按 colProps 网格化(默认 1 列;colProps 决定每项占几格) */
+/** 把一组 ProForm.Item 按 colProps 网格化(默认 1 列;colProps 决定每项占几格)
+ *  默认 1 列(<sm),桌面 2/3 列(>=md);在窄屏自动堆叠避免拥挤
+ */
 type FormGridProps = {
   children: ReactNode;
-  /** 一行列数,默认 2 (24 栅格所以默认 span=12) */
+  /** 桌面端列数,默认 2 (24 栅格所以默认 span=12) */
   columns?: 1 | 2 | 3;
   gap?: number;
 };
 
-import { Row, Col } from "antd";
-
 export function FormGrid({ children, columns = 2, gap = 16 }: FormGridProps) {
   const span = 24 / columns;
+  // <sm 强制 1 列(避免在 320-480px 屏上出现 2 列挤压),>=md 走 columns 设置
   return (
     <Row gutter={[gap, gap]}>
       {Array.isArray(children) ? (
@@ -79,15 +82,13 @@ export function FormGrid({ children, columns = 2, gap = 16 }: FormGridProps) {
           </Col>
         ))
       ) : (
-        <Col span={span}>{children}</Col>
+        <Col xs={24} sm={24} md={span} lg={span} xl={span}>{children}</Col>
       )}
     </Row>
   );
 }
 
-/** Sticky 提交按钮条(在卡片底部浮动) */
-import { Button } from "antd";
-
+/** Sticky 提交按钮条(在卡片底部浮动);移动端贴底边,自动避开安全区 */
 type SubmitBarProps = {
   loading?: boolean;
   onSubmit?: () => void;
@@ -105,6 +106,7 @@ export function SubmitBar({
   cancelText = "取消",
   extra
 }: SubmitBarProps) {
+  const { isMobile } = useResponsive();
   return (
     <div
       style={{
@@ -112,25 +114,26 @@ export function SubmitBar({
         bottom: 0,
         zIndex: 5,
         marginTop: 24,
-        padding: "16px 24px",
+        padding: isMobile ? "12px 16px" : "16px 24px",
+        paddingBottom: isMobile ? "calc(12px + env(safe-area-inset-bottom))" : undefined,
         background: "#fff",
         borderTop: "1px solid #f0f0f0",
         borderRadius: "0 0 8px 8px",
         display: "flex",
         alignItems: "center",
-        justifyContent: "flex-end",
+        justifyContent: isMobile ? "space-between" : "flex-end",
         gap: 8,
         boxShadow: "0 -4px 12px -8px rgba(0,0,0,0.04)"
       }}
     >
-      {extra ? <div style={{ marginRight: "auto" }}>{extra}</div> : null}
+      {extra ? <div style={{ marginRight: isMobile ? 0 : "auto" }}>{extra}</div> : null}
       {onCancel ? (
-        <Button onClick={onCancel} disabled={loading}>
+        <Button onClick={onCancel} disabled={loading} block={isMobile}>
           {cancelText}
         </Button>
       ) : null}
       {onSubmit ? (
-        <Button type="primary" onClick={onSubmit} loading={loading}>
+        <Button type="primary" onClick={onSubmit} loading={loading} block={isMobile}>
           {submitText}
         </Button>
       ) : null}
@@ -138,7 +141,7 @@ export function SubmitBar({
   );
 }
 
-/** 用 ProCard 包装一个表单单页(白底圆角) */
+/** 用 ProCard 包装一个表单单页(白底圆角);移动端收紧 padding,允许贴边操作 */
 type FormCardProps = {
   children: ReactNode;
   /** 顶部贴一段说明文字 */
@@ -146,11 +149,12 @@ type FormCardProps = {
 };
 
 export function FormCard({ children, headerHint }: FormCardProps) {
+  const { isMobile } = useResponsive();
   return (
     <Card
       styles={{
         body: {
-          padding: 24
+          padding: isMobile ? 16 : 24
         }
       }}
       style={{ borderRadius: 8 }}
@@ -164,7 +168,8 @@ export function FormCard({ children, headerHint }: FormCardProps) {
             border: "1px solid #91caff",
             borderRadius: 6,
             fontSize: 13,
-            color: "#003eb3"
+            color: "#003eb3",
+            wordBreak: "break-word"
           }}
         >
           {headerHint}

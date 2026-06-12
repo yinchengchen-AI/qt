@@ -1,7 +1,7 @@
 "use client";
 import { ProCard } from "@ant-design/pro-components";
-import { Button, Space, DatePicker, App as AntdApp, Typography } from "antd";
-import { Line, Column, Pie } from "@ant-design/charts";
+import { Button, Space, DatePicker, App as AntdApp } from "antd";
+import { Line, Column } from "@ant-design/charts";
 import { useCallback, useEffect, useState } from "react";
 import { DownloadOutlined } from "@ant-design/icons";
 import dayjs from "dayjs";
@@ -11,8 +11,7 @@ import { StatGrid, type StatItem } from "@/components/stat-grid";
 import { EmptyState } from "@/components/empty-state";
 import { formatCurrency } from "@/lib/format";
 import { formatStatus } from "@/lib/status";
-
-const { Text } = Typography;
+import { useResponsive } from "@/lib/use-breakpoint";
 
 type Series = { month: string; contractAmount: number; invoiceAmount: number; paymentAmount: number }[];
 type Overview = {
@@ -28,16 +27,17 @@ type Resp = {
   distribution: { byScale: DistItem[]; byType: DistItem[]; byStatus: DistItem[] };
 };
 
-const CUST_STATUS_LABEL: Record<string, string> = {
-  LEAD: "潜在", NEGOTIATING: "洽谈中", SIGNED: "已签约", LOST: "已流失", FROZEN: "已冻结"
-};
-
 export default function OverviewPage() {
+  const { isMobile } = useResponsive();
   const [range, setRange] = useState<[dayjs.Dayjs, dayjs.Dayjs] | null>(null);
   const [data, setData] = useState<Resp | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const { message } = AntdApp.useApp();
+
+  // 图表高度在窄屏上压缩,避免单屏只能看到一根柱子
+  const chartHeight = isMobile ? 240 : 320;
+  const townChartHeight = isMobile ? 280 : 320;
 
   const load = useCallback(async () => {
     setLoading(true); setError(null);
@@ -71,7 +71,6 @@ export default function OverviewPage() {
   const s = data?.series ?? [];
   const cust = data?.customers;
   const proj = data?.projects;
-  const dist = data?.distribution;
 
   const lineData = s.flatMap((x) => [
     { month: x.month, value: x.contractAmount, type: "合同额" },
@@ -87,7 +86,6 @@ export default function OverviewPage() {
     { label: "已回款额", value: formatCurrency(o?.paymentAmount ?? 0), prefix: "¥", description: `回款率 ${o?.paymentRate ?? 0}%` }
   ];
 
-  const custDistData = dist?.byStatus.map(x => ({ type: CUST_STATUS_LABEL[x.key] ?? x.key, count: x.count })) ?? [];
   const projData = proj?.byStatus.map(x => ({ status: formatStatus(x.status, "project").label, count: x.count })) ?? [];
 
   return (
@@ -96,7 +94,7 @@ export default function OverviewPage() {
         title="统计分析"
         subtitle="客户、合同、项目、开票、回款 5 维度综合看板"
         actions={
-          <Space>
+          <Space wrap>
             <DatePicker.RangePicker value={range} onChange={(v) => setRange(v as [dayjs.Dayjs, dayjs.Dayjs] | null)} />
             <Button icon={<DownloadOutlined />} onClick={download}>导出 xlsx</Button>
           </Space>
@@ -112,11 +110,12 @@ export default function OverviewPage() {
             <PageHeader level="section" title="客户区域分布" subtitle="按镇街分组" />
             <ProCard>
               {data && data.townDistribution && data.townDistribution.length > 0 ? (
-                <Column data={data.townDistribution} xField="town" yField="count" height={320} colorField="town"
+                <Column data={data.townDistribution} xField="town" yField="count" height={townChartHeight} colorField="town"
+                  autoFit
                   label={{ text: (d: Record<string, unknown>) => String(d.count), style: { fontSize: 11 } }}
                   xAxis={{ label: { autoRotate: true, autoHide: false } }}
                 />
-              ) : <EmptyState empty title="暂无区域分布数据" description="客户所在地尚未录入镇街信息" height={320} />}
+              ) : <EmptyState empty title="暂无区域分布数据" description="客户所在地尚未录入镇街信息" height={townChartHeight} />}
             </ProCard>
           </div>
 
@@ -124,8 +123,8 @@ export default function OverviewPage() {
             <PageHeader level="section" title="项目状态" />
             <ProCard>
               {projData.length > 0 ? (
-                <Column data={projData} xField="status" yField="count" height={260} colorField="status" />
-              ) : <EmptyState empty title="暂无项目数据" height={260} />}
+                <Column data={projData} xField="status" yField="count" height={isMobile ? 220 : 260} colorField="status" autoFit />
+              ) : <EmptyState empty title="暂无项目数据" height={isMobile ? 220 : 260} />}
             </ProCard>
           </div>
 
@@ -133,10 +132,11 @@ export default function OverviewPage() {
             <PageHeader level="section" title="合同/开票/回款趋势" />
             <ProCard>
               {lineData.length > 0 ? (
-                <Line data={lineData} xField="month" yField="value" colorField="type" height={320}
+                <Line data={lineData} xField="month" yField="value" colorField="type" height={chartHeight}
+                  autoFit
                   point={{ shapeField: "circle", sizeField: 3 }}
                 />
-              ) : <EmptyState empty title="暂无趋势数据" height={320} />}
+              ) : <EmptyState empty title="暂无趋势数据" height={chartHeight} />}
             </ProCard>
           </div>
         </>

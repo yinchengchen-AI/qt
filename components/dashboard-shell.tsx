@@ -39,6 +39,7 @@ import {
 } from "@ant-design/icons";
 import type { RoleCode } from "@/types/enums";
 import type { Action, Resource } from "@/lib/permissions";
+import { useResponsive } from "@/lib/use-breakpoint";
 
 const { Sider, Header, Content } = Layout;
 const { Text } = Typography;
@@ -139,12 +140,14 @@ export function DashboardShell({ user, children }: Props) {
   const router = useRouter();
   const pathname = usePathname();
   const { token } = theme.useToken();
+  const { isMobile, isPhone, md } = useResponsive();
   const [collapsed, setCollapsed] = useState(false);
   // 手风琴模式: 仅同时打开一个父分组(默认开);关闭后允许多个分组同时展开
   const [accordion, setAccordion] = useState(true);
   // 父分组展开状态(controlled, 用于支持手风琴/多开切换)
   const [openKeys, setOpenKeys] = useState<string[]>([]);
   const [unread, setUnread] = useState(0);
+  const [navOpen, setNavOpen] = useState(false);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [messages, setMessages] = useState<
     Array<{ id: string; title: string; type: string; readAt: string | null; createdAt: string; link: { kind: string; id: string } | null }>
@@ -154,6 +157,15 @@ export function DashboardShell({ user, children }: Props) {
     () => findSelectedKey(pathname),
     [pathname]
   );
+
+  // 移动端在 body 上挂 .qt-touch 标记,样式 hook 用来收紧菜单交互与按钮尺寸
+  useEffect(() => {
+    if (typeof document === "undefined") return;
+    document.body.classList.toggle("qt-touch", isMobile);
+    return () => {
+      document.body.classList.remove("qt-touch");
+    };
+  }, [isMobile]);
 
   // 读取持久化的手风琴设置
   useEffect(() => {
@@ -183,6 +195,11 @@ export function DashboardShell({ user, children }: Props) {
       return accordion ? defaultOpen : [...prev, ...defaultOpen];
     });
   }, [defaultOpen, accordion]);
+
+  // 移动端路由切换时自动关闭导航 Drawer
+  useEffect(() => {
+    if (isMobile) setNavOpen(false);
+  }, [pathname, isMobile]);
 
   const handleOpenChange = (keys: string[]) => {
     if (!accordion) {
@@ -241,125 +258,181 @@ export function DashboardShell({ user, children }: Props) {
     }
   ];
 
-  return (
-    <Layout style={{ minHeight: "100vh" }}>
-      <Sider
-        width={232}
-        collapsedWidth={64}
-        collapsed={collapsed}
-        trigger={null}
+  // 桌面端 Sider 节点;移动端不渲染,改用下方 Drawer
+  const siderNode = (
+    <Sider
+      width={232}
+      collapsedWidth={64}
+      collapsed={collapsed}
+      trigger={null}
+      style={{
+        position: "sticky",
+        top: 0,
+        height: "100vh",
+        borderRight: `1px solid ${token.colorSplit}`,
+        background: token.colorBgContainer
+      }}
+    >
+      <div
         style={{
-          position: "sticky",
-          top: 0,
-          height: "100vh",
-          borderRight: `1px solid ${token.colorSplit}`,
-          background: token.colorBgContainer
+          height: 64,
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          borderBottom: `1px solid ${token.colorSplit}`,
+          overflow: "hidden",
+          flexShrink: 0
         }}
       >
-        <div
-          style={{
-            height: 64,
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            borderBottom: `1px solid ${token.colorSplit}`,
-            overflow: "hidden",
-            flexShrink: 0
-          }}
-        >
-          {collapsed ? (
-            <span
-              aria-label="企泰安全"
-              style={{
-                width: 36,
-                height: 36,
-                borderRadius: 8,
-                background: "linear-gradient(135deg, #0A1C33 0%, #142E63 100%)",
-                color: "#ffffff",
-                display: "inline-flex",
-                alignItems: "center",
-                justifyContent: "center",
-                fontSize: 18,
-                fontWeight: 700,
-                letterSpacing: "0.02em"
-              }}
-            >
-              企
-            </span>
-          ) : (
-            <Link
-              href="/dashboard"
-              aria-label="企泰安全"
-              style={{
-                textDecoration: "none",
-                color: token.colorText,
-                fontSize: 18,
-                fontWeight: 700,
-                letterSpacing: "0.12em"
-              }}
-            >
-              企泰安全
-            </Link>
-          )}
-        </div>
-
-        <Menu
-          mode="inline"
-          selectedKeys={[selectedKey]}
-          openKeys={openKeys}
-          onOpenChange={handleOpenChange}
-          items={toAntdMenu(MENU)}
-          style={{ borderInlineEnd: 0, paddingTop: 8 }}
-          onClick={(e) => {
-            if (typeof e.key === "string" && e.key.startsWith("/")) router.push(e.key);
-          }}
-        />
-
-        <div
-          style={{
-            position: "absolute",
-            bottom: 0,
-            left: 0,
-            right: 0,
-            padding: "8px 12px",
-            borderTop: `1px solid ${token.colorSplit}`,
-            display: "flex",
-            alignItems: "center",
-            justifyContent: collapsed ? "center" : "space-between",
-            gap: 8
-          }}
-        >
-          <Tooltip
-            placement="right"
-            title={accordion ? "手风琴模式:同时仅打开一个分组(点击切换为多开)" : "多开模式:允许多个分组同时展开(点击切换为手风琴)"}
+        {collapsed ? (
+          <span
+            aria-label="企泰安全"
+            style={{
+              width: 36,
+              height: 36,
+              borderRadius: 8,
+              background: "linear-gradient(135deg, #0A1C33 0%, #142E63 100%)",
+              color: "#ffffff",
+              display: "inline-flex",
+              alignItems: "center",
+              justifyContent: "center",
+              fontSize: 18,
+              fontWeight: 700,
+              letterSpacing: "0.02em"
+            }}
           >
-            <button
-              type="button"
-              onClick={() => setAccordion((a) => !a)}
-              aria-label={accordion ? "关闭手风琴" : "开启手风琴"}
-              aria-pressed={accordion}
-              style={{
-                background: accordion ? token.colorPrimaryBg : "transparent",
-                border: `1px solid ${accordion ? token.colorPrimaryBorder : token.colorSplit}`,
-                padding: collapsed ? "6px 8px" : "4px 10px",
-                cursor: "pointer",
-                color: accordion ? token.colorPrimary : token.colorTextSecondary,
-                fontSize: 12,
-                display: "inline-flex",
-                alignItems: "center",
-                gap: 6,
-                borderRadius: 6,
-                transition: "background-color 160ms, border-color 160ms, color 160ms",
-                width: collapsed ? "auto" : "100%",
-                justifyContent: collapsed ? "center" : "flex-start"
-              }}
-            >
-              {accordion ? <CompressOutlined /> : <ExpandOutlined />}
-              {!collapsed && <span>{accordion ? "手风琴" : "多开"}</span>}
-            </button>
-          </Tooltip>
-        </div>
-      </Sider>
+            企
+          </span>
+        ) : (
+          <Link
+            href="/dashboard"
+            aria-label="企泰安全"
+            style={{
+              textDecoration: "none",
+              color: token.colorText,
+              fontSize: 18,
+              fontWeight: 700,
+              letterSpacing: "0.12em"
+            }}
+          >
+            企泰安全
+          </Link>
+        )}
+      </div>
+
+      <Menu
+        mode="inline"
+        selectedKeys={[selectedKey]}
+        openKeys={openKeys}
+        onOpenChange={handleOpenChange}
+        items={toAntdMenu(MENU)}
+        style={{ borderInlineEnd: 0, paddingTop: 8 }}
+        onClick={(e) => {
+          if (typeof e.key === "string" && e.key.startsWith("/")) router.push(e.key);
+        }}
+      />
+
+      <div
+        style={{
+          position: "absolute",
+          bottom: 0,
+          left: 0,
+          right: 0,
+          padding: "8px 12px",
+          borderTop: `1px solid ${token.colorSplit}`,
+          display: "flex",
+          alignItems: "center",
+          justifyContent: collapsed ? "center" : "space-between",
+          gap: 8
+        }}
+      >
+        <Tooltip
+          placement="right"
+          title={accordion ? "手风琴模式:同时仅打开一个分组(点击切换为多开)" : "多开模式:允许多个分组同时展开(点击切换为手风琴)"}
+        >
+          <button
+            type="button"
+            onClick={() => setAccordion((a) => !a)}
+            aria-label={accordion ? "关闭手风琴" : "开启手风琴"}
+            aria-pressed={accordion}
+            style={{
+              background: accordion ? token.colorPrimaryBg : "transparent",
+              border: `1px solid ${accordion ? token.colorPrimaryBorder : token.colorSplit}`,
+              padding: collapsed ? "6px 8px" : "4px 10px",
+              cursor: "pointer",
+              color: accordion ? token.colorPrimary : token.colorTextSecondary,
+              fontSize: 12,
+              display: "inline-flex",
+              alignItems: "center",
+              gap: 6,
+              borderRadius: 6,
+              transition: "background-color 160ms, border-color 160ms, color 160ms",
+              width: collapsed ? "auto" : "100%",
+              justifyContent: collapsed ? "center" : "flex-start"
+            }}
+          >
+            {accordion ? <CompressOutlined /> : <ExpandOutlined />}
+            {!collapsed && <span>{accordion ? "手风琴" : "多开"}</span>}
+          </button>
+        </Tooltip>
+      </div>
+    </Sider>
+  );
+
+  // 移动端导航 Drawer 共用一份 Menu
+  const mobileMenu = (
+    <Menu
+      mode="inline"
+      selectedKeys={[selectedKey]}
+      openKeys={openKeys}
+      onOpenChange={handleOpenChange}
+      items={toAntdMenu(MENU)}
+      style={{ borderInlineEnd: 0 }}
+      onClick={(e) => {
+        if (typeof e.key === "string" && e.key.startsWith("/")) {
+          setNavOpen(false);
+          router.push(e.key);
+        }
+      }}
+    />
+  );
+
+  return (
+    <Layout style={{ minHeight: "100vh" }}>
+      {/* 桌面端 Sider: >=md 显示 */}
+      {md && siderNode}
+
+      {/* 移动端导航 Drawer */}
+      {!md && (
+        <Drawer
+          placement="left"
+          open={navOpen}
+          onClose={() => setNavOpen(false)}
+          styles={{
+            wrapper: { width: typeof window !== "undefined" ? Math.min(320, window.innerWidth * 0.85) : 320 },
+            body: { padding: 0 },
+            header: { display: "none" }
+          }}
+          rootClassName="qt-nav-drawer"
+          // 物理返回键 / Esc 关闭交给 Antd 默认行为
+        >
+          <div
+            style={{
+              height: 64,
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              borderBottom: `1px solid ${token.colorSplit}`,
+              fontSize: 18,
+              fontWeight: 700,
+              letterSpacing: "0.12em"
+            }}
+          >
+            企泰安全
+          </div>
+          {mobileMenu}
+        </Drawer>
+      )}
 
       <Layout style={{ background: token.colorBgLayout }}>
         <Header
@@ -370,54 +443,87 @@ export function DashboardShell({ user, children }: Props) {
             display: "flex",
             alignItems: "center",
             justifyContent: "space-between",
-            padding: "0 20px 0 8px",
+            gap: 8,
+            padding: isMobile ? "0 8px 0 4px" : "0 20px 0 8px",
             background: token.colorBgContainer,
-            borderBottom: `1px solid ${token.colorSplit}`
+            borderBottom: `1px solid ${token.colorSplit}`,
+            // iOS 安全区适配
+            paddingTop: isMobile ? "env(safe-area-inset-top)" : undefined,
+            height: isMobile ? 56 : 64
           }}
         >
           <div
             style={{
               display: "flex",
               alignItems: "center",
-              gap: 12,
+              gap: isMobile ? 8 : 12,
               minWidth: 0,
               flex: 1
             }}
           >
-            <button
-              type="button"
-              onClick={() => setCollapsed((c) => !c)}
-              aria-label={collapsed ? "展开侧栏" : "收起侧栏"}
-              title={collapsed ? "展开侧栏" : "收起侧栏"}
-              style={{
-                background: "transparent",
-                border: "none",
-                padding: 6,
-                cursor: "pointer",
-                color: token.colorTextSecondary,
-                fontSize: 16,
-                display: "inline-flex",
-                alignItems: "center",
-                justifyContent: "center",
-                borderRadius: 6,
-                transition: "background-color 160ms"
-              }}
-            >
-              {collapsed ? <MenuUnfoldOutlined /> : <MenuFoldOutlined />}
-            </button>
-            <span
-              aria-hidden="true"
-              style={{
-                width: 1,
-                height: 20,
-                background: token.colorSplit,
-                flexShrink: 0
-              }}
-            />
-            <Crumbs pathname={pathname} />
+            {isMobile ? (
+              <button
+                type="button"
+                onClick={() => setNavOpen(true)}
+                aria-label="打开导航"
+                title="打开导航"
+                style={{
+                  background: "transparent",
+                  border: "none",
+                  padding: 8,
+                  cursor: "pointer",
+                  color: token.colorTextSecondary,
+                  fontSize: 18,
+                  display: "inline-flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  borderRadius: 6,
+                  minWidth: 40,
+                  minHeight: 40
+                }}
+              >
+                <MenuUnfoldOutlined />
+              </button>
+            ) : (
+              <button
+                type="button"
+                onClick={() => setCollapsed((c) => !c)}
+                aria-label={collapsed ? "展开侧栏" : "收起侧栏"}
+                title={collapsed ? "展开侧栏" : "收起侧栏"}
+                style={{
+                  background: "transparent",
+                  border: "none",
+                  padding: 6,
+                  cursor: "pointer",
+                  color: token.colorTextSecondary,
+                  fontSize: 16,
+                  display: "inline-flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  borderRadius: 6,
+                  transition: "background-color 160ms"
+                }}
+              >
+                {collapsed ? <MenuUnfoldOutlined /> : <MenuFoldOutlined />}
+              </button>
+            )}
+            {!isPhone && (
+              <span
+                aria-hidden="true"
+                style={{
+                  width: 1,
+                  height: 20,
+                  background: token.colorSplit,
+                  flexShrink: 0
+                }}
+              />
+            )}
+            <div style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+              <Crumbs pathname={pathname} compact={isPhone} />
+            </div>
           </div>
 
-          <div style={{ display: "inline-flex", alignItems: "center", gap: 16 }}>
+          <div style={{ display: "inline-flex", alignItems: "center", gap: isMobile ? 4 : 16, flexShrink: 0 }}>
             <Badge count={unread} size="small" offset={[-2, 2]}>
               <button
                 type="button"
@@ -435,37 +541,40 @@ export function DashboardShell({ user, children }: Props) {
                   fontSize: 16,
                   display: "inline-flex",
                   alignItems: "center",
-                  justifyContent: "center"
+                  justifyContent: "center",
+                  minWidth: 40,
+                  minHeight: 40,
+                  borderRadius: 6
                 }}
               >
                 <BellOutlined />
               </button>
             </Badge>
-          </div>
 
-          <div style={{ display: "inline-flex", alignItems: "center", gap: 16, flexShrink: 0 }}>
             <Dropdown menu={{ items: userMenu }} trigger={["click"]} placement="bottomRight">
               <span
                 style={{
                   display: "inline-flex",
                   alignItems: "center",
-                  gap: 8,
+                  gap: isPhone ? 0 : 8,
                   cursor: "pointer",
-                  padding: "4px 8px",
+                  padding: "4px 6px",
                   borderRadius: 6,
                   transition: "background-color 160ms"
                 }}
               >
-                <Avatar size={28} icon={<UserOutlined />} style={{ background: token.colorPrimary }}>
+                <Avatar size={isMobile ? 28 : 28} icon={<UserOutlined />} style={{ background: token.colorPrimary }}>
                   {user.name?.[0]}
                 </Avatar>
-                <span style={{ display: "flex", flexDirection: "column", lineHeight: 1.2 }}>
-                  <Text style={{ fontSize: 13 }}>{user.name}</Text>
-                  <Text type="secondary" style={{ fontSize: 11 }}>
-                    {ROLE_LABEL[user.roleCode] ?? user.roleCode}
-                  </Text>
-                </span>
-                <DownOutlined style={{ fontSize: 10, color: token.colorTextTertiary }} />
+                {!isPhone && (
+                  <span style={{ display: "flex", flexDirection: "column", lineHeight: 1.2 }}>
+                    <Text style={{ fontSize: 13 }}>{user.name}</Text>
+                    <Text type="secondary" style={{ fontSize: 11 }}>
+                      {ROLE_LABEL[user.roleCode] ?? user.roleCode}
+                    </Text>
+                  </span>
+                )}
+                {!isMobile && <DownOutlined style={{ fontSize: 10, color: token.colorTextTertiary }} />}
               </span>
             </Dropdown>
           </div>
@@ -475,8 +584,8 @@ export function DashboardShell({ user, children }: Props) {
           key={pathname}
           className="app-anim-in"
           style={{
-            padding: 24,
-            minHeight: "calc(100vh - 64px)"
+            padding: 0,
+            minHeight: isMobile ? "calc(100vh - 56px)" : "calc(100vh - 64px)"
           }}
         >
           {children}
@@ -487,7 +596,14 @@ export function DashboardShell({ user, children }: Props) {
         title="消息中心"
         open={drawerOpen}
         onClose={() => setDrawerOpen(false)}
-        size="default"
+        // 移动端:从底部弹出,占满宽度,符合拇指可达
+        placement={isMobile ? "bottom" : "right"}
+        styles={{
+          wrapper: isMobile
+            ? { height: "85%", width: "100%" }
+            : { width: 420 },
+          body: { padding: isMobile ? "0 12px 12px" : undefined }
+        }}
         extra={
           <a
             onClick={async (e) => {
@@ -580,10 +696,15 @@ const CRUMB_LABEL: Record<string, string> = {
   edit: "编辑"
 };
 
-function Crumbs({ pathname }: { pathname: string }) {
+function Crumbs({ pathname, compact }: { pathname: string; compact?: boolean }) {
   const parts = pathname.split("/").filter(Boolean);
   if (parts.length === 0) {
     return <Text type="secondary">工作台</Text>;
+  }
+  // 极窄屏(<576)只显示最后一段,避免"工作台 / 客户管理 / 张三"挤爆 header
+  if (compact) {
+    const last = parts[parts.length - 1]!;
+    return <Text>{CRUMB_LABEL[last] ?? last}</Text>;
   }
   return (
     <span>
