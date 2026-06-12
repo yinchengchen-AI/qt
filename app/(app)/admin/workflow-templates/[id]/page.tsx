@@ -480,7 +480,7 @@ export default function TemplateDetailPage() {
             <Input.TextArea rows={2} maxLength={2000} showCount />
           </Form.Item>
           <Form.Item name="isRequired" label="是否必填" valuePropName="checked">
-            <Select options={[{ value: true, label: "必填(required)" }, { value: false, label: "可选" }]} />
+            <Select options={[{ value: true, label: "必填" }, { value: false, label: "可选" }]} />
           </Form.Item>
         </Form>
       </Modal>
