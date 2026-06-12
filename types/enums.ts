@@ -25,6 +25,10 @@ export const SERVICE_TYPE = [
   "HAZARD_ANA",
   "EMERGENCY_PLAN",
   "EVALUATION",
+  "SYS_BUILDING",
+  "RESIDENT",
+  "SURVEY",
+  "STANDARDIZATION",
   "OTHER"
 ] as const;
 export type ServiceType = (typeof SERVICE_TYPE)[number];

@@ -201,7 +201,7 @@ model Project {
   startDate     DateTime  @db.Timestamptz(6)
   endDate       DateTime  @db.Timestamptz(6)
   budgetAmount  Decimal?  @db.Decimal(18, 2)
-  milestones    Json?
+  milestones    Json? // @deprecated since v0.3.0, replaced by WorkflowTaskInstance; retained for backward read
   status        String    @default("PLANNED") // PLANNED | IN_PROGRESS | SUSPENDED | DELIVERED | ACCEPTED | CLOSED | CANCELLED
   createdAt     DateTime  @default(now()) @db.Timestamptz(6)
   updatedAt     DateTime  @updatedAt @db.Timestamptz(6)
@@ -210,6 +210,7 @@ model Project {
   deletedAt     DateTime? @db.Timestamptz(6)
 
   progressLogs ProjectProgressLog[]
+  taskInstances WorkflowTaskInstance[]
 
   @@unique([contractId, name])
   @@index([contractId])
@@ -225,6 +226,100 @@ model ProjectProgressLog {
   percent   Int
   remark    String
   at        DateTime @default(now()) @db.Timestamptz(6)
+}
+
+
+// =====================================================
+// Workflow Engine — 服务类型工作流 (P0: 数据模型 + seed)
+// =====================================================
+// 阶段(phase)固定 5 段: PREP 前期准备 / REQUIREMENT 需求识别 / CONTRACT 合同签订 / EXECUTE 实施 / FOLLOWUP 回访改进
+// 任务(task)挂载在 stage 下;模板版本(isActive)控制激活态
+// 实例(instance)是模板克隆到具体项目的运行时任务状态
+// phase: PREP | REQUIREMENT | CONTRACT | EXECUTE | FOLLOWUP
+// taskStatus: PENDING | IN_PROGRESS | COMPLETED | SKIPPED | BLOCKED
+// reviewStatus: null | REVIEWING | REVIEWED | APPROVED | REJECTED (requiresTwoStepReview=true 时使用)
+// recurrenceUnit: DAY | WEEK | MONTH | YEAR
+model WorkflowTemplate {
+  id          String   @id @default(cuid())
+  serviceType String   // SERVICE_TYPE
+  name        String
+  version     Int      @default(1)
+  isActive    Boolean  @default(true)
+  description String?
+  createdById String
+  createdAt   DateTime @default(now()) @db.Timestamptz(6)
+  updatedAt   DateTime @updatedAt @db.Timestamptz(6)
+  deletedAt   DateTime? @db.Timestamptz(6)
+
+  stages WorkflowStage[]
+
+  @@unique([serviceType, isActive])
+  @@index([serviceType])
+  @@index([isActive])
+}
+
+model WorkflowStage {
+  id          String   @id @default(cuid())
+  templateId  String
+  template    WorkflowTemplate @relation(fields: [templateId], references: [id], onDelete: Cascade)
+  phase       String   // PREP | REQUIREMENT | CONTRACT | EXECUTE | FOLLOWUP
+  code        String
+  name        String
+  sort        Int
+  description String?
+  isRequired  Boolean  @default(true)
+
+  tasks WorkflowTask[]
+
+  @@index([templateId, phase])
+}
+
+model WorkflowTask {
+  id                    String   @id @default(cuid())
+  stageId               String
+  stage                 WorkflowStage @relation(fields: [stageId], references: [id], onDelete: Cascade)
+  code                  String
+  name                  String
+  sort                  Int
+  description           String?
+  requiredRole          String?  // 期望执行角色(枚举占位, 由运营在 admin 后台维护)
+  requiresDeliverable   Boolean  @default(false)
+  requiresOnsite        Boolean  @default(false)   // 跨阶段控制点: 现场前沟通确认
+  requiresTwoStepReview Boolean  @default(false)   // 跨阶段控制点: 报告类校核+审核二审
+  isRecurring           Boolean  @default(false)
+  recurrenceUnit        String?  // DAY | WEEK | MONTH | YEAR
+  recurrenceInterval    Int?     // 配合 unit, e.g. 1 MONTH = 每月
+  estimateDays          Int?
+
+  instances WorkflowTaskInstance[]
+
+  @@index([stageId, sort])
+}
+
+model WorkflowTaskInstance {
+  id               String    @id @default(cuid())
+  projectId        String
+  project          Project   @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  taskId           String
+  task             WorkflowTask @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  status           String    @default("PENDING") // PENDING | IN_PROGRESS | COMPLETED | SKIPPED | BLOCKED
+  assigneeId       String?
+  parentInstanceId String?   // 循环任务的上一个实例
+  reviewStatus     String?   // null | REVIEWING | REVIEWED | APPROVED | REJECTED
+  reviewedById     String?
+  reviewedAt       DateTime? @db.Timestamptz(6)
+  completedAt      DateTime? @db.Timestamptz(6)
+  completedById    String?
+  remark           String?
+  attachments      Json?     // MinIO 交付物 keys
+  createdAt        DateTime  @default(now()) @db.Timestamptz(6)
+  updatedAt        DateTime  @updatedAt @db.Timestamptz(6)
+  deletedAt        DateTime? @db.Timestamptz(6)
+
+  @@unique([projectId, taskId])
+  @@index([projectId, status])
+  @@index([assigneeId, status])
+  @@index([parentInstanceId])
 }
 
 // =====================================================

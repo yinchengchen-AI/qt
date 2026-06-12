@@ -5,12 +5,16 @@
  */
 
 export const SERVICE_TYPE_MAP: Record<string, string> = {
-  SAFETY_CONSULT:  "安全咨询",
-  SAFETY_TRAIN:    "安全培训",
-  HAZARD_ANA:      "隐患排查",
-  EMERGENCY_PLAN:  "应急预案",
-  EVALUATION:      "安全评价",
-  OTHER:           "其他"
+  SAFETY_CONSULT:    "管理咨询",
+  SAFETY_TRAIN:      "宣传教育培训",
+  HAZARD_ANA:        "安全隐患排查",
+  EMERGENCY_PLAN:    "应急预案/演练",
+  EVALUATION:        "安全评估",
+  SYS_BUILDING:      "安全体系建设",
+  RESIDENT:          "派驻托管服务",
+  SURVEY:            "普查核验服务",
+  STANDARDIZATION:   "标准化体系创建/换证",
+  OTHER:             "其他"
 };
 
 export const PAYMENT_METHOD_MAP: Record<string, string> = {
