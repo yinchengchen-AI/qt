@@ -62,7 +62,6 @@ const MENU: MenuItem[] = [
     icon: <PlayCircleOutlined />,
     children: [
       { path: "/workflow", name: "任务列表" },
-      { path: "/workflow/board", name: "看板视图" },
       { path: "/workflow/notifications", name: "通知中心" },
       { path: "/workflow/follow-ups", name: "跟进 360" }
     ]
