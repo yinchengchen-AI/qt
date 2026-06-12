@@ -3,7 +3,7 @@
 // 内容: 完整信息 + 状态机操作 + 备注编辑 + 附件上传/列表 + 活动历史 + diff 视图
 import { useState } from "react";
 import useSWR from "swr";
-import { App as AntdApp, Button, Drawer, Empty, Skeleton, Space, Table, Tag, Typography, Upload, Popconfirm, message as antdMessage } from "antd";
+import { App as AntdApp, Button, Drawer, Empty, Skeleton, Space, Table, Tag, Typography, Upload, Popconfirm } from "antd";
 import {
   CheckCircleOutlined,
   ClockCircleOutlined,
@@ -45,29 +45,30 @@ type Attachment = { id: string; name: string; mimeType: string; size: number; up
 
 type TaskInstance = {
   id: string;
-  code: string;
-  name: string;
-  description: string | null;
-  status: "PENDING" | "IN_PROGRESS" | "COMPLETED" | "SKIPPED" | "BLOCKED";
-  reviewStatus: "REVIEWING" | "REVIEWED" | "APPROVED" | "REJECTED" | null;
-  assigneeId: string | null;
-  requiredRole: string | null;
-  requiresDeliverable: boolean;
-  requiresOnsite: boolean;
-  requiresTwoStepReview: boolean;
-  isRecurring: boolean;
-  recurrenceUnit: string | null;
-  recurrenceInterval: number | null;
-  estimateDays: number | null;
-  remark: string | null;
-  attachments: unknown;
-  phase: string;
-  projectId: string;
-  projectNo: string;
-  projectName: string;
-  completedAt: string | null;
-  reviewedAt: string | null;
-  parentInstanceId: string | null;
+  code?: string;
+  name?: string;
+  description?: string | null;
+  taskName?: string;
+  status?: "PENDING" | "IN_PROGRESS" | "COMPLETED" | "SKIPPED" | "BLOCKED";
+  reviewStatus?: "REVIEWING" | "REVIEWED" | "APPROVED" | "REJECTED" | null;
+  assigneeId?: string | null;
+  requiredRole?: string | null;
+  requiresDeliverable?: boolean;
+  requiresOnsite?: boolean;
+  requiresTwoStepReview?: boolean;
+  isRecurring?: boolean;
+  recurrenceUnit?: string | null;
+  recurrenceInterval?: number | null;
+  estimateDays?: number | null;
+  remark?: string | null;
+  attachments?: unknown;
+  phase?: string;
+  projectId?: string;
+  projectNo?: string;
+  projectName?: string;
+  completedAt?: string | null;
+  reviewedAt?: string | null;
+  parentInstanceId?: string | null;
 };
 
 const ACTION_LABEL: Record<string, string> = {
@@ -239,8 +240,8 @@ export function TaskDrawer({
       styles={isMobile ? { body: { paddingBottom: 24 } } : undefined}
       title={
         <Space>
-          <Tag color={STATUS_TONE[task.status]}>{WORKFLOW_TASK_STATUS_MAP[task.status]}</Tag>
-          <span>{task.name}</span>
+          {task.status && <Tag color={STATUS_TONE[task.status]}>{WORKFLOW_TASK_STATUS_MAP[task.status]}</Tag>}
+          <span>{task.name ?? task.taskName ?? "任务详情"}</span>
         </Space>
       }
       destroyOnHidden
@@ -249,7 +250,7 @@ export function TaskDrawer({
       <Title level={5} style={{ marginTop: 0 }}>任务信息</Title>
       <Space size={4} wrap style={{ marginBottom: 8 }}>
         <Tag>{task.code}</Tag>
-        <Tag color="blue">{WORKFLOW_PHASE_MAP[task.phase] ?? task.phase}</Tag>
+        <Tag color="blue">{task.phase ? (WORKFLOW_PHASE_MAP[task.phase] ?? task.phase) : "—"}</Tag>
         {task.requiredRole && <Tag>{WORKFLOW_REQUIRED_ROLE_MAP[task.requiredRole] ?? task.requiredRole}</Tag>}
         {task.requiresDeliverable && <Tag color="cyan">需交付物</Tag>}
         {task.requiresOnsite && <Tag color="gold">现场</Tag>}

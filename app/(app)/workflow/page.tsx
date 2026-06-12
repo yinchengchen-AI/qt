@@ -18,6 +18,7 @@ import {
   WORKFLOW_REVIEW_STATUS_MAP,
 } from "@/lib/enum-maps";
 import { useResponsive } from "@/lib/use-breakpoint";
+import { TaskDrawer } from "@/components/workflow/task-drawer";
 
 const { Text } = Typography;
 
@@ -68,6 +69,7 @@ export default function MyTasksPage() {
   const { isMobile } = useResponsive();
   const { message } = AntdApp.useApp();
   const [filter, setFilter] = useState<string>("ACTIVE");
+  const [drawerTask, setDrawerTask] = useState<MyTask | null>(null);
   const statuses = filter === "ACTIVE" ? "PENDING,IN_PROGRESS,BLOCKED" : "COMPLETED,SKIPPED";
   const { data, isLoading, mutate } = useSWR<{ total: number; items: MyTask[] }>(
     `/api/workflow/my-tasks?statuses=${statuses}&limit=100`
@@ -133,6 +135,7 @@ export default function MyTasksPage() {
             {
               title: "任务",
               dataIndex: "taskName",
+              onCell: (r: MyTask) => ({ onClick: () => setDrawerTask(r), style: { cursor: "pointer" } }),
               render: (v: string, r) => (
                 <Space direction="vertical" size={2}>
                   <Text strong>{v}</Text>
@@ -218,6 +221,8 @@ export default function MyTasksPage() {
           ]}
         />
       )}
+    
+      <TaskDrawer task={drawerTask} open={!!drawerTask} onClose={() => setDrawerTask(null)} onChanged={() => mutate()} canEdit={true} />
     </Page>
   );
 }

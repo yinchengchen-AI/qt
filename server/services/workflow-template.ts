@@ -708,3 +708,144 @@ export async function importTemplate(
     return { id: tpl.id, serviceType: tpl.serviceType, version: newVer, isActive: !!shouldActivate, stageCount, taskCount };
   });
 }
+
+// =====================================================
+// P7: 模板版本对比(stage + task 增删改)
+// =====================================================
+export type TemplateDiffStageTask = {
+  status: "added" | "removed" | "modified" | "unchanged";
+  before: ExportedTemplate["stages"][number]["tasks"][number] | null;
+  after: ExportedTemplate["stages"][number]["tasks"][number] | null;
+  changes: string[]; // 字段名数组
+};
+
+export type TemplateDiffStage = {
+  status: "added" | "removed" | "modified" | "unchanged";
+  before: ExportedTemplate["stages"][number] | null;
+  after: ExportedTemplate["stages"][number] | null;
+  changes: string[];
+  tasks: TemplateDiffStageTask[];
+};
+
+export type TemplateDiff = {
+  from: { id: string; name: string; version: number; serviceType: string };
+  to: { id: string; name: string; version: number; serviceType: string };
+  stages: TemplateDiffStage[];
+  totals: { added: number; removed: number; modified: number; unchanged: number };
+};
+
+const STAGE_COMPARE_FIELDS = ["phase", "code", "name", "description", "isRequired"] as const;
+const TASK_COMPARE_FIELDS = [
+  "code", "name", "description", "requiredRole",
+  "requiresDeliverable", "requiresOnsite", "requiresTwoStepReview",
+  "isRecurring", "recurrenceUnit", "recurrenceInterval", "estimateDays"
+] as const;
+
+function diffByCode<T extends { code: string }>(before: T[], after: T[]): { added: T[]; removed: T[]; common: { b: T; a: T }[] } {
+  const bMap = new Map(before.map((x) => [x.code, x]));
+  const aMap = new Map(after.map((x) => [x.code, x]));
+  const added: T[] = [];
+  const removed: T[] = [];
+  const common: { b: T; a: T }[] = [];
+  for (const [code, a] of aMap) {
+    const b = bMap.get(code);
+    if (b) common.push({ b, a });
+    else added.push(a);
+  }
+  for (const [code, b] of bMap) {
+    if (!aMap.has(code)) removed.push(b);
+  }
+  return { added, removed, common };
+}
+
+function listChanges<T extends Record<string, unknown>>(b: T, a: T, fields: readonly string[]): string[] {
+  const changes: string[] = [];
+  for (const f of fields) {
+    const bv = b[f];
+    const av = a[f];
+    if (JSON.stringify(bv) !== JSON.stringify(av)) {
+      changes.push(f);
+    }
+  }
+  return changes;
+}
+
+export async function diffTemplates(user: SessionUser, fromId: string, toId: string): Promise<TemplateDiff> {
+  requirePermission(user.roleCode, RESOURCE.WORKFLOW_TEMPLATE, ACTION.READ);
+  if (fromId === toId) {
+    throw new ApiError(ERROR_CODES.VALIDATION_FAILED, "fromId 与 toId 不能相同", 400);
+  }
+  const [a, b] = await Promise.all([
+    prisma.workflowTemplate.findUnique({ where: { id: toId } }),
+    prisma.workflowTemplate.findUnique({ where: { id: fromId } })
+  ]);
+  if (!a || !b) throw new ApiError(ERROR_CODES.NOT_FOUND, "模板不存在", 404);
+  if (a.serviceType !== b.serviceType) {
+    throw new ApiError(
+      ERROR_CODES.VALIDATION_FAILED,
+      "两个模板 serviceType 不同,无法对比",
+      422
+    );
+  }
+  const aExp = await exportTemplate(user, a.id);
+  const bExp = await exportTemplate(user, b.id);
+  // stages 用 code 比对
+  const stageDiff = diffByCode(bExp.stages, aExp.stages);
+  const stages: TemplateDiffStage[] = [];
+  // added stages
+  for (const s of stageDiff.added) {
+    stages.push({
+      status: "added",
+      before: null,
+      after: s,
+      changes: [],
+      tasks: s.tasks.map((t) => ({ status: "added", before: null, after: t, changes: [] }))
+    });
+  }
+  // removed stages
+  for (const s of stageDiff.removed) {
+    stages.push({
+      status: "removed",
+      before: s,
+      after: null,
+      changes: [],
+      tasks: s.tasks.map((t) => ({ status: "removed", before: t, after: null, changes: [] }))
+    });
+  }
+  // common stages:diff 字段 + diff 内部 tasks
+  for (const { b: bs, a: as } of stageDiff.common) {
+    const stageChanges = listChanges(bs as unknown as Record<string, unknown>, as as unknown as Record<string, unknown>, STAGE_COMPARE_FIELDS);
+    const taskDiff = diffByCode(bs.tasks, as.tasks);
+    const tasks: TemplateDiffStageTask[] = [];
+    for (const t of taskDiff.added) tasks.push({ status: "added", before: null, after: t, changes: [] });
+    for (const t of taskDiff.removed) tasks.push({ status: "removed", before: t, after: null, changes: [] });
+    for (const { b: tb, a: ta } of taskDiff.common) {
+      const taskChanges = listChanges(tb as unknown as Record<string, unknown>, ta as unknown as Record<string, unknown>, TASK_COMPARE_FIELDS);
+      tasks.push({
+        status: taskChanges.length > 0 ? "modified" : "unchanged",
+        before: tb,
+        after: ta,
+        changes: taskChanges
+      });
+    }
+    stages.push({
+      status: stageChanges.length > 0 ? "modified" : "unchanged",
+      before: bs,
+      after: as,
+      changes: stageChanges,
+      tasks
+    });
+  }
+  const totals = {
+    added: stages.filter((s) => s.status === "added").length + stages.flatMap((s) => s.tasks).filter((t) => t.status === "added").length,
+    removed: stages.filter((s) => s.status === "removed").length + stages.flatMap((s) => s.tasks).filter((t) => t.status === "removed").length,
+    modified: stages.filter((s) => s.status === "modified").length + stages.flatMap((s) => s.tasks).filter((t) => t.status === "modified").length,
+    unchanged: stages.filter((s) => s.status === "unchanged").length
+  };
+  return {
+    from: { id: b.id, name: b.name, version: b.version, serviceType: b.serviceType },
+    to: { id: a.id, name: a.name, version: a.version, serviceType: a.serviceType },
+    stages,
+    totals
+  };
+}

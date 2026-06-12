@@ -91,6 +91,9 @@ export default function TemplateDetailPage() {
   const [addingStage, setAddingStage] = useState(false);
   const [stageForm] = Form.useForm();
   const [importing, setImporting] = useState(false);
+  // 查同 serviceType 下所有版本,看是否有上一版可对比
+  const { data: allVersions } = useSWR<Array<{ id: string; version: number; serviceType: string }>>("/api/admin/workflow-templates");
+  const prevVersion = allVersions?.filter((v) => v.serviceType === data?.serviceType && v.id !== data?.id).sort((a, b) => b.version - a.version)[0];
   const [metaForm] = Form.useForm();
   const [taskForm] = Form.useForm();
 
@@ -281,12 +284,22 @@ export default function TemplateDetailPage() {
         subtitle={"版本 v" + data.version + " · " + (data.isActive ? "已激活" : "未激活")}
         meta={data.isActive ? <Tag color="success">激活</Tag> : <Tag>未激活</Tag>}
         actions={
-          <Button icon={<EditOutlined />} onClick={() => {
-            metaForm.setFieldsValue({ name: data.name, description: data.description ?? "", isActive: data.isActive });
-            setEditingMeta(true);
-          }}>
-            编辑元数据
-          </Button>
+          <Space>
+            {prevVersion && (
+              <Button
+                icon={<SwapOutlined />}
+                onClick={() => router.push("/admin/workflow-templates/diff?fromId=" + prevVersion.id + "&toId=" + data.id)}
+              >
+                对比 v{prevVersion.version}
+              </Button>
+            )}
+            <Button icon={<EditOutlined />} onClick={() => {
+              metaForm.setFieldsValue({ name: data.name, description: data.description ?? "", isActive: data.isActive });
+              setEditingMeta(true);
+            }}>
+              编辑元数据
+            </Button>
+          </Space>
         }
       />
 
