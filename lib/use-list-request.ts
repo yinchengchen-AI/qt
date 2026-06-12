@@ -7,13 +7,13 @@ export type ListRequestExtra = (params: ListParams) => Record<string, unknown> |
 
 export type ListResult<T> = { data: T[]; total: number; success: true };
 
+// 服务端 list 路由支持的标准过滤键;前端 ProTable 把这些键透传到 query。
+// customerType / serviceType 走 valueEnum 渲染,不在服务端过滤,故不在此清单。
 const KNOWN_KEYS = new Set([
   "keyword",
   "status",
   "scale",
   "customerId",
-  "customerType",
-  "serviceType",
   "contractId",
   "invoiceId"
 ]);

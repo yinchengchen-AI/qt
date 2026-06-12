@@ -11,7 +11,10 @@ const query = z.object({
   entity: z.string().optional(),
   action: z.string().optional(),
   actorId: z.string().optional(),
-  entityId: z.string().optional()
+  entityId: z.string().optional(),
+  // 时间范围筛选(对应 `at` 字段)
+  from: z.string().optional(),
+  to: z.string().optional()
 });
 
 export async function GET(req: Request) {
@@ -20,11 +23,14 @@ export async function GET(req: Request) {
     requirePermission(user.roleCode, RESOURCE.OPERATION_LOG, ACTION.READ);
     const url = new URL(req.url);
     const p = query.parse(Object.fromEntries(url.searchParams));
+    const from = p.from ? new Date(p.from) : undefined;
+    const to = p.to ? new Date(p.to) : undefined;
     const where: import("@prisma/client").Prisma.OperationLogWhereInput = {
       ...(p.entity ? { entity: p.entity } : {}),
       ...(p.action ? { action: p.action } : {}),
       ...(p.actorId ? { actorId: p.actorId } : {}),
-      ...(p.entityId ? { entityId: p.entityId } : {})
+      ...(p.entityId ? { entityId: p.entityId } : {}),
+      ...((from || to) ? { at: { ...(from ? { gte: from } : {}), ...(to ? { lte: to } : {}) } } : {})
     };
     const [list, total] = await Promise.all([
       prisma.operationLog.findMany({

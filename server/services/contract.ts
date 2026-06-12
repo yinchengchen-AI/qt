@@ -5,6 +5,7 @@ import { type SessionUser } from "@/lib/session";
 import { nextBusinessNo } from "@/lib/sequence";
 import { requirePermission, RESOURCE, ACTION } from "@/lib/permissions";
 import type { ContractCreateInput, ContractUpdateInput, ReviewActionInput } from "@/lib/validators/contract";
+import { ownerEq, parseStatusList } from "@/lib/ownership";
 import { Prisma } from "@prisma/client";
 import { audit } from "@/server/audit";
 import { emit, listAdminUserIds } from "@/server/events/bus";
@@ -57,9 +58,6 @@ async function resolveAttachmentSnapshots(
 }
 
 
-function ownershipWhere(user: SessionUser): Prisma.ContractWhereInput {
-  return user.roleCode === "SALES" ? { ownerUserId: user.id } : {};
-}
 
 function calcTotals(totalAmount: number, taxRate: number) {
   const taxAmount = round2((totalAmount * taxRate) / (1 + taxRate));
@@ -77,12 +75,11 @@ export async function listContracts(
 ) {
   requirePermission(user.roleCode, RESOURCE.CONTRACT, ACTION.READ);
   const { page, pageSize, keyword, status, customerId } = params;
+  const statusList = parseStatusList(status);
   const where: Prisma.ContractWhereInput = {
-    ...ownershipWhere(user),
+    ...ownerEq(user),
     deletedAt: null,
-    ...(status
-      ? { status: { in: status.split(",").map((s) => s.trim()).filter(Boolean) } }
-      : {}),
+    ...(statusList ? { status: { in: statusList } } : {}),
     ...(customerId ? { customerId } : {}),
     ...(keyword
       ? {
@@ -109,7 +106,7 @@ export async function listContracts(
 export async function getContract(user: SessionUser, id: string) {
   requirePermission(user.roleCode, RESOURCE.CONTRACT, ACTION.READ);
   const c = await prisma.contract.findFirst({
-    where: { id, deletedAt: null, ...ownershipWhere(user) },
+    where: { id, deletedAt: null, ...ownerEq(user) },
     include: {
       reviewLogs: {
         orderBy: { at: "asc" },
@@ -191,7 +188,7 @@ export async function createContract(user: SessionUser, input: ContractCreateInp
 
 export async function updateContract(user: SessionUser, id: string, input: ContractUpdateInput) {
   requirePermission(user.roleCode, RESOURCE.CONTRACT, ACTION.UPDATE);
-  const existing = await prisma.contract.findFirst({ where: { id, deletedAt: null, ...ownershipWhere(user) } });
+  const existing = await prisma.contract.findFirst({ where: { id, deletedAt: null, ...ownerEq(user) } });
   if (!existing) throw new ApiError(ERROR_CODES.NOT_FOUND, "合同不存在", 404);
   if (!["DRAFT", "PENDING_REVIEW"].includes(existing.status)) {
     throw new ApiError(ERROR_CODES.ENTITY_IMMUTABLE, "当前状态不可修改", 403);
@@ -233,7 +230,7 @@ export async function updateContract(user: SessionUser, id: string, input: Contr
 export async function reviewContract(user: SessionUser, id: string, input: ReviewActionInput) {
   requirePermission(user.roleCode, RESOURCE.CONTRACT, ACTION.UPDATE);
   return prisma.$transaction(async (tx) => {
-    const c = await tx.contract.findFirst({ where: { id, deletedAt: null, ...ownershipWhere(user) } });
+    const c = await tx.contract.findFirst({ where: { id, deletedAt: null, ...ownerEq(user) } });
     if (!c) throw new ApiError(ERROR_CODES.NOT_FOUND, "合同不存在", 404);
     if (input.action === "SUBMIT") {
       if (c.status !== "DRAFT") throw new ApiError(ERROR_CODES.ENTITY_IMMUTABLE, "仅 DRAFT 可提交", 403);
@@ -302,7 +299,7 @@ export async function reviewContract(user: SessionUser, id: string, input: Revie
 export async function terminateContract(user: SessionUser, id: string, reason?: string) {
   requirePermission(user.roleCode, RESOURCE.CONTRACT, ACTION.DELETE);
   if (user.roleCode !== "ADMIN") throw new ApiError(ERROR_CODES.FORBIDDEN, "仅管理员可终止合同", 403);
-  const c = await prisma.contract.findFirst({ where: { id, deletedAt: null, ...ownershipWhere(user) } });
+  const c = await prisma.contract.findFirst({ where: { id, deletedAt: null, ...ownerEq(user) } });
   if (!c) throw new ApiError(ERROR_CODES.NOT_FOUND, "合同不存在", 404);
   if (!["EFFECTIVE", "EXECUTING"].includes(c.status)) {
     throw new ApiError(ERROR_CODES.ENTITY_IMMUTABLE, "当前状态不可终止", 403);

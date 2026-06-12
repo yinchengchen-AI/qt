@@ -8,14 +8,7 @@ import type { PaymentCreateInput, PaymentActionInput } from "@/lib/validators/pa
 import { Prisma } from "@prisma/client";
 import { audit } from "@/server/audit";
 import { emit, listAdminUserIds } from "@/server/events/bus";
-
-// SALES 行级隔离：回款所属合同的 ownerUserId 必须 = 自己
-function paymentSalesIsolation(user: SessionUser): Prisma.PaymentWhereInput {
-  if (user.roleCode === "SALES") {
-    return { contract: { ownerUserId: user.id } };
-  }
-  return {};
-}
+import { ownerEq, ownerViaContract, parseStatusList } from "@/lib/ownership";
 
 export async function listPayments(
   user: SessionUser,
@@ -23,13 +16,14 @@ export async function listPayments(
 ) {
   requirePermission(user.roleCode, RESOURCE.PAYMENT, ACTION.READ);
   const { page, pageSize, keyword, status, contractId, invoiceId } = params;
+  const statusList = parseStatusList(status);
   const where: Prisma.PaymentWhereInput = {
     deletedAt: null,
-    ...(status ? { status } : {}),
+    ...(statusList ? { status: { in: statusList } } : {}),
     ...(contractId ? { contractId } : {}),
     ...(invoiceId ? { invoiceId } : {}),
     ...(keyword ? { OR: [{ paymentNo: { contains: keyword, mode: "insensitive" } }, { bankRefNo: { contains: keyword, mode: "insensitive" } }] } : {}),
-    ...(user.roleCode === "SALES" ? { contract: { ownerUserId: user.id } } : {})
+    ...(ownerViaContract(user) as Prisma.PaymentWhereInput),
   };
   const [list, total] = await Promise.all([
     prisma.payment.findMany({ where, orderBy: { receivedAt: "desc" }, skip: (page - 1) * pageSize, take: pageSize }),
@@ -41,7 +35,7 @@ export async function listPayments(
 export async function getPayment(user: SessionUser, id: string) {
   requirePermission(user.roleCode, RESOURCE.PAYMENT, ACTION.READ);
   const p = await prisma.payment.findFirst({
-    where: { id, deletedAt: null, ...(user.roleCode === "SALES" ? { contract: { ownerUserId: user.id } } : {}) },
+    where: { id, deletedAt: null, ...(ownerViaContract(user) as Prisma.PaymentWhereInput) },
     include: { allocations: true, invoice: { select: { id: true, invoiceNo: true, amount: true } } }
   });
   if (!p) throw new ApiError(ERROR_CODES.NOT_FOUND, "回款不存在", 404);
@@ -52,7 +46,7 @@ export async function createPayment(user: SessionUser, input: PaymentCreateInput
   requirePermission(user.roleCode, RESOURCE.PAYMENT, ACTION.CREATE);
   return prisma.$transaction(async (tx) => {
     const contract = await tx.contract.findFirst({
-      where: { id: input.contractId, deletedAt: null, ...(user.roleCode === "SALES" ? { ownerUserId: user.id } : {}) }
+      where: { id: input.contractId, deletedAt: null, ...ownerEq(user) }
     });
     if (!contract) throw new ApiError(ERROR_CODES.NOT_FOUND, "合同不存在", 404);
     if (input.invoiceId) {
@@ -84,7 +78,7 @@ export async function createPayment(user: SessionUser, input: PaymentCreateInput
 export async function paymentAction(user: SessionUser, id: string, input: PaymentActionInput) {
   requirePermission(user.roleCode, RESOURCE.PAYMENT, ACTION.UPDATE);
   return prisma.$transaction(async (tx) => {
-    const p = await tx.payment.findFirst({ where: { id, deletedAt: null, ...paymentSalesIsolation(user) } });
+    const p = await tx.payment.findFirst({ where: { id, deletedAt: null, ...(ownerViaContract(user) as Prisma.PaymentWhereInput) } });
     if (!p) throw new ApiError(ERROR_CODES.NOT_FOUND, "回款不存在", 404);
 
     if (input.action === "confirm") {

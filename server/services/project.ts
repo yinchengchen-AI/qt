@@ -7,6 +7,7 @@ import { audit } from "@/server/audit";
 import { requirePermission, RESOURCE, ACTION } from "@/lib/permissions";
 import type { ProjectCreateInput, ProjectUpdateInput, ProjectActionInput } from "@/lib/validators/project";
 import type { Prisma } from "@prisma/client";
+import { ownerEq, ownerViaContract, parseStatusList } from "@/lib/ownership";
 
 export async function listProjects(
   user: SessionUser,
@@ -14,15 +15,16 @@ export async function listProjects(
 ) {
   requirePermission(user.roleCode, RESOURCE.PROJECT, ACTION.READ);
   const { page, pageSize, keyword, status, contractId } = params;
+  const statusList = parseStatusList(status);
   const where: Prisma.ProjectWhereInput = {
     deletedAt: null,
-    ...(status ? { status } : {}),
+    ...(statusList ? { status: { in: statusList } } : {}),
     ...(contractId ? { contractId } : {}),
     ...(keyword
       ? { OR: [{ name: { contains: keyword, mode: "insensitive" } }, { projectNo: { contains: keyword, mode: "insensitive" } }] }
       : {}),
     // 行级隔离：通过 contract 关系
-    ...(user.roleCode === "SALES" ? { contract: { ownerUserId: user.id } } : {})
+    ...(ownerViaContract(user) as Prisma.ProjectWhereInput),
   };
   const [list, total] = await Promise.all([
     prisma.project.findMany({ where, orderBy: { createdAt: "desc" }, skip: (page - 1) * pageSize, take: pageSize, include: { contract: { select: { contractNo: true, title: true, ownerUserId: true, totalAmount: true } } } }),
@@ -34,7 +36,7 @@ export async function listProjects(
 export async function getProject(user: SessionUser, id: string) {
   requirePermission(user.roleCode, RESOURCE.PROJECT, ACTION.READ);
   const p = await prisma.project.findFirst({
-    where: { id, deletedAt: null, ...(user.roleCode === "SALES" ? { contract: { ownerUserId: user.id } } : {}) },
+    where: { id, deletedAt: null, ...(ownerViaContract(user) as Prisma.ProjectWhereInput) },
     include: { contract: true, progressLogs: { orderBy: { at: "desc" }, take: 20 } }
   });
   if (!p) throw new ApiError(ERROR_CODES.NOT_FOUND, "项目不存在", 404);
@@ -44,7 +46,7 @@ export async function getProject(user: SessionUser, id: string) {
 export async function createProject(user: SessionUser, input: ProjectCreateInput) {
   requirePermission(user.roleCode, RESOURCE.PROJECT, ACTION.CREATE);
   return prisma.$transaction(async (tx) => {
-    const contract = await tx.contract.findFirst({ where: { id: input.contractId, deletedAt: null, ...(user.roleCode === "SALES" ? { ownerUserId: user.id } : {}) } });
+    const contract = await tx.contract.findFirst({ where: { id: input.contractId, deletedAt: null, ...ownerEq(user) } });
     if (!contract) throw new ApiError(ERROR_CODES.NOT_FOUND, "合同不存在", 404);
     // R-05
     if (contract.status !== "EFFECTIVE" && contract.status !== "EXECUTING") {
@@ -76,7 +78,7 @@ export async function createProject(user: SessionUser, input: ProjectCreateInput
 export async function updateProject(user: SessionUser, id: string, input: ProjectUpdateInput) {
   requirePermission(user.roleCode, RESOURCE.PROJECT, ACTION.UPDATE);
   const p = await prisma.project.findFirst({
-    where: { id, deletedAt: null, ...(user.roleCode === "SALES" ? { contract: { ownerUserId: user.id } } : {}) }
+    where: { id, deletedAt: null, ...(ownerViaContract(user) as Prisma.ProjectWhereInput) }
   });
   if (!p) throw new ApiError(ERROR_CODES.NOT_FOUND, "项目不存在", 404);
   if (p.status !== "PLANNED" && p.status !== "SUSPENDED") {
@@ -105,7 +107,7 @@ export async function projectAction(user: SessionUser, id: string, input: Projec
   requirePermission(user.roleCode, RESOURCE.PROJECT, ACTION.UPDATE);
   return prisma.$transaction(async (tx) => {
     const p = await tx.project.findFirst({
-      where: { id, deletedAt: null, ...(user.roleCode === "SALES" ? { contract: { ownerUserId: user.id } } : {}) }
+      where: { id, deletedAt: null, ...(ownerViaContract(user) as Prisma.ProjectWhereInput) }
     });
     if (!p) throw new ApiError(ERROR_CODES.NOT_FOUND, "项目不存在", 404);
     const transitions: Record<string, { from: string[]; to: string }> = {

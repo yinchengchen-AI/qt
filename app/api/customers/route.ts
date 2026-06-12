@@ -8,8 +8,9 @@ const listQuery = z.object({
   page: z.coerce.number().int().min(1).default(1),
   pageSize: z.coerce.number().int().min(1).max(100).default(20),
   keyword: z.string().optional(),
+  // status / scale 接受单值或逗号分隔多值,如 ?status=LEAD,SIGNED&scale=LARGE,MEDIUM
   status: z.string().optional(),
-  level: z.string().optional()
+  scale: z.string().optional()
 });
 
 export async function GET(req: Request) {

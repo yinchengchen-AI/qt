@@ -3,6 +3,7 @@ import { ok, err } from "@/lib/api";
 import { requireSession } from "@/lib/session";
 import { getOverview, getTimeSeries, getCustomerDistribution } from "@/server/services/statistics";
 import { prisma } from "@/lib/prisma";
+import { ownerEq } from "@/lib/ownership";
 import type { Prisma } from "@prisma/client";
 
 const query = z.object({ from: z.string().optional(), to: z.string().optional() });
@@ -15,7 +16,7 @@ export async function GET(req: Request) {
     const from = parsed.from ? new Date(parsed.from) : undefined;
     const to = parsed.to ? new Date(parsed.to) : undefined;
     const range = { from, to };
-    const own = user.roleCode === "SALES" ? { ownerUserId: user.id } : {};
+    const own = ownerEq(user);
 
     const [overview, series, distribution, customerCount, newCustomers, projectStats] = await Promise.all([
       getOverview(user, range),
@@ -25,7 +26,10 @@ export async function GET(req: Request) {
       prisma.customer.count({
         where: {
           deletedAt: null, ...own,
-          createdAt: from && to ? { gte: from, lte: to } : { gte: new Date(new Date().getFullYear(), new Date().getMonth(), 1) }
+          createdAt: {
+            ...(from ? { gte: from } : {}),
+            ...(to ? { lte: to } : {})
+          }
         } as Prisma.CustomerWhereInput
       }),
       prisma.project.groupBy({

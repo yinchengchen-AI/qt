@@ -1,11 +1,11 @@
 "use client";
-import { ProTable } from "@ant-design/pro-components";
-import { Tag, Button, App as AntdApp } from "antd";
+import { ProTable, type ActionType } from "@ant-design/pro-components";
+import { Button, App as AntdApp } from "antd";
 import { DownloadOutlined } from "@ant-design/icons";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useSWRConfig } from "swr";
-import { useRef } from "react";
+import React, { useEffect, useRef } from "react";
 import { Page } from "@/components/page";
 import { PageHeader } from "@/components/page-header";
 import { StatusTag } from "@/components/status-tag";
@@ -43,6 +43,11 @@ export default function CustomersPage() {
   const statusEnum = useStatusValueEnum("customer");
   // 用 ref 拿当前表格的查询参数(关键字/状态/等级),导出时一并带上
   const searchRef = useRef<Record<string, unknown>>({});
+  const actionRef = useRef<ActionType>(undefined);
+  const searchDebounceRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  useEffect(() => () => {
+    if (searchDebounceRef.current) clearTimeout(searchDebounceRef.current);
+  }, []);
   const { message } = AntdApp.useApp();
 
   const handleExport = async () => {
@@ -76,24 +81,28 @@ export default function CustomersPage() {
           </>
         }
       />
-      <ProTable<Customer>
+      <ProTable<Customer> actionRef={actionRef}
         rowKey="id"
-        search={{ labelWidth: "auto" }}
+        search={{ labelWidth: "auto", defaultCollapsed: false }} debounceTime={400}
         pagination={{ pageSize: 20, showSizeChanger: true }}
         cardBordered={false}
-        request={async (params) => {
+        request={async (params) => { console.log("[REQ-keys]", Object.keys(params).join(","), "kw=", JSON.stringify(params.keyword), "status=", JSON.stringify(params.status), "scale=", JSON.stringify(params.scale));
           // 记下当前查询参数,导出时复用
           searchRef.current = {
             keyword: params.keyword,
             status: params.status,
+            scale: params.scale,
           };
           return makeListRequest<Customer>("/api/customers")(params);
         }}
         columns={[
-          { title: "客户编号", dataIndex: "code", width: 180 },
+          // 搜索专属列:仅在 ProTable 搜索表单里出现,数据来自 params.keyword
+          { title: "关键词", dataIndex: "keyword", hideInTable: true, fieldProps: { placeholder: "客户名 / 简称 / 编号", onChange: (e: React.ChangeEvent<HTMLInputElement>) => { if (searchDebounceRef.current) clearTimeout(searchDebounceRef.current); searchDebounceRef.current = setTimeout(() => actionRef.current?.reload(), 400); } } },
+          { title: "客户编号", dataIndex: "code", search: false, width: 180 },
           {
             title: "客户名称",
             dataIndex: "name",
+            search: false,
             width: 220,
             render: (_, r) => <Link href={`/customers/${r.id}`}>{r.name}</Link>
           },
@@ -107,17 +116,21 @@ export default function CustomersPage() {
             title: "规模",
             dataIndex: "scale",
             width: 80,
+            valueType: "select",
+            valueEnum: Object.fromEntries(customerScaleDict.map((d) => [d.code, { text: d.label }])),
             render: (_, r) => r.scale ? (customerScaleDict.find((d) => d.code === r.scale)?.label ?? r.scale) : "—"
           },
           {
             title: "行业",
             dataIndex: "industry",
+            search: false,
             width: 120,
             render: (_, r) => r.industry ? (industryDict.find((d) => d.code === r.industry)?.label ?? r.industry) : "—"
           },
           {
             title: "来源",
             dataIndex: "sourceChannel",
+            search: false,
             width: 120,
             render: (_, r) => r.sourceChannel ? (sourceDict.find((d) => d.code === r.sourceChannel)?.label ?? r.sourceChannel) : "—"
           },
@@ -128,16 +141,18 @@ export default function CustomersPage() {
             valueEnum: statusEnum,
             render: (_, r) => <StatusTag status={r.status} domain="customer" />
           },
-          { title: "联系电话", dataIndex: "contactPhone", width: 140 },
+          { title: "联系电话", dataIndex: "contactPhone", search: false, width: 140 },
           {
             title: "所在地区",
             dataIndex: "province",
+            search: false,
             width: 160,
             render: (_, r) => `${r.province} / ${r.city}`
           },
           {
             title: "创建时间",
             dataIndex: "createdAt",
+            search: false,
             width: 140,
             render: (_, r) => <DateCell value={r.createdAt} />
           }

@@ -6,7 +6,8 @@ import { listMessages } from "@/server/services/message";
 const query = z.object({
   page: z.coerce.number().int().min(1).default(1),
   pageSize: z.coerce.number().int().min(1).max(100).default(20),
-  unread: z.coerce.boolean().optional()
+  // ?unread=true|false,字符串值,避免 z.coerce.boolean() 把 "false"/"0" 也当 true
+  unread: z.enum(["true", "false"]).optional().transform((v) => v === "true")
 });
 
 export async function GET(req: Request) {

@@ -13,6 +13,7 @@ import {
   Drawer,
   List,
   Empty,
+  Tooltip,
   Typography,
   theme,
   type MenuProps
@@ -32,7 +33,9 @@ import {
   NotificationOutlined,
   SettingOutlined,
   UserOutlined,
-  DownOutlined
+  DownOutlined,
+  CompressOutlined,
+  ExpandOutlined
 } from "@ant-design/icons";
 import type { RoleCode } from "@/types/enums";
 import type { Action, Resource } from "@/lib/permissions";
@@ -137,6 +140,10 @@ export function DashboardShell({ user, children }: Props) {
   const pathname = usePathname();
   const { token } = theme.useToken();
   const [collapsed, setCollapsed] = useState(false);
+  // 手风琴模式: 仅同时打开一个父分组(默认开);关闭后允许多个分组同时展开
+  const [accordion, setAccordion] = useState(true);
+  // 父分组展开状态(controlled, 用于支持手风琴/多开切换)
+  const [openKeys, setOpenKeys] = useState<string[]>([]);
   const [unread, setUnread] = useState(0);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [messages, setMessages] = useState<
@@ -147,6 +154,45 @@ export function DashboardShell({ user, children }: Props) {
     () => findSelectedKey(pathname),
     [pathname]
   );
+
+  // 读取持久化的手风琴设置
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem("qt.sidebar.accordion");
+      if (raw === "false") setAccordion(false);
+    } catch {
+      /* SSR or storage blocked */
+    }
+  }, []);
+
+  // 切换时落盘
+  useEffect(() => {
+    try {
+      localStorage.setItem("qt.sidebar.accordion", String(accordion));
+    } catch {
+      /* ignore */
+    }
+  }, [accordion]);
+
+  // 路由变化时,把当前页所在父分组纳入 openKeys
+  useEffect(() => {
+    if (defaultOpen.length === 0) return;
+    setOpenKeys((prev) => {
+      const missing = defaultOpen.filter((k) => !prev.includes(k));
+      if (missing.length === 0) return prev;
+      return accordion ? defaultOpen : [...prev, ...defaultOpen];
+    });
+  }, [defaultOpen, accordion]);
+
+  const handleOpenChange = (keys: string[]) => {
+    if (!accordion) {
+      setOpenKeys(keys);
+      return;
+    }
+    // 手风琴: 仅保留最新打开的那一个;关闭操作照常放行
+    const newlyOpened = keys.filter((k) => !openKeys.includes(k));
+    setOpenKeys(newlyOpened.length > 0 ? newlyOpened : keys);
+  };
 
   const loadUnread = async () => {
     try {
@@ -260,7 +306,8 @@ export function DashboardShell({ user, children }: Props) {
         <Menu
           mode="inline"
           selectedKeys={[selectedKey]}
-          defaultOpenKeys={defaultOpen}
+          openKeys={openKeys}
+          onOpenChange={handleOpenChange}
           items={toAntdMenu(MENU)}
           style={{ borderInlineEnd: 0, paddingTop: 8 }}
           onClick={(e) => {
@@ -271,10 +318,54 @@ export function DashboardShell({ user, children }: Props) {
         <div
           style={{
             position: "absolute",
+            bottom: 36,
+            left: 0,
+            right: 0,
+            padding: "8px 12px",
+            borderTop: `1px solid ${token.colorSplit}`,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: collapsed ? "center" : "space-between",
+            gap: 8
+          }}
+        >
+          <Tooltip
+            placement="right"
+            title={accordion ? "手风琴模式:同时仅打开一个分组(点击切换为多开)" : "多开模式:允许多个分组同时展开(点击切换为手风琴)"}
+          >
+            <button
+              type="button"
+              onClick={() => setAccordion((a) => !a)}
+              aria-label={accordion ? "关闭手风琴" : "开启手风琴"}
+              aria-pressed={accordion}
+              style={{
+                background: accordion ? token.colorPrimaryBg : "transparent",
+                border: `1px solid ${accordion ? token.colorPrimaryBorder : token.colorSplit}`,
+                padding: collapsed ? "6px 8px" : "4px 10px",
+                cursor: "pointer",
+                color: accordion ? token.colorPrimary : token.colorTextSecondary,
+                fontSize: 12,
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 6,
+                borderRadius: 6,
+                transition: "background-color 160ms, border-color 160ms, color 160ms",
+                width: collapsed ? "auto" : "100%",
+                justifyContent: collapsed ? "center" : "flex-start"
+              }}
+            >
+              {accordion ? <CompressOutlined /> : <ExpandOutlined />}
+              {!collapsed && <span>{accordion ? "手风琴" : "多开"}</span>}
+            </button>
+          </Tooltip>
+        </div>
+        <div
+          style={{
+            position: "absolute",
             bottom: 0,
             left: 0,
             right: 0,
-            padding: "12px 20px",
+            padding: "8px 20px",
             borderTop: `1px solid ${token.colorSplit}`,
             fontSize: 12,
             color: token.colorTextTertiary

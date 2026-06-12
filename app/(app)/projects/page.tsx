@@ -79,17 +79,21 @@ export default function ProjectsPage() {
           return makeListRequest<Row>("/api/projects")(params);
         }}
         columns={[
+          // 搜索专属列:仅在 ProTable 搜索表单里出现,数据来自 params.keyword
+          { title: "关键词", dataIndex: "keyword", hideInTable: true, fieldProps: { placeholder: "项目名 / 编号" } },
           {
             title: "项目编号",
             dataIndex: "projectNo",
+            search: false,
             width: 180,
             render: (_, r) => <Link href={`/projects/${r.id}`}>{r.projectNo}</Link>
           },
-          { title: "项目名称", dataIndex: "name", width: 220 },
-          { title: "所属合同", dataIndex: ["contract", "contractNo"], width: 180 },
+          { title: "项目名称", dataIndex: "name", search: false, width: 220 },
+          { title: "所属合同", dataIndex: ["contract", "contractNo"], search: false, width: 180 },
           {
             title: "服务类型",
             dataIndex: "serviceType",
+            search: false,
             width: 110,
             render: (_, r) => {
               const code = r.serviceType ?? r.contract?.serviceType;
@@ -97,9 +101,9 @@ export default function ProjectsPage() {
               return serviceTypeDict.find((d) => d.code === code)?.label ?? SERVICE_TYPE_MAP[code] ?? code;
             }
           },
-          { title: "起期", dataIndex: "startDate", valueType: "date", width: 110, render: (_, r) => <DateCell value={r.startDate} /> },
-          { title: "止期", dataIndex: "endDate", valueType: "date", width: 110, render: (_, r) => <DateCell value={r.endDate} /> },
-          { title: "预算(元)", dataIndex: "budgetAmount", width: 120, render: (_, r) => <CurrencyCell value={r.budgetAmount ?? ""} /> },
+          { title: "起期", dataIndex: "startDate", search: false, valueType: "date", width: 110, render: (_, r) => <DateCell value={r.startDate} /> },
+          { title: "止期", dataIndex: "endDate", search: false, valueType: "date", width: 110, render: (_, r) => <DateCell value={r.endDate} /> },
+          { title: "预算(元)", dataIndex: "budgetAmount", search: false, width: 120, render: (_, r) => <CurrencyCell value={r.budgetAmount ?? ""} /> },
           {
             title: "状态",
             dataIndex: "status",

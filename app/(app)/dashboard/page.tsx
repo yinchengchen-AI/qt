@@ -82,7 +82,7 @@ export default function DashboardPage() {
       value: formatCompact(o.invoiceAmount),
       suffix: "元",
       description: `开票率 ${o.invoiceRate}% · ${o.invoiceCount} 张`,
-      delta: { value: `待审 ${inv.byStatus.find(s => s.status === "PENDING_APPROVAL")?.count ?? 0} 张`, direction: "flat" }
+      delta: { value: `待审 ${inv.byStatus.find(s => s.status === "PENDING_FINANCE")?.count ?? 0} 张`, direction: "flat" }
     },
     {
       label: "已回款额",

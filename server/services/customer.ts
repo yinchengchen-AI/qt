@@ -8,26 +8,21 @@ import type { CustomerCreateInput, CustomerUpdateInput, FollowUpCreateInput } fr
 import type { Prisma } from "@prisma/client";
 import { audit } from "@/server/audit";
 import { rlsTransaction } from "@/lib/rls";
-
-// SALES 行级隔离：列表/详情/更新自动注入 ownerUserId
-function ownershipWhere(user: SessionUser): Prisma.CustomerWhereInput {
-  if (user.roleCode === "SALES") {
-    return { ownerUserId: user.id };
-  }
-  return {};
-}
+import { ownerEq, parseStatusList } from "@/lib/ownership";
 
 export async function listCustomers(
   user: SessionUser,
   params: { page: number; pageSize: number; keyword?: string; status?: string; scale?: string }
 ) {
   requirePermission(user.roleCode, RESOURCE.CUSTOMER, ACTION.READ);
-  const { page, pageSize, keyword, status, scale } = params;
+  const { page, pageSize, keyword } = params;
+  const statusList = parseStatusList(params.status);
+  const scaleList = parseStatusList(params.scale);
   const where: Prisma.CustomerWhereInput = {
-    ...ownershipWhere(user),
+    ...ownerEq(user),
     deletedAt: null,
-    ...(status ? { status } : {}),
-    ...(scale ? { scale } : {}),
+    ...(statusList ? { status: { in: statusList } } : {}),
+    ...(scaleList ? { scale: { in: scaleList } } : {}),
     ...(keyword
       ? {
           OR: [
@@ -52,7 +47,7 @@ export async function listCustomers(
 
 export async function getCustomer(user: SessionUser, id: string) {
   requirePermission(user.roleCode, RESOURCE.CUSTOMER, ACTION.READ);
-  const c = await prisma.customer.findFirst({ where: { id, deletedAt: null, ...ownershipWhere(user) } });
+  const c = await prisma.customer.findFirst({ where: { id, deletedAt: null, ...ownerEq(user) } });
   if (!c) throw new ApiError(ERROR_CODES.NOT_FOUND, "客户不存在", 404);
   return c;
 }
@@ -83,7 +78,7 @@ export async function createCustomer(user: SessionUser, input: CustomerCreateInp
 
 export async function updateCustomer(user: SessionUser, id: string, input: CustomerUpdateInput) {
   requirePermission(user.roleCode, RESOURCE.CUSTOMER, ACTION.UPDATE);
-  const existing = await prisma.customer.findFirst({ where: { id, deletedAt: null, ...ownershipWhere(user) } });
+  const existing = await prisma.customer.findFirst({ where: { id, deletedAt: null, ...ownerEq(user) } });
   if (!existing) throw new ApiError(ERROR_CODES.NOT_FOUND, "客户不存在", 404);
   return prisma.customer.update({
     where: { id },
@@ -107,7 +102,7 @@ export async function changeCustomerStatus(user: SessionUser, id: string, status
   requirePermission(user.roleCode, RESOURCE.CUSTOMER, ACTION.UPDATE);
   return prisma.$transaction(async (tx) => {
     const existing = await tx.customer.findFirst({
-      where: { id, deletedAt: null, ...ownershipWhere(user) }
+      where: { id, deletedAt: null, ...ownerEq(user) }
     });
     if (!existing) throw new ApiError(ERROR_CODES.NOT_FOUND, "客户不存在", 404);
     if (status === "SIGNED") {
@@ -167,7 +162,7 @@ export async function listCustomerContracts(user: SessionUser, customerId: strin
 export async function softDeleteCustomer(user: SessionUser, id: string) {
   requirePermission(user.roleCode, RESOURCE.CUSTOMER, ACTION.DELETE);
   return prisma.$transaction(async (tx) => {
-    const existing = await tx.customer.findFirst({ where: { id, deletedAt: null, ...ownershipWhere(user) } });
+    const existing = await tx.customer.findFirst({ where: { id, deletedAt: null, ...ownerEq(user) } });
     if (!existing) throw new ApiError(ERROR_CODES.NOT_FOUND, "客户不存在", 404);
     // R-14：若有 ACTIVE 合同（含 EFFECTIVE/EXECUTING）禁止删除
     const active = await tx.contract.count({ where: { customerId: id, status: { in: ["EFFECTIVE", "EXECUTING"] }, deletedAt: null } });

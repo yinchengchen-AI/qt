@@ -75,18 +75,21 @@ export default function InvoicesPage() {
           return makeListRequest<Row>("/api/invoices")(params);
         }}
         columns={[
+          // 搜索专属列:仅在 ProTable 搜索表单里出现,数据来自 params.keyword
+          { title: "关键词", dataIndex: "keyword", hideInTable: true, fieldProps: { placeholder: "发票号 / 客户名" } },
           {
             title: "发票号",
             dataIndex: "invoiceNo",
+            search: false,
             width: 200,
             render: (_, r) => r.invoiceNo ? <Link href={`/invoices/${r.id}`}>{r.invoiceNo}</Link> : <Link href={`/invoices/${r.id}`}>未开</Link>
           },
-          { title: "客户", dataIndex: "customerName", width: 180 },
-          { title: "金额(含税)", dataIndex: "amount", width: 140, render: (_, r) => <CurrencyCell value={r.amount} /> },
-          { title: "税率", dataIndex: "taxRate", width: 80, render: (_, r) => <PercentCell value={r.taxRate} /> },
-          { title: "税额", dataIndex: "taxAmount", width: 120, render: (_, r) => <CurrencyCell value={r.taxAmount} /> },
-          { title: "申请日", dataIndex: "applyDate", valueType: "date", width: 120, render: (_, r) => <DateCell value={r.applyDate} /> },
-          { title: "实际开票日", dataIndex: "actualIssueDate", valueType: "date", width: 120, render: (_, r) => <DateCell value={r.actualIssueDate} /> },
+          { title: "客户", dataIndex: "customerName", search: false, width: 180 },
+          { title: "金额(含税)", dataIndex: "amount", search: false, width: 140, render: (_, r) => <CurrencyCell value={r.amount} /> },
+          { title: "税率", dataIndex: "taxRate", search: false, width: 80, render: (_, r) => <PercentCell value={r.taxRate} /> },
+          { title: "税额", dataIndex: "taxAmount", search: false, width: 120, render: (_, r) => <CurrencyCell value={r.taxAmount} /> },
+          { title: "申请日", dataIndex: "applyDate", search: false, valueType: "date", width: 120, render: (_, r) => <DateCell value={r.applyDate} /> },
+          { title: "实际开票日", dataIndex: "actualIssueDate", search: false, valueType: "date", width: 120, render: (_, r) => <DateCell value={r.actualIssueDate} /> },
           {
             title: "状态",
             dataIndex: "status",

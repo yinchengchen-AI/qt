@@ -77,22 +77,26 @@ export default function PaymentsPage() {
           return makeListRequest<Row>("/api/payments")(params);
         }}
         columns={[
+          // 搜索专属列:仅在 ProTable 搜索表单里出现,数据来自 params.keyword
+          { title: "关键词", dataIndex: "keyword", hideInTable: true, fieldProps: { placeholder: "回款号 / 银行流水号" } },
           {
             title: "回款号",
             dataIndex: "paymentNo",
+            search: false,
             width: 200,
             render: (_, r) => <Link href={`/payments/${r.id}`}>{r.paymentNo}</Link>
           },
-          { title: "金额", dataIndex: "amount", width: 140, render: (_, r) => <CurrencyCell value={r.amount} /> },
+          { title: "金额", dataIndex: "amount", search: false, width: 140, render: (_, r) => <CurrencyCell value={r.amount} /> },
           {
             title: "方式",
             dataIndex: "method",
+            search: false,
             width: 100,
             valueEnum: methodEnum,
             render: (_, r) => methodDict.find((d) => d.code === r.method)?.label ?? r.method
           },
-          { title: "到账日", dataIndex: "receivedAt", valueType: "dateTime", width: 180, render: (_, r) => <DateTimeCell value={r.receivedAt} /> },
-          { title: "银行流水号", dataIndex: "bankRefNo", width: 200 },
+          { title: "到账日", dataIndex: "receivedAt", search: false, valueType: "dateTime", width: 180, render: (_, r) => <DateTimeCell value={r.receivedAt} /> },
+          { title: "银行流水号", dataIndex: "bankRefNo", search: false, width: 200 },
           {
             title: "状态",
             dataIndex: "status",

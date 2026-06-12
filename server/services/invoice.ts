@@ -6,6 +6,7 @@ import { requirePermission, RESOURCE, ACTION } from "@/lib/permissions";
 import type { InvoiceCreateInput, InvoiceUpdateInput, InvoiceActionInput } from "@/lib/validators/invoice";
 import { Prisma } from "@prisma/client";
 import { audit } from "@/server/audit";
+import { ownerEq, ownerViaContract, parseStatusList } from "@/lib/ownership";
 // 把前端传的 attachment 快照(id+name+...)用 DB 真实记录重写一遍,防 spoofing
 // 同时支持"新建 invoice 时把已上传到 tmp 的附件绑到新 invoice"
 async function resolveInvoiceAttachmentSnapshots(
@@ -54,14 +55,6 @@ async function resolveInvoiceAttachmentSnapshots(
 }
 
 
-// SALES 行级隔离：发票所属合同的 ownerUserId 必须 = 自己
-function invoiceSalesIsolation(user: SessionUser): Prisma.InvoiceWhereInput {
-  if (user.roleCode === "SALES") {
-    return { contract: { ownerUserId: user.id } };
-  }
-  return {};
-}
-
 function calcTotals(amount: number, taxRate: number) {
   const taxAmount = round2((amount * taxRate) / (1 + taxRate));
   const amountExcludingTax = round2(amount - taxAmount);
@@ -75,12 +68,13 @@ export async function listInvoices(
 ) {
   requirePermission(user.roleCode, RESOURCE.INVOICE, ACTION.READ);
   const { page, pageSize, keyword, status, contractId } = params;
+  const statusList = parseStatusList(status);
   const where: Prisma.InvoiceWhereInput = {
     deletedAt: null,
-    ...(status ? { status } : {}),
+    ...(statusList ? { status: { in: statusList } } : {}),
     ...(contractId ? { contractId } : {}),
     ...(keyword ? { OR: [{ invoiceNo: { contains: keyword, mode: "insensitive" } }, { customerName: { contains: keyword, mode: "insensitive" } }] } : {}),
-    ...(user.roleCode === "SALES" ? { contract: { ownerUserId: user.id } } : {})
+    ...(ownerViaContract(user) as Prisma.InvoiceWhereInput),
   };
   const [list, total] = await Promise.all([
     prisma.invoice.findMany({ where, orderBy: { createdAt: "desc" }, skip: (page - 1) * pageSize, take: pageSize }),
@@ -92,7 +86,7 @@ export async function listInvoices(
 export async function getInvoice(user: SessionUser, id: string) {
   requirePermission(user.roleCode, RESOURCE.INVOICE, ACTION.READ);
   const inv = await prisma.invoice.findFirst({
-    where: { id, deletedAt: null, ...(user.roleCode === "SALES" ? { contract: { ownerUserId: user.id } } : {}) }
+    where: { id, deletedAt: null, ...(ownerViaContract(user) as Prisma.InvoiceWhereInput) }
   });
   if (!inv) throw new ApiError(ERROR_CODES.NOT_FOUND, "发票不存在", 404);
   return inv;
@@ -102,7 +96,7 @@ export async function createInvoice(user: SessionUser, input: InvoiceCreateInput
   requirePermission(user.roleCode, RESOURCE.INVOICE, ACTION.CREATE);
   return prisma.$transaction(async (tx) => {
     const contract = await tx.contract.findFirst({
-      where: { id: input.contractId, deletedAt: null, ...(user.roleCode === "SALES" ? { ownerUserId: user.id } : {}) }
+      where: { id: input.contractId, deletedAt: null, ...ownerEq(user) }
     });
     if (!contract) throw new ApiError(ERROR_CODES.NOT_FOUND, "合同不存在", 404);
     if (contract.status !== "EFFECTIVE" && contract.status !== "EXECUTING") {
@@ -168,7 +162,7 @@ export async function createInvoice(user: SessionUser, input: InvoiceCreateInput
 export async function updateInvoice(user: SessionUser, id: string, input: InvoiceUpdateInput) {
   requirePermission(user.roleCode, RESOURCE.INVOICE, ACTION.UPDATE);
   const inv = await prisma.invoice.findFirst({
-    where: { id, deletedAt: null, ...(user.roleCode === "SALES" ? { contract: { ownerUserId: user.id } } : {}) }
+    where: { id, deletedAt: null, ...(ownerViaContract(user) as Prisma.InvoiceWhereInput) }
   });
   if (!inv) throw new ApiError(ERROR_CODES.NOT_FOUND, "发票不存在", 404);
   if (inv.status !== "DRAFT") throw new ApiError(ERROR_CODES.ENTITY_IMMUTABLE, "仅 DRAFT 可修改", 403);
@@ -204,7 +198,7 @@ export async function updateInvoice(user: SessionUser, id: string, input: Invoic
 export async function invoiceAction(user: SessionUser, id: string, input: InvoiceActionInput) {
   requirePermission(user.roleCode, RESOURCE.INVOICE, ACTION.UPDATE);
   return prisma.$transaction(async (tx) => {
-    const inv = await tx.invoice.findFirst({ where: { id, deletedAt: null, ...invoiceSalesIsolation(user) } });
+    const inv = await tx.invoice.findFirst({ where: { id, deletedAt: null, ...(ownerViaContract(user) as Prisma.InvoiceWhereInput) } });
     if (!inv) throw new ApiError(ERROR_CODES.NOT_FOUND, "发票不存在", 404);
     if (input.action === "submit") {
       if (inv.status !== "DRAFT") throw new ApiError(ERROR_CODES.ENTITY_IMMUTABLE, "仅 DRAFT 可提交", 403);

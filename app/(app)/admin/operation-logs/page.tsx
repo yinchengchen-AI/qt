@@ -33,6 +33,8 @@ const ENTITY_OPTIONS = [
 export default function OperationLogsPage() {
   const columns: ProColumns<Log>[] = [
     { title: "时间", dataIndex: "at", width: 180, render: (_, r) => <DateTimeCell value={r.at} /> },
+    { title: "起始时间", dataIndex: "from", valueType: "dateTime", hideInTable: true },
+    { title: "截止时间", dataIndex: "to", valueType: "dateTime", hideInTable: true },
     {
       title: "操作人",
       dataIndex: "actorId",

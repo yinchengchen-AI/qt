@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { type SessionUser } from "@/lib/session";
 import { requirePermission, RESOURCE, ACTION } from "@/lib/permissions";
 import type { Prisma } from "@prisma/client";
+import { ownerEq, ownerViaContract } from "@/lib/ownership";
 
 type DateRange = { from?: Date; to?: Date };
 
@@ -13,14 +14,10 @@ function dateWhere(range: DateRange, _field: "actualIssueDate" | "receivedAt" | 
   return w;
 }
 
-function ownershipFilter(user: SessionUser): Prisma.ContractWhereInput {
-  return user.roleCode === "SALES" ? { ownerUserId: user.id } : {};
-}
-
 // 1. 总览：合同额 / 已开票额 / 已回款额 / 未回款额
 export async function getOverview(user: SessionUser, range: DateRange) {
   requirePermission(user.roleCode, RESOURCE.STATISTICS, ACTION.READ);
-  const where = { deletedAt: null, ...ownershipFilter(user) };
+  const where = { deletedAt: null, ...ownerEq(user) };
   const signWhere = { ...where, status: { in: ["EFFECTIVE", "EXECUTING", "COMPLETED"] }, signDate: dateWhere(range) };
   const [contractAgg, invoiceAgg, paymentAgg] = await Promise.all([
     prisma.contract.aggregate({ where: signWhere, _sum: { totalAmount: true }, _count: { _all: true } }),
@@ -29,7 +26,7 @@ export async function getOverview(user: SessionUser, range: DateRange) {
         deletedAt: null,
         status: "ISSUED",
         actualIssueDate: dateWhere(range, "actualIssueDate"),
-        ...(user.roleCode === "SALES" ? { contract: { ownerUserId: user.id } } : {})
+        ...(ownerViaContract(user) as Prisma.InvoiceWhereInput)
       },
       _sum: { amount: true },
       _count: { _all: true }
@@ -39,7 +36,7 @@ export async function getOverview(user: SessionUser, range: DateRange) {
         deletedAt: null,
         status: { in: ["CONFIRMED", "RECONCILED"] },
         receivedAt: dateWhere(range, "receivedAt"),
-        ...(user.roleCode === "SALES" ? { contract: { ownerUserId: user.id } } : {})
+        ...(ownerViaContract(user) as Prisma.PaymentWhereInput)
       },
       _sum: { amount: true },
       _count: { _all: true }
@@ -75,7 +72,7 @@ export async function getTimeSeries(user: SessionUser, range: DateRange) {
         deletedAt: null,
         status: { in: ["EFFECTIVE", "EXECUTING", "COMPLETED"] },
         signDate: { gte: from, lte: to },
-        ...ownershipFilter(user)
+        ...ownerEq(user)
       },
       select: { signDate: true, totalAmount: true }
     }),
@@ -84,7 +81,7 @@ export async function getTimeSeries(user: SessionUser, range: DateRange) {
         deletedAt: null,
         status: "ISSUED",
         actualIssueDate: { gte: from, lte: to },
-        ...(user.roleCode === "SALES" ? { contract: { ownerUserId: user.id } } : {})
+        ...(ownerViaContract(user) as Prisma.InvoiceWhereInput)
       },
       select: { actualIssueDate: true, amount: true }
     }),
@@ -93,7 +90,7 @@ export async function getTimeSeries(user: SessionUser, range: DateRange) {
         deletedAt: null,
         status: { in: ["CONFIRMED", "RECONCILED"] },
         receivedAt: { gte: from, lte: to },
-        ...(user.roleCode === "SALES" ? { contract: { ownerUserId: user.id } } : {})
+        ...(ownerViaContract(user) as Prisma.PaymentWhereInput)
       },
       select: { receivedAt: true, amount: true }
     })
@@ -144,7 +141,7 @@ export async function getInvoiceAging(user: SessionUser) {
     where: {
       deletedAt: null,
       status: "ISSUED",
-      ...(user.roleCode === "SALES" ? { contract: { ownerUserId: user.id } } : {})
+      ...(ownerViaContract(user) as Prisma.InvoiceWhereInput)
     },
     select: { id: true, invoiceNo: true, amount: true, actualIssueDate: true, customerId: true, customerName: true, contractId: true }
   });
@@ -177,99 +174,167 @@ export async function getInvoiceAging(user: SessionUser) {
 }
 
 // 4. Top 客户（按合同额 / 回款额）
+// 实现:用 groupBy by customerId 一次拿全部客户的合同/开票/回款汇总,
+// 把 1 + N×4 的 N+1 拍平为常数次(4)查询。
 export async function getTopCustomers(user: SessionUser, metric: "contract" | "payment" = "contract", limit = 10) {
   requirePermission(user.roleCode, RESOURCE.STATISTICS, ACTION.READ);
-  const customers = await prisma.customer.findMany({
-    where: { deletedAt: null },
-    select: { id: true, name: true, code: true, scale: true, customerType: true }
-  });
-  const result: Array<{ id: string; name: string; code: string; scale: string | null; total: number; paymentTotal: number; invoiceTotal: number; contractCount: number }> = [];
-  for (const c of customers) {
-    const [contractAgg, invoiceAgg, paymentAgg, contractCount] = await Promise.all([
-      prisma.contract.aggregate({
-        where: { customerId: c.id, deletedAt: null, status: { in: ["EFFECTIVE", "EXECUTING", "COMPLETED"] } },
-        _sum: { totalAmount: true }
-      }),
-      prisma.invoice.aggregate({
-        where: { customerId: c.id, deletedAt: null, status: "ISSUED" },
-        _sum: { amount: true }
-      }),
-      prisma.payment.aggregate({
-        where: { customerId: c.id, deletedAt: null, status: { in: ["CONFIRMED", "RECONCILED"] } },
-        _sum: { amount: true }
-      }),
-      prisma.contract.count({ where: { customerId: c.id, deletedAt: null, status: { in: ["EFFECTIVE", "EXECUTING", "COMPLETED"] } } })
-    ]);
-    const total = Number(contractAgg._sum.totalAmount ?? 0);
-    if (total === 0 && Number(paymentAgg._sum.amount ?? 0) === 0) continue;
-    result.push({
-      id: c.id,
-      name: c.name,
-      code: c.code,
-      scale: c.scale,
-      total: round2(total),
-      invoiceTotal: round2(Number(invoiceAgg._sum.amount ?? 0)),
-      paymentTotal: round2(Number(paymentAgg._sum.amount ?? 0)),
-      contractCount
-    });
-  }
-  result.sort((a, b) => (metric === "contract" ? b.total - a.total : b.paymentTotal - a.paymentTotal));
+  const [customers, contractRows, invoiceRows, paymentRows] = await Promise.all([
+    prisma.customer.findMany({
+      where: { deletedAt: null },
+      select: { id: true, name: true, code: true, scale: true, customerType: true }
+    }),
+    prisma.contract.groupBy({
+      by: ["customerId"],
+      where: { deletedAt: null, status: { in: ["EFFECTIVE", "EXECUTING", "COMPLETED"] } },
+      _sum: { totalAmount: true },
+      _count: { _all: true }
+    }),
+    prisma.invoice.groupBy({
+      by: ["customerId"],
+      where: { deletedAt: null, status: "ISSUED" },
+      _sum: { amount: true }
+    }),
+    prisma.payment.groupBy({
+      by: ["customerId"],
+      where: { deletedAt: null, status: { in: ["CONFIRMED", "RECONCILED"] } },
+      _sum: { amount: true }
+    })
+  ]);
+  const contractByCustomer = new Map(contractRows.map((r) => [r.customerId, r]));
+  const invoiceByCustomer = new Map(invoiceRows.map((r) => [r.customerId, Number(r._sum.amount ?? 0)]));
+  const paymentByCustomer = new Map(paymentRows.map((r) => [r.customerId, Number(r._sum.amount ?? 0)]));
+
+  const result = customers
+    .map((c) => {
+      const cr = contractByCustomer.get(c.id);
+      const total = Number(cr?._sum.totalAmount ?? 0);
+      const paymentTotal = paymentByCustomer.get(c.id) ?? 0;
+      // 过滤掉无合同无回款的客户,减少噪声
+      if (total === 0 && paymentTotal === 0) return null;
+      return {
+        id: c.id,
+        name: c.name,
+        code: c.code,
+        scale: c.scale,
+        total: round2(total),
+        invoiceTotal: round2(invoiceByCustomer.get(c.id) ?? 0),
+        paymentTotal: round2(paymentTotal),
+        contractCount: cr?._count._all ?? 0
+      };
+    })
+    .filter((x): x is NonNullable<typeof x> => x !== null)
+    .sort((a, b) => (metric === "contract" ? b.total - a.total : b.paymentTotal - a.paymentTotal));
   return result.slice(0, limit);
 }
 
 // 5. 业务人员业绩
-export async function getSalesPerformance(user: SessionUser, targetUserId?: string, range?: DateRange) {
-  requirePermission(user.roleCode, RESOURCE.STATISTICS, ACTION.READ);
-  const where = {
+type PerformanceRow = {
+  userId: string;
+  name: string;
+  employeeNo: string;
+  contractAmount: number;
+  invoiceAmount: number;
+  paymentAmount: number;
+  contractCount: number;
+};
+
+async function aggregatePerformance(owners: { id: string; name: string; employeeNo: string }[], range?: DateRange): Promise<PerformanceRow[]> {
+  const signWhere = {
     deletedAt: null,
-    ...(targetUserId ? { ownerUserId: targetUserId } : {}),
-    ...(user.roleCode === "SALES" ? { ownerUserId: user.id } : {})
+    status: { in: ["EFFECTIVE", "EXECUTING", "COMPLETED"] },
+    ...(range ? { signDate: dateWhere(range) } : {})
   };
-  const owners = await prisma.user.findMany({
-    where: { deletedAt: null, status: "ACTIVE", role: { code: "SALES" } },
-    select: { id: true, name: true, employeeNo: true }
+  const invoiceWhere = {
+    deletedAt: null,
+    status: "ISSUED",
+    ...(range ? { actualIssueDate: dateWhere(range, "actualIssueDate") } : {})
+  };
+  const paymentWhere = {
+    deletedAt: null,
+    status: { in: ["CONFIRMED", "RECONCILED"] },
+    ...(range ? { receivedAt: dateWhere(range, "receivedAt") } : {})
+  };
+
+  // 1) 合同总额 + 合同数:groupBy by ownerUserId 一次拿全
+  const ownerIds = owners.map((o) => o.id);
+  const [contractRows, invoiceRows, paymentRows] = await Promise.all([
+    prisma.contract.groupBy({
+      by: ["ownerUserId"],
+      where: { ...signWhere, ownerUserId: { in: ownerIds } },
+      _sum: { totalAmount: true },
+      _count: { _all: true }
+    }),
+    prisma.invoice.groupBy({
+      by: ["contractId"],
+      where: { ...invoiceWhere, contract: { ownerUserId: { in: ownerIds } } },
+      _sum: { amount: true }
+    }),
+    prisma.payment.groupBy({
+      by: ["contractId"],
+      where: { ...paymentWhere, contract: { ownerUserId: { in: ownerIds } } },
+      _sum: { amount: true }
+    })
+  ]);
+  // 2) contractId -> ownerUserId 反查,累加到对应 owner
+  const contractOwners = await prisma.contract.findMany({
+    where: { id: { in: [...new Set([...invoiceRows.map((r) => r.contractId), ...paymentRows.map((r) => r.contractId)].filter(Boolean) as string[])] } },
+    select: { id: true, ownerUserId: true }
   });
-  const out: Array<{ userId: string; name: string; employeeNo: string; contractAmount: number; invoiceAmount: number; paymentAmount: number; contractCount: number }> = [];
-  for (const u of owners) {
-    const [ca, ia, pa, cc] = await Promise.all([
-      prisma.contract.aggregate({
-        where: { ...where, ownerUserId: u.id, status: { in: ["EFFECTIVE", "EXECUTING", "COMPLETED"] }, ...(range ? { signDate: dateWhere(range) } : {}) },
-        _sum: { totalAmount: true }
-      }),
-      prisma.invoice.aggregate({
-        where: {
-          contract: { ownerUserId: u.id },
-          deletedAt: null,
-          status: "ISSUED",
-          ...(range ? { actualIssueDate: dateWhere(range, "actualIssueDate") } : {})
-        },
-        _sum: { amount: true }
-      }),
-      prisma.payment.aggregate({
-        where: {
-          contract: { ownerUserId: u.id },
-          deletedAt: null,
-          status: { in: ["CONFIRMED", "RECONCILED"] },
-          ...(range ? { receivedAt: dateWhere(range, "receivedAt") } : {})
-        },
-        _sum: { amount: true }
-      }),
-      prisma.contract.count({
-        where: { ...where, ownerUserId: u.id, status: { in: ["EFFECTIVE", "EXECUTING", "COMPLETED"] }, ...(range ? { signDate: dateWhere(range) } : {}) }
-      })
-    ]);
-    out.push({
+  const contractOwnerMap = new Map(contractOwners.map((c) => [c.id, c.ownerUserId]));
+
+  const sumByOwner = new Map<string, { invoice: number; payment: number }>();
+  for (const r of invoiceRows) {
+    const owner = contractOwnerMap.get(r.contractId);
+    if (!owner) continue;
+    const cur = sumByOwner.get(owner) ?? { invoice: 0, payment: 0 };
+    cur.invoice += Number(r._sum.amount ?? 0);
+    sumByOwner.set(owner, cur);
+  }
+  for (const r of paymentRows) {
+    const owner = contractOwnerMap.get(r.contractId);
+    if (!owner) continue;
+    const cur = sumByOwner.get(owner) ?? { invoice: 0, payment: 0 };
+    cur.payment += Number(r._sum.amount ?? 0);
+    sumByOwner.set(owner, cur);
+  }
+
+  const out: PerformanceRow[] = owners.map((u) => {
+    const cr = contractRows.find((r) => r.ownerUserId === u.id);
+    const ip = sumByOwner.get(u.id) ?? { invoice: 0, payment: 0 };
+    return {
       userId: u.id,
       name: u.name,
       employeeNo: u.employeeNo,
-      contractAmount: round2(Number(ca._sum.totalAmount ?? 0)),
-      invoiceAmount: round2(Number(ia._sum.amount ?? 0)),
-      paymentAmount: round2(Number(pa._sum.amount ?? 0)),
-      contractCount: cc
-    });
-  }
+      contractAmount: round2(Number(cr?._sum.totalAmount ?? 0)),
+      invoiceAmount: round2(ip.invoice),
+      paymentAmount: round2(ip.payment),
+      contractCount: cr?._count._all ?? 0
+    };
+  });
   out.sort((a, b) => b.contractAmount - a.contractAmount);
   return out;
+}
+
+export async function getSalesPerformance(user: SessionUser, targetUserId?: string, range?: DateRange) {
+  requirePermission(user.roleCode, RESOURCE.STATISTICS, ACTION.READ);
+  // SALES 角色：只能看自己,直接 short-circuit (避免下面循环把别人全填 0)
+  if (user.roleCode === "SALES") {
+    return aggregatePerformance(
+      [{ id: user.id, name: user.name, employeeNo: user.employeeNo }],
+      range
+    );
+  }
+  // ADMIN / FINANCE: 可看全员(或指定 targetUserId 单人)
+  const owners = await prisma.user.findMany({
+    where: {
+      deletedAt: null,
+      status: "ACTIVE",
+      role: { code: "SALES" },
+      ...(targetUserId ? { id: targetUserId } : {})
+    },
+    select: { id: true, name: true, employeeNo: true }
+  });
+  return aggregatePerformance(owners, range);
 }
 
 // 6. 客户分布
