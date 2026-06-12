@@ -111,7 +111,7 @@ export default function WorkflowStatsPage() {
               value={t.blockedTasks}
               suffix="项"
               prefix={<StopOutlined style={{ color: "#ff4d4f" }} />}
-              valueStyle={{ color: t.blockedTasks > 0 ? "#ff4d4f" : undefined }}
+              styles={{ content: { color: t.blockedTasks > 0 ? "#ff4d4f" : undefined } }}
             />
           </Card>
         </Col>
@@ -132,7 +132,7 @@ export default function WorkflowStatsPage() {
               value={t.overdue}
               suffix="项"
               prefix={<ExclamationCircleOutlined style={{ color: "#fa8c16" }} />}
-              valueStyle={{ color: t.overdue > 0 ? "#fa8c16" : undefined }}
+              styles={{ content: { color: t.overdue > 0 ? "#fa8c16" : undefined } }}
             />
           </Card>
         </Col>

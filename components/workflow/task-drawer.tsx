@@ -235,7 +235,7 @@ export function TaskDrawer({
       open={open}
       onClose={onClose}
       placement={isMobile ? "bottom" : "right"}
-      width={isMobile ? "100%" : 760}
+      size={isMobile ? "100%" : 760}
       height={isMobile ? "92%" : undefined}
       styles={isMobile ? { body: { paddingBottom: 24 } } : undefined}
       title={

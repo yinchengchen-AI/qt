@@ -60,7 +60,7 @@ export function DictEditDrawer({ open, dict, onClose, onSaved }: Props) {
       title={dict ? `编辑 ${dict.code}` : "编辑"}
       open={open}
       onClose={onClose}
-      width={420}
+      size={420}
       extra={
         <Button type="primary" onClick={onSubmit}>
           保存

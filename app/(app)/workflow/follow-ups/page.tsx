@@ -129,18 +129,18 @@ export default function FollowUpOverviewPage() {
           {/* 统计卡片行 */}
           <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr 1fr" : "1fr 1fr 1fr 1fr", gap: 12, marginBottom: 16 }}>
             <Card size="small">
-              <Statistic title="总记录" value={data.totals.total} valueStyle={{ fontSize: 22 }} />
+              <Statistic title="总记录" value={data.totals.total} styles={{ content: { fontSize: 22 } }} />
             </Card>
             <Card size="small">
               <Statistic
                 title="逾期未跟进"
                 value={data.totals.overdue}
-                valueStyle={{ fontSize: 22, color: data.totals.overdue > 0 ? "#ff4d4f" : undefined }}
+                styles={{ content: { fontSize: 22, color: data.totals.overdue > 0 ? "#ff4d4f" : undefined } }}
                 prefix={data.totals.overdue > 0 ? <ClockCircleOutlined /> : undefined}
               />
             </Card>
             <Card size="small">
-              <Statistic title="待定" value={data.totals.pending} valueStyle={{ fontSize: 22, color: "#faad14" }} />
+              <Statistic title="待定" value={data.totals.pending} styles={{ content: { fontSize: 22, color: "#faad14" } }} />
             </Card>
             <Card size="small">
               <Space orientation="vertical" size={4}>
