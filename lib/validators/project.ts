@@ -16,7 +16,6 @@ export const projectUpdateSchema = projectCreateSchema.partial();
 
 export const projectActionSchema = z.object({
   action: z.enum(["start", "suspend", "resume", "deliver", "accept", "close", "cancel", "progress"]),
-  percent: z.number().int().min(0).max(100).optional(),
   remark: z.string().max(500).optional()
 });
 

@@ -86,6 +86,20 @@ export async function getProjectOverview(user: SessionUser, id: string): Promise
   };
 }
 
+/**
+ * 从工作流任务实例派生项目完成度(读时计算,不落库)
+ * = COMPLETED / (total - SKIPPED) * 100,保留 1 位小数
+ * 无任务时返回 0;所有任务都 SKIPPED 时也按 0 处理
+ */
+export function computeProgressPct(instances: Array<{ status: string }>): number {
+  const total = instances.length;
+  if (total === 0) return 0;
+  const skipped = instances.filter((i) => i.status === "SKIPPED").length;
+  const denom = Math.max(1, total - skipped);
+  const done = instances.filter((i) => i.status === "COMPLETED").length;
+  return Math.round((done / denom) * 1000) / 10;
+}
+
 export async function listProjects(
   user: SessionUser,
   params: { page: number; pageSize: number; keyword?: string; status?: string; contractId?: string }
@@ -107,7 +121,25 @@ export async function listProjects(
     prisma.project.findMany({ where, orderBy: { createdAt: "desc" }, skip: (page - 1) * pageSize, take: pageSize, include: { contract: { select: { contractNo: true, title: true, ownerUserId: true, totalAmount: true } } } }),
     prisma.project.count({ where })
   ]);
-  return { list, total, page, pageSize };
+  // 批量加载这些项目的工作流任务实例,按 projectId 分组后计算 progressPct(避免 N+1)
+  const ids = list.map((p) => p.id);
+  const instances = ids.length > 0
+    ? await prisma.workflowTaskInstance.findMany({
+        where: { projectId: { in: ids }, deletedAt: null },
+        select: { projectId: true, status: true }
+      })
+    : [];
+  const byProject = new Map<string, Array<{ status: string }>>();
+  for (const ins of instances) {
+    const arr = byProject.get(ins.projectId) ?? [];
+    arr.push({ status: ins.status });
+    byProject.set(ins.projectId, arr);
+  }
+  const listWithProgress = list.map((p) => ({
+    ...p,
+    progressPct: computeProgressPct(byProject.get(p.id) ?? [])
+  }));
+  return { list: listWithProgress, total, page, pageSize };
 }
 
 export async function getProject(user: SessionUser, id: string) {
@@ -117,7 +149,11 @@ export async function getProject(user: SessionUser, id: string) {
     include: { contract: true, progressLogs: { orderBy: { at: "desc" }, take: 20 } }
   });
   if (!p) throw new ApiError(ERROR_CODES.NOT_FOUND, "项目不存在", 404);
-  return p;
+  const instances = await prisma.workflowTaskInstance.findMany({
+    where: { projectId: id, deletedAt: null },
+    select: { status: true }
+  });
+  return { ...p, progressPct: computeProgressPct(instances) };
 }
 
 export async function updateProject(user: SessionUser, id: string, input: ProjectUpdateInput) {
@@ -164,10 +200,35 @@ export async function projectAction(user: SessionUser, id: string, input: Projec
       close: { from: ["ACCEPTED"], to: "CLOSED" },
       cancel: { from: ["PLANNED", "IN_PROGRESS", "SUSPENDED"], to: "CANCELLED" }
     };
+    // R-17:deliver / accept / close 三个向前推进动作,要求所有 requiresDeliverable=true 的工作流任务
+    // 必须 COMPLETED 或 SKIPPED,否则拒绝并报 PROJECT_DELIVERABLES_INCOMPLETE。
+    // cancel 不在此门控内:取消即停,遗留任务保留为 PENDING/IN_PROGRESS 作为历史。
+    if (["deliver", "accept", "close"].includes(input.action)) {
+      const pending = await tx.workflowTaskInstance.count({
+        where: {
+          projectId: id,
+          deletedAt: null,
+          status: { notIn: ["COMPLETED", "SKIPPED"] },
+          task: { requiresDeliverable: true }
+        }
+      });
+      if (pending > 0) {
+        throw new ApiError(
+          ERROR_CODES.PROJECT_DELIVERABLES_INCOMPLETE,
+          `仍有 ${pending} 个必交付任务未完成,项目不可 ${input.action}`,
+          422
+        );
+      }
+    }
     if (input.action === "progress") {
-      if (typeof input.percent !== "number") throw new ApiError(ERROR_CODES.VALIDATION_FAILED, "请填写 percent", 400);
+      // 项目级里程碑记录:仅写 remark(text),不携带任何数字;
+      // 数字进度自 v0.3.1 起由工作流任务完成度派生(Project.progressPct)
+      const remark = (input.remark ?? "").trim();
+      if (!remark) {
+        throw new ApiError(ERROR_CODES.VALIDATION_FAILED, "请填写里程碑说明", 400);
+      }
       await tx.projectProgressLog.create({
-        data: { projectId: id, userId: user.id, percent: input.percent, remark: input.remark ?? "" }
+        data: { projectId: id, userId: user.id, remark }
       });
       return tx.project.findUniqueOrThrow({ where: { id } });
     }

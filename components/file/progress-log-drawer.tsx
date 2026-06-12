@@ -1,8 +1,8 @@
 "use client";
-// 项目详情页的"记录进度"抽屉;调 POST /api/projects/{projectId}/progress
-// (走统一动作入口 projectAction,后端用事务写入 progressLogs 表)
+// 项目详情页的"记录里程碑"抽屉;调 POST /api/projects/{projectId}/progress
+// (走统一动作入口 projectAction,后端用事务写入 ProjectProgressLog 表,仅存文本)
 import { ProForm, ProFormTextArea } from "@ant-design/pro-components";
-import { App as AntdApp, Drawer, Form, Slider, Typography } from "antd";
+import { App as AntdApp, Drawer, Typography } from "antd";
 import { useResponsive } from "@/lib/use-breakpoint";
 
 export function ProgressLogDrawer(props: {
@@ -17,7 +17,7 @@ export function ProgressLogDrawer(props: {
     <Drawer
       open={props.open}
       onClose={props.onClose}
-      title="记录项目进度"
+      title="记录项目里程碑"
       // 移动端从底部弹出,占满宽度;桌面端 520px 侧边
       placement={isMobile ? "bottom" : "right"}
       styles={{ wrapper: isMobile ? { height: "90%", width: "100%" } : { width: 520 } }}
@@ -31,17 +31,14 @@ export function ProgressLogDrawer(props: {
               method: "POST",
               headers: { "Content-Type": "application/json" },
               credentials: "include",
-              body: JSON.stringify({
-                percent: values.percent,
-                remark: values.remark ?? ""
-              })
+              body: JSON.stringify({ remark: values.remark ?? "" })
             });
             const j = await r.json();
             if (j.code !== 0) {
               message.error(j.message);
               return false;
             }
-            message.success("进度已记录");
+            message.success("里程碑已记录");
             props.onSaved();
             props.onClose();
             return true;
@@ -51,23 +48,15 @@ export function ProgressLogDrawer(props: {
           }
         }}
       >
-        <Form.Item
-          name="percent"
-          label="当前进度(0-100% 整数)"
-          rules={[{ required: true, type: "number", min: 0, max: 100, message: "请填 0-100 之间的整数" }]}
-          initialValue={0}
-        >
-          <Slider min={0} max={100} marks={{ 0: "0%", 25: "25%", 50: "50%", 75: "75%", 100: "100%" }} />
-        </Form.Item>
         <ProFormTextArea
           name="remark"
-          label="本次进度说明"
+          label="里程碑说明"
           placeholder="本阶段完成情况、产出物、风险与下一步"
           rules={[{ required: true, min: 1, max: 500 }]}
           fieldProps={{ rows: 4, maxLength: 500, showCount: true }}
         />
         <Typography.Paragraph type="secondary" style={{ fontSize: 12, marginTop: 8, marginBottom: 0 }}>
-          进度日志会按时间倒序出现在项目详情的"进度日志"列表,不改变项目状态。
+          里程碑记录按时间倒序展示在项目详情页与 PDF 打印件中;数字进度请直接看上方「工作流派生进度」。
         </Typography.Paragraph>
       </ProForm>
     </Drawer>

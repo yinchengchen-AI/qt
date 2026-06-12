@@ -201,7 +201,6 @@ model Project {
   startDate     DateTime  @db.Timestamptz(6)
   endDate       DateTime  @db.Timestamptz(6)
   budgetAmount  Decimal?  @db.Decimal(18, 2)
-  milestones    Json? // @deprecated since v0.3.0, replaced by WorkflowTaskInstance; retained for backward read
   status        String    @default("PLANNED") // PLANNED | IN_PROGRESS | SUSPENDED | DELIVERED | ACCEPTED | CLOSED | CANCELLED
   createdAt     DateTime  @default(now()) @db.Timestamptz(6)
   updatedAt     DateTime  @updatedAt @db.Timestamptz(6)
@@ -223,7 +222,6 @@ model ProjectProgressLog {
   projectId String
   project   Project  @relation(fields: [projectId], references: [id])
   userId    String
-  percent   Int
   remark    String
   at        DateTime @default(now()) @db.Timestamptz(6)
 }

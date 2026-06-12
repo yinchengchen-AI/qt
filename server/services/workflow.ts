@@ -683,11 +683,11 @@ async function generateDueForProject(
   projectId: string,
   now: Date,
   actorId: string
-): Promise<{ generated: number; items: { parentInstanceId: string; newInstanceId: string }[] }> {
+): Promise<{ generated: number; skipped: number; items: { parentInstanceId: string; newInstanceId: string }[] }> {
   const project = await tx.project.findFirst({
     where: { id: projectId, deletedAt: null }
   });
-  if (!project) return { generated: 0, items: [] };
+  if (!project) return { generated: 0, skipped: 0, items: [] };
 
   const instances = await tx.workflowTaskInstance.findMany({
     where: { projectId, deletedAt: null },
@@ -706,6 +706,23 @@ async function generateDueForProject(
     });
     if (hasChild) continue;
 
+    // 止期护栏:若按当前周期推算的"下一个完成时间"会越过项目 endDate,跳过生成并审计
+    if (project.endDate && ins.task.recurrenceInterval != null && ins.task.recurrenceUnit != null) {
+      const unitMs = recurrenceToMs(ins.task.recurrenceInterval, ins.task.recurrenceUnit);
+      if (unitMs != null) {
+        const nextCompletedAt = new Date(Date.now() + unitMs);
+        if (nextCompletedAt > project.endDate) {
+          await audit(tx, {
+            actorId,
+            action: "WORKFLOW_RECURRING_SKIPPED_PROJECT_ENDED",
+            entity: "Project",
+            entityId: projectId,
+            after: { taskId: ins.taskId, wouldCompleteAt: nextCompletedAt, projectEndDate: project.endDate }
+          });
+          continue;
+        }
+      }
+    }
     const next = await tx.workflowTaskInstance.create({
       data: {
         projectId,
@@ -720,16 +737,31 @@ async function generateDueForProject(
     });
     items.push({ parentInstanceId: ins.id, newInstanceId: next.id });
   }
+  // 止期护栏:扫一遍因 endDate 跳过的实例
+  const skipped = instances.filter((ins) => {
+    if (!isRecurrenceDue(ins, ins.task, now)) return false;
+    const siblings = instances.filter((x) => x.taskId === ins.taskId);
+    const latest = siblings[siblings.length - 1];
+    if (!latest || latest.id !== ins.id) return false;
+    if (items.some((it) => it.parentInstanceId === ins.id)) return false;
+    if (!project.endDate) return false;
+    if (ins.task.recurrenceInterval == null || ins.task.recurrenceUnit == null) return false;
+    const unitMs = recurrenceToMs(ins.task.recurrenceInterval, ins.task.recurrenceUnit);
+    if (unitMs == null) return false;
+    const nextCompletedAt = new Date(Date.now() + unitMs);
+    return nextCompletedAt > project.endDate;
+  }).length;
+
   if (items.length > 0) {
     await audit(tx, {
       actorId,
       action: "WORKFLOW_RECURRING_GENERATE",
       entity: "Project",
       entityId: projectId,
-      after: { generated: items.length }
+      after: { generated: items.length, skipped }
     });
   }
-  return { generated: items.length, items };
+  return { generated: items.length, skipped, items };
 }
 
 /**
@@ -750,7 +782,8 @@ export async function generateRecurringInstances(user: SessionUser, projectId: s
 export async function generateAllRecurringInstances(now: Date = new Date()): Promise<{
   scanned: number;
   generated: number;
-  perProject: { projectId: string; generated: number }[];
+  skipped: number;
+  perProject: { projectId: string; generated: number; skipped: number }[];
 }> {
   const SYSTEM_ACTOR_ID = "system:cron";
   // P13 优化:批量跨项目查询最近完成的循环任务实例,仅处理有到期任务的活跃项目
@@ -759,7 +792,7 @@ export async function generateAllRecurringInstances(now: Date = new Date()): Pro
     select: { id: true }
   });
   const activeProjectIds = activeProjects.map((p) => p.id);
-  if (activeProjectIds.length === 0) return { scanned: 0, generated: 0, perProject: [] };
+  if (activeProjectIds.length === 0) return { scanned: 0, generated: 0, skipped: 0, perProject: [] };
 
   // 一次查询所有活跃项目中已完成且有循环任务的实例
   const completedRecurring = await prisma.workflowTaskInstance.findMany({
@@ -793,18 +826,20 @@ export async function generateAllRecurringInstances(now: Date = new Date()): Pro
   }
 
   const candidateProjects = activeProjects.filter((p) => candidateSet.has(p.id));
-  if (candidateProjects.length === 0) return { scanned: activeProjects.length, generated: 0, perProject: [] };
+  if (candidateProjects.length === 0) return { scanned: activeProjects.length, generated: 0, skipped: 0, perProject: [] };
 
   let total = 0;
-  const perProject: { projectId: string; generated: number }[] = [];
+  let totalSkipped = 0;
+  const perProject: { projectId: string; generated: number; skipped: number }[] = [];
   for (const p of candidateProjects) {
     const r = await prisma.$transaction(async (tx) => generateDueForProject(tx, p.id, now, SYSTEM_ACTOR_ID));
-    if (r.generated > 0) {
-      perProject.push({ projectId: p.id, generated: r.generated });
-      total += r.generated;
+    if (r.generated > 0 || r.skipped > 0) {
+      perProject.push({ projectId: p.id, generated: r.generated, skipped: r.skipped });
     }
+    total += r.generated;
+    totalSkipped += r.skipped;
   }
-  return { scanned: candidateProjects.length, generated: total, perProject };
+  return { scanned: candidateProjects.length, generated: total, skipped: totalSkipped, perProject };
 }
 
 // =====================================================

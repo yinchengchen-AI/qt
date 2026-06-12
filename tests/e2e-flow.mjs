@@ -194,6 +194,20 @@ try {
   const start_ = await admin.req(`/api/projects/${projectId}/start`, { method: 'POST' });
   log('project start → IN_PROGRESS', start_.status === 200 && start_.body?.data?.status === 'IN_PROGRESS', `status=${start_.body?.data?.status}`);
 
+  // R-17 门控:deliver 前必须先处理所有 requiresDeliverable=true 的任务
+  // 1) 未处理时 deliver 应被拒
+  const deliverEarly = await admin.req(`/api/projects/${projectId}/deliver`, { method: 'POST' });
+  log('R-17 deliver 必交付未完 → 拒', deliverEarly.status === 422 && deliverEarly.body?.errorCode === 'PROJECT_DELIVERABLES_INCOMPLETE', `status=${deliverEarly.status} code=${deliverEarly.body?.errorCode}`);
+
+  // 2) 跳过所有 requiresDeliverable=true 且未完成的任务
+  const wf = await admin.req(`/api/projects/${projectId}/workflow`, { method: 'GET' });
+  const allTasks = (wf.body?.data?.stages ?? []).flatMap((s) => s.tasks ?? []);
+  const pendingDeliverables = allTasks.filter((t) => t.requiresDeliverable && t.status !== 'COMPLETED' && t.status !== 'SKIPPED');
+  for (const t of pendingDeliverables) {
+    const r = await admin.req(`/api/workflow-tasks/${t.id}/action`, { method: 'POST', body: { action: 'skip', remark: 'e2e prep' } });
+    if (r.status !== 200) console.log('skip failed', t.code, r.status, JSON.stringify(r.body));
+  }
+
   const deliver = await admin.req(`/api/projects/${projectId}/deliver`, { method: 'POST' });
   log('project deliver → DELIVERED', deliver.status === 200 && deliver.body?.data?.status === 'DELIVERED', `status=${deliver.body?.data?.status}`);
 

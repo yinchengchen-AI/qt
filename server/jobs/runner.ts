@@ -180,8 +180,15 @@ export async function customerInactiveJob(now: Date): Promise<JobResult> {
 }
 
 // 循环任务:扫描所有 active 项目,为周期已到的循环任务生成下一个实例
+// skipped: 因 Project.endDate 止期护栏而跳过的循环任务数(仍计入审计)
 export async function recurringTasksJob(now: Date): Promise<JobResult> {
   const t0 = Date.now();
   const r = await generateAllRecurringInstances(now);
-  return { job: "recurring-tasks", created: r.generated, scanned: r.scanned, durationMs: Date.now() - t0 };
+  return {
+    job: "recurring-tasks",
+    created: r.generated,
+    scanned: r.scanned,
+    durationMs: Date.now() - t0,
+    ...(r.skipped ? { skipped: r.skipped } : {})
+  } as JobResult;
 }
