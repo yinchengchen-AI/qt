@@ -26,6 +26,7 @@ import {
   DashboardOutlined,
   TeamOutlined,
   FileTextOutlined,
+  AppstoreOutlined,
   ProjectOutlined,
   PlayCircleOutlined,
   BookOutlined,
@@ -58,6 +59,7 @@ const MENU: MenuItem[] = [
   { path: "/contracts", name: "合同管理", icon: <FileTextOutlined /> },
   { path: "/projects", name: "项目管理", icon: <ProjectOutlined /> },
   { path: "/workflow", name: "我的工作流", icon: <PlayCircleOutlined /> },
+  { path: "/workflow/board", name: "工作流看板", icon: <AppstoreOutlined /> },
   { path: "/invoices", name: "开票管理", icon: <BookOutlined /> },
   { path: "/payments", name: "回款管理", icon: <PayCircleOutlined /> },
   {
@@ -683,6 +685,7 @@ const CRUMB_LABEL: Record<string, string> = {
   contracts: "合同管理",
   projects: "项目管理",
   workflow: "我的工作流",
+  "workflow/board": "工作流看板",
   "statistics/workflow": "工作流概览",
   "admin/workflow-templates": "工作流模板",
   invoices: "开票管理",

@@ -1292,3 +1292,155 @@ export async function getProjectUpgradeCheck(
     diff
   };
 }
+
+// =====================================================
+// P9: 任务批量操作
+// - action: "start" | "complete" | "block" | "unblock" | "skip" | "assign"
+// - 每条独立 try,失败返回 errors[],成功返回 succeeded
+// =====================================================
+export type BatchActionResult = {
+  succeeded: string[];
+  failed: { id: string; errorCode?: string; message: string }[];
+};
+
+export async function batchTaskAction(
+  user: SessionUser,
+  taskIds: string[],
+  action: WorkflowTaskAction | "assign",
+  opts: { assigneeId?: string | null; remark?: string } = {}
+): Promise<BatchActionResult> {
+  requirePermission(user.roleCode, RESOURCE.PROJECT, ACTION.UPDATE);
+  const succeeded: string[] = [];
+  const failed: { id: string; errorCode?: string; message: string }[] = [];
+  for (const id of taskIds) {
+    try {
+      if (action === "assign") {
+        await assignTask(user, id, opts.assigneeId ?? null);
+      } else {
+        await taskAction(user, id, action, { remark: opts.remark });
+      }
+      succeeded.push(id);
+    } catch (e) {
+      const err = e as { errorCode?: string; message?: string };
+      failed.push({ id, errorCode: err.errorCode, message: err.message ?? "未知错误" });
+    }
+  }
+  return { succeeded, failed };
+}
+
+// =====================================================
+// P9: 看板视图 — 按 phase 分组任务,带状态小计
+// =====================================================
+export type KanbanColumn = {
+  phase: string;
+  code: string;
+  name: string;
+  total: number;
+  byStatus: { PENDING: number; IN_PROGRESS: number; BLOCKED: number; COMPLETED: number; SKIPPED: number };
+  /** 阶段状态:DONE / PARTIAL / LOCKED / READY */
+  phaseState: "DONE" | "PARTIAL" | "LOCKED" | "READY";
+  tasks: Array<{
+    id: string;
+    name: string;
+    status: WorkflowTaskStatus;
+    assigneeId: string | null;
+    requiresTwoStepReview: boolean;
+    reviewStatus: WorkflowReviewStatus | null;
+    updatedAt: string;
+  }>;
+};
+
+export type ProjectKanban = {
+  projectId: string;
+  projectName: string;
+  projectNo: string;
+  columns: KanbanColumn[];
+  totals: { total: number; pending: number; inProgress: number; completed: number; blocked: number };
+};
+
+export async function getProjectKanban(user: SessionUser, projectId: string): Promise<ProjectKanban> {
+  requirePermission(user.roleCode, RESOURCE.PROJECT, ACTION.READ);
+  const project = await prisma.project.findFirst({
+    where: {
+      id: projectId,
+      deletedAt: null,
+      ...(ownerViaContract(user) as Prisma.ProjectWhereInput)
+    }
+  });
+  if (!project) throw new ApiError(ERROR_CODES.NOT_FOUND, "项目不存在", 404);
+  const instances = await prisma.workflowTaskInstance.findMany({
+    where: { projectId, deletedAt: null },
+    include: { task: { include: { stage: { select: { id: true, phase: true, code: true, name: true, sort: true, isRequired: true } } } } },
+    orderBy: [{ createdAt: "asc" }]
+  });
+  // 按 phase 分组
+  const phaseMap = new Map<string, KanbanColumn>();
+  const phaseOrder: string[] = [];
+  for (const ins of instances) {
+    const ph = ins.task.stage.phase;
+    if (!phaseMap.has(ph)) {
+      phaseMap.set(ph, {
+        phase: ph,
+        code: ins.task.stage.code,
+        name: ins.task.stage.name,
+        total: 0,
+        byStatus: { PENDING: 0, IN_PROGRESS: 0, BLOCKED: 0, COMPLETED: 0, SKIPPED: 0 },
+        phaseState: "READY",
+        tasks: []
+      });
+      phaseOrder.push(ph);
+    }
+    const col = phaseMap.get(ph)!;
+    col.total++;
+    const s = ins.status as keyof typeof col.byStatus;
+    if (s in col.byStatus) col.byStatus[s]++;
+    col.tasks.push({
+      id: ins.id,
+      name: ins.task.name,
+      status: ins.status as WorkflowTaskStatus,
+      assigneeId: ins.assigneeId,
+      requiresTwoStepReview: ins.task.requiresTwoStepReview,
+      reviewStatus: ins.reviewStatus as WorkflowReviewStatus | null,
+      updatedAt: ins.updatedAt.toISOString()
+    });
+  }
+  // 计算 phaseState
+  let prevUnfinished = false;
+  for (const ph of WORKFLOW_PHASE_ORDER) {
+    const col = phaseMap.get(ph);
+    if (!col) continue;
+    const isDone = col.byStatus.COMPLETED + col.byStatus.SKIPPED === col.total && col.total > 0;
+    const anyActive = col.byStatus.PENDING + col.byStatus.IN_PROGRESS + col.byStatus.BLOCKED > 0;
+    if (isDone) col.phaseState = "DONE";
+    else if (prevUnfinished) col.phaseState = "LOCKED";
+    else if (anyActive) col.phaseState = "PARTIAL";
+    else col.phaseState = "READY";
+    if (anyActive) {
+      // 是否阻塞后续:只考虑 required 阶段
+      // 简化:任意 active 任务都视为阻塞后续
+      prevUnfinished = true;
+    }
+  }
+  // 重新按 WORKFLOW_PHASE_ORDER 排序
+  const orderedCols: KanbanColumn[] = [];
+  for (const ph of WORKFLOW_PHASE_ORDER) {
+    const col = phaseMap.get(ph);
+    if (col) orderedCols.push(col);
+  }
+  // 总计
+  const totals = { total: 0, pending: 0, inProgress: 0, completed: 0, blocked: 0 };
+  for (const c of orderedCols) {
+    totals.total += c.total;
+    totals.pending += c.byStatus.PENDING;
+    totals.inProgress += c.byStatus.IN_PROGRESS;
+    totals.completed += c.byStatus.COMPLETED;
+    totals.blocked += c.byStatus.BLOCKED;
+  }
+  return {
+    projectId: project.id,
+    projectName: project.name,
+    projectNo: project.projectNo,
+    columns: orderedCols,
+    totals
+  };
+}

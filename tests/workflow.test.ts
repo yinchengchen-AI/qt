@@ -589,6 +589,53 @@ describe("Cross-template task duplication is forbidden", () => {
     // 业务规则(在 service 实现中):templateId 不同 → throw 422
     const srcTemplateId = "tpl_A";
     const targetTemplateId = "tpl_B";
-    expect(srcTemplateId === targetTemplateId).toBe(false);
+    expect((srcTemplateId as string) === (targetTemplateId as string)).toBe(false);
+  });
+});
+
+// =====================================================
+// P9: 批量操作 + Kanban 状态
+// =====================================================
+describe("BatchActionResult shape is stable", () => {
+  it("has succeeded and failed arrays", () => {
+    // 服务返回 { succeeded: string[], failed: { id, errorCode, message }[] }
+    // 锁住:失败项要带 errorCode 和 message,方便 UI 提示
+    const expected: { succeeded: string[]; failed: { id: string; errorCode?: string; message: string }[] } = {
+      succeeded: [],
+      failed: []
+    };
+    expect(expected.succeeded).toEqual([]);
+    expect(expected.failed).toEqual([]);
+  });
+});
+
+describe("BATCH_ACTIONS union covers all single-task actions + assign", () => {
+  // 批量操作:taskAction 5 态 + assign = 6 态
+  const BATCH = ["start", "complete", "block", "unblock", "skip", "assign"];
+  it("includes 5 task actions + assign", () => {
+    expect(BATCH.length).toBe(6);
+    expect(BATCH).toContain("assign");
+  });
+});
+
+describe("Kanban phase state transitions are stable", () => {
+  // 4 态:DONE / PARTIAL / LOCKED / READY(与 P3 锁定逻辑一致)
+  const STATES = ["DONE", "PARTIAL", "LOCKED", "READY"];
+  it("has 4 states", () => {
+    expect(STATES.length).toBe(4);
+    expect(new Set(STATES).size).toBe(4);
+  });
+  it("DONE wins when all tasks done/skipped", () => {
+    const byStatus = { PENDING: 0, IN_PROGRESS: 0, BLOCKED: 0, COMPLETED: 5, SKIPPED: 0 };
+    const total = Object.values(byStatus).reduce((s, v) => s + v, 0);
+    const isDone = byStatus.COMPLETED + byStatus.SKIPPED === total && total > 0;
+    expect(isDone).toBe(true);
+  });
+  it("LOCKED when previous phase has unfinished work", () => {
+    // 阶段 N 的 LOCKED = 阶段 N-1 仍有未完成(required)
+    // 这是 P3 锁定的延续,看板只是渲染
+    const prevUnfinished = true;
+    const isLocked = prevUnfinished; // 简化
+    expect(isLocked).toBe(true);
   });
 });

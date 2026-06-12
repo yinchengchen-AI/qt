@@ -19,7 +19,7 @@ import { CurrencyCell, DateTimeCell } from "@/components/table-cells";
 import { useResponsive } from "@/lib/use-breakpoint";
 import { WorkflowSection } from "@/components/workflow/workflow-section";
 import { UpgradeModal } from "@/components/workflow/upgrade-modal";
-import { ThunderboltOutlined } from "@ant-design/icons";
+import { AppstoreOutlined, ThunderboltOutlined } from "@ant-design/icons";
 
 const ACTION_LABEL: Record<string, string> = {
   start: "开始", suspend: "暂停", resume: "恢复", deliver: "交付",
@@ -112,13 +112,21 @@ export default function ProjectDetailPage() {
         level="section"
         title="服务工作流"
         actions={
-          <Button
-            icon={<ThunderboltOutlined />}
-            onClick={() => setUpgradeOpen(true)}
-            disabled={!canEditWorkflow}
-          >
-            升级到最新模板
-          </Button>
+          <Space>
+            <Button
+              icon={<AppstoreOutlined />}
+              onClick={() => router.push(`/workflow/board?projectId=${id}`)}
+            >
+              看板视图
+            </Button>
+            <Button
+              icon={<ThunderboltOutlined />}
+              onClick={() => setUpgradeOpen(true)}
+              disabled={!canEditWorkflow}
+            >
+              升级到最新模板
+            </Button>
+          </Space>
         }
       />
       <ProCard>
