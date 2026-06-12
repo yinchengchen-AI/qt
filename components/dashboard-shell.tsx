@@ -126,7 +126,7 @@ function toAntdMenu(items: MenuItem[]): MenuProps["items"] {
         <Link href={item.path}>{item.name}</Link>
       );
     const node: NonNullable<MenuProps["items"]>[number] = {
-      key: item.path,
+      key: item.children?.length ? `${item.path}__group` : item.path,
       icon: item.icon as React.ReactNode,
       label
     };
