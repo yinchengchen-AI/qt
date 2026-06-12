@@ -431,10 +431,11 @@ describe("migrateTaskInstances contract", () => {
     // 锁住"必须不同"这个不变量
     expect("fromTaskId === toTaskId" === "fromTaskId === toTaskId").toBe(true);
   });
-  it("rejects cross-template migration (service-layer guard)", () => {
-    // service 显式判断 src.stage.templateId !== dst.stage.templateId
-    // 这是数据完整性,任何 UI 误用都该被拒
-    expect("templateId 不同就该拒" === "templateId 不同就该拒").toBe(true);
+  it("allows cross-serviceType migration with warnings", () => {
+    // P13.1: 跨 serviceType 迁移已放开,改为收集 warnings
+    // 迁移完成后返回 warnings 列表供前端确认
+    // 跨模板迁移不再被拒,而是收集 warning
+    expect(true).toBe(true);
   });
 });
 

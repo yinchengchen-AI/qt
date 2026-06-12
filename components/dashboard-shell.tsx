@@ -86,7 +86,8 @@ const MENU: MenuItem[] = [
       { path: "/admin/departments", name: "部门管理" },
       { path: "/admin/dictionaries", name: "数据字典" },
       { path: "/admin/operation-logs", name: "操作日志" },
-      { path: "/admin/workflow-templates", name: "工作流模板" }
+      { path: "/admin/workflow-templates", name: "工作流模板" },
+      { path: "/admin/trash", name: "回收站" }
     ]
   }
 ];
@@ -690,6 +691,7 @@ const CRUMB_LABEL: Record<string, string> = {
   "workflow/notifications": "工作流通知",
   "statistics/workflow": "工作流概览",
   "admin/workflow-templates": "工作流模板",
+  "admin/trash": "回收站",
   invoices: "开票管理",
   payments: "回款管理",
   statistics: "统计分析",

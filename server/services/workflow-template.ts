@@ -342,7 +342,11 @@ export async function migrateTaskInstances(
   user: SessionUser,
   fromTaskId: string,
   toTaskId: string
-): Promise<{ migratedInstances: number; migratedProjects: number }> {
+): Promise<{
+  migratedInstances: number;
+  migratedProjects: number;
+  warnings: string[];
+}> {
   requirePermission(user.roleCode, RESOURCE.WORKFLOW_TEMPLATE, ACTION.UPDATE);
   if (fromTaskId === toTaskId) {
     throw new ApiError(ERROR_CODES.VALIDATION_FAILED, "源任务和目标任务不能相同", 400);
@@ -357,13 +361,21 @@ export async function migrateTaskInstances(
       include: { stage: { include: { template: true } } }
     });
     if (!from || !to) throw new ApiError(ERROR_CODES.NOT_FOUND, "任务不存在", 404);
+    // 跨模板/跨 serviceType 迁移:记录不兼容性警告
+    const warnings: string[] = [];
+    const fromServiceType = from.stage.template.serviceType;
+    const toServiceType = to.stage.template.serviceType;
     if (from.stage.templateId !== to.stage.templateId) {
-      throw new ApiError(
-        ERROR_CODES.VALIDATION_FAILED,
-        "源任务和目标任务必须属于同一模板(同一 serviceType + 同一版本)",
-        422
-      );
+      warnings.push(`跨模板迁移: "${from.stage.template.name}" → "${to.stage.template.name}"`);
     }
+    if (fromServiceType !== toServiceType) {
+      warnings.push(`跨 serviceType 迁移: ${fromServiceType} → ${toServiceType},请确认业务兼容性`);
+    }
+    if (from.stage.phase !== to.stage.phase) {
+      warnings.push(`阶段不同: ${from.stage.phase} → ${to.stage.phase}`);
+    }
+    if (from.requiresTwoStepReview !== to.requiresTwoStepReview) warnings.push("审核流程不同");
+    if (from.isRecurring !== to.isRecurring) warnings.push("重复任务设置不同");
     // 找所有 from 任务的实例,改 taskId
     const instances = await tx.workflowTaskInstance.findMany({
       where: { taskId: fromTaskId, deletedAt: null },
@@ -402,7 +414,8 @@ export async function migrateTaskInstances(
     });
     return {
       migratedInstances: r.count,
-      migratedProjects: new Set(safe.map((i) => i.projectId)).size
+      migratedProjects: new Set(safe.map((i) => i.projectId)).size,
+      warnings
     };
   });
 }

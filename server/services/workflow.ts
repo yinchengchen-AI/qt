@@ -753,20 +753,58 @@ export async function generateAllRecurringInstances(now: Date = new Date()): Pro
   perProject: { projectId: string; generated: number }[];
 }> {
   const SYSTEM_ACTOR_ID = "system:cron";
-  const projects = await prisma.project.findMany({
+  // P13 优化:批量跨项目查询最近完成的循环任务实例,仅处理有到期任务的活跃项目
+  const activeProjects = await prisma.project.findMany({
     where: { deletedAt: null, status: { in: ["PLANNED", "IN_PROGRESS", "SUSPENDED"] } },
     select: { id: true }
   });
+  const activeProjectIds = activeProjects.map((p) => p.id);
+  if (activeProjectIds.length === 0) return { scanned: 0, generated: 0, perProject: [] };
+
+  // 一次查询所有活跃项目中已完成且有循环任务的实例
+  const completedRecurring = await prisma.workflowTaskInstance.findMany({
+    where: {
+      projectId: { in: activeProjectIds },
+      deletedAt: null,
+      status: "COMPLETED",
+      completedAt: { not: null },
+      task: { isRecurring: true, recurrenceInterval: { not: null }, recurrenceUnit: { not: null } }
+    },
+    include: { task: true },
+    orderBy: [{ projectId: "asc" }, { createdAt: "asc" }]
+  });
+
+  // 按项目分组,仅对有到期任务的项目处理
+  const projectTasks = new Map<string, typeof completedRecurring>();
+  const candidateSet = new Set<string>();
+  for (const ins of completedRecurring) {
+    if (!isRecurrenceDue(ins, ins.task, now)) continue;
+    // 检查是否已有子实例
+    const siblings = completedRecurring.filter((x) => x.projectId === ins.projectId && x.taskId === ins.taskId && x.parentInstanceId === ins.id);
+    if (siblings.length > 0) continue;
+    // 检查是否是该项目该任务的最新实例
+    const sameTask = completedRecurring.filter((x) => x.projectId === ins.projectId && x.taskId === ins.taskId);
+    const latest = sameTask[sameTask.length - 1];
+    if (!latest || latest.id !== ins.id) continue;
+    candidateSet.add(ins.projectId);
+    const arr = projectTasks.get(ins.projectId) ?? [];
+    arr.push(ins);
+    projectTasks.set(ins.projectId, arr);
+  }
+
+  const candidateProjects = activeProjects.filter((p) => candidateSet.has(p.id));
+  if (candidateProjects.length === 0) return { scanned: activeProjects.length, generated: 0, perProject: [] };
+
   let total = 0;
   const perProject: { projectId: string; generated: number }[] = [];
-  for (const p of projects) {
+  for (const p of candidateProjects) {
     const r = await prisma.$transaction(async (tx) => generateDueForProject(tx, p.id, now, SYSTEM_ACTOR_ID));
     if (r.generated > 0) {
       perProject.push({ projectId: p.id, generated: r.generated });
       total += r.generated;
     }
   }
-  return { scanned: projects.length, generated: total, perProject };
+  return { scanned: candidateProjects.length, generated: total, perProject };
 }
 
 // =====================================================

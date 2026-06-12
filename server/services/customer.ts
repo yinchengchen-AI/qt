@@ -3,7 +3,7 @@ import { ApiError } from "@/lib/api";
 import { ERROR_CODES } from "@/types/errors";
 import { type SessionUser } from "@/lib/session";
 import { nextBusinessNo } from "@/lib/sequence";
-import { requirePermission, RESOURCE, ACTION } from "@/lib/permissions";
+import { requirePermission, hasPermission, RESOURCE, ACTION } from "@/lib/permissions";
 import type { CustomerCreateInput, CustomerUpdateInput, FollowUpCreateInput } from "@/lib/validators/customer";
 import type { Prisma } from "@prisma/client";
 import { audit } from "@/server/audit";
@@ -323,5 +323,110 @@ export async function getCustomerOverview(
       invoicedTotal,
       paidTotal
     }
+  };
+}
+
+// P13: 跟进 360 度视图 — 聚合所有客户跟进, 支持筛选
+export type FollowUpOverviewItem = {
+  id: string;
+  customerId: string;
+  customerName: string;
+  userId: string;
+  userName: string;
+  followAt: string;
+  method: string;
+  content: string;
+  nextFollowAt: string | null;
+  result: string | null;
+};
+
+export type FollowUpOverview = {
+  items: FollowUpOverviewItem[];
+  totals: { total: number; overdue: number; pending: number };
+  byMethod: { method: string; count: number }[];
+  byResult: { result: string; count: number }[];
+};
+
+export async function getFollowUpOverview(
+  user: SessionUser,
+  params: { days?: number; method?: string; result?: string; limit?: number }
+): Promise<FollowUpOverview> {
+  // 根据角色权限: 管理员看全部, 销售只看自己的客户
+  const canSeeAll = hasPermission(user.roleCode, RESOURCE.CUSTOMER, ACTION.EXPORT);
+  const customerWhere: Record<string, unknown> = canSeeAll
+    ? { deletedAt: null }
+    : { deletedAt: null, ownerUserId: user.id };
+  const customers = await prisma.customer.findMany({
+    where: customerWhere as Prisma.CustomerWhereInput,
+    select: { id: true, name: true, ownerUserId: true }
+  });
+  const customerIds = customers.map((c) => c.id);
+  const customerMap = new Map(customers.map((c) => [c.id, c.name]));
+
+  const daysAgo = params.days ? new Date(Date.now() - params.days * 86400000) : new Date(Date.now() - 180 * 86400000);
+  const followFilter: Record<string, unknown> = {
+    customerId: { in: customerIds },
+    deletedAt: null
+  };
+  if (params.method) (followFilter as Record<string, unknown>).method = params.method;
+  if (params.result) (followFilter as Record<string, unknown>).result = params.result;
+
+  const followUps = await prisma.followUp.findMany({
+    where: followFilter as Prisma.FollowUpWhereInput,
+    orderBy: { followAt: "desc" },
+    take: params.limit ?? 300
+  });
+
+  const [methodCounts, resultCounts, overdueCount] = await Promise.all([
+    prisma.followUp.groupBy({
+      by: ["method"],
+      where: followFilter as Prisma.FollowUpWhereInput,
+      _count: true,
+      orderBy: { _count: { method: "desc" } }
+    }),
+    prisma.followUp.groupBy({
+      by: ["result"],
+      where: followFilter as Prisma.FollowUpWhereInput,
+      _count: true,
+      orderBy: { _count: { result: "desc" } }
+    }),
+    prisma.followUp.count({
+      where: {
+        ...(followFilter as Prisma.FollowUpWhereInput),
+        nextFollowAt: { lt: new Date() },
+        result: { notIn: ["SIGNED", "NO_INTENT"] },
+        NOT: { nextFollowAt: null }
+      }
+    })
+  ]);
+
+  const userIds = Array.from(new Set(followUps.map((f) => f.userId)));
+  const userMap = new Map((await prisma.user.findMany({
+    where: { id: { in: userIds } },
+    select: { id: true, name: true }
+  })).map((u) => [u.id, u.name]));
+
+  const items: FollowUpOverviewItem[] = followUps.map((f) => ({
+    id: f.id,
+    customerId: f.customerId,
+    customerName: customerMap.get(f.customerId) ?? "-",
+    userId: f.userId,
+    userName: userMap.get(f.userId) ?? "-",
+    followAt: f.followAt.toISOString(),
+    method: f.method,
+    content: f.content,
+    nextFollowAt: f.nextFollowAt?.toISOString() ?? null,
+    result: f.result
+  }));
+
+  return {
+    items,
+    totals: {
+      total: followUps.length,
+      overdue: overdueCount,
+      pending: resultCounts.find((r) => r.result === "PENDING")?._count ?? 0
+    },
+    byMethod: methodCounts.filter((m) => m.method).map((m) => ({ method: m.method!, count: m._count })),
+    byResult: resultCounts.filter((r) => r.result).map((r) => ({ result: r.result!, count: r._count }))
   };
 }
