@@ -19,7 +19,7 @@ import { CurrencyCell, DateTimeCell } from "@/components/table-cells";
 import { useResponsive } from "@/lib/use-breakpoint";
 import { WorkflowSection } from "@/components/workflow/workflow-section";
 import { UpgradeModal } from "@/components/workflow/upgrade-modal";
-import { AppstoreOutlined, ThunderboltOutlined } from "@ant-design/icons";
+import { AppstoreOutlined, DownloadOutlined, ThunderboltOutlined } from "@ant-design/icons";
 
 const ACTION_LABEL: Record<string, string> = {
   start: "开始", suspend: "暂停", resume: "恢复", deliver: "交付",
@@ -112,7 +112,15 @@ export default function ProjectDetailPage() {
         level="section"
         title="服务工作流"
         actions={
-          <Space>
+          <Space wrap>
+            <Button
+              icon={<DownloadOutlined />}
+              onClick={() => {
+                window.open(`/api/projects/${id}/workflow/export`, "_blank");
+              }}
+            >
+              导出 JSON
+            </Button>
             <Button
               icon={<AppstoreOutlined />}
               onClick={() => router.push(`/workflow/board?projectId=${id}`)}

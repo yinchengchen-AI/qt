@@ -24,9 +24,10 @@ type DiffStage = {
   tasks: DiffTask[];
 };
 type Diff = {
-  from: { id: string; name: string; version: number; serviceType: string };
-  to: { id: string; name: string; version: number; serviceType: string };
+  from: { id: string; name: string; version: number; serviceType: string; description?: string | null; isActive?: boolean };
+  to: { id: string; name: string; version: number; serviceType: string; description?: string | null; isActive?: boolean };
   stages: DiffStage[];
+  templateChanges: { field: string; before: unknown; after: unknown }[];
   totals: { added: number; removed: number; modified: number; unchanged: number };
 };
 
@@ -121,8 +122,24 @@ export default function TemplateDiffPage() {
         showIcon
         style={{ marginBottom: 16 }}
         message="模板对比说明"
-        description="按 code 比对 stage 和 task;added 出现在新版本,removed 出现在旧版本,modified 字段差异列在 changes 数组里。"
+        description="按 code 比对 stage 和 task;added 出现在新版本,removed 出现在旧版本,modified 字段差异列在 changes 数组里。模板级(name/description/isActive/serviceType)变化列在最上面。"
       />
+
+      {data.templateChanges && data.templateChanges.length > 0 && (
+        <Card size="small" style={{ marginBottom: 16 }} title="模板级变化">
+          <Table
+            size="small"
+            pagination={false}
+            showHeader
+            columns={[
+              { title: "字段", dataIndex: "field", width: 120, render: (k: string) => <Text type="secondary">{FIELD_LABEL[k] ?? k}</Text> },
+              { title: "旧值", dataIndex: "before", render: (v: unknown) => <Text delete>{fmt(v)}</Text> },
+              { title: "新值", dataIndex: "after", render: (v: unknown) => <Text strong type="success">{fmt(v)}</Text> }
+            ]}
+            dataSource={data.templateChanges.map((c: { field: string; before: unknown; after: unknown }) => ({ key: c.field, ...c }))}
+          />
+        </Card>
+      )}
 
       {data.stages.length === 0 ? (
         <Empty description="两个版本完全相同" />

@@ -728,12 +728,15 @@ export type TemplateDiffStage = {
 };
 
 export type TemplateDiff = {
-  from: { id: string; name: string; version: number; serviceType: string };
-  to: { id: string; name: string; version: number; serviceType: string };
+  from: { id: string; name: string; version: number; serviceType: string; description: string | null; isActive: boolean };
+  to: { id: string; name: string; version: number; serviceType: string; description: string | null; isActive: boolean };
   stages: TemplateDiffStage[];
+  /** 模板级变化(name/description/isActive/serviceType 改动) */
+  templateChanges: { field: string; before: unknown; after: unknown }[];
   totals: { added: number; removed: number; modified: number; unchanged: number };
 };
 
+const TEMPLATE_COMPARE_FIELDS = ["name", "description", "isActive", "serviceType"] as const;
 const STAGE_COMPARE_FIELDS = ["phase", "code", "name", "description", "isRequired"] as const;
 const TASK_COMPARE_FIELDS = [
   "code", "name", "description", "requiredRole",
@@ -836,6 +839,15 @@ export async function diffTemplates(user: SessionUser, fromId: string, toId: str
       tasks
     });
   }
+  // P12: 模板级 diff(name/description/isActive/serviceType)
+  const bRec = b as unknown as Record<string, unknown>;
+  const aRec = a as unknown as Record<string, unknown>;
+  const templateChanges: { field: string; before: unknown; after: unknown }[] = [];
+  for (const f of TEMPLATE_COMPARE_FIELDS) {
+    if (JSON.stringify(bRec[f]) !== JSON.stringify(aRec[f])) {
+      templateChanges.push({ field: f, before: bRec[f], after: aRec[f] });
+    }
+  }
   const totals = {
     added: stages.filter((s) => s.status === "added").length + stages.flatMap((s) => s.tasks).filter((t) => t.status === "added").length,
     removed: stages.filter((s) => s.status === "removed").length + stages.flatMap((s) => s.tasks).filter((t) => t.status === "removed").length,
@@ -843,9 +855,10 @@ export async function diffTemplates(user: SessionUser, fromId: string, toId: str
     unchanged: stages.filter((s) => s.status === "unchanged").length
   };
   return {
-    from: { id: b.id, name: b.name, version: b.version, serviceType: b.serviceType },
-    to: { id: a.id, name: a.name, version: a.version, serviceType: a.serviceType },
+    from: { id: b.id, name: b.name, version: b.version, serviceType: b.serviceType, description: b.description, isActive: b.isActive },
+    to: { id: a.id, name: a.name, version: a.version, serviceType: a.serviceType, description: a.description, isActive: a.isActive },
     stages,
+    templateChanges,
     totals
   };
 }

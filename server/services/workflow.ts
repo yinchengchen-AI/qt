@@ -1521,3 +1521,161 @@ export async function getWorkflowNotifications(
     totals: { total: totalAll, unread: unreadAll }
   };
 }
+
+// =====================================================
+// P12: 项目工作流状态导出 — 完整 JSON 快照
+// =====================================================
+export type ProjectWorkflowExport = {
+  exportedAt: string;
+  project: {
+    id: string;
+    projectNo: string;
+    name: string;
+    serviceScope: string;
+    status: string;
+    startDate: string;
+    endDate: string;
+    budgetAmount: string | null;
+  };
+  contract: {
+    id: string;
+    contractNo: string;
+    title: string;
+    serviceType: string;
+  };
+  template: {
+    id: string;
+    name: string;
+    version: number;
+    serviceType: string;
+    description: string | null;
+  } | null;
+  stages: Array<{
+    phase: string;
+    code: string;
+    name: string;
+    isRequired: boolean;
+    tasks: Array<{
+      code: string;
+      name: string;
+      status: WorkflowTaskStatus;
+      assigneeId: string | null;
+      reviewStatus: WorkflowReviewStatus | null;
+      completedAt: string | null;
+      completedById: string | null;
+      remark: string | null;
+      attachments: unknown;
+      parentInstanceId: string | null;
+      updatedAt: string;
+    }>;
+  }>;
+  totals: {
+    taskCount: number;
+    pending: number;
+    inProgress: number;
+    blocked: number;
+    completed: number;
+    skipped: number;
+  };
+};
+
+export async function exportProjectWorkflow(
+  user: SessionUser,
+  projectId: string
+): Promise<ProjectWorkflowExport> {
+  requirePermission(user.roleCode, RESOURCE.PROJECT, ACTION.READ);
+  const project = await prisma.project.findFirst({
+    where: { id: projectId, deletedAt: null, ...(ownerViaContract(user) as Prisma.ProjectWhereInput) },
+    include: {
+      contract: { select: { id: true, contractNo: true, title: true, serviceType: true } },
+      taskInstances: {
+        where: { deletedAt: null },
+        orderBy: { createdAt: "asc" },
+        include: { task: { include: { stage: { select: { phase: true, code: true, name: true, sort: true, isRequired: true, templateId: true } } } } }
+      }
+    }
+  });
+  if (!project) throw new ApiError(ERROR_CODES.NOT_FOUND, "项目不存在", 404);
+
+  // 取项目当前用的模板(从 instance.task.stage.templateId 反推)
+  const templateIdCounts = new Map<string, number>();
+  for (const ins of project.taskInstances) {
+    templateIdCounts.set(ins.task.stage.templateId, (templateIdCounts.get(ins.task.stage.templateId) ?? 0) + 1);
+  }
+  const templateId = templateIdCounts.size > 0
+    ? Array.from(templateIdCounts.entries()).sort((a, b) => b[1] - a[1])[0]![0]
+    : null;
+  const template = templateId
+    ? await prisma.workflowTemplate.findUnique({ where: { id: templateId } })
+    : null;
+
+  // 按 phase 分组
+  const phaseMap = new Map<string, { phase: string; code: string; name: string; sort: number; isRequired: boolean; tasks: ProjectWorkflowExport["stages"][number]["tasks"] }>();
+  for (const ins of project.taskInstances) {
+    const ph = ins.task.stage.phase;
+    if (!phaseMap.has(ph)) {
+      phaseMap.set(ph, {
+        phase: ph,
+        code: ins.task.stage.code,
+        name: ins.task.stage.name,
+        sort: ins.task.stage.sort,
+        isRequired: ins.task.stage.isRequired,
+        tasks: []
+      });
+    }
+    phaseMap.get(ph)!.tasks.push({
+      code: ins.task.code,
+      name: ins.task.name,
+      status: ins.status as WorkflowTaskStatus,
+      assigneeId: ins.assigneeId,
+      reviewStatus: ins.reviewStatus as WorkflowReviewStatus | null,
+      completedAt: ins.completedAt ? ins.completedAt.toISOString() : null,
+      completedById: ins.completedById,
+      remark: ins.remark,
+      attachments: ins.attachments,
+      parentInstanceId: ins.parentInstanceId,
+      updatedAt: ins.updatedAt.toISOString()
+    });
+  }
+  const stages = Array.from(phaseMap.values())
+    .sort((a, b) => a.sort - b.sort)
+    .map((s) => ({ phase: s.phase, code: s.code, name: s.name, isRequired: s.isRequired, tasks: s.tasks }));
+
+  // totals
+  const totals = { taskCount: 0, pending: 0, inProgress: 0, blocked: 0, completed: 0, skipped: 0 };
+  for (const s of stages) {
+    for (const t of s.tasks) {
+      totals.taskCount++;
+      if (t.status === "PENDING") totals.pending++;
+      else if (t.status === "IN_PROGRESS") totals.inProgress++;
+      else if (t.status === "BLOCKED") totals.blocked++;
+      else if (t.status === "COMPLETED") totals.completed++;
+      else if (t.status === "SKIPPED") totals.skipped++;
+    }
+  }
+
+  return {
+    exportedAt: new Date().toISOString(),
+    project: {
+      id: project.id,
+      projectNo: project.projectNo,
+      name: project.name,
+      serviceScope: project.serviceScope,
+      status: project.status,
+      startDate: project.startDate.toISOString(),
+      endDate: project.endDate.toISOString(),
+      budgetAmount: project.budgetAmount ? project.budgetAmount.toString() : null
+    },
+    contract: {
+      id: project.contract.id,
+      contractNo: project.contract.contractNo,
+      title: project.contract.title,
+      serviceType: project.contract.serviceType
+    },
+    template: template
+      ? { id: template.id, name: template.name, version: template.version, serviceType: template.serviceType, description: template.description }
+      : null,
+    stages,
+    totals
+  };
+}
