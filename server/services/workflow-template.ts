@@ -849,3 +849,74 @@ export async function diffTemplates(user: SessionUser, fromId: string, toId: str
     totals
   };
 }
+
+// =====================================================
+// P8: 任务复制(同阶段或跨阶段)
+// =====================================================
+export async function duplicateTask(
+  user: SessionUser,
+  sourceTaskId: string,
+  opts: { targetStageId?: string; newCode?: string; newName?: string } = {}
+) {
+  requirePermission(user.roleCode, RESOURCE.WORKFLOW_TEMPLATE, ACTION.UPDATE);
+  return prisma.$transaction(async (tx) => {
+    const src = await tx.workflowTask.findFirst({ where: { id: sourceTaskId } });
+    if (!src) throw new ApiError(ERROR_CODES.NOT_FOUND, "源任务不存在", 404);
+    const targetStageId = opts.targetStageId ?? src.stageId;
+    if (targetStageId !== src.stageId) {
+      const ts = await tx.workflowStage.findFirst({ where: { id: targetStageId } });
+      if (!ts) throw new ApiError(ERROR_CODES.NOT_FOUND, "目标阶段不存在", 404);
+      // 简化:不允许跨模板复制(避免 stage 跨 serviceType)
+      if (ts.templateId !== src.stageId) {
+        // 实际无法直接比较 templateId,需要先取源 stage
+        // 重新查
+      }
+      const srcStage = await tx.workflowStage.findUniqueOrThrow({ where: { id: src.stageId } });
+      if (ts.templateId !== srcStage.templateId) {
+        throw new ApiError(
+          ERROR_CODES.VALIDATION_FAILED,
+          "目标阶段与源任务不在同一模板,不允许跨模板复制",
+          422
+        );
+      }
+    }
+    // 决定新 code
+    const newCode = opts.newCode ?? `${src.code}_COPY`;
+    const dup = await tx.workflowTask.findFirst({
+      where: { code: newCode, stageId: targetStageId } as Prisma.WorkflowTaskWhereInput
+    });
+    if (dup) {
+      throw new ApiError(ERROR_CODES.VALIDATION_FAILED, `任务编码 ${newCode} 在目标阶段下已存在`, 422);
+    }
+    // 决定 sort:放到目标阶段末尾
+    const siblingCount = await tx.workflowTask.count({
+      where: { stageId: targetStageId } as Prisma.WorkflowTaskWhereInput
+    });
+    const created = await tx.workflowTask.create({
+      data: {
+        stageId: targetStageId,
+        code: newCode,
+        name: opts.newName ?? `${src.name} (副本)`,
+        sort: siblingCount,
+        description: src.description,
+        requiredRole: src.requiredRole,
+        requiresDeliverable: src.requiresDeliverable,
+        requiresOnsite: src.requiresOnsite,
+        requiresTwoStepReview: src.requiresTwoStepReview,
+        isRecurring: src.isRecurring,
+        recurrenceUnit: src.recurrenceUnit,
+        recurrenceInterval: src.recurrenceInterval,
+        estimateDays: src.estimateDays
+      }
+    });
+    await audit(tx, {
+      actorId: user.id,
+      action: "WORKFLOW_TEMPLATE_TASK_DUPLICATE",
+      entity: "WorkflowTask",
+      entityId: created.id,
+      before: { sourceTaskId, sourceCode: src.code, sourceStageId: src.stageId },
+      after: { newTaskId: created.id, newCode: created.code, targetStageId }
+    });
+    return created;
+  });
+}

@@ -1178,3 +1178,117 @@ export async function removeTaskAttachment(
     return { id: updated.id, attachments: next };
   });
 }
+
+// =====================================================
+// P8: 项目工作流升级检查
+// =====================================================
+import { diffTemplates as diffTemplatesSvc } from "./workflow-template";
+
+export type UpgradeCheckResult = {
+  needsUpgrade: boolean;
+  reason: "no-template" | "no-active-version" | "no-instances" | "same-version" | "older-version" | "already-latest";
+  current: { id: string; name: string; version: number; taskCount: number; instanceCount: number } | null;
+  latest: { id: string; name: string; version: number; taskCount: number } | null;
+  serviceType: string | null;
+  /** 仅在 needsUpgrade=true 时填充(从 latest 到 current) */
+  diff: Awaited<ReturnType<typeof diffTemplatesSvc>> | null;
+};
+
+export async function getProjectUpgradeCheck(
+  user: SessionUser,
+  projectId: string
+): Promise<UpgradeCheckResult> {
+  requirePermission(user.roleCode, RESOURCE.PROJECT, ACTION.READ);
+  const project = await prisma.project.findFirst({
+    where: { id: projectId, deletedAt: null, ...(ownerViaContract(user) as Prisma.ProjectWhereInput) },
+    include: {
+      contract: { select: { serviceType: true } },
+      taskInstances: { where: { deletedAt: null }, select: { id: true, task: { select: { stageId: true } } } }
+    }
+  });
+  if (!project) throw new ApiError(ERROR_CODES.NOT_FOUND, "项目不存在", 404);
+  const serviceType = project.contract?.serviceType ?? null;
+  if (!serviceType) {
+    return { needsUpgrade: false, reason: "no-template", current: null, latest: null, serviceType: null, diff: null };
+  }
+  // 1. 当前项目用的模板:从 instance.taskId 反推到 task.stage.templateId
+  //    取最常见那个(理论上同 serviceType 下所有 task 都来自同一 active 模板)
+  const templateIdCounts = new Map<string, number>();
+  for (const ins of project.taskInstances) {
+    // ins.task.templateId 我们没在 include 里,加个二次查
+    // 简化:用另一个 query 取所有 task 的 templateId
+  }
+  // 一次性查全部
+  const allInstances = await prisma.workflowTaskInstance.findMany({
+    where: { projectId, deletedAt: null },
+    include: { task: { include: { stage: { select: { templateId: true } } } } }
+  });
+  for (const ins of allInstances) {
+    const tplId = ins.task.stage.templateId;
+    templateIdCounts.set(tplId, (templateIdCounts.get(tplId) ?? 0) + 1);
+  }
+  const currentTplId = templateIdCounts.size > 0
+    ? Array.from(templateIdCounts.entries()).sort((a, b) => b[1] - a[1])[0]![0]
+    : null;
+  // 2. 最新激活模板
+  const latestTpl = await prisma.workflowTemplate.findFirst({
+    where: { serviceType, isActive: true, deletedAt: null },
+    include: { _count: { select: { stages: true } } }
+  });
+  // 查 latest 的 task 总数
+  const latestTaskCount = latestTpl
+    ? await prisma.workflowTask.count({ where: { stage: { templateId: latestTpl.id } } })
+    : 0;
+  const currentTpl = currentTplId
+    ? await prisma.workflowTemplate.findUnique({ where: { id: currentTplId } })
+    : null;
+  const currentTaskCount = currentTplId
+    ? await prisma.workflowTask.count({ where: { stage: { templateId: currentTplId } } })
+    : null;
+  if (allInstances.length === 0) {
+    return {
+      needsUpgrade: false,
+      reason: "no-instances",
+      current: null,
+      latest: latestTpl ? { id: latestTpl.id, name: latestTpl.name, version: latestTpl.version, taskCount: latestTaskCount } : null,
+      serviceType,
+      diff: null
+    };
+  }
+  if (!latestTpl) {
+    return {
+      needsUpgrade: false,
+      reason: "no-active-version",
+      current: currentTpl
+        ? { id: currentTpl.id, name: currentTpl.name, version: currentTpl.version, taskCount: currentTaskCount ?? 0, instanceCount: allInstances.length }
+        : null,
+      latest: null,
+      serviceType,
+      diff: null
+    };
+  }
+  if (currentTplId === latestTpl.id) {
+    return {
+      needsUpgrade: false,
+      reason: "already-latest",
+      current: currentTpl
+        ? { id: currentTpl.id, name: currentTpl.name, version: currentTpl.version, taskCount: currentTaskCount ?? 0, instanceCount: allInstances.length }
+        : null,
+      latest: { id: latestTpl.id, name: latestTpl.name, version: latestTpl.version, taskCount: latestTaskCount },
+      serviceType,
+      diff: null
+    };
+  }
+  // 不同 — 算 diff
+  const diff = await diffTemplatesSvc(user, currentTplId ?? latestTpl.id, latestTpl.id);
+  return {
+    needsUpgrade: true,
+    reason: currentTpl && currentTpl.version < latestTpl.version ? "older-version" : "same-version",
+    current: currentTpl
+      ? { id: currentTpl.id, name: currentTpl.name, version: currentTpl.version, taskCount: currentTaskCount ?? 0, instanceCount: allInstances.length }
+      : null,
+    latest: { id: latestTpl.id, name: latestTpl.name, version: latestTpl.version, taskCount: latestTaskCount },
+    serviceType,
+    diff
+  };
+}

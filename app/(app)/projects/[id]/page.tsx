@@ -18,6 +18,8 @@ import { ProgressLogDrawer } from "@/components/file/progress-log-drawer";
 import { CurrencyCell, DateTimeCell } from "@/components/table-cells";
 import { useResponsive } from "@/lib/use-breakpoint";
 import { WorkflowSection } from "@/components/workflow/workflow-section";
+import { UpgradeModal } from "@/components/workflow/upgrade-modal";
+import { ThunderboltOutlined } from "@ant-design/icons";
 
 const ACTION_LABEL: Record<string, string> = {
   start: "开始", suspend: "暂停", resume: "恢复", deliver: "交付",
@@ -60,6 +62,7 @@ export default function ProjectDetailPage() {
   const canLogProgress = ["PLANNED", "IN_PROGRESS", "SUSPENDED"].includes(project.status);
   // 工作流任务实例:同上,结束态不允许流转
   const canEditWorkflow = ["PLANNED", "IN_PROGRESS", "SUSPENDED"].includes(project.status);
+  const [upgradeOpen, setUpgradeOpen] = useState(false);
 
   return (
     <Page>
@@ -105,10 +108,23 @@ export default function ProjectDetailPage() {
       <ProCard>
         <div style={{ whiteSpace: "pre-wrap", wordBreak: "break-word" }}>{project.serviceScope}</div>
       </ProCard>
-      <PageHeader level="section" title="服务工作流" />
+      <PageHeader
+        level="section"
+        title="服务工作流"
+        actions={
+          <Button
+            icon={<ThunderboltOutlined />}
+            onClick={() => setUpgradeOpen(true)}
+            disabled={!canEditWorkflow}
+          >
+            升级到最新模板
+          </Button>
+        }
+      />
       <ProCard>
         <WorkflowSection projectId={id} canEdit={canEditWorkflow} />
       </ProCard>
+      <UpgradeModal projectId={id} open={upgradeOpen} onClose={() => setUpgradeOpen(false)} onUpgraded={() => mutate()} />
       <PageHeader level="section" title="进度日志" />
       <ProCard>
         <ProTable

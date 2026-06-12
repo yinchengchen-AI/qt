@@ -24,7 +24,7 @@ import {
   Tag,
   Typography
 } from "antd";
-import { DeleteOutlined, DownloadOutlined, EditOutlined, PlusOutlined, SwapOutlined, UploadOutlined } from "@ant-design/icons";
+import { CopyOutlined, DeleteOutlined, DownloadOutlined, EditOutlined, PlusOutlined, SwapOutlined, UploadOutlined } from "@ant-design/icons";
 import { Page } from "@/components/page";
 import { PageHeader } from "@/components/page-header";
 import {
@@ -39,6 +39,7 @@ const { Text } = Typography;
 
 type Task = {
   id: string;
+  stageId: string;
   code: string;
   name: string;
   sort: number;
@@ -88,8 +89,10 @@ export default function TemplateDetailPage() {
   const [addingToStage, setAddingToStage] = useState<string | null>(null);
   const [migratingFrom, setMigratingFrom] = useState<Task | null>(null);
   const [editingStage, setEditingStage] = useState<Stage | null>(null);
+  const [duplicatingTask, setDuplicatingTask] = useState<Task | null>(null);
   const [addingStage, setAddingStage] = useState(false);
   const [stageForm] = Form.useForm();
+  const [duplicateForm] = Form.useForm();
   const [importing, setImporting] = useState(false);
   // 查同 serviceType 下所有版本,看是否有上一版可对比
   const { data: allVersions } = useSWR<Array<{ id: string; version: number; serviceType: string }>>("/api/admin/workflow-templates");
@@ -170,6 +173,21 @@ export default function TemplateDetailPage() {
     if (j.code !== 0) return message.error(j.message);
     message.success("已保存");
     setEditingTask(null);
+    await mutate();
+  };
+
+  const onDuplicateTask = async (vals: { targetStageId: string; newCode: string; newName: string }) => {
+    if (!duplicatingTask) return;
+    const r = await fetch("/api/admin/workflow-templates/" + id + "/tasks/" + duplicatingTask.id + "/duplicate", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      credentials: "include",
+      body: JSON.stringify(vals)
+    });
+    const j = await r.json();
+    if (j.code !== 0) return message.error(j.message);
+    message.success("已复制: " + j.data.code);
+    setDuplicatingTask(null);
     await mutate();
   };
 
@@ -356,6 +374,11 @@ export default function TemplateDetailPage() {
                     extra={
                       <Space>
                         <Button size="small" type="text" icon={<EditOutlined />} onClick={() => openEditTask(t)}>编辑</Button>
+                        <Button size="small" type="text" icon={<CopyOutlined />} onClick={() => {
+                          setDuplicatingTask(t);
+                          // Default newCode suggestion
+                          duplicateForm.setFieldsValue({ targetStageId: t.stageId, newCode: t.code + "_COPY", newName: t.name + " (副本)" });
+                        }}>复制</Button>
                         <Button size="small" type="text" icon={<SwapOutlined />} onClick={() => setMigratingFrom(t)}>迁移</Button>
                         <Button size="small" type="text" danger icon={<DeleteOutlined />} onClick={() => onDeleteTask(t)}>删除</Button>
                       </Space>
@@ -461,6 +484,33 @@ export default function TemplateDetailPage() {
           </Form.Item>
         </Form>
       </Modal>
+      {duplicatingTask && (
+        <Modal
+          open
+          title={"复制任务: " + duplicatingTask.name}
+          onCancel={() => setDuplicatingTask(null)}
+          onOk={() => duplicateForm.submit()}
+          okText="复制"
+          width={520}
+        >
+          <Form form={duplicateForm} layout="vertical" onFinish={onDuplicateTask}>
+            <Form.Item name="targetStageId" label="目标阶段" rules={[{ required: true }]}>
+              <Select
+                options={data!.stages.map((s: Stage) => ({
+                  value: s.id,
+                  label: "[" + (WORKFLOW_PHASE_MAP[s.phase] ?? s.phase) + "] " + s.name
+                }))}
+              />
+            </Form.Item>
+            <Form.Item name="newCode" label="新任务编码" rules={[{ required: true, max: 50, pattern: /^[A-Z0-9_]+$/ }]}>
+              <Input placeholder="例如:VISIT_INIT_COPY" />
+            </Form.Item>
+            <Form.Item name="newName" label="新任务名称" rules={[{ required: true, max: 100 }]}>
+              <Input placeholder="例如:委托单位初访 (副本)" />
+            </Form.Item>
+          </Form>
+        </Modal>
+      )}
       {migratingFrom && (
         <MigrationModal
           fromTask={migratingFrom}

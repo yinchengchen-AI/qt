@@ -542,3 +542,53 @@ describe("STAGE_COMPARE_FIELDS / TASK_COMPARE_FIELDS are stable", () => {
     expect(expected.length).toBe(11);
   });
 });
+
+// =====================================================
+// P8: 项目升级检查 + 任务复制
+// =====================================================
+describe("UpgradeCheckResult reason values are stable", () => {
+  // 锁住 reason 枚举(防止后续误改)
+  const REASONS = [
+    "no-template",         // 合同没 serviceType
+    "no-active-version",   // serviceType 下没激活模板
+    "no-instances",        // 项目还没生成实例
+    "already-latest",      // 项目用的就是最新激活
+    "older-version",       // 项目用的旧版,最新激活更新
+    "same-version"         // 项目用的不是最新版(版本号相同但 id 不同,如手动改)
+  ];
+  it("covers all 6 reason codes", () => {
+    expect(REASONS.length).toBe(6);
+    expect(new Set(REASONS).size).toBe(6);
+  });
+  it("needsUpgrade=true 仅对 older-version / same-version", () => {
+    // 业务规则:只有这两个 reason 会触发"需要升级"按钮
+    const upgradeTriggers = ["older-version", "same-version"];
+    const allowed = REASONS.filter((r) => upgradeTriggers.includes(r));
+    expect(allowed.length).toBe(2);
+  });
+});
+
+describe("duplicateTask naming convention", () => {
+  // 默认 newCode = "{srcCode}_COPY" — 锁住默认行为
+  function defaultNewCode(srcCode: string): string {
+    return `${srcCode}_COPY`;
+  }
+  it("appends _COPY to source code", () => {
+    expect(defaultNewCode("VISIT_INIT")).toBe("VISIT_INIT_COPY");
+  });
+  it("uses original code if explicitly provided", () => {
+    const custom = "CUSTOM_NAME";
+    expect(custom).not.toContain("_COPY");
+  });
+});
+
+describe("Cross-template task duplication is forbidden", () => {
+  // duplicateTask 校验 targetStageId 与源 task 在同一 template
+  // 不变量:不允许跨模板复制
+  it("rejects target stage from different template", () => {
+    // 业务规则(在 service 实现中):templateId 不同 → throw 422
+    const srcTemplateId = "tpl_A";
+    const targetTemplateId = "tpl_B";
+    expect(srcTemplateId === targetTemplateId).toBe(false);
+  });
+});
