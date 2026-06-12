@@ -10,6 +10,82 @@ import type { ProjectCreateInput, ProjectUpdateInput, ProjectActionInput } from 
 import type { Prisma } from "@prisma/client";
 import { ownerEq, ownerViaContract, parseStatusList } from "@/lib/ownership";
 
+// P14: 项目 360 视图 — 聚合工作流统计数据
+import { WORKFLOW_PHASE_ORDER } from "@/types/enums";
+
+export type ProjectOverview = {
+  workflowStats: {
+    totalTasks: number;
+    completed: number;
+    inProgress: number;
+    pending: number;
+    blocked: number;
+    byPhase: Array<{ phase: string; name: string; total: number; completed: number; locked: boolean }>;
+  };
+};
+
+export async function getProjectOverview(user: SessionUser, id: string): Promise<ProjectOverview> {
+  requirePermission(user.roleCode, RESOURCE.PROJECT, ACTION.READ);
+  const p = await prisma.project.findFirst({
+    where: { id, deletedAt: null, ...(ownerViaContract(user) as Prisma.ProjectWhereInput) }
+  });
+  if (!p) throw new ApiError(ERROR_CODES.NOT_FOUND, "项目不存在", 404);
+
+  const instances = await prisma.workflowTaskInstance.findMany({
+    where: { projectId: id, deletedAt: null },
+    include: {
+      task: {
+        include: { stage: { select: { phase: true, code: true } } }
+      }
+    }
+  });
+
+  const statusCount: Record<string, number> = { PENDING: 0, IN_PROGRESS: 0, COMPLETED: 0, BLOCKED: 0, SKIPPED: 0 };
+  type PEntry = { total: number; completed: number };
+  const phaseMap = new Map<string, PEntry>();
+
+  for (const inst of instances) {
+    statusCount[inst.status] = (statusCount[inst.status] ?? 0) + 1;
+    const phase = inst.task.stage.phase;
+    if (!phaseMap.has(phase)) phaseMap.set(phase, { total: 0, completed: 0 });
+    const entry = phaseMap.get(phase)!;
+    entry.total++;
+    if (inst.status === "COMPLETED" || inst.status === "SKIPPED") entry.completed++;
+  }
+
+  const PHASE_NAME: Record<string, string> = {
+    PREP: "前期准备", REQUIREMENT: "需求确认", CONTRACT: "合同签订", EXECUTE: "执行交付", FOLLOWUP: "后续跟进"
+  };
+  const byPhase: ProjectOverview["workflowStats"]["byPhase"] = WORKFLOW_PHASE_ORDER.map((phase) => {
+    const entry = phaseMap.get(phase) ?? { total: 0, completed: 0 };
+    const prevIdx = WORKFLOW_PHASE_ORDER.indexOf(phase) - 1;
+    let locked = false;
+    if (prevIdx >= 0) {
+      const prevPhase = WORKFLOW_PHASE_ORDER[prevIdx];
+      const prev = prevPhase ? phaseMap.get(prevPhase) : undefined;
+      locked = !prev || prev.completed < prev.total;
+    }
+    return {
+      phase,
+      name: PHASE_NAME[phase] ?? phase,
+      total: entry.total,
+      completed: entry.completed,
+      locked
+    };
+  });
+
+  return {
+    workflowStats: {
+      totalTasks: instances.length,
+      completed: (statusCount.COMPLETED ?? 0) + (statusCount.SKIPPED ?? 0),
+      inProgress: statusCount.IN_PROGRESS ?? 0,
+      pending: statusCount.PENDING ?? 0,
+      blocked: statusCount.BLOCKED ?? 0,
+      byPhase
+    }
+  };
+}
+
 export async function listProjects(
   user: SessionUser,
   params: { page: number; pageSize: number; keyword?: string; status?: string; contractId?: string }
