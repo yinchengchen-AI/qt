@@ -359,20 +359,6 @@ export function DashboardShell({ user, children }: Props) {
             </button>
           </Tooltip>
         </div>
-        <div
-          style={{
-            position: "absolute",
-            bottom: 0,
-            left: 0,
-            right: 0,
-            padding: "8px 20px",
-            borderTop: `1px solid ${token.colorSplit}`,
-            fontSize: 12,
-            color: token.colorTextTertiary
-          }}
-        >
-          v 0.1.0 · 内部系统
-        </div>
       </Sider>
 
       <Layout style={{ background: token.colorBgLayout }}>
