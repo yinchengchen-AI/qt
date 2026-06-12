@@ -67,8 +67,16 @@ export function invalidateAuthCache(uid: string): void {
   userCache.delete(uid);
 }
 
+// env 字符串的布尔解析: "true"/"1"/"yes" (大小写不敏感) 视为 true, 其余 (含 "false"/"0"/空/undefined) 一律 false。
+// !!process.env.X 是经典 bug — 任何非空字符串 (包括 "false") 都是 truthy,会导致 FORCE_HTTPS=false 被当成 true,
+// 触发 useSecureCookies=true, 浏览器在 HTTP 下不存 secure cookie,登录 CSRF token 不匹配,登录后无法跳转。
+function envBool(name: string): boolean {
+  const v = (process.env[name] ?? "").trim().toLowerCase();
+  return v === "true" || v === "1" || v === "yes";
+}
+
 const isProd = process.env.NODE_ENV === "production";
-const forceHttps = !!process.env.FORCE_HTTPS;
+const forceHttps = envBool("FORCE_HTTPS");
 if (isProd && !forceHttps) {
   console.warn("[AUTH] 生产环境使用非 Secure Cookie，请尽快配置 HTTPS 并设置 FORCE_HTTPS=true");
 }
@@ -76,8 +84,8 @@ if (isProd && !forceHttps) {
 export const authOptions: AuthOptions = {
   session: { strategy: "jwt", maxAge: 8 * 60 * 60 },
   pages: { signIn: "/login" },
-  // 当前 Nginx 为 HTTP 反代，不能使用 Secure Cookie，否则浏览器拒收导致登录后无法跳转
-  // 生产环境默认要求 HTTPS；若尚未配置，需显式设置 FORCE_HTTPS 来保持非 Secure
+  // 安全 cookie 仅在 HTTPS 下生效,HTTP 下浏览器不存 secure cookie,CSRF token 不匹配,登录后无法跳转
+  // 走 nginx HTTP 反代时: 不要设 FORCE_HTTPS (默认 non-secure); 走 HTTPS 时: 设 FORCE_HTTPS=true
   useSecureCookies: isProd ? forceHttps : false,
   providers: [
     CredentialsProvider({
