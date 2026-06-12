@@ -16,7 +16,8 @@
     "prisma:migrate": "prisma migrate dev",
     "prisma:studio": "prisma studio",
     "seed": "tsx prisma/seed.ts",
-    "postinstall": "patch-package"
+    "postinstall": "patch-package",
+    "create-admin": "tsx scripts/create-admin.ts"
   },
   "dependencies": {
     "@ant-design/charts": "2.6.7",
