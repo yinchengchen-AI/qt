@@ -18,7 +18,8 @@
     "seed": "tsx prisma/seed.ts",
     "postinstall": "patch-package",
     "create-admin": "tsx scripts/create-admin.ts",
-    "seed-roles": "tsx scripts/seed-roles.ts"
+    "seed-roles": "tsx scripts/seed-roles.ts",
+    "seed-dicts": "tsx scripts/seed-dicts.ts"
   },
   "dependencies": {
     "@ant-design/charts": "2.6.7",
