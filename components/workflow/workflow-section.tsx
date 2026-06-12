@@ -1,0 +1,380 @@
+"use client";
+// 项目详情页 - 工作流区段(P1)
+// - 调 GET /api/projects/[id]/workflow 拉取按阶段聚合的任务实例
+// - 0 实例时显示空态 + 「初始化工作流」按钮(POST /api/projects/[id]/workflow/init)
+// - 每条任务卡:状态 / 指派人 / 周期(循环任务) / 操作(start/complete/block/skip + 二审)
+// - 操作走单独 fetch(状态机 / 二审 / 指派),不走 useActionCall 因为 action 路径分散
+
+import useSWR from "swr";
+import { useState } from "react";
+import { App as AntdApp, Badge, Button, Collapse, Empty, Modal, Space, Spin, Tag, Tooltip, Typography } from "antd";
+import {
+  CheckCircleOutlined,
+  ClockCircleOutlined,
+  ExclamationCircleOutlined,
+  PlayCircleOutlined,
+  ReloadOutlined,
+  StopOutlined,
+  ThunderboltOutlined
+} from "@ant-design/icons";
+import {
+  WORKFLOW_PHASE_MAP,
+  WORKFLOW_TASK_STATUS_MAP,
+  WORKFLOW_REVIEW_STATUS_MAP,
+  WORKFLOW_RECURRENCE_UNIT_MAP,
+  WORKFLOW_REQUIRED_ROLE_MAP
+} from "@/lib/enum-maps";
+import { useUserName } from "@/lib/user-lookup";
+import { useResponsive } from "@/lib/use-breakpoint";
+
+const { Text } = Typography;
+
+type TaskInstance = {
+  id: string;
+  code: string;
+  name: string;
+  description: string | null;
+  sort: number;
+  requiredRole: string | null;
+  requiresDeliverable: boolean;
+  requiresOnsite: boolean;
+  requiresTwoStepReview: boolean;
+  isRecurring: boolean;
+  recurrenceUnit: string | null;
+  recurrenceInterval: number | null;
+  estimateDays: number | null;
+  status: "PENDING" | "IN_PROGRESS" | "COMPLETED" | "SKIPPED" | "BLOCKED";
+  assigneeId: string | null;
+  reviewStatus: "REVIEWING" | "REVIEWED" | "APPROVED" | "REJECTED" | null;
+  reviewedById: string | null;
+  reviewedAt: string | null;
+  completedAt: string | null;
+  completedById: string | null;
+  remark: string | null;
+  parentInstanceId: string | null;
+};
+
+type Stage = {
+  phase: string;
+  code: string;
+  name: string;
+  sort: number;
+  description: string | null;
+  tasks: TaskInstance[];
+};
+
+type WorkflowDto = {
+  templateId: string | null;
+  templateName: string | null;
+  serviceType: string | null;
+  stages: Stage[];
+  totals: { total: number; pending: number; inProgress: number; completed: number; skipped: number; blocked: number };
+};
+
+const STATUS_TONE: Record<string, string> = {
+  PENDING:     "default",
+  IN_PROGRESS: "processing",
+  COMPLETED:   "success",
+  SKIPPED:     "warning",
+  BLOCKED:     "error"
+};
+
+const STATUS_ICON: Record<string, React.ReactNode> = {
+  PENDING:     <ClockCircleOutlined />,
+  IN_PROGRESS: <PlayCircleOutlined />,
+  COMPLETED:   <CheckCircleOutlined />,
+  SKIPPED:     <StopOutlined />,
+  BLOCKED:     <ExclamationCircleOutlined />
+};
+
+export function WorkflowSection({ projectId, canEdit }: { projectId: string; canEdit: boolean }) {
+  const { message } = AntdApp.useApp();
+  const { data, isLoading, mutate } = useSWR<WorkflowDto>(`/api/projects/${projectId}/workflow`);
+  const { isMobile } = useResponsive();
+  const [initing, setIniting] = useState(false);
+  const [busy, setBusy] = useState<string | null>(null);
+
+  const handleInit = async () => {
+    setIniting(true);
+    try {
+      const r = await fetch(`/api/projects/${projectId}/workflow/init`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ force: false })
+      });
+      const j = await r.json();
+      if (j.code !== 0) {
+        message.error(j.message);
+        return;
+      }
+      message.success(`已生成 ${j.data.created} 个任务实例`);
+      await mutate();
+    } finally {
+      setIniting(false);
+    }
+  };
+
+  const callTask = async (taskId: string, path: string, body: unknown = {}) => {
+    setBusy(taskId + path);
+    try {
+      const r = await fetch(`/api/workflow-tasks/${taskId}${path}`, {
+        method: path === "assign" || path === "remark" ? "PATCH" : "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify(body)
+      });
+      const j = await r.json();
+      if (j.code !== 0) {
+        message.error(j.message);
+        return;
+      }
+      await mutate();
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  if (isLoading) {
+    return (
+      <div style={{ padding: 24, textAlign: "center" }}>
+        <Spin />
+      </div>
+    );
+  }
+
+  if (!data || data.totals.total === 0) {
+    return (
+      <Empty
+        description={
+          data?.serviceType
+            ? `服务类型 ${data.serviceType} 尚未生成工作流实例`
+            : "该项目尚未生成工作流实例"
+        }
+      >
+        {canEdit && data?.serviceType && (
+          <Button type="primary" loading={initing} onClick={handleInit}>
+            初始化工作流
+          </Button>
+        )}
+      </Empty>
+    );
+  }
+
+  const { totals, templateName, stages } = data;
+  const collapseItems = stages.map((s) => ({
+    key: s.code,
+    label: (
+      <Space>
+        <Text strong>{WORKFLOW_PHASE_MAP[s.phase] ?? s.name}</Text>
+        <Tag>{s.tasks.length} 任务</Tag>
+        {s.tasks.some((t) => t.status === "IN_PROGRESS") && <Badge status="processing" text="进行中" />}
+        {s.tasks.every((t) => t.status === "COMPLETED" || t.status === "SKIPPED") && s.tasks.length > 0 && (
+          <Badge status="success" text="已完成" />
+        )}
+      </Space>
+    ),
+    children: (
+      <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+        {s.tasks.map((t) => (
+          <TaskCard
+            key={t.id}
+            task={t}
+            canEdit={canEdit}
+            busy={busy === t.id}
+            onAction={(action, body) => callTask(t.id, action, body)}
+          />
+        ))}
+      </div>
+    )
+  }));
+
+  return (
+    <div>
+      <Space wrap style={{ marginBottom: 12 }}>
+        <Tag color="blue">模板: {templateName ?? "-"}</Tag>
+        <Tag>共 {totals.total} 项</Tag>
+        <Tag color="default">待开始 {totals.pending}</Tag>
+        <Tag color="processing">进行中 {totals.inProgress}</Tag>
+        <Tag color="success">已完成 {totals.completed}</Tag>
+        {totals.blocked > 0 && <Tag color="error">阻塞 {totals.blocked}</Tag>}
+        {totals.skipped > 0 && <Tag color="warning">跳过 {totals.skipped}</Tag>}
+      </Space>
+      <Collapse
+        items={collapseItems}
+        defaultActiveKey={stages[0] ? [stages[0].code] : []}
+        bordered={!isMobile}
+        size={isMobile ? "small" : "middle"}
+      />
+    </div>
+  );
+}
+
+function TaskCard({
+  task,
+  canEdit,
+  busy,
+  onAction
+}: {
+  task: TaskInstance;
+  canEdit: boolean;
+  busy: boolean;
+  onAction: (path: string, body?: unknown) => void;
+}) {
+  return (
+    <div
+      style={{
+        border: "1px solid #f0f0f0",
+        borderRadius: 6,
+        padding: 12,
+        background: "#fafafa"
+      }}
+    >
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, flexWrap: "wrap" }}>
+        <Space wrap>
+          <Tag color={STATUS_TONE[task.status]} icon={STATUS_ICON[task.status]}>
+            {WORKFLOW_TASK_STATUS_MAP[task.status]}
+          </Tag>
+          <Text strong>{task.name}</Text>
+          {task.requiredRole && <Tag>{WORKFLOW_REQUIRED_ROLE_MAP[task.requiredRole] ?? task.requiredRole}</Tag>}
+          {task.requiresDeliverable && <Tag color="cyan">需交付物</Tag>}
+          {task.requiresOnsite && <Tag color="gold">现场</Tag>}
+          {task.requiresTwoStepReview && <Tag color="purple">二审</Tag>}
+          {task.isRecurring && (
+            <Tag color="geekblue" icon={<ReloadOutlined />}>
+              每 {task.recurrenceInterval ?? 1} {WORKFLOW_RECURRENCE_UNIT_MAP[task.recurrenceUnit ?? ""] ?? task.recurrenceUnit}
+            </Tag>
+          )}
+          {task.estimateDays && <Tag>预估 {task.estimateDays} 天</Tag>}
+        </Space>
+        {canEdit && <TaskActions task={task} busy={busy} onAction={onAction} />}
+      </div>
+      {task.description && (
+        <Text type="secondary" style={{ display: "block", marginTop: 6, fontSize: 12 }}>
+          {task.description}
+        </Text>
+      )}
+      <div style={{ marginTop: 8, display: "flex", gap: 12, flexWrap: "wrap" }}>
+        <AssigneeName id={task.assigneeId} />
+        {task.reviewStatus && (
+          <Text type="secondary" style={{ fontSize: 12 }}>
+            审阅: {WORKFLOW_REVIEW_STATUS_MAP[task.reviewStatus] ?? task.reviewStatus}
+          </Text>
+        )}
+        {task.completedAt && (
+          <Text type="secondary" style={{ fontSize: 12 }}>
+            完成于: {new Date(task.completedAt).toLocaleString("zh-CN")}
+          </Text>
+        )}
+      </div>
+      {task.remark && (
+        <div style={{ marginTop: 6, padding: 6, background: "#fff", borderRadius: 4, fontSize: 12, whiteSpace: "pre-wrap" }}>
+          {task.remark}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function TaskActions({
+  task,
+  busy,
+  onAction
+}: {
+  task: TaskInstance;
+  busy: boolean;
+  onAction: (path: string, body?: unknown) => void;
+}) {
+  const buttons: React.ReactNode[] = [];
+
+  // 状态机按钮
+  if (task.status === "PENDING" || task.status === "BLOCKED") {
+    buttons.push(
+      <Button key="start" size="small" type="primary" loading={busy} onClick={() => onAction("/action", { action: "start" })}>
+        开始
+      </Button>
+    );
+  }
+  if (task.status === "IN_PROGRESS") {
+    buttons.push(
+      <Button key="complete" size="small" type="primary" loading={busy} onClick={() => onAction("/action", { action: "complete" })}>
+        完成
+      </Button>
+    );
+    buttons.push(
+      <Button key="block" size="small" danger loading={busy} onClick={() => onAction("/action", { action: "block" })}>
+        阻塞
+      </Button>
+    );
+  }
+  if (task.status === "BLOCKED") {
+    buttons.push(
+      <Button key="unblock" size="small" loading={busy} onClick={() => onAction("/action", { action: "unblock" })}>
+        解阻
+      </Button>
+    );
+  }
+  if (task.status === "PENDING" || task.status === "BLOCKED") {
+    buttons.push(
+      <Button
+        key="skip"
+        size="small"
+        onClick={() =>
+          Modal.confirm({
+            title: `跳过「${task.name}」?`,
+            content: "跳过后该任务不再阻塞流程,也不会出现在交付清单中。",
+            okText: "确认跳过",
+            cancelText: "取消",
+            okButtonProps: { danger: true },
+            onOk: () => onAction("/action", { action: "skip" })
+          })
+        }
+      >
+        跳过
+      </Button>
+    );
+  }
+
+  // 二审按钮(报告类)
+  if (task.requiresTwoStepReview && task.status === "IN_PROGRESS") {
+    if (!task.reviewStatus || task.reviewStatus === "REJECTED") {
+      buttons.push(
+        <Tooltip key="review-submit" title="提交校核">
+          <Button
+            size="small"
+            icon={<ThunderboltOutlined />}
+            loading={busy}
+            onClick={() => onAction("/review", { action: "submit" })}
+          >
+            提交校核
+          </Button>
+        </Tooltip>
+      );
+    } else if (task.reviewStatus === "REVIEWING") {
+      buttons.push(
+        <Button key="review-approve" size="small" type="primary" loading={busy} onClick={() => onAction("/review", { action: "approve" })}>
+          审核通过
+        </Button>
+      );
+      buttons.push(
+        <Button key="review-reject" size="small" danger loading={busy} onClick={() => onAction("/review", { action: "reject" })}>
+          驳回
+        </Button>
+      );
+    }
+  }
+
+  if (buttons.length === 0) {
+    return null;
+  }
+  return <Space wrap size={4}>{buttons}</Space>;
+}
+
+function AssigneeName({ id }: { id: string | null }) {
+  const name = useUserName(id ?? "", "未指派");
+  return (
+    <Text type="secondary" style={{ fontSize: 12 }}>
+      负责人: {name}
+    </Text>
+  );
+}

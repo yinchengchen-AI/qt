@@ -89,3 +89,41 @@ export function lookup<T extends Record<string, string>>(map: T, code?: string |
   if (!code) return "";
   return map[code] ?? code;
 }
+
+/* === Workflow Engine === */
+export const WORKFLOW_PHASE_MAP: Record<string, string> = {
+  PREP:        "前期准备",
+  REQUIREMENT: "需求识别",
+  CONTRACT:    "合同签订",
+  EXECUTE:     "服务实施",
+  FOLLOWUP:    "回访与改进"
+};
+
+export const WORKFLOW_TASK_STATUS_MAP: Record<string, string> = {
+  PENDING:     "待开始",
+  IN_PROGRESS: "进行中",
+  COMPLETED:   "已完成",
+  SKIPPED:     "已跳过",
+  BLOCKED:     "已阻塞"
+};
+
+export const WORKFLOW_REVIEW_STATUS_MAP: Record<string, string> = {
+  REVIEWING: "校核中",
+  REVIEWED:  "已校核",
+  APPROVED:  "已审核",
+  REJECTED:  "已驳回"
+};
+
+export const WORKFLOW_RECURRENCE_UNIT_MAP: Record<string, string> = {
+  DAY:   "天",
+  WEEK:  "周",
+  MONTH: "月",
+  YEAR:  "年"
+};
+
+export const WORKFLOW_REQUIRED_ROLE_MAP: Record<string, string> = {
+  SALES_LEAD: "业务负责人",
+  EXPERT:     "技术专家",
+  ADMIN:      "管理员",
+  OPS:        "行政"
+};

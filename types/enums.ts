@@ -109,3 +109,43 @@ export type MessageType = (typeof MESSAGE_TYPE)[number];
 // 4 个内置角色
 export const ROLE_CODES = ["ADMIN", "SALES", "FINANCE", "OPS"] as const;
 export type RoleCode = (typeof ROLE_CODES)[number];
+
+// =====================================================
+// Workflow Engine (P1)
+// =====================================================
+// taskStatus: 任务实例状态机
+export const WORKFLOW_TASK_STATUS = [
+  "PENDING",
+  "IN_PROGRESS",
+  "COMPLETED",
+  "SKIPPED",
+  "BLOCKED"
+] as const;
+export type WorkflowTaskStatus = (typeof WORKFLOW_TASK_STATUS)[number];
+
+// reviewStatus: requiresTwoStepReview=true 的任务使用
+export const WORKFLOW_REVIEW_STATUS = [
+  "REVIEWING",
+  "REVIEWED",
+  "APPROVED",
+  "REJECTED"
+] as const;
+export type WorkflowReviewStatus = (typeof WORKFLOW_REVIEW_STATUS)[number];
+
+// recurrenceUnit: 循环任务周期
+export const WORKFLOW_RECURRENCE_UNIT = ["DAY", "WEEK", "MONTH", "YEAR"] as const;
+export type WorkflowRecurrenceUnit = (typeof WORKFLOW_RECURRENCE_UNIT)[number];
+
+// taskAction: 服务端允许的实例动作
+export const WORKFLOW_TASK_ACTIONS = [
+  "start",
+  "complete",
+  "block",
+  "unblock",
+  "skip"
+] as const;
+export type WorkflowTaskAction = (typeof WORKFLOW_TASK_ACTIONS)[number];
+
+// reviewAction: 二审动作
+export const WORKFLOW_REVIEW_ACTIONS = ["submit", "approve", "reject"] as const;
+export type WorkflowReviewAction = (typeof WORKFLOW_REVIEW_ACTIONS)[number];

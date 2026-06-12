@@ -3,6 +3,7 @@ import { ApiError } from "@/lib/api";
 import { ERROR_CODES } from "@/types/errors";
 import { type SessionUser } from "@/lib/session";
 import { nextBusinessNo } from "@/lib/sequence";
+import { instantiateProjectWorkflow } from "./workflow";
 import { audit } from "@/server/audit";
 import { requirePermission, RESOURCE, ACTION } from "@/lib/permissions";
 import type { ProjectCreateInput, ProjectUpdateInput, ProjectActionInput } from "@/lib/validators/project";
@@ -41,38 +42,6 @@ export async function getProject(user: SessionUser, id: string) {
   });
   if (!p) throw new ApiError(ERROR_CODES.NOT_FOUND, "项目不存在", 404);
   return p;
-}
-
-export async function createProject(user: SessionUser, input: ProjectCreateInput) {
-  requirePermission(user.roleCode, RESOURCE.PROJECT, ACTION.CREATE);
-  return prisma.$transaction(async (tx) => {
-    const contract = await tx.contract.findFirst({ where: { id: input.contractId, deletedAt: null, ...ownerEq(user) } });
-    if (!contract) throw new ApiError(ERROR_CODES.NOT_FOUND, "合同不存在", 404);
-    // R-05
-    if (contract.status !== "EFFECTIVE" && contract.status !== "EXECUTING") {
-      throw new ApiError(ERROR_CODES.PROJECT_CONTRACT_NOT_EFFECTIVE, "项目必须挂在 EFFECTIVE/EXECUTING 状态的合同下", 422);
-    }
-    // R-06
-    if (new Date(input.endDate) > new Date(contract.endDate)) {
-      throw new ApiError(ERROR_CODES.PROJECT_DATE_OUT_OF_RANGE, "项目结束日期不能晚于合同结束日期", 422);
-    }
-    const projectNo = await nextBusinessNo("PROJECT");
-    return tx.project.create({
-      data: {
-        projectNo,
-        contractId: input.contractId,
-        name: input.name,
-        serviceScope: input.serviceScope,
-        managerUserId: input.managerUserId ?? user.id,
-        startDate: new Date(input.startDate),
-        endDate: new Date(input.endDate),
-        budgetAmount: input.budgetAmount ?? null,
-        status: "PLANNED",
-        createdById: user.id,
-        updatedById: user.id
-      }
-    });
-  });
 }
 
 export async function updateProject(user: SessionUser, id: string, input: ProjectUpdateInput) {
@@ -136,4 +105,47 @@ export async function projectAction(user: SessionUser, id: string, input: Projec
     await audit(tx, { actorId: user.id, action: `PROJECT_${input.action.toUpperCase()}`, entity: "Project", entityId: id, before, after: { status: t.to } });
     return updated;
   });
+}
+export async function createProject(user: SessionUser, input: ProjectCreateInput) {
+  requirePermission(user.roleCode, RESOURCE.PROJECT, ACTION.CREATE);
+  const project = await prisma.$transaction(async (tx) => {
+    const contract = await tx.contract.findFirst({ where: { id: input.contractId, deletedAt: null, ...ownerEq(user) } });
+    if (!contract) throw new ApiError(ERROR_CODES.NOT_FOUND, "合同不存在", 404);
+    // R-05
+    if (contract.status !== "EFFECTIVE" && contract.status !== "EXECUTING") {
+      throw new ApiError(ERROR_CODES.PROJECT_CONTRACT_NOT_EFFECTIVE, "项目必须挂在 EFFECTIVE/EXECUTING 状态的合同下", 422);
+    }
+    // R-06
+    if (new Date(input.endDate) > new Date(contract.endDate)) {
+      throw new ApiError(ERROR_CODES.PROJECT_DATE_OUT_OF_RANGE, "项目结束日期不能晚于合同结束日期", 422);
+    }
+    const projectNo = await nextBusinessNo("PROJECT");
+    return tx.project.create({
+      data: {
+        projectNo,
+        contractId: input.contractId,
+        name: input.name,
+        serviceScope: input.serviceScope,
+        managerUserId: input.managerUserId ?? user.id,
+        startDate: new Date(input.startDate),
+        endDate: new Date(input.endDate),
+        budgetAmount: input.budgetAmount ?? null,
+        status: "PLANNED",
+        createdById: user.id,
+        updatedById: user.id
+      }
+    });
+  });
+  // P1: 创建项目后自动实例化工作流(失败不阻塞项目创建,记录审计即可)
+  try {
+    await instantiateProjectWorkflow(user, project.id);
+  } catch (e) {
+    if (e instanceof ApiError && e.errorCode === ERROR_CODES.WORKFLOW_TEMPLATE_NOT_FOUND) {
+      // 合同 serviceType 没模板,跳过(常见于 OTHER)
+      console.warn(`[workflow] project ${project.id} skipped auto-init:`, e.message);
+    } else {
+      console.error(`[workflow] project ${project.id} auto-init failed:`, e);
+    }
+  }
+  return project;
 }

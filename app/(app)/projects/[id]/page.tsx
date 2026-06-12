@@ -17,6 +17,7 @@ import { useUserName } from "@/lib/user-lookup";
 import { ProgressLogDrawer } from "@/components/file/progress-log-drawer";
 import { CurrencyCell, DateTimeCell } from "@/components/table-cells";
 import { useResponsive } from "@/lib/use-breakpoint";
+import { WorkflowSection } from "@/components/workflow/workflow-section";
 
 const ACTION_LABEL: Record<string, string> = {
   start: "开始", suspend: "暂停", resume: "恢复", deliver: "交付",
@@ -57,6 +58,8 @@ export default function ProjectDetailPage() {
   const contractNo = project.contract?.contractNo ?? project.contractNo ?? "-";
   // 项目已结束 / 关闭后禁止再记进度(状态机不允许)
   const canLogProgress = ["PLANNED", "IN_PROGRESS", "SUSPENDED"].includes(project.status);
+  // 工作流任务实例:同上,结束态不允许流转
+  const canEditWorkflow = ["PLANNED", "IN_PROGRESS", "SUSPENDED"].includes(project.status);
 
   return (
     <Page>
@@ -101,6 +104,10 @@ export default function ProjectDetailPage() {
       <PageHeader level="section" title="服务范围" />
       <ProCard>
         <div style={{ whiteSpace: "pre-wrap", wordBreak: "break-word" }}>{project.serviceScope}</div>
+      </ProCard>
+      <PageHeader level="section" title="服务工作流" />
+      <ProCard>
+        <WorkflowSection projectId={id} canEdit={canEditWorkflow} />
       </ProCard>
       <PageHeader level="section" title="进度日志" />
       <ProCard>
