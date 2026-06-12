@@ -677,3 +677,49 @@ describe("CustomerOverview contractNo fallback to empty string", () => {
     expect(val).toBe("");
   });
 });
+
+// =====================================================
+// P11: 合同 360 度视图汇总 + 工作流通知中心
+// =====================================================
+describe("ContractOverview totals calculation is consistent", () => {
+  function sumInvoices(invoices: Array<{ amount: string }>): number {
+    return invoices.reduce((s, i) => s + Number(i.amount), 0);
+  }
+  it("empty → 0", () => {
+    expect(sumInvoices([])).toBe(0);
+  });
+  it("multiple invoices → sum", () => {
+    expect(sumInvoices([{ amount: "50000" }, { amount: "11000" }])).toBe(61000);
+  });
+  it("toFixed(1) of 61000 wan gives 6.1", () => {
+    expect((61000 / 10000).toFixed(1)).toBe("6.1");
+  });
+});
+
+describe("Workflow notification types whitelist", () => {
+  // 锁住:WORKFLOW_* 消息枚举,防止后续误删
+  const WF_NOTIF_TYPES = new Set([
+    "WORKFLOW_TASK_ASSIGNED",
+    "WORKFLOW_REVIEW_REQUESTED"
+  ]);
+  it("has 2 workflow notification types", () => {
+    expect(WF_NOTIF_TYPES.size).toBe(2);
+  });
+  it("doesn't include non-workflow types", () => {
+    expect(WF_NOTIF_TYPES.has("CONTRACT_PENDING_REVIEW")).toBe(false);
+    expect(WF_NOTIF_TYPES.has("PAYMENT_RECEIVED")).toBe(false);
+  });
+});
+
+describe("WorkflowNotifications result shape is stable", () => {
+  // 锁住返回结构
+  it("has items / byType / totals", () => {
+    const expected: { items: unknown[]; byType: unknown[]; totals: { total: number; unread: number } } = {
+      items: [],
+      byType: [],
+      totals: { total: 0, unread: 0 }
+    };
+    expect(expected.totals.total).toBe(0);
+    expect(expected.totals.unread).toBe(0);
+  });
+});

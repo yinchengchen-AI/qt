@@ -1444,3 +1444,80 @@ export async function getProjectKanban(user: SessionUser, projectId: string): Pr
     totals
   };
 }
+
+// =====================================================
+// P11: 工作流通知中心 — 聚合 WORKFLOW_* 消息
+// =====================================================
+const WORKFLOW_MESSAGE_TYPES = new Set([
+  "WORKFLOW_TASK_ASSIGNED",
+  "WORKFLOW_REVIEW_REQUESTED"
+]);
+
+export type WorkflowNotification = {
+  id: string;
+  type: string;
+  title: string;
+  content: string;
+  link: { kind: string; id: string } | null;
+  readAt: string | null;
+  createdAt: string;
+};
+
+export type WorkflowNotifications = {
+  items: WorkflowNotification[];
+  byType: { type: string; count: number; unread: number }[];
+  totals: { total: number; unread: number };
+};
+
+export async function getWorkflowNotifications(
+  user: SessionUser,
+  opts: { limit?: number; unreadOnly?: boolean } = {}
+): Promise<WorkflowNotifications> {
+  requirePermission(user.roleCode, RESOURCE.MESSAGE, ACTION.READ);
+  const limit = Math.min(opts.limit ?? 100, 500);
+  const where = {
+    receiverUserId: user.id,
+    type: { in: Array.from(WORKFLOW_MESSAGE_TYPES) as string[] },
+    ...(opts.unreadOnly ? { readAt: null } : {})
+  };
+  const [items, totalAll, unreadAll] = await Promise.all([
+    prisma.message.findMany({
+      where,
+      orderBy: { createdAt: "desc" },
+      take: limit
+    }),
+    prisma.message.count({ where: { receiverUserId: user.id, type: { in: Array.from(WORKFLOW_MESSAGE_TYPES) as string[] } } }),
+    prisma.message.count({
+      where: { receiverUserId: user.id, readAt: null, type: { in: Array.from(WORKFLOW_MESSAGE_TYPES) as string[] } }
+    })
+  ]);
+  // 按 type 聚合
+  const grouped = await prisma.message.groupBy({
+    by: ["type"],
+    where: { receiverUserId: user.id, type: { in: Array.from(WORKFLOW_MESSAGE_TYPES) as string[] } },
+    _count: { _all: true }
+  });
+  const unreadGrouped = await prisma.message.groupBy({
+    by: ["type"],
+    where: { receiverUserId: user.id, readAt: null, type: { in: Array.from(WORKFLOW_MESSAGE_TYPES) as string[] } },
+    _count: { _all: true }
+  });
+  const unreadMap = new Map(unreadGrouped.map((g) => [g.type, g._count._all]));
+  return {
+    items: items.map((m) => ({
+      id: m.id,
+      type: m.type,
+      title: m.title,
+      content: m.content,
+      link: (m.link as { kind?: string; id?: string } | null)?.kind ? (m.link as { kind: string; id: string }) : null,
+      readAt: m.readAt ? m.readAt.toISOString() : null,
+      createdAt: m.createdAt.toISOString()
+    })),
+    byType: grouped.map((g) => ({
+      type: g.type,
+      count: g._count._all,
+      unread: unreadMap.get(g.type) ?? 0
+    })).sort((a, b) => b.count - a.count),
+    totals: { total: totalAll, unread: unreadAll }
+  };
+}

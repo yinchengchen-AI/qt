@@ -1,6 +1,6 @@
 "use client";
 import { ProCard, ProDescriptions, ProTable } from "@ant-design/pro-components";
-import { Button, Space, Modal, Input, Tag } from "antd";
+import { Button, Card, Col, Empty, Row, Space, Statistic, Tabs, Tag } from "antd";
 import { useParams, useRouter } from "next/navigation";
 import type { Contract as ContractEntity } from "@/lib/types/entities";
 import useSWR from "swr";
@@ -29,18 +29,47 @@ const REVIEW_ACTION_TONE: Record<string, string> = {
 
 const DESC_COL = { xs: 1, sm: 1, md: 2, lg: 2, xl: 3 } as const;
 
+type Overview = {
+  projects: Array<{ id: string; projectNo: string; name: string; status: string; startDate: string; endDate: string; managerUserId: string; workflowTaskCount: number; workflowCompleted: number }>;
+  invoices: Array<{ id: string; invoiceNo: string; status: string; amount: string; applyDate: string; actualIssueDate: string | null }>;
+  payments: Array<{ id: string; paymentNo: string; status: string; amount: string; receiveDate: string }>;
+  reviewLogs: Array<{ id: string; action: string; reviewerId: string; comment: string | null; at: string }>;
+  totals: { projectCount: number; invoiceCount: number; paymentCount: number; totalAmount: number; invoicedAmount: number; paidAmount: number; workflowTaskCount: number; workflowCompleted: number };
+};
+
+function ReviewerName({ id }: { id: string }) {
+  const name = useUserName(id, "—");
+  return <span>{name}</span>;
+}
+
+function ProjectManagerName({ id }: { id: string }) {
+  const name = useUserName(id, "—");
+  return <span>{name}</span>;
+}
+
 export default function ContractDetailPage() {
-  const params = useParams();  const id = String(params.id);
+  const params = useParams();
+  const id = String(params.id);
   const router = useRouter();
   const { isMobile } = useResponsive();
+  const { data: contract, error, isLoading, mutate } = useSWR<ContractEntity>(`/api/contracts/${id}`);
+  const { data: overview } = useSWR<Overview>(`/api/contracts/${id}/overview`);
   const { data: session } = useSession();
-  const { data, isLoading, mutate } = useSWR<ContractEntity>(`/api/contracts/${id}`);
-  const contract = data;
-  const [comment, setComment] = useState("");
+  const paymentMethod = useDict("PAYMENT_METHOD");
   const { run } = useActionCall({ baseUrl: `/api/contracts/${id}`, reload: () => mutate() });
-  const serviceTypeDict = useDict("SERVICE_TYPE");
-  const serviceTypeLabel = serviceTypeDict.find((d) => d.code === contract?.serviceType)?.label ?? SERVICE_TYPE_MAP[contract?.serviceType ?? ""] ?? contract?.serviceType ?? "";
+  const [activeTab, setActiveTab] = useState("info");
 
+  if (error) {
+    return (
+      <Page>
+        <PageHeader back={() => router.push("/contracts")} title="合同详情" />
+        <div style={{ marginTop: 12, padding: 16, background: "#fff2f0", color: "#cf1322", borderRadius: 8, fontSize: 13 }}>
+          加载失败: {(error as Error).message}{" "}
+          <Button size="small" type="link" onClick={() => mutate()}>重试</Button>
+        </div>
+      </Page>
+    );
+  }
   if (isLoading || !contract) {
     return (
       <Page>
@@ -49,130 +78,226 @@ export default function ContractDetailPage() {
       </Page>
     );
   }
-  const roleCode = session?.user?.roleCode;
-  const status = contract.status;
 
-  const askComment = (label: string, path: string) => {
-    Modal.confirm({
-      title: label,
-      content: <Input.TextArea rows={3} value={comment} onChange={(e) => setComment(e.target.value)} placeholder="备注(可选)" />,
-      onOk: async () => { await run(path, { comment }); setComment(""); }
-    });
-  };
+  const t = overview?.totals;
+  const fmtWan = (v: number) => (v / 10000).toFixed(1);
+
+  const can = (() => {
+    const s = contract.status;
+    if (s === "DRAFT") return ["submit"];
+    if (s === "PENDING_REVIEW") return ["approve", "reject", "withdraw"];
+    if (s === "EFFECTIVE") return ["execute", "complete", "terminate"];
+    if (s === "EXECUTING") return ["suspend", "complete", "terminate"];
+    if (s === "SUSPENDED") return ["resume", "complete", "terminate"];
+    return [];
+  })();
+  const isOwnerOrAdmin = (session?.user as { roleCode?: string })?.roleCode === "ADMIN";
+  const allowed = isOwnerOrAdmin ? can : [];
+
+  const tabItems = [
+    {
+      key: "info",
+      label: <span>概览 ({t?.projectCount ?? 0} 项目)</span>,
+      children: (
+        <Row gutter={[16, 16]}>
+          <Col xs={12} sm={8} md={6}>
+            <Card><Statistic title="合同总额" value={t ? fmtWan(t.totalAmount) : 0} suffix="万" /></Card>
+          </Col>
+          <Col xs={12} sm={8} md={6}>
+            <Card><Statistic title="已开票" value={t ? fmtWan(t.invoicedAmount) : 0} suffix="万" /></Card>
+          </Col>
+          <Col xs={12} sm={8} md={6}>
+            <Card><Statistic title="已回款" value={t ? fmtWan(t.paidAmount) : 0} suffix="万" /></Card>
+          </Col>
+          <Col xs={12} sm={8} md={6}>
+            <Card>
+              <Statistic
+                title="工作流完成率"
+                value={t && t.workflowTaskCount > 0 ? Math.round((t.workflowCompleted / t.workflowTaskCount) * 100) : 0}
+                suffix="%"
+                
+              />
+            </Card>
+          </Col>
+          <Col xs={24}>
+            <ProCard>
+              <Row gutter={16}>
+                <Col xs={8}><Statistic title="项目数" value={t?.projectCount ?? 0} /></Col>
+                <Col xs={8}><Statistic title="开票数" value={t?.invoiceCount ?? 0} /></Col>
+                <Col xs={8}><Statistic title="回款数" value={t?.paymentCount ?? 0} /></Col>
+              </Row>
+            </ProCard>
+          </Col>
+        </Row>
+      )
+    },
+    {
+      key: "basic",
+      label: "详细信息",
+      children: (
+        <ProCard>
+          <ProDescriptions<ContractEntity> column={DESC_COL} dataSource={contract} columns={[
+            { title: "合同编号", dataIndex: "contractNo" },
+            { title: "标题", dataIndex: "title" },
+            { title: "客户", dataIndex: "customerName" },
+            { title: "服务类型", dataIndex: "serviceType", render: (v) => SERVICE_TYPE_MAP[v as string] ?? v },
+            { title: "签订日", dataIndex: "signDate", valueType: "date", render: (_, r) => <DateTimeCell value={r.signDate as string} /> },
+            { title: "起期", dataIndex: "startDate", valueType: "date", render: (_, r) => <DateTimeCell value={r.startDate as string} /> },
+            { title: "止期", dataIndex: "endDate", valueType: "date", render: (_, r) => <DateTimeCell value={r.endDate as string} /> },
+            { title: "合同总额", dataIndex: "totalAmount", render: (_, r) => <CurrencyCell value={r.totalAmount as string} /> },
+            { title: "税率", dataIndex: "taxRate", render: (_, r) => <PercentCell value={(Number(r.taxRate) * 100).toFixed(2)} /> },
+            { title: "税额", dataIndex: "taxAmount", render: (_, r) => <CurrencyCell value={r.taxAmount as string} /> },
+            { title: "不含税金额", dataIndex: "amountExcludingTax", render: (_, r) => <CurrencyCell value={r.amountExcludingTax as string} /> },
+            { title: "付款方式", dataIndex: "paymentMethod", render: (v) => PAYMENT_METHOD_MAP[v as string] ?? paymentMethod.find((d) => d.code === v)?.label ?? v },
+            { title: "状态", dataIndex: "status", render: (_, r) => <StatusTag status={r.status as string} domain="contract" /> }
+          ]} />
+        </ProCard>
+      )
+    },
+    {
+      key: "projects",
+      label: <span>项目 ({t?.projectCount ?? 0})</span>,
+      children: (
+        <ProCard>
+          {overview && overview.projects.length > 0 ? (
+            <ProTable
+              rowKey="id"
+              search={false}
+              options={false}
+              pagination={{ pageSize: 10, size: isMobile ? "small" : "middle" }}
+              dataSource={overview.projects}
+              scroll={{ x: 'max-content' }}
+              sticky={isMobile}
+              onRow={(r) => ({ onClick: () => router.push(`/projects/${r.id}`), style: { cursor: "pointer" } })}
+              columns={[
+                { title: "项目编号", dataIndex: "projectNo", width: 180 },
+                { title: "项目名称", dataIndex: "name" },
+                { title: "起期", dataIndex: "startDate", width: 120, render: (_, r) => <DateTimeCell value={r.startDate as string} /> },
+                { title: "止期", dataIndex: "endDate", width: 120, render: (_, r) => <DateTimeCell value={r.endDate as string} /> },
+                { title: "负责人", dataIndex: "managerUserId", width: 100, render: (_, r) => <ProjectManagerName id={r.managerUserId as string} /> },
+                { title: "工作流", dataIndex: "workflowTaskCount", width: 140, render: (_, r) => (
+                  <Tag color={r.workflowCompleted === r.workflowTaskCount ? "success" : "processing"}>
+                    {r.workflowCompleted}/{r.workflowTaskCount}
+                  </Tag>
+                ) },
+                { title: "状态", dataIndex: "status", width: 100, render: (_, r) => <StatusTag status={r.status as string} domain="project" /> }
+              ]} />
+          ) : <Empty description="本合同暂无项目" />}
+        </ProCard>
+      )
+    },
+    {
+      key: "invoices",
+      label: <span>开票 ({t?.invoiceCount ?? 0})</span>,
+      children: (
+        <ProCard>
+          {overview && overview.invoices.length > 0 ? (
+            <ProTable
+              rowKey="id"
+              search={false}
+              options={false}
+              pagination={{ pageSize: 10, size: isMobile ? "small" : "middle" }}
+              dataSource={overview.invoices}
+              scroll={{ x: 'max-content' }}
+              sticky={isMobile}
+              onRow={(r) => ({ onClick: () => router.push(`/invoices/${r.id}`), style: { cursor: "pointer" } })}
+              columns={[
+                { title: "发票号", dataIndex: "invoiceNo", width: 180 },
+                { title: "金额", dataIndex: "amount", width: 140, render: (_, r) => <CurrencyCell value={r.amount as string} /> },
+                { title: "申请日", dataIndex: "applyDate", width: 140, render: (_, r) => <DateTimeCell value={r.applyDate as string} /> },
+                { title: "开票日", dataIndex: "actualIssueDate", width: 140, render: (v) => v ? <DateTimeCell value={v as string} /> : "—" },
+                { title: "状态", dataIndex: "status", width: 100, render: (_, r) => <StatusTag status={r.status as string} domain="invoice" /> }
+              ]} />
+          ) : <Empty description="本合同暂无开票" />}
+        </ProCard>
+      )
+    },
+    {
+      key: "payments",
+      label: <span>回款 ({t?.paymentCount ?? 0})</span>,
+      children: (
+        <ProCard>
+          {overview && overview.payments.length > 0 ? (
+            <ProTable
+              rowKey="id"
+              search={false}
+              options={false}
+              pagination={{ pageSize: 10, size: isMobile ? "small" : "middle" }}
+              dataSource={overview.payments}
+              scroll={{ x: 'max-content' }}
+              sticky={isMobile}
+              onRow={(r) => ({ onClick: () => router.push(`/payments/${r.id}`), style: { cursor: "pointer" } })}
+              columns={[
+                { title: "回款单号", dataIndex: "paymentNo", width: 180 },
+                { title: "金额", dataIndex: "amount", width: 140, render: (_, r) => <CurrencyCell value={r.amount as string} /> },
+                { title: "到账日", dataIndex: "receiveDate", width: 140, render: (_, r) => <DateTimeCell value={r.receiveDate as string} /> },
+                { title: "状态", dataIndex: "status", width: 100, render: (_, r) => <StatusTag status={r.status as string} domain="payment" /> }
+              ]} />
+          ) : <Empty description="本合同暂无回款" />}
+        </ProCard>
+      )
+    },
+    {
+      key: "review",
+      label: <span>审批记录 ({overview?.reviewLogs.length ?? 0})</span>,
+      children: (
+        <ProCard>
+          {overview && overview.reviewLogs.length > 0 ? (
+            <ProTable
+              rowKey="id"
+              search={false}
+              options={false}
+              pagination={{ pageSize: 10, size: isMobile ? "small" : "middle" }}
+              dataSource={overview.reviewLogs}
+              scroll={{ x: 'max-content' }}
+              columns={[
+                { title: "时间", dataIndex: "at", valueType: "dateTime", width: 180, render: (_, r) => <DateTimeCell value={r.at as string} /> },
+                { title: "动作", dataIndex: "action", width: 120, render: (v) => <Tag color={REVIEW_ACTION_TONE[v as string] ?? "default"}>{REVIEW_ACTION_MAP[v as string] ?? v}</Tag> },
+                { title: "审批人", dataIndex: "reviewerId", width: 120, render: (_, r) => <ReviewerName id={r.reviewerId as string} /> },
+                { title: "意见", dataIndex: "comment", render: (v) => v || "—" }
+              ]} />
+          ) : <Empty description="本合同暂无审批记录" />}
+        </ProCard>
+      )
+    },
+    {
+      key: "attachments",
+      label: "附件",
+      children: (
+        <ProCard>
+          <AttachmentList items={(contract.attachments ?? []).map((a) => ({ id: a.id, name: a.name, mimeType: a.mimeType, size: a.size }))} allowDelete={isOwnerOrAdmin} />
+        </ProCard>
+      )
+    }
+  ];
 
   return (
     <Page>
       <PageHeader
         back={() => router.push("/contracts")}
         title={`${contract.title} · ${contract.contractNo}`}
-        subtitle={`客户: ${contract.customerName} · 服务类型: ${serviceTypeLabel}`}
+        subtitle="合同 360 度视图 — 概览 / 信息 / 项目 / 开票 / 回款 / 审批 / 附件"
         meta={<StatusTag status={contract.status} domain="contract" />}
         actions={
           <Space wrap>
             <Button key="pdf" icon={<FilePdfOutlined />} onClick={() => openPrintWindow(`/api/contracts/${id}/pdf`)}>导出 PDF</Button>
-            {status === "DRAFT" && (
-              <>
-                <Button onClick={() => router.push(`/contracts/${id}/edit`)}>编辑</Button>
-                <Button type="primary" onClick={() => run("submit")}>提交审批</Button>
-              </>
+            {["DRAFT", "PENDING_REVIEW", "SUSPENDED"].includes(contract.status) && (
+              <Button onClick={() => router.push(`/contracts/${id}/edit`)}>编辑</Button>
             )}
-            {status === "PENDING_REVIEW" && roleCode !== "ADMIN" && <Button onClick={() => run("withdraw")}>撤回</Button>}
-            {status === "PENDING_REVIEW" && roleCode === "ADMIN" && (
-              <>
-                <Button danger onClick={() => askComment("驳回合同", "reject")}>驳回</Button>
-                <Button type="primary" onClick={() => run("approve")}>批准</Button>
-              </>
-            )}
-            {(status === "EFFECTIVE" || status === "EXECUTING") && roleCode === "ADMIN" && (
-              <Button danger onClick={() => askComment("终止合同", "terminate")}>终止</Button>
-            )}
+            {allowed.map((a) => (
+              <Button
+                key={a}
+                type={a === "cancel" ? "default" : "primary"}
+                danger={a === "reject" || a === "terminate"}
+                onClick={() => run(a)}
+              >
+                {a === "submit" ? "提交审批" : a === "approve" ? "批准" : a === "reject" ? "驳回" : a === "withdraw" ? "撤回" : a === "execute" ? "开始执行" : a === "complete" ? "结清" : a === "suspend" ? "暂停" : a === "resume" ? "恢复" : a === "terminate" ? "终止" : a}
+              </Button>
+            ))}
           </Space>
         }
       />
-      <ProCard>
-        <ProDescriptions<ContractEntity> column={DESC_COL} dataSource={contract} columns={[
-          { title: "合同号", dataIndex: "contractNo" },
-          { title: "客户", dataIndex: "customerName" },
-          { title: "服务类型", dataIndex: "serviceType", render: () => serviceTypeLabel },
-          { title: "签订日期", dataIndex: "signDate", render: (v) => <DateTimeCell value={v as string} /> },
-          { title: "服务起期", dataIndex: "startDate", render: (v) => <DateTimeCell value={v as string} /> },
-          { title: "服务止期", dataIndex: "endDate", render: (v) => <DateTimeCell value={v as string} /> },
-          { title: "付款方式", dataIndex: "paymentMethod", render: (v) => PAYMENT_METHOD_MAP[v as string] ?? v },
-          { title: "合同总额(含税)", dataIndex: "totalAmount", render: (v) => <CurrencyCell value={v as string} /> },
-          { title: "税率", dataIndex: "taxRate", render: (v) => <PercentCell value={v as string} /> },
-          { title: "税额", dataIndex: "taxAmount", render: (v) => <CurrencyCell value={v as string} /> },
-          { title: "不含税金额", dataIndex: "amountExcludingTax", render: (v) => <CurrencyCell value={v as string} /> },
-          { title: "审批人", dataIndex: "reviewerId", render: (v) => v ? <ReviewerName id={v as string} /> : "—" },
-          { title: "审批时间", dataIndex: "reviewAt", render: (v) => <DateTimeCell value={v as string} /> },
-          { title: "审批意见", dataIndex: "reviewComment" }
-        ]} />
-      </ProCard>
-      <PageHeader level="section" title="审批记录" />
-      <ProCard>
-        {contract.reviewLogs && contract.reviewLogs.length > 0 ? (
-          <ProTable
-            rowKey="id"
-            search={false}
-            options={false}
-            pagination={false}
-            dataSource={contract.reviewLogs}
-            scroll={{ x: 'max-content' }}
-            sticky={isMobile}
-            columns={[
-              {
-                title: "时间",
-                dataIndex: "at",
-                width: 180,
-                render: (_, r) => <DateTimeCell value={r.at} />
-              },
-              {
-                title: "动作",
-                dataIndex: "action",
-                width: 120,
-                render: (_, r) => (
-                  <Tag color={REVIEW_ACTION_TONE[r.action] ?? "default"}>
-                    {REVIEW_ACTION_MAP[r.action] ?? r.action}
-                  </Tag>
-                )
-              },
-              {
-                title: "操作人",
-                dataIndex: "reviewerName",
-                width: 140,
-                render: (_, r) => r.reviewerName || "—"
-              },
-              {
-                title: "备注",
-                dataIndex: "comment",
-                render: (_, r) => r.comment || <span style={{ color: "#9CA3AF" }}>—</span>
-              }
-            ]}
-          />
-        ) : (
-          <div style={{ color: "#9CA3AF", fontSize: 13, textAlign: "center", padding: "16px 0" }}>
-            暂无审批记录
-          </div>
-        )}
-      </ProCard>
-      <PageHeader level="section" title="附件" />
-      <ProCard>
-        <AttachmentList
-          items={(contract.attachments ?? []).map((a) => ({
-            id: a.id,
-            name: a.name,
-            mimeType: a.mimeType,
-            size: a.size,
-            legacyUrl: typeof a.url === "string" ? a.url : undefined
-          }))}
-          onDeleted={() => mutate()}
-        />
-      </ProCard>
+      <Tabs activeKey={activeTab} onChange={setActiveTab} items={tabItems} />
     </Page>
   );
-}
-
-// 审批人 ID 解析为姓名;抽成组件是因为 useUserName 必须在 hook 顶层调用
-function ReviewerName({ id }: { id: string }) {
-  const name = useUserName(id, "—");
-  return <span>{name}</span>;
 }

@@ -309,3 +309,144 @@ export async function terminateContract(user: SessionUser, id: string, reason?: 
     data: { status: "TERMINATED", reviewComment: reason ?? null, updatedById: user.id }
   });
 }
+
+// =====================================================
+// P11: 合同 360 度视图
+// =====================================================
+export type ContractOverview = {
+  projects: Array<{
+    id: string;
+    projectNo: string;
+    name: string;
+    status: string;
+    startDate: string;
+    endDate: string;
+    managerUserId: string;
+    workflowTaskCount: number;
+    workflowCompleted: number;
+  }>;
+  invoices: Array<{
+    id: string;
+    invoiceNo: string;
+    status: string;
+    amount: string;
+    applyDate: string;
+    actualIssueDate: string | null;
+  }>;
+  payments: Array<{
+    id: string;
+    paymentNo: string;
+    status: string;
+    amount: string;
+    receiveDate: string;
+  }>;
+  reviewLogs: Array<{
+    id: string;
+    action: string;
+    reviewerId: string;
+    comment: string | null;
+    at: string;
+  }>;
+  totals: {
+    projectCount: number;
+    invoiceCount: number;
+    paymentCount: number;
+    totalAmount: number;
+    invoicedAmount: number;
+    paidAmount: number;
+    workflowTaskCount: number;
+    workflowCompleted: number;
+  };
+};
+
+export async function getContractOverview(
+  user: SessionUser,
+  contractId: string
+): Promise<ContractOverview> {
+  requirePermission(user.roleCode, RESOURCE.CONTRACT, ACTION.READ);
+  const c = await prisma.contract.findFirst({ where: { id: contractId, deletedAt: null, ...ownerEq(user) } });
+  if (!c) throw new ApiError(ERROR_CODES.NOT_FOUND, "合同不存在", 404);
+
+  const [projects, invoices, payments, reviewLogs] = await Promise.all([
+    prisma.project.findMany({
+      where: { contractId, deletedAt: null, ...ownerEq(user) },
+      include: { _count: { select: { taskInstances: { where: { deletedAt: null } } } } },
+      orderBy: { createdAt: "desc" }
+    }),
+    prisma.invoice.findMany({
+      where: { contractId, deletedAt: null, ...ownerEq(user) },
+      orderBy: { applyDate: "desc" }
+    }),
+    prisma.payment.findMany({
+      where: { contractId, deletedAt: null, ...ownerEq(user) },
+      orderBy: { receivedAt: "desc" }
+    }),
+    prisma.contractReviewLog.findMany({
+      where: { contractId },
+      orderBy: { at: "desc" },
+      take: 50
+    })
+  ]);
+
+  // 对每个项目查已完成工作流任务数(二次查)
+  const projectWorkflowStats: Record<string, { completed: number; total: number }> = {};
+  for (const p of projects) {
+    const [completed, total] = await Promise.all([
+      prisma.workflowTaskInstance.count({ where: { projectId: p.id, status: "COMPLETED", deletedAt: null } }),
+      prisma.workflowTaskInstance.count({ where: { projectId: p.id, deletedAt: null } })
+    ]);
+    projectWorkflowStats[p.id] = { completed, total };
+  }
+
+  // 总数
+  let invoicedAmount = 0;
+  for (const inv of invoices) invoicedAmount += Number(inv.amount);
+  let paidAmount = 0;
+  for (const p of payments) paidAmount += Number(p.amount);
+
+  return {
+    projects: projects.map((p) => ({
+      id: p.id,
+      projectNo: p.projectNo,
+      name: p.name,
+      status: p.status,
+      startDate: p.startDate.toISOString(),
+      endDate: p.endDate.toISOString(),
+      managerUserId: p.managerUserId,
+      workflowTaskCount: projectWorkflowStats[p.id]?.total ?? 0,
+      workflowCompleted: projectWorkflowStats[p.id]?.completed ?? 0
+    })),
+    invoices: invoices.map((i) => ({
+      id: i.id,
+      invoiceNo: i.invoiceNo,
+      status: i.status,
+      amount: i.amount.toString(),
+      applyDate: i.applyDate.toISOString(),
+      actualIssueDate: i.actualIssueDate ? i.actualIssueDate.toISOString() : null
+    })),
+    payments: payments.map((p) => ({
+      id: p.id,
+      paymentNo: p.paymentNo,
+      status: p.status,
+      amount: p.amount.toString(),
+      receiveDate: p.receivedAt.toISOString()
+    })),
+    reviewLogs: reviewLogs.map((r) => ({
+      id: r.id,
+      action: r.action,
+      reviewerId: r.reviewerId,
+      comment: r.comment,
+      at: r.at.toISOString()
+    })),
+    totals: {
+      projectCount: projects.length,
+      invoiceCount: invoices.length,
+      paymentCount: payments.length,
+      totalAmount: Number(c.totalAmount),
+      invoicedAmount,
+      paidAmount,
+      workflowTaskCount: projects.reduce((s, p) => s + (projectWorkflowStats[p.id]?.total ?? 0), 0),
+      workflowCompleted: projects.reduce((s, p) => s + (projectWorkflowStats[p.id]?.completed ?? 0), 0)
+    }
+  };
+}
