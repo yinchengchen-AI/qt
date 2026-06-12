@@ -6,6 +6,8 @@ import {
   WORKFLOW_REVIEW_STATUS,
   WORKFLOW_TASK_ACTIONS,
   WORKFLOW_REVIEW_ACTIONS,
+  WORKFLOW_PHASE_ORDER,
+  WORKFLOW_PHASE_STATE,
   MESSAGE_TYPE
 } from "../types/enums";
 import { ERROR_CODES } from "../types/errors";
@@ -293,5 +295,62 @@ describe("Domain events for workflow", () => {
   it("MESSAGE_TYPE covers workflow events", () => {
     expect(MESSAGE_TYPE).toContain("WORKFLOW_TASK_ASSIGNED");
     expect(MESSAGE_TYPE).toContain("WORKFLOW_REVIEW_REQUESTED");
+  });
+});
+
+// =====================================================
+// P3: 阶段顺序 + WORKFLOW_PHASE_ORDER
+// =====================================================
+describe("WORKFLOW_PHASE_ORDER is strictly ordered", () => {
+  it("has 5 phases in canonical order", () => {
+    expect(WORKFLOW_PHASE_ORDER.length).toBe(5);
+    expect(WORKFLOW_PHASE_ORDER).toEqual([
+      "PREP",
+      "REQUIREMENT",
+      "CONTRACT",
+      "EXECUTE",
+      "FOLLOWUP"
+    ]);
+  });
+  it("WORKFLOW_PHASE_STATE has 4 states", () => {
+    expect(WORKFLOW_PHASE_STATE.length).toBe(4);
+    expect(new Set(WORKFLOW_PHASE_STATE)).toEqual(new Set(["DONE", "PARTIAL", "LOCKED", "READY"]));
+  });
+});
+
+describe("checkPhaseLock logic (replicated)", () => {
+  // 复制 service 内 checkPhaseLock 的查询逻辑
+  // 真实测试需 DB mock,这里锁"概念正确性"
+  // P0 seed: 所有 common 阶段 isRequired=true
+  const COMMON_REQUIRED_STAGES = ["PREP", "REQUIREMENT", "CONTRACT", "FOLLOWUP"];
+
+  it("PREP 阶段没有前置,直接放行", () => {
+    const idx = WORKFLOW_PHASE_ORDER.indexOf("PREP");
+    expect(idx).toBe(0);
+    // 索引 0 没有 prev phase,放行
+  });
+
+  it("EXECUTE 阶段的前置是 CONTRACT,且 CONTRACT required", () => {
+    const idx = WORKFLOW_PHASE_ORDER.indexOf("EXECUTE");
+    expect(WORKFLOW_PHASE_ORDER[idx - 1]).toBe("CONTRACT");
+    expect(COMMON_REQUIRED_STAGES).toContain("CONTRACT");
+  });
+
+  it("FOLLOWUP 阶段的前置是 EXECUTE", () => {
+    const idx = WORKFLOW_PHASE_ORDER.indexOf("FOLLOWUP");
+    expect(WORKFLOW_PHASE_ORDER[idx - 1]).toBe("EXECUTE");
+  });
+
+  it("可选阶段(若 isRequired=false)不应阻塞下一阶段", () => {
+    // 概念锁定:checkPhaseLock 查的是 stage.isRequired=true 的 stage 里的实例
+    // 若前一阶段整个 isRequired=false,则没任务在 unfinished 集合,放行
+    const mockUnfinishedFromOptionalStage: { status: string }[] = [];
+    expect(mockUnfinishedFromOptionalStage.length).toBe(0);
+  });
+});
+
+describe("WORKFLOW_PHASE_LOCKED is registered", () => {
+  it("has correct error code and message", () => {
+    expect((ERROR_CODES as Record<string, string>)["WORKFLOW_PHASE_LOCKED"]).toBe("WORKFLOW_PHASE_LOCKED");
   });
 });

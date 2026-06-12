@@ -154,3 +154,11 @@ export type WorkflowTaskAction = (typeof WORKFLOW_TASK_ACTIONS)[number];
 // reviewAction: 二审动作
 export const WORKFLOW_REVIEW_ACTIONS = ["submit", "approve", "reject"] as const;
 export type WorkflowReviewAction = (typeof WORKFLOW_REVIEW_ACTIONS)[number];
+
+// phase 严格顺序(P3 阶段锁定用);空数组 = 无前置
+export const WORKFLOW_PHASE_ORDER = ["PREP", "REQUIREMENT", "CONTRACT", "EXECUTE", "FOLLOWUP"] as const;
+export type WorkflowPhase = (typeof WORKFLOW_PHASE_ORDER)[number];
+
+// 锁定状态:DONE 全部完成;PARTIAL 部分完成;LOCKED 前置未达;READY 可开始
+export const WORKFLOW_PHASE_STATE = ["DONE", "PARTIAL", "LOCKED", "READY"] as const;
+export type WorkflowPhaseState = (typeof WORKFLOW_PHASE_STATE)[number];

@@ -12,6 +12,7 @@ import {
   CheckCircleOutlined,
   ClockCircleOutlined,
   ExclamationCircleOutlined,
+  LockOutlined,
   PlayCircleOutlined,
   ReloadOutlined,
   StopOutlined,
@@ -52,6 +53,7 @@ type TaskInstance = {
   completedById: string | null;
   remark: string | null;
   parentInstanceId: string | null;
+  phase: string;
 };
 
 type Stage = {
@@ -63,12 +65,21 @@ type Stage = {
   tasks: TaskInstance[];
 };
 
+type PhaseState = {
+  phase: string;
+  state: "DONE" | "PARTIAL" | "LOCKED" | "READY";
+  completed: number;
+  total: number;
+  lockReason?: string;
+};
+
 type WorkflowDto = {
   templateId: string | null;
   templateName: string | null;
   serviceType: string | null;
   stages: Stage[];
   totals: { total: number; pending: number; inProgress: number; completed: number; skipped: number; blocked: number };
+  phaseStates: PhaseState[];
 };
 
 const STATUS_TONE: Record<string, string> = {
@@ -161,7 +172,8 @@ export function WorkflowSection({ projectId, canEdit }: { projectId: string; can
     );
   }
 
-  const { totals, templateName, stages } = data;
+  const { totals, templateName, stages, phaseStates } = data;
+  const phaseStateTone: Record<string, string> = { DONE: "success", PARTIAL: "processing", LOCKED: "default", READY: "default" };
   const collapseItems = stages.map((s) => ({
     key: s.code,
     label: (
@@ -176,21 +188,46 @@ export function WorkflowSection({ projectId, canEdit }: { projectId: string; can
     ),
     children: (
       <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-        {s.tasks.map((t) => (
-          <TaskCard
-            key={t.id}
-            task={t}
-            canEdit={canEdit}
-            busy={busy === t.id}
-            onAction={(action, body) => callTask(t.id, action, body)}
-          />
-        ))}
+        {s.tasks.map((t) => {
+          const ps = phaseStates?.find((x) => x.phase === t.phase);
+          return (
+            <TaskCard
+              key={t.id}
+              task={t}
+              canEdit={canEdit}
+              busy={busy === t.id}
+              phaseState={ps?.state}
+              lockReason={ps?.lockReason}
+              onAction={(action, body) => callTask(t.id, action, body)}
+            />
+          );
+        })}
       </div>
     )
   }));
 
   return (
     <div>
+      {phaseStates && phaseStates.length > 0 && (
+        <div style={{ marginBottom: 16, padding: "12px 16px", background: "#fafafa", borderRadius: 6 }}>
+          <Text type="secondary" style={{ display: "block", marginBottom: 8, fontSize: 12 }}>阶段进度</Text>
+          <Space wrap size={[8, 8]}>
+            {phaseStates.map((ps) => {
+              const pct = ps.total === 0 ? 0 : Math.round((ps.completed / ps.total) * 100);
+              return (
+                <Tooltip key={ps.phase} title={ps.lockReason ?? `${ps.completed}/${ps.total} 任务`}>
+                  <Tag color={phaseStateTone[ps.state]} style={{ padding: "4px 8px" }}>
+                    {WORKFLOW_PHASE_MAP[ps.phase] ?? ps.phase}
+                    <span style={{ marginLeft: 4, opacity: 0.7 }}>
+                      {ps.state === "LOCKED" ? "🔒" : ps.state === "DONE" ? "✓" : `${pct}%`}
+                    </span>
+                  </Tag>
+                </Tooltip>
+              );
+            })}
+          </Space>
+        </div>
+      )}
       <Space wrap style={{ marginBottom: 12 }}>
         <Tag color="blue">模板: {templateName ?? "-"}</Tag>
         <Tag>共 {totals.total} 项</Tag>
@@ -214,11 +251,15 @@ function TaskCard({
   task,
   canEdit,
   busy,
+  phaseState,
+  lockReason,
   onAction
 }: {
   task: TaskInstance;
   canEdit: boolean;
   busy: boolean;
+  phaseState?: "DONE" | "PARTIAL" | "LOCKED" | "READY";
+  lockReason?: string;
   onAction: (path: string, body?: unknown) => void;
 }) {
   return (
@@ -232,6 +273,11 @@ function TaskCard({
     >
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, flexWrap: "wrap" }}>
         <Space wrap>
+          {phaseState === "LOCKED" && (
+            <Tooltip title={lockReason ?? "前一阶段未完成"}>
+              <Tag color="default" icon={<LockOutlined />}>未解锁</Tag>
+            </Tooltip>
+          )}
           <Tag color={STATUS_TONE[task.status]} icon={STATUS_ICON[task.status]}>
             {WORKFLOW_TASK_STATUS_MAP[task.status]}
           </Tag>
@@ -279,21 +325,37 @@ function TaskCard({
 function TaskActions({
   task,
   busy,
+  phaseState,
+  lockReason,
   onAction
 }: {
   task: TaskInstance;
   busy: boolean;
+  phaseState?: "DONE" | "PARTIAL" | "LOCKED" | "READY";
+  lockReason?: string;
   onAction: (path: string, body?: unknown) => void;
 }) {
   const buttons: React.ReactNode[] = [];
 
   // 状态机按钮
   if (task.status === "PENDING" || task.status === "BLOCKED") {
-    buttons.push(
-      <Button key="start" size="small" type="primary" loading={busy} onClick={() => onAction("/action", { action: "start" })}>
-        开始
-      </Button>
-    );
+    // 阶段锁定信息通过 task.id 之外传,这里我们接受一个 disabled 标记
+    // P3: 通过 props 传入 stageState 判定(简化:在 TaskCard 处判定)
+    if (phaseState === "LOCKED") {
+      buttons.push(
+        <Tooltip key="start-locked" title={lockReason ?? "前一阶段未完成"}>
+          <Button key="start" size="small" type="primary" loading={busy} disabled icon={<LockOutlined />} onClick={() => onAction("/action", { action: "start" })}>
+            未解锁
+          </Button>
+        </Tooltip>
+      );
+    } else {
+      buttons.push(
+        <Button key="start" size="small" type="primary" loading={busy} onClick={() => onAction("/action", { action: "start" })}>
+          开始
+        </Button>
+      );
+    }
   }
   if (task.status === "IN_PROGRESS") {
     buttons.push(

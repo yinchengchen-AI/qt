@@ -67,7 +67,8 @@ const MENU: MenuItem[] = [
     children: [
       { path: "/statistics/overview", name: "总览" },
       { path: "/statistics/aging", name: "账龄分析" },
-      { path: "/statistics/performance", name: "业务员业绩" }
+      { path: "/statistics/performance", name: "业务员业绩" },
+      { path: "/statistics/workflow", name: "工作流概览" }
     ]
   },
   { path: "/messages", name: "消息中心", icon: <BellOutlined /> },
@@ -681,6 +682,7 @@ const CRUMB_LABEL: Record<string, string> = {
   contracts: "合同管理",
   projects: "项目管理",
   workflow: "我的工作流",
+  "statistics/workflow": "工作流概览",
   invoices: "开票管理",
   payments: "回款管理",
   statistics: "统计分析",

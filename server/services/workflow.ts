@@ -20,11 +20,7 @@ import { requirePermission, RESOURCE, ACTION } from "@/lib/permissions";
 import { ownerViaContract } from "@/lib/ownership";
 import { audit } from "@/server/audit";
 import { emit } from "@/server/events/bus";
-import type {
-  WorkflowTaskAction,
-  WorkflowTaskStatus,
-  WorkflowReviewStatus
-} from "@/types/enums";
+import { WORKFLOW_PHASE_ORDER, type WorkflowPhase, type WorkflowTaskAction, type WorkflowTaskStatus, type WorkflowReviewStatus, type WorkflowPhaseState } from "@/types/enums";
 
 // =====================================================
 // 状态机:合法迁移表
@@ -173,6 +169,13 @@ export type ProjectWorkflowDto = {
     }>;
   }>;
   totals: { total: number; pending: number; inProgress: number; completed: number; skipped: number; blocked: number };
+  phaseStates: Array<{
+    phase: string;
+    state: WorkflowPhaseState;
+    completed: number;
+    total: number;
+    lockReason?: string;
+  }>;
 };
 
 export async function getProjectWorkflow(user: SessionUser, projectId: string): Promise<ProjectWorkflowDto> {
@@ -200,7 +203,8 @@ export async function getProjectWorkflow(user: SessionUser, projectId: string): 
       templateName: null,
       serviceType: project.contract?.serviceType ?? null,
       stages: [],
-      totals: { total: 0, pending: 0, inProgress: 0, completed: 0, skipped: 0, blocked: 0 }
+      totals: { total: 0, pending: 0, inProgress: 0, completed: 0, skipped: 0, blocked: 0 },
+      phaseStates: WORKFLOW_PHASE_ORDER.map((ph) => ({ phase: ph, state: "READY" as WorkflowPhaseState, completed: 0, total: 0 }))
     };
   }
 
@@ -263,12 +267,41 @@ export async function getProjectWorkflow(user: SessionUser, projectId: string): 
   const stages = Array.from(stageMap.values()).sort((a, b) => a.sort - b.sort);
   for (const s of stages) s.tasks.sort((a, b) => a.sort - b.sort);
 
+  // P3: 阶段顺序状态(供 UI 展示锁定/进度)
+  const phaseInstanceMap = new Map<string, { status: string; stageRequired: boolean }[]>();
+  for (const ins of instances) {
+    const ph = ins.task.stage.phase;
+    if (!phaseInstanceMap.has(ph)) phaseInstanceMap.set(ph, []);
+    phaseInstanceMap.get(ph)!.push({ status: ins.status, stageRequired: ins.task.stage.isRequired });
+  }
+  const phaseStateMap = await computePhaseStatesForProject(prisma, projectId, phaseInstanceMap);
+  // 取每个阶段的 lockReason(若 LOCKED)
+  const phaseStates: ProjectWorkflowDto["phaseStates"] = [];
+  for (const ph of WORKFLOW_PHASE_ORDER) {
+    const ps = phaseStateMap.get(ph) ?? { state: "READY" as WorkflowPhaseState, completed: 0, total: 0 };
+    let lockReason: string | undefined;
+    if (ps.state === "LOCKED") {
+      // 找前一个 required 阶段中的未完成项
+      const idx = WORKFLOW_PHASE_ORDER.indexOf(ph);
+      const prevPhase = idx > 0 ? WORKFLOW_PHASE_ORDER[idx - 1]! : null;
+      if (prevPhase) {
+        const prevItems = phaseInstanceMap.get(prevPhase) ?? [];
+        const unfinishedCount = prevItems.filter(
+          (i) => i.stageRequired && (i.status === "PENDING" || i.status === "IN_PROGRESS" || i.status === "BLOCKED")
+        ).length;
+        lockReason = `前一阶段「${WORKFLOW_PHASE_TO_CN[prevPhase] ?? prevPhase}」还有 ${unfinishedCount} 项任务未完成`;
+      }
+    }
+    phaseStates.push({ phase: ph, ...ps, lockReason });
+  }
+
   return {
     templateId: template?.id ?? null,
     templateName: template?.name ?? null,
     serviceType: project.contract?.serviceType ?? null,
     stages,
-    totals
+    totals,
+    phaseStates
   };
 }
 
@@ -294,6 +327,19 @@ export async function taskAction(
         `当前状态 ${ins.status} 不允许 ${action}`,
         403
       );
+    }
+    // P3: start 时做阶段顺序锁定校验
+    if (action === "start") {
+      // 复检:ins 来自 loadInstanceForUpdate 已 include task 但没 include stage;此处显式补
+      const stage = await tx.workflowStage.findUniqueOrThrow({ where: { id: ins.task.stageId }, select: { phase: true, isRequired: true } });
+      const lock = await checkPhaseLock(tx, { projectId: ins.projectId, task: { stage: { phase: stage.phase, isRequired: stage.isRequired } } });
+      if (!lock.ok) {
+        throw new ApiError(
+          ERROR_CODES.WORKFLOW_PHASE_LOCKED,
+          `阶段「${WORKFLOW_PHASE_TO_CN[stage.phase] ?? stage.phase}」尚未解锁:${lock.reason}`,
+          422
+        );
+      }
     }
     // start: 自动指派给当前用户
     const data: Prisma.WorkflowTaskInstanceUpdateInput = { status: transition.to };
@@ -504,6 +550,94 @@ function hasDeliverable(attachments: unknown): boolean {
     return Array.isArray(arr) ? arr.length > 0 : Object.keys(attachments).length > 0;
   }
   return false;
+}
+
+
+// =====================================================
+// P3: 阶段顺序锁定
+// =====================================================
+const WORKFLOW_PHASE_TO_CN: Record<string, string> = {
+  PREP: "前期准备",
+  REQUIREMENT: "需求识别",
+  CONTRACT: "合同签订",
+  EXECUTE: "服务实施",
+  FOLLOWUP: "回访与改进"
+};
+
+type PhaseLockResult = { ok: true } | { ok: false; reason: string };
+
+/**
+ * 检查启动 ins 任务时,前一阶段是否已"解锁"
+ * - 首阶段 PREP:永远 OK
+ * - 同阶段内任务:互相独立,不影响
+ * - 阶段 N 的任务要 start,要求所有阶段 N-1 中 stage.isRequired=true 的任务
+ *   都为 COMPLETED 或 SKIPPED(非 required 阶段不阻塞)
+ */
+async function checkPhaseLock(
+  tx: Prisma.TransactionClient,
+  ins: { projectId: string; task: { stage: { phase: string; isRequired: boolean } } }
+): Promise<PhaseLockResult> {
+  const cur = ins.task.stage.phase;
+  const idx = WORKFLOW_PHASE_ORDER.indexOf(cur as WorkflowPhase);
+  if (idx <= 0) return { ok: true }; // PREP 或未知阶段都放行
+  const prevPhase = WORKFLOW_PHASE_ORDER[idx - 1]!;
+  // 找前一阶段所有 stage 的 required 任务
+  // 查当前项目下、阶段 N-1、required 阶段中的未完成实例
+  const unfinished = await tx.workflowTaskInstance.findMany({
+    where: {
+      projectId: ins.projectId,
+      status: { in: ["PENDING", "IN_PROGRESS", "BLOCKED"] },
+      deletedAt: null,
+      task: {
+        // required 在 stage 上(整个阶段 required=true 时,所有任务都视为 required)
+        stage: { phase: prevPhase, isRequired: true }
+      }
+    },
+    select: { id: true, task: { select: { name: true } } }
+  });
+  if (unfinished.length === 0) return { ok: true };
+  return {
+    ok: false,
+    reason: `前一阶段「${WORKFLOW_PHASE_TO_CN[prevPhase] ?? prevPhase}」还有 ${unfinished.length} 项任务未完成(${unfinished[0]!.task.name}${unfinished.length > 1 ? ` 等` : ""})`
+  };
+}
+
+/**
+ * 计算项目各阶段的"进度状态",供前端展示
+ * phaseInstances 形如 Map<phase, [{status, stageRequired}, ...]>
+ * stageRequired 表示该实例所在 stage 是否 required(true=required=阻塞后续)
+ */
+async function computePhaseStatesForProject(
+  _tx: Prisma.TransactionClient,
+  _projectId: string,
+  phaseInstances: Map<string, { status: string; stageRequired: boolean }[]>
+): Promise<Map<string, { state: WorkflowPhaseState; completed: number; total: number; lockReason?: string }>> {
+  const result = new Map<string, { state: WorkflowPhaseState; completed: number; total: number; lockReason?: string }>();
+  let prevPhaseUnfinished = false;
+  for (const phase of WORKFLOW_PHASE_ORDER) {
+    const items = phaseInstances.get(phase) ?? [];
+    const total = items.length;
+    const completed = items.filter((i) => i.status === "COMPLETED" || i.status === "SKIPPED").length;
+    // 只有"required stage 里的未完成实例"才阻塞后续
+    const requiredUnfinished = items.some(
+      (i) => i.stageRequired && (i.status === "PENDING" || i.status === "IN_PROGRESS" || i.status === "BLOCKED")
+    );
+    if (total === 0) {
+      result.set(phase, { state: "READY", completed: 0, total: 0 });
+      continue;
+    }
+    if (completed === total) {
+      result.set(phase, { state: "DONE", completed, total });
+    } else if (prevPhaseUnfinished) {
+      result.set(phase, { state: "LOCKED", completed, total });
+    } else if (completed > 0) {
+      result.set(phase, { state: "PARTIAL", completed, total });
+    } else {
+      result.set(phase, { state: "READY", completed, total });
+    }
+    if (requiredUnfinished) prevPhaseUnfinished = true;
+  }
+  return result;
 }
 
 // =====================================================
@@ -799,4 +933,79 @@ export async function getWorkflowOverview(user: SessionUser): Promise<WorkflowOv
     byStatus: byStatusArr.sort((a, b) => b.count - a.count),
     byServiceType: byServiceTypeArr
   };
+}
+
+// =====================================================
+// P3:超期任务清单(管理员 / 当前用户视角)
+// =====================================================
+export type OverdueTaskDto = {
+  id: string;
+  taskName: string;
+  projectId: string;
+  projectNo: string;
+  projectName: string;
+  phase: string;
+  assigneeId: string | null;
+  assigneeName: string | null;
+  status: WorkflowTaskStatus;
+  reviewStatus: WorkflowReviewStatus | null;
+  startedAt: string | null;
+  estimateDays: number;
+  elapsedDays: number;
+  overdueDays: number;
+};
+
+export async function getOverdueTasks(
+  user: SessionUser,
+  params: { limit?: number } = {}
+): Promise<{ total: number; items: OverdueTaskDto[] }> {
+  requirePermission(user.roleCode, RESOURCE.PROJECT, ACTION.READ);
+  const limit = Math.min(params.limit ?? 50, 200);
+
+  const where: Prisma.WorkflowTaskInstanceWhereInput = {
+    status: "IN_PROGRESS",
+    deletedAt: null,
+    task: { estimateDays: { not: null } },
+    ...(user.roleCode === "SALES" ? { project: { contract: { ownerUserId: user.id } } } : {})
+  };
+  const candidates = await prisma.workflowTaskInstance.findMany({
+    where,
+    include: {
+      task: { include: { stage: { select: { phase: true } } } },
+      project: { select: { id: true, projectNo: true, name: true } }
+    },
+    take: limit
+  });
+  const now = Date.now();
+  const items: OverdueTaskDto[] = [];
+  for (const c of candidates) {
+    if (!c.task.estimateDays) continue;
+    const elapsedDays = (now - c.createdAt.getTime()) / (24 * 60 * 60 * 1000);
+    const overdueDays = elapsedDays - c.task.estimateDays;
+    if (overdueDays <= 0) continue;
+    // 取指派人姓名
+    let assigneeName: string | null = null;
+    if (c.assigneeId) {
+      const u = await prisma.user.findUnique({ where: { id: c.assigneeId }, select: { name: true } });
+      assigneeName = u?.name ?? null;
+    }
+    items.push({
+      id: c.id,
+      taskName: c.task.name,
+      projectId: c.projectId,
+      projectNo: c.project.projectNo,
+      projectName: c.project.name,
+      phase: c.task.stage.phase,
+      assigneeId: c.assigneeId,
+      assigneeName,
+      status: c.status as WorkflowTaskStatus,
+      reviewStatus: c.reviewStatus as WorkflowReviewStatus | null,
+      startedAt: c.updatedAt.toISOString(),
+      estimateDays: c.task.estimateDays,
+      elapsedDays: Math.floor(elapsedDays),
+      overdueDays: Math.floor(overdueDays)
+    });
+  }
+  items.sort((a, b) => b.overdueDays - a.overdueDays);
+  return { total: items.length, items };
 }
