@@ -10,15 +10,18 @@ TS=$(date +"%Y%m%d_%H%M%S")
 LOCAL_FILE="$BACKUP_DIR/qt_biz_$TS.dump"
 mkdir -p "$BACKUP_DIR"
 
-echo "[$(date +%FT%T)] pg_dump"
-pg_dump --format=custom --no-owner --no-acl --file="$LOCAL_FILE" "$MIGRATION_DATABASE_URL"
+echo "[$(date +%FT%T)] pg_dump (via docker, server-side PG 16)"
+SUPER_PW=$(echo "$MIGRATION_DATABASE_URL" | sed -E "s|.*://[^:]+:([^@]+)@.*|\\1|")
+docker exec -e PGPASSWORD="$SUPER_PW" qt-postgres \
+  pg_dump --format=custom --no-owner --no-acl --schema=public -U qitai -d qt_biz \
+  > "$LOCAL_FILE"
 echo "  -> $LOCAL_FILE ($(du -h "$LOCAL_FILE" | cut -f1))"
 
 MC=/usr/local/bin/mc
 if [ -x "$MC" ]; then
   echo "[$(date +%FT%T)] mc cp -> local/qt-backups"
-  "$MC" alias set local http://127.0.0.1:9000 "$MINIO_ACCESS_KEY" "$MINIO_SECRET_KEY" >/dev/null
-  "$MC" mb --ignore-existing local/qt-backups >/dev/null
+  "$MC" --quiet alias set local http://127.0.0.1:9000 "$MINIO_ACCESS_KEY" "$MINIO_SECRET_KEY" >/dev/null
+  "$MC" --quiet mb --ignore-existing local/qt-backups >/dev/null
   "$MC" cp "$LOCAL_FILE" "local/qt-backups/$(basename "$LOCAL_FILE")"
 else
   echo "  WARN: $MC not found, skip MinIO upload"
