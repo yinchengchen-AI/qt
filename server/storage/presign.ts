@@ -158,6 +158,19 @@ export async function presignDownload(input: PresignDownloadInput): Promise<Pres
           canSee = c.ownerUserId === input.userId || c.createdById === input.userId;
         }
       }
+      // 工作流任务附件:无合同/发票关联,通过 JSON 字段反查
+      if (!canSee) {
+        const tasks = await prisma.workflowTaskInstance.findMany({
+          where: { deletedAt: null, attachments: { path: ["items"], array_contains: [{ id: att.id }] } },
+          select: {
+            id: true,
+            project: { select: { contract: { select: { ownerUserId: true, createdById: true } } } }
+          }
+        });
+        canSee = tasks.some(
+          (t) => t.project.contract?.ownerUserId === input.userId || t.project.contract?.createdById === input.userId
+        );
+      }
       if (!canSee) {
         throw new ApiError(ERROR_CODES.FORBIDDEN, "无权下载此附件", 403);
       }
@@ -220,6 +233,25 @@ export async function softDeleteAttachment(attachmentId: string, userId: string)
       } else if (att.invoice.contract) {
         const c = att.invoice.contract;
         if (c.ownerUserId === userId || c.createdById === userId) allowed = true;
+      }
+    }
+    // 工作流任务附件:无合同/发票关联时,通过 JSON 字段反查
+    if (!isAdmin && !allowed) {
+      const tasks = await prisma.workflowTaskInstance.findMany({
+        where: { deletedAt: null, attachments: { path: ["items"], array_contains: [{ id: att.id }] } },
+        select: { id: true, project: { select: { contract: { select: { ownerUserId: true, createdById: true } } } } }
+      });
+      allowed = tasks.some(
+        (t) => t.project.contract?.ownerUserId === userId || t.project.contract?.createdById === userId
+      );
+      // 项目经理 / 任务指派人 / 任务完成人 也可删
+      if (!allowed) {
+        const assignees = await prisma.workflowTaskInstance.findMany({
+          where: { deletedAt: null, OR: [{ assigneeId: userId }, { completedById: userId }] },
+          select: { id: true }
+        });
+        const myInsIds = new Set(assignees.map((x) => x.id));
+        if (tasks.some((t) => myInsIds.has(t.id))) allowed = true;
       }
     }
     if (!isAdmin && !allowed) {

@@ -26,20 +26,20 @@ import {
   DashboardOutlined,
   TeamOutlined,
   FileTextOutlined,
+  AppstoreOutlined,
   ProjectOutlined,
+  PlayCircleOutlined,
   BookOutlined,
   PayCircleOutlined,
   AreaChartOutlined,
-  NotificationOutlined,
   SettingOutlined,
   UserOutlined,
   DownOutlined,
-  CompressOutlined,
-  ExpandOutlined
 } from "@ant-design/icons";
 import type { RoleCode } from "@/types/enums";
 import type { Action, Resource } from "@/lib/permissions";
 import { useResponsive } from "@/lib/use-breakpoint";
+import { ROLE_LABEL } from "@/lib/status";
 
 const { Sider, Header, Content } = Layout;
 const { Text } = Typography;
@@ -56,6 +56,7 @@ const MENU: MenuItem[] = [
   { path: "/customers", name: "客户管理", icon: <TeamOutlined /> },
   { path: "/contracts", name: "合同管理", icon: <FileTextOutlined /> },
   { path: "/projects", name: "项目管理", icon: <ProjectOutlined /> },
+  { path: "/workflow", name: "我的工作流", icon: <PlayCircleOutlined /> },
   { path: "/invoices", name: "开票管理", icon: <BookOutlined /> },
   { path: "/payments", name: "回款管理", icon: <PayCircleOutlined /> },
   {
@@ -65,11 +66,20 @@ const MENU: MenuItem[] = [
     children: [
       { path: "/statistics/overview", name: "总览" },
       { path: "/statistics/aging", name: "账龄分析" },
-      { path: "/statistics/performance", name: "业务员业绩" }
+      { path: "/statistics/performance", name: "业务员业绩" },
+      { path: "/statistics/workflow", name: "工作流概览" },
+      { path: "/workflow/follow-ups", name: "跟进 360" }
     ]
   },
-  { path: "/messages", name: "消息中心", icon: <BellOutlined /> },
-  { path: "/announcements", name: "公告", icon: <NotificationOutlined /> },
+  {
+    path: "/messages",
+    name: "消息与公告",
+    icon: <BellOutlined />,
+    children: [
+      { path: "/messages", name: "消息中心" },
+      { path: "/announcements", name: "公告" }
+    ]
+  },
   {
     path: "/admin",
     name: "系统管理",
@@ -79,7 +89,9 @@ const MENU: MenuItem[] = [
       { path: "/admin/roles", name: "角色权限" },
       { path: "/admin/departments", name: "部门管理" },
       { path: "/admin/dictionaries", name: "数据字典" },
-      { path: "/admin/operation-logs", name: "操作日志" }
+      { path: "/admin/operation-logs", name: "操作日志" },
+      { path: "/admin/workflow-templates", name: "工作流模板" },
+      { path: "/admin/trash", name: "回收站" }
     ]
   }
 ];
@@ -129,22 +141,13 @@ function toAntdMenu(items: MenuItem[]): MenuProps["items"] {
   });
 }
 
-const ROLE_LABEL: Record<RoleCode, string> = {
-  ADMIN: "管理员",
-  SALES: "业务人员",
-  FINANCE: "财务人员",
-  OPS: "行政人员"
-};
-
 export function DashboardShell({ user, children }: Props) {
   const router = useRouter();
   const pathname = usePathname();
   const { token } = theme.useToken();
   const { isMobile, isPhone, md } = useResponsive();
   const [collapsed, setCollapsed] = useState(false);
-  // 手风琴模式: 仅同时打开一个父分组(默认开);关闭后允许多个分组同时展开
-  const [accordion, setAccordion] = useState(true);
-  // 父分组展开状态(controlled, 用于支持手风琴/多开切换)
+  // 父分组展开状态(controlled, 手风琴: 仅同时打开一个父分组)
   const [openKeys, setOpenKeys] = useState<string[]>([]);
   const [unread, setUnread] = useState(0);
   const [navOpen, setNavOpen] = useState(false);
@@ -167,24 +170,6 @@ export function DashboardShell({ user, children }: Props) {
     };
   }, [isMobile]);
 
-  // 读取持久化的手风琴设置
-  useEffect(() => {
-    try {
-      const raw = localStorage.getItem("qt.sidebar.accordion");
-      if (raw === "false") setAccordion(false);
-    } catch {
-      /* SSR or storage blocked */
-    }
-  }, []);
-
-  // 切换时落盘
-  useEffect(() => {
-    try {
-      localStorage.setItem("qt.sidebar.accordion", String(accordion));
-    } catch {
-      /* ignore */
-    }
-  }, [accordion]);
 
   // 路由变化时,把当前页所在父分组纳入 openKeys
   useEffect(() => {
@@ -192,9 +177,9 @@ export function DashboardShell({ user, children }: Props) {
     setOpenKeys((prev) => {
       const missing = defaultOpen.filter((k) => !prev.includes(k));
       if (missing.length === 0) return prev;
-      return accordion ? defaultOpen : [...prev, ...defaultOpen];
+      return defaultOpen;
     });
-  }, [defaultOpen, accordion]);
+  }, [defaultOpen]);
 
   // 移动端路由切换时自动关闭导航 Drawer
   useEffect(() => {
@@ -202,10 +187,6 @@ export function DashboardShell({ user, children }: Props) {
   }, [pathname, isMobile]);
 
   const handleOpenChange = (keys: string[]) => {
-    if (!accordion) {
-      setOpenKeys(keys);
-      return;
-    }
     // 手风琴: 仅保留最新打开的那一个;关闭操作照常放行
     const newlyOpened = keys.filter((k) => !openKeys.includes(k));
     setOpenKeys(newlyOpened.length > 0 ? newlyOpened : keys);
@@ -332,50 +313,6 @@ export function DashboardShell({ user, children }: Props) {
         }}
       />
 
-      <div
-        style={{
-          position: "absolute",
-          bottom: 0,
-          left: 0,
-          right: 0,
-          padding: "8px 12px",
-          borderTop: `1px solid ${token.colorSplit}`,
-          display: "flex",
-          alignItems: "center",
-          justifyContent: collapsed ? "center" : "space-between",
-          gap: 8
-        }}
-      >
-        <Tooltip
-          placement="right"
-          title={accordion ? "手风琴模式:同时仅打开一个分组(点击切换为多开)" : "多开模式:允许多个分组同时展开(点击切换为手风琴)"}
-        >
-          <button
-            type="button"
-            onClick={() => setAccordion((a) => !a)}
-            aria-label={accordion ? "关闭手风琴" : "开启手风琴"}
-            aria-pressed={accordion}
-            style={{
-              background: accordion ? token.colorPrimaryBg : "transparent",
-              border: `1px solid ${accordion ? token.colorPrimaryBorder : token.colorSplit}`,
-              padding: collapsed ? "6px 8px" : "4px 10px",
-              cursor: "pointer",
-              color: accordion ? token.colorPrimary : token.colorTextSecondary,
-              fontSize: 12,
-              display: "inline-flex",
-              alignItems: "center",
-              gap: 6,
-              borderRadius: 6,
-              transition: "background-color 160ms, border-color 160ms, color 160ms",
-              width: collapsed ? "auto" : "100%",
-              justifyContent: collapsed ? "center" : "flex-start"
-            }}
-          >
-            {accordion ? <CompressOutlined /> : <ExpandOutlined />}
-            {!collapsed && <span>{accordion ? "手风琴" : "多开"}</span>}
-          </button>
-        </Tooltip>
-      </div>
     </Sider>
   );
 
@@ -673,11 +610,22 @@ export function DashboardShell({ user, children }: Props) {
   );
 }
 
+// URL 与菜单层级不一致的路由 — 按菜单结构定义面包屑,绕开按路径段拆分
+const BREADCRUMB_OVERRIDE: Record<string, string[]> = {
+  // /workflow/follow-ups 在菜单上属于 统计分析 父菜单,不再是 我的工作流 子项
+  "/workflow/follow-ups": ["统计分析", "跟进 360"]
+};
+
 const CRUMB_LABEL: Record<string, string> = {
   dashboard: "工作台",
   customers: "客户管理",
   contracts: "合同管理",
   projects: "项目管理",
+  workflow: "我的工作流",
+  "workflow/board": "工作流看板",
+  "statistics/workflow": "工作流概览",
+  "admin/workflow-templates": "工作流模板",
+  "admin/trash": "回收站",
   invoices: "开票管理",
   payments: "回款管理",
   statistics: "统计分析",
@@ -697,7 +645,8 @@ const CRUMB_LABEL: Record<string, string> = {
 };
 
 function Crumbs({ pathname, compact }: { pathname: string; compact?: boolean }) {
-  const parts = pathname.split("/").filter(Boolean);
+  const override = BREADCRUMB_OVERRIDE[pathname];
+  const parts = override ?? pathname.split("/").filter(Boolean);
   if (parts.length === 0) {
     return <Text type="secondary">工作台</Text>;
   }

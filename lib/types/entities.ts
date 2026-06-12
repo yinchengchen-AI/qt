@@ -98,7 +98,10 @@ export type Project = {
   customerId: string;
   customerName: string;
   attachments: AttachmentSnapshot[];
-  progressLogs: { id: string; projectId: string; userId: string; percent: number; remark: string; at: string }[];
+  // 项目里程碑时间线:仅文本记录(自 v0.3.1 起 percent 字段已从表与 API 中物理删除)
+  progressLogs: { id: string; projectId: string; userId: string; remark: string; at: string }[];
+  // 数字进度,由工作流任务完成度派生(Project.progressPct)
+  progressPct: number;
 };
 
 export type PaymentAllocation = {

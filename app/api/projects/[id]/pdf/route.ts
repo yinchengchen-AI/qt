@@ -17,6 +17,8 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
       prisma.projectProgressLog.findMany({ where: { projectId: id }, orderBy: { at: "desc" }, take: 20 })
     ]);
 
+    // progressPct 来自 getProject 的派生字段(读时计算)
+    const progressPct = (p as { progressPct?: number }).progressPct ?? 0;
     const doc: PrintDoc = {
       title: `项目 - ${p.projectNo}`,
       subtitle: `${p.name} · 所属合同 ${p.contract?.contractNo ?? p.contractId ?? "—"}`,
@@ -29,13 +31,14 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
         { label: "预算", value: p.budgetAmount ? Number(p.budgetAmount).toFixed(2) : "—" },
         { label: "项目负责人", value: manager ? `${manager.name} (${manager.employeeNo})` : "—" },
         { label: "状态", value: p.status },
-        { label: "服务范围", value: p.serviceScope ?? "—" }
+        { label: "服务范围", value: p.serviceScope ?? "—" },
+        { label: "项目进度(工作流派生)", value: `${progressPct.toFixed(1)}%` }
       ],
       sections: [
         {
-          title: "进度日志",
+          title: "里程碑日志",
           rows: progressLogs.length
-            ? progressLogs.map((l) => ({ label: new Date(l.at).toLocaleString("zh-CN"), value: `${l.percent}% · ${l.remark}` }))
+            ? progressLogs.map((l) => ({ label: new Date(l.at).toLocaleString("zh-CN"), value: l.remark ?? "" }))
             : [{ label: "(无)", value: "" }]
         }
       ]

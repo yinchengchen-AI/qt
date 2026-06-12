@@ -4,7 +4,6 @@ import { requireSession } from "@/lib/session";
 import { projectAction } from "@/server/services/project";
 
 const schema = z.object({
-  percent: z.number().int().min(0).max(100).optional(),
   remark: z.string().max(500).optional()
 });
 

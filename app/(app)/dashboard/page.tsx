@@ -10,6 +10,7 @@ import { StatGrid, type StatItem } from "@/components/stat-grid";
 import { EmptyState } from "@/components/empty-state";
 import { formatCompact, formatCurrency } from "@/lib/format";
 import { StatusTag } from "@/components/status-tag";
+import { MyTasksWidget } from "@/components/workflow/my-tasks-widget";
 import { useResponsive } from "@/lib/use-breakpoint";
 
 const { Text } = Typography;
@@ -112,6 +113,8 @@ export default function DashboardPage() {
       <section style={{ marginBottom: 24 }}>
         <StatGrid items={kpiItems} columns={5} />
       </section>
+
+      <MyTasksWidget />
 
       {/*** 客户 + 项目 分布 ***/}
       <Row gutter={[16, 16]} style={{ marginBottom: 24 }}>

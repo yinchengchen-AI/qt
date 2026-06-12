@@ -47,6 +47,14 @@ export const reviewActionSchema = z.object({
   comment: z.string().max(500).optional()
 });
 
+// 合同生命周期:执行中 / 暂停 / 恢复 / 结清
+// 由已生效/执行中/已暂停的合同进入下一阶段,无审批环节
+// action 由 URL 路径 (/execute /suspend /resume /complete) 决定,body 只承载可选 comment
+export const lifecycleActionSchema = z.object({
+  comment: z.string().max(500).optional()
+});
+
 export type ContractCreateInput = z.infer<typeof contractCreateSchema>;
 export type ContractUpdateInput = z.infer<typeof contractUpdateSchema>;
 export type ReviewActionInput = z.infer<typeof reviewActionSchema>;
+export type LifecycleActionInput = z.infer<typeof lifecycleActionSchema>;

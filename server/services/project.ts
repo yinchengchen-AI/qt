@@ -3,11 +3,102 @@ import { ApiError } from "@/lib/api";
 import { ERROR_CODES } from "@/types/errors";
 import { type SessionUser } from "@/lib/session";
 import { nextBusinessNo } from "@/lib/sequence";
+import { instantiateProjectWorkflow } from "./workflow";
 import { audit } from "@/server/audit";
 import { requirePermission, RESOURCE, ACTION } from "@/lib/permissions";
 import type { ProjectCreateInput, ProjectUpdateInput, ProjectActionInput } from "@/lib/validators/project";
 import type { Prisma } from "@prisma/client";
 import { ownerEq, ownerViaContract, parseStatusList } from "@/lib/ownership";
+
+// P14: 项目 360 视图 — 聚合工作流统计数据
+import { WORKFLOW_PHASE_ORDER } from "@/types/enums";
+
+export type ProjectOverview = {
+  workflowStats: {
+    totalTasks: number;
+    completed: number;
+    inProgress: number;
+    pending: number;
+    blocked: number;
+    byPhase: Array<{ phase: string; name: string; total: number; completed: number; locked: boolean }>;
+  };
+};
+
+export async function getProjectOverview(user: SessionUser, id: string): Promise<ProjectOverview> {
+  requirePermission(user.roleCode, RESOURCE.PROJECT, ACTION.READ);
+  const p = await prisma.project.findFirst({
+    where: { id, deletedAt: null, ...(ownerViaContract(user) as Prisma.ProjectWhereInput) }
+  });
+  if (!p) throw new ApiError(ERROR_CODES.NOT_FOUND, "项目不存在", 404);
+
+  const instances = await prisma.workflowTaskInstance.findMany({
+    where: { projectId: id, deletedAt: null },
+    include: {
+      task: {
+        include: { stage: { select: { phase: true, code: true } } }
+      }
+    }
+  });
+
+  const statusCount: Record<string, number> = { PENDING: 0, IN_PROGRESS: 0, COMPLETED: 0, BLOCKED: 0, SKIPPED: 0 };
+  type PEntry = { total: number; completed: number };
+  const phaseMap = new Map<string, PEntry>();
+
+  for (const inst of instances) {
+    statusCount[inst.status] = (statusCount[inst.status] ?? 0) + 1;
+    const phase = inst.task.stage.phase;
+    if (!phaseMap.has(phase)) phaseMap.set(phase, { total: 0, completed: 0 });
+    const entry = phaseMap.get(phase)!;
+    entry.total++;
+    if (inst.status === "COMPLETED" || inst.status === "SKIPPED") entry.completed++;
+  }
+
+  const PHASE_NAME: Record<string, string> = {
+    PREP: "前期准备", REQUIREMENT: "需求确认", CONTRACT: "合同签订", EXECUTE: "执行交付", FOLLOWUP: "后续跟进"
+  };
+  const byPhase: ProjectOverview["workflowStats"]["byPhase"] = WORKFLOW_PHASE_ORDER.map((phase) => {
+    const entry = phaseMap.get(phase) ?? { total: 0, completed: 0 };
+    const prevIdx = WORKFLOW_PHASE_ORDER.indexOf(phase) - 1;
+    let locked = false;
+    if (prevIdx >= 0) {
+      const prevPhase = WORKFLOW_PHASE_ORDER[prevIdx];
+      const prev = prevPhase ? phaseMap.get(prevPhase) : undefined;
+      locked = !prev || prev.completed < prev.total;
+    }
+    return {
+      phase,
+      name: PHASE_NAME[phase] ?? phase,
+      total: entry.total,
+      completed: entry.completed,
+      locked
+    };
+  });
+
+  return {
+    workflowStats: {
+      totalTasks: instances.length,
+      completed: (statusCount.COMPLETED ?? 0) + (statusCount.SKIPPED ?? 0),
+      inProgress: statusCount.IN_PROGRESS ?? 0,
+      pending: statusCount.PENDING ?? 0,
+      blocked: statusCount.BLOCKED ?? 0,
+      byPhase
+    }
+  };
+}
+
+/**
+ * 从工作流任务实例派生项目完成度(读时计算,不落库)
+ * = COMPLETED / (total - SKIPPED) * 100,保留 1 位小数
+ * 无任务时返回 0;所有任务都 SKIPPED 时也按 0 处理
+ */
+export function computeProgressPct(instances: Array<{ status: string }>): number {
+  const total = instances.length;
+  if (total === 0) return 0;
+  const skipped = instances.filter((i) => i.status === "SKIPPED").length;
+  const denom = Math.max(1, total - skipped);
+  const done = instances.filter((i) => i.status === "COMPLETED").length;
+  return Math.round((done / denom) * 1000) / 10;
+}
 
 export async function listProjects(
   user: SessionUser,
@@ -30,7 +121,25 @@ export async function listProjects(
     prisma.project.findMany({ where, orderBy: { createdAt: "desc" }, skip: (page - 1) * pageSize, take: pageSize, include: { contract: { select: { contractNo: true, title: true, ownerUserId: true, totalAmount: true } } } }),
     prisma.project.count({ where })
   ]);
-  return { list, total, page, pageSize };
+  // 批量加载这些项目的工作流任务实例,按 projectId 分组后计算 progressPct(避免 N+1)
+  const ids = list.map((p) => p.id);
+  const instances = ids.length > 0
+    ? await prisma.workflowTaskInstance.findMany({
+        where: { projectId: { in: ids }, deletedAt: null },
+        select: { projectId: true, status: true }
+      })
+    : [];
+  const byProject = new Map<string, Array<{ status: string }>>();
+  for (const ins of instances) {
+    const arr = byProject.get(ins.projectId) ?? [];
+    arr.push({ status: ins.status });
+    byProject.set(ins.projectId, arr);
+  }
+  const listWithProgress = list.map((p) => ({
+    ...p,
+    progressPct: computeProgressPct(byProject.get(p.id) ?? [])
+  }));
+  return { list: listWithProgress, total, page, pageSize };
 }
 
 export async function getProject(user: SessionUser, id: string) {
@@ -40,39 +149,11 @@ export async function getProject(user: SessionUser, id: string) {
     include: { contract: true, progressLogs: { orderBy: { at: "desc" }, take: 20 } }
   });
   if (!p) throw new ApiError(ERROR_CODES.NOT_FOUND, "项目不存在", 404);
-  return p;
-}
-
-export async function createProject(user: SessionUser, input: ProjectCreateInput) {
-  requirePermission(user.roleCode, RESOURCE.PROJECT, ACTION.CREATE);
-  return prisma.$transaction(async (tx) => {
-    const contract = await tx.contract.findFirst({ where: { id: input.contractId, deletedAt: null, ...ownerEq(user) } });
-    if (!contract) throw new ApiError(ERROR_CODES.NOT_FOUND, "合同不存在", 404);
-    // R-05
-    if (contract.status !== "EFFECTIVE" && contract.status !== "EXECUTING") {
-      throw new ApiError(ERROR_CODES.PROJECT_CONTRACT_NOT_EFFECTIVE, "项目必须挂在 EFFECTIVE/EXECUTING 状态的合同下", 422);
-    }
-    // R-06
-    if (new Date(input.endDate) > new Date(contract.endDate)) {
-      throw new ApiError(ERROR_CODES.PROJECT_DATE_OUT_OF_RANGE, "项目结束日期不能晚于合同结束日期", 422);
-    }
-    const projectNo = await nextBusinessNo("PROJECT");
-    return tx.project.create({
-      data: {
-        projectNo,
-        contractId: input.contractId,
-        name: input.name,
-        serviceScope: input.serviceScope,
-        managerUserId: input.managerUserId ?? user.id,
-        startDate: new Date(input.startDate),
-        endDate: new Date(input.endDate),
-        budgetAmount: input.budgetAmount ?? null,
-        status: "PLANNED",
-        createdById: user.id,
-        updatedById: user.id
-      }
-    });
+  const instances = await prisma.workflowTaskInstance.findMany({
+    where: { projectId: id, deletedAt: null },
+    select: { status: true }
   });
+  return { ...p, progressPct: computeProgressPct(instances) };
 }
 
 export async function updateProject(user: SessionUser, id: string, input: ProjectUpdateInput) {
@@ -119,10 +200,35 @@ export async function projectAction(user: SessionUser, id: string, input: Projec
       close: { from: ["ACCEPTED"], to: "CLOSED" },
       cancel: { from: ["PLANNED", "IN_PROGRESS", "SUSPENDED"], to: "CANCELLED" }
     };
+    // R-17:deliver / accept / close 三个向前推进动作,要求所有 requiresDeliverable=true 的工作流任务
+    // 必须 COMPLETED 或 SKIPPED,否则拒绝并报 PROJECT_DELIVERABLES_INCOMPLETE。
+    // cancel 不在此门控内:取消即停,遗留任务保留为 PENDING/IN_PROGRESS 作为历史。
+    if (["deliver", "accept", "close"].includes(input.action)) {
+      const pending = await tx.workflowTaskInstance.count({
+        where: {
+          projectId: id,
+          deletedAt: null,
+          status: { notIn: ["COMPLETED", "SKIPPED"] },
+          task: { requiresDeliverable: true }
+        }
+      });
+      if (pending > 0) {
+        throw new ApiError(
+          ERROR_CODES.PROJECT_DELIVERABLES_INCOMPLETE,
+          `仍有 ${pending} 个必交付任务未完成,项目不可 ${input.action}`,
+          422
+        );
+      }
+    }
     if (input.action === "progress") {
-      if (typeof input.percent !== "number") throw new ApiError(ERROR_CODES.VALIDATION_FAILED, "请填写 percent", 400);
+      // 项目级里程碑记录:仅写 remark(text),不携带任何数字;
+      // 数字进度自 v0.3.1 起由工作流任务完成度派生(Project.progressPct)
+      const remark = (input.remark ?? "").trim();
+      if (!remark) {
+        throw new ApiError(ERROR_CODES.VALIDATION_FAILED, "请填写里程碑说明", 400);
+      }
       await tx.projectProgressLog.create({
-        data: { projectId: id, userId: user.id, percent: input.percent, remark: input.remark ?? "" }
+        data: { projectId: id, userId: user.id, remark }
       });
       return tx.project.findUniqueOrThrow({ where: { id } });
     }
@@ -136,4 +242,47 @@ export async function projectAction(user: SessionUser, id: string, input: Projec
     await audit(tx, { actorId: user.id, action: `PROJECT_${input.action.toUpperCase()}`, entity: "Project", entityId: id, before, after: { status: t.to } });
     return updated;
   });
+}
+export async function createProject(user: SessionUser, input: ProjectCreateInput) {
+  requirePermission(user.roleCode, RESOURCE.PROJECT, ACTION.CREATE);
+  const project = await prisma.$transaction(async (tx) => {
+    const contract = await tx.contract.findFirst({ where: { id: input.contractId, deletedAt: null, ...ownerEq(user) } });
+    if (!contract) throw new ApiError(ERROR_CODES.NOT_FOUND, "合同不存在", 404);
+    // R-05
+    if (contract.status !== "EFFECTIVE" && contract.status !== "EXECUTING") {
+      throw new ApiError(ERROR_CODES.PROJECT_CONTRACT_NOT_EFFECTIVE, "项目必须挂在 EFFECTIVE/EXECUTING 状态的合同下", 422);
+    }
+    // R-06
+    if (new Date(input.endDate) > new Date(contract.endDate)) {
+      throw new ApiError(ERROR_CODES.PROJECT_DATE_OUT_OF_RANGE, "项目结束日期不能晚于合同结束日期", 422);
+    }
+    const projectNo = await nextBusinessNo("PROJECT");
+    return tx.project.create({
+      data: {
+        projectNo,
+        contractId: input.contractId,
+        name: input.name,
+        serviceScope: input.serviceScope,
+        managerUserId: input.managerUserId ?? user.id,
+        startDate: new Date(input.startDate),
+        endDate: new Date(input.endDate),
+        budgetAmount: input.budgetAmount ?? null,
+        status: "PLANNED",
+        createdById: user.id,
+        updatedById: user.id
+      }
+    });
+  });
+  // P1: 创建项目后自动实例化工作流(失败不阻塞项目创建,记录审计即可)
+  try {
+    await instantiateProjectWorkflow(user, project.id);
+  } catch (e) {
+    if (e instanceof ApiError && e.errorCode === ERROR_CODES.WORKFLOW_TEMPLATE_NOT_FOUND) {
+      // 合同 serviceType 没模板,跳过(常见于 OTHER)
+      console.warn(`[workflow] project ${project.id} skipped auto-init:`, e.message);
+    } else {
+      console.error(`[workflow] project ${project.id} auto-init failed:`, e);
+    }
+  }
+  return project;
 }

@@ -62,6 +62,18 @@ const TYPE_TO_TEMPLATE: Record<string, (p: Record<string, unknown>, uid: string)
     title: `客户 ${p.customerName} 已 ${p.daysInactive} 天未跟进`,
     content: `请尽快联系客户。`,
     link: { kind: "customer", id: p.customerId }
+  }),
+  WORKFLOW_TASK_ASSIGNED: (p) => ({
+    receiverUserId: "",
+    title: `任务「${p.taskName}」已指派给您`,
+    content: `所属项目: ${p.projectNo ?? "-"}\n预估 ${p.estimateDays ?? "-"} 天`,
+    link: { kind: "project", id: p.projectId }
+  }),
+  WORKFLOW_REVIEW_REQUESTED: (p) => ({
+    receiverUserId: "",
+    title: `报告「${p.taskName}」等待您校核/审核`,
+    content: `项目: ${p.projectNo ?? "-"}\n提交人: ${p.submittedByName ?? "-"}`,
+    link: { kind: "project", id: p.projectId }
   })
 };
 
