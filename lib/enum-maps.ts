@@ -28,7 +28,11 @@ export const REVIEW_ACTION_MAP: Record<string, string> = {
   SUBMIT:    "提交审批",
   APPROVE:   "批准",
   REJECT:    "驳回",
-  WITHDRAW:  "撤回"
+  WITHDRAW:  "撤回",
+  EXECUTE:   "开始执行",
+  SUSPEND:   "暂停",
+  RESUME:    "恢复",
+  COMPLETE:  "结清"
 };
 
 export const USER_STATUS_MAP: Record<string, string> = {

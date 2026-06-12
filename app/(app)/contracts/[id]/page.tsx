@@ -24,7 +24,11 @@ const REVIEW_ACTION_TONE: Record<string, string> = {
   SUBMIT:    "processing",
   APPROVE:   "success",
   REJECT:    "danger",
-  WITHDRAW:  "warning"
+  WITHDRAW:  "warning",
+  EXECUTE:   "processing",
+  SUSPEND:   "warning",
+  RESUME:    "processing",
+  COMPLETE:  "success"
 };
 
 const DESC_COL = { xs: 1, sm: 1, md: 2, lg: 2, xl: 3 } as const;

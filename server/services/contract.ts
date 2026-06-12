@@ -310,6 +310,64 @@ export async function terminateContract(user: SessionUser, id: string, reason?: 
   });
 }
 
+// 合同生命周期：执行 / 暂停 / 恢复 / 结清
+// 与审批 (submit/approve/...) 不同,这组操作由已生效或已开始的合同走,无审批环节。
+// 状态机：
+//   EXECUTE   EFFECTIVE        → EXECUTING
+//   SUSPEND   EXECUTING        → SUSPENDED
+//   RESUME    SUSPENDED        → EXECUTING
+//   COMPLETE  EFFECTIVE|EXECUTING|SUSPENDED → COMPLETED
+export type LifecycleAction = "EXECUTE" | "SUSPEND" | "RESUME" | "COMPLETE";
+
+const LIFECYCLE_TRANSITIONS: Record<LifecycleAction, { from: string[]; to: string }> = {
+  EXECUTE:  { from: ["EFFECTIVE"],         to: "EXECUTING" },
+  SUSPEND:  { from: ["EXECUTING"],         to: "SUSPENDED" },
+  RESUME:   { from: ["SUSPENDED"],         to: "EXECUTING" },
+  COMPLETE: { from: ["EFFECTIVE", "EXECUTING", "SUSPENDED"], to: "COMPLETED" }
+};
+
+export async function lifecycleContract(
+  user: SessionUser,
+  id: string,
+  action: LifecycleAction,
+  comment?: string
+) {
+  requirePermission(user.roleCode, RESOURCE.CONTRACT, ACTION.UPDATE);
+  if (user.roleCode !== "ADMIN") throw new ApiError(ERROR_CODES.FORBIDDEN, "仅管理员可操作合同生命周期", 403);
+
+  const c = await prisma.contract.findFirst({ where: { id, deletedAt: null, ...ownerEq(user) } });
+  if (!c) throw new ApiError(ERROR_CODES.NOT_FOUND, "合同不存在", 404);
+
+  const t = LIFECYCLE_TRANSITIONS[action];
+  if (!t.from.includes(c.status)) {
+    throw new ApiError(
+      ERROR_CODES.ENTITY_IMMUTABLE,
+      `合同当前状态 ${c.status} 不允许 ${action}（须 ${t.from.join(" / ")}）`,
+      403
+    );
+  }
+
+  const before = { status: c.status };
+  const updated = await prisma.contract.update({
+    where: { id },
+    data: { status: t.to, reviewComment: comment ?? c.reviewComment, updatedById: user.id }
+  });
+  // 记到合同专用的 review log(详情页时间线会拉这份),同时记到全局 audit
+  await prisma.contractReviewLog.create({
+    data: { contractId: id, reviewerId: user.id, action, comment: comment ?? null }
+  });
+  await audit(prisma, {
+    actorId: user.id,
+    action: `CONTRACT_${action}`,
+    entity: "Contract",
+    entityId: id,
+    before,
+    after: { status: t.to }
+  });
+  return updated;
+}
+
+
 // =====================================================
 // P11: 合同 360 度视图
 // =====================================================
