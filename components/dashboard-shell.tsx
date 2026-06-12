@@ -27,7 +27,6 @@ import {
   TeamOutlined,
   FileTextOutlined,
   AppstoreOutlined,
-  NotificationOutlined,
   ProjectOutlined,
   PlayCircleOutlined,
   BookOutlined,
@@ -57,16 +56,7 @@ const MENU: MenuItem[] = [
   { path: "/customers", name: "客户管理", icon: <TeamOutlined /> },
   { path: "/contracts", name: "合同管理", icon: <FileTextOutlined /> },
   { path: "/projects", name: "项目管理", icon: <ProjectOutlined /> },
-  {
-    path: "/workflow",
-    name: "我的工作流",
-    icon: <PlayCircleOutlined />,
-    children: [
-      { path: "/workflow", name: "任务列表" },
-      { path: "/workflow/notifications", name: "通知中心" },
-      { path: "/workflow/follow-ups", name: "跟进 360" }
-    ]
-  },
+  { path: "/workflow", name: "我的工作流", icon: <PlayCircleOutlined /> },
   { path: "/invoices", name: "开票管理", icon: <BookOutlined /> },
   { path: "/payments", name: "回款管理", icon: <PayCircleOutlined /> },
   {
@@ -77,7 +67,8 @@ const MENU: MenuItem[] = [
       { path: "/statistics/overview", name: "总览" },
       { path: "/statistics/aging", name: "账龄分析" },
       { path: "/statistics/performance", name: "业务员业绩" },
-      { path: "/statistics/workflow", name: "工作流概览" }
+      { path: "/statistics/workflow", name: "工作流概览" },
+      { path: "/workflow/follow-ups", name: "跟进 360" }
     ]
   },
   {
@@ -619,6 +610,12 @@ export function DashboardShell({ user, children }: Props) {
   );
 }
 
+// URL 与菜单层级不一致的路由 — 按菜单结构定义面包屑,绕开按路径段拆分
+const BREADCRUMB_OVERRIDE: Record<string, string[]> = {
+  // /workflow/follow-ups 在菜单上属于 统计分析 父菜单,不再是 我的工作流 子项
+  "/workflow/follow-ups": ["统计分析", "跟进 360"]
+};
+
 const CRUMB_LABEL: Record<string, string> = {
   dashboard: "工作台",
   customers: "客户管理",
@@ -626,8 +623,6 @@ const CRUMB_LABEL: Record<string, string> = {
   projects: "项目管理",
   workflow: "我的工作流",
   "workflow/board": "工作流看板",
-  "workflow/notifications": "工作流通知",
-  "workflow/follow-ups": "跟进 360",
   "statistics/workflow": "工作流概览",
   "admin/workflow-templates": "工作流模板",
   "admin/trash": "回收站",
@@ -650,7 +645,8 @@ const CRUMB_LABEL: Record<string, string> = {
 };
 
 function Crumbs({ pathname, compact }: { pathname: string; compact?: boolean }) {
-  const parts = pathname.split("/").filter(Boolean);
+  const override = BREADCRUMB_OVERRIDE[pathname];
+  const parts = override ?? pathname.split("/").filter(Boolean);
   if (parts.length === 0) {
     return <Text type="secondary">工作台</Text>;
   }
