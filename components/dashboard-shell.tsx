@@ -27,6 +27,7 @@ import {
   TeamOutlined,
   FileTextOutlined,
   ProjectOutlined,
+  PlayCircleOutlined,
   BookOutlined,
   PayCircleOutlined,
   AreaChartOutlined,
@@ -56,6 +57,7 @@ const MENU: MenuItem[] = [
   { path: "/customers", name: "客户管理", icon: <TeamOutlined /> },
   { path: "/contracts", name: "合同管理", icon: <FileTextOutlined /> },
   { path: "/projects", name: "项目管理", icon: <ProjectOutlined /> },
+  { path: "/workflow", name: "我的工作流", icon: <PlayCircleOutlined /> },
   { path: "/invoices", name: "开票管理", icon: <BookOutlined /> },
   { path: "/payments", name: "回款管理", icon: <PayCircleOutlined /> },
   {
@@ -678,6 +680,7 @@ const CRUMB_LABEL: Record<string, string> = {
   customers: "客户管理",
   contracts: "合同管理",
   projects: "项目管理",
+  workflow: "我的工作流",
   invoices: "开票管理",
   payments: "回款管理",
   statistics: "统计分析",

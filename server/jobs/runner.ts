@@ -2,6 +2,7 @@
 // 每个 job 接受 prisma + now，返回统计
 import { prisma } from "@/lib/prisma";
 import { emit } from "@/server/events/bus";
+import { generateAllRecurringInstances } from "@/server/services/workflow";
 
 export type JobResult = { job: string; created: number; scanned: number; durationMs: number };
 
@@ -14,7 +15,8 @@ export async function runAllJobs(now = new Date()): Promise<JobResult[]> {
     contractExpiringJob(now, admins),
     invoiceOverdueJob(now, admins),
     projectDueJob(now, admins),
-    customerInactiveJob(now)
+    customerInactiveJob(now),
+    recurringTasksJob(now)
   ]);
 }
 
@@ -175,4 +177,11 @@ export async function customerInactiveJob(now: Date): Promise<JobResult> {
     created++;
   }
   return { job: "customer-inactive", created, scanned, durationMs: Date.now() - t0 };
+}
+
+// 循环任务:扫描所有 active 项目,为周期已到的循环任务生成下一个实例
+export async function recurringTasksJob(now: Date): Promise<JobResult> {
+  const t0 = Date.now();
+  const r = await generateAllRecurringInstances(now);
+  return { job: "recurring-tasks", created: r.generated, scanned: r.scanned, durationMs: Date.now() - t0 };
 }

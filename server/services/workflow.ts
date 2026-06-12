@@ -19,6 +19,7 @@ import { type SessionUser } from "@/lib/session";
 import { requirePermission, RESOURCE, ACTION } from "@/lib/permissions";
 import { ownerViaContract } from "@/lib/ownership";
 import { audit } from "@/server/audit";
+import { emit } from "@/server/events/bus";
 import type {
   WorkflowTaskAction,
   WorkflowTaskStatus,
@@ -375,6 +376,30 @@ export async function reviewTask(
       after: { reviewStatus: updated.reviewStatus }
     });
     return updated;
+    // P2: submit 校核时通知项目负责人 + 管理员去审核
+    if (action === "submit") {
+      const receivers = new Set<string>([ins.project.managerUserId]);
+      const admins = await tx.user.findMany({
+        where: { role: { code: "ADMIN" }, deletedAt: null, status: "ACTIVE" },
+        select: { id: true }
+      });
+      for (const a of admins) receivers.add(a.id);
+      receivers.delete(user.id);
+      if (receivers.size > 0) {
+        const submitter = await tx.user.findUnique({ where: { id: user.id }, select: { name: true } });
+        await emit(tx, {
+          type: "WORKFLOW_REVIEW_REQUESTED",
+          payload: {
+            projectId: ins.projectId,
+            projectNo: ins.project.projectNo,
+            taskName: ins.task.name,
+            submittedByName: submitter?.name ?? user.name
+          },
+          receivers: Array.from(receivers)
+        });
+      }
+    }
+
   });
 }
 
@@ -401,6 +426,19 @@ export async function assignTask(user: SessionUser, instanceId: string, assignee
       before: { assigneeId: ins.assigneeId },
       after: { assigneeId }
     });
+    // P2: 通知新指派人(指派人变化且非空时)
+    if (assigneeId && assigneeId !== ins.assigneeId) {
+      await emit(tx, {
+        type: "WORKFLOW_TASK_ASSIGNED",
+        payload: {
+          projectId: ins.projectId,
+          projectNo: ins.project.projectNo,
+          taskName: ins.task.name,
+          estimateDays: ins.task.estimateDays
+        },
+        receivers: [assigneeId]
+      });
+    }
     return updated;
   });
 }
@@ -432,61 +470,7 @@ export async function updateTaskRemark(
 }
 
 // =====================================================
-// 循环任务:为 PENDING/IN_PROGRESS 已完成的任务生成下一个实例(占位,P2 接 cron)
-// 当前未挂载调度,先暴露供管理员手动调用
-// =====================================================
-export async function generateRecurringInstances(user: SessionUser, projectId: string) {
-  requirePermission(user.roleCode, RESOURCE.PROJECT, ACTION.UPDATE);
-  return prisma.$transaction(async (tx) => {
-    const project = await tx.project.findFirst({
-      where: { id: projectId, deletedAt: null, ...(ownerViaContract(user) as Prisma.ProjectWhereInput) }
-    });
-    if (!project) throw new ApiError(ERROR_CODES.NOT_FOUND, "项目不存在", 404);
 
-    const instances = await tx.workflowTaskInstance.findMany({
-      where: { projectId, deletedAt: null },
-      include: { task: true }
-    });
-    const generated: { parentInstanceId: string; newInstanceId: string }[] = [];
-    for (const ins of instances) {
-      if (!ins.task.isRecurring) continue;
-      if (ins.status !== "COMPLETED" && ins.status !== "IN_PROGRESS") continue;
-      // 找最新同 task 的实例,避免重复生
-      const siblings = instances.filter((x) => x.taskId === ins.taskId);
-      const latest = siblings[siblings.length - 1];
-      if (latest && latest.id !== ins.id) continue;
-      // 已生过下一个,跳过
-      const hasChild = await tx.workflowTaskInstance.findFirst({
-        where: { parentInstanceId: ins.id, deletedAt: null }
-      });
-      if (hasChild) continue;
-
-      const next = await tx.workflowTaskInstance.create({
-        data: {
-          projectId,
-          taskId: ins.taskId,
-          status: "PENDING",
-          parentInstanceId: ins.id,
-          assigneeId: null,
-          reviewStatus: null,
-          remark: null,
-          attachments: Prisma.JsonNull
-        }
-      });
-      generated.push({ parentInstanceId: ins.id, newInstanceId: next.id });
-    }
-    if (generated.length > 0) {
-      await audit(tx, {
-        actorId: user.id,
-        action: "WORKFLOW_RECURRING_GENERATE",
-        entity: "Project",
-        entityId: projectId,
-        after: { generated: generated.length }
-      });
-    }
-    return { generated: generated.length, items: generated };
-  });
-}
 
 // =====================================================
 // 工具
@@ -520,4 +504,299 @@ function hasDeliverable(attachments: unknown): boolean {
     return Array.isArray(arr) ? arr.length > 0 : Object.keys(attachments).length > 0;
   }
   return false;
+}
+
+// =====================================================
+// P2 新增:时间感知的循环生成 + 跨项目批量(cron 友好)
+// =====================================================
+
+/** 把 recurrenceInterval/Unit 转成毫秒;非法返回 null */
+function recurrenceToMs(interval: number, unit: string): number | null {
+  switch (unit) {
+    case "DAY":   return interval * 24 * 60 * 60 * 1000;
+    case "WEEK":  return interval * 7 * 24 * 60 * 60 * 1000;
+    case "MONTH": return interval * 30 * 24 * 60 * 60 * 1000; // 简化按 30 天
+    case "YEAR":  return interval * 365 * 24 * 60 * 60 * 1000;
+    default:      return null;
+  }
+}
+
+/** 给定已完成/进行中的父实例,问:根据周期,下一个实例应该已经生成了吗? */
+function isRecurrenceDue(
+  ins: { completedAt: Date | null; status: string },
+  task: { recurrenceInterval: number | null; recurrenceUnit: string | null; isRecurring: boolean },
+  now: Date
+): boolean {
+  if (!task.isRecurring) return false;
+  if (ins.status !== "COMPLETED") return false; // 上一轮没完,不生下一轮
+  if (!ins.completedAt) return false;
+  if (task.recurrenceInterval == null || task.recurrenceUnit == null) return false;
+  const ms = recurrenceToMs(task.recurrenceInterval, task.recurrenceUnit);
+  if (ms == null) return false;
+  const elapsed = now.getTime() - ins.completedAt.getTime();
+  return elapsed >= ms;
+}
+
+/** 内部 worker:在给定 tx 上为一个项目生成到期循环实例(无 user 上下文) */
+async function generateDueForProject(
+  tx: Prisma.TransactionClient,
+  projectId: string,
+  now: Date,
+  actorId: string
+): Promise<{ generated: number; items: { parentInstanceId: string; newInstanceId: string }[] }> {
+  const project = await tx.project.findFirst({
+    where: { id: projectId, deletedAt: null }
+  });
+  if (!project) return { generated: 0, items: [] };
+
+  const instances = await tx.workflowTaskInstance.findMany({
+    where: { projectId, deletedAt: null },
+    include: { task: true }
+  });
+  const items: { parentInstanceId: string; newInstanceId: string }[] = [];
+  for (const ins of instances) {
+    if (!isRecurrenceDue(ins, ins.task, now)) continue;
+    // 找最新同 task 的实例(它的 next 才是"下一个该生")
+    const siblings = instances.filter((x) => x.taskId === ins.taskId);
+    const latest = siblings[siblings.length - 1];
+    if (!latest || latest.id !== ins.id) continue;
+    // 已生过下一个,跳过
+    const hasChild = await tx.workflowTaskInstance.findFirst({
+      where: { parentInstanceId: ins.id, deletedAt: null }
+    });
+    if (hasChild) continue;
+
+    const next = await tx.workflowTaskInstance.create({
+      data: {
+        projectId,
+        taskId: ins.taskId,
+        status: "PENDING",
+        parentInstanceId: ins.id,
+        assigneeId: null,
+        reviewStatus: null,
+        remark: null,
+        attachments: Prisma.JsonNull
+      }
+    });
+    items.push({ parentInstanceId: ins.id, newInstanceId: next.id });
+  }
+  if (items.length > 0) {
+    await audit(tx, {
+      actorId,
+      action: "WORKFLOW_RECURRING_GENERATE",
+      entity: "Project",
+      entityId: projectId,
+      after: { generated: items.length }
+    });
+  }
+  return { generated: items.length, items };
+}
+
+/**
+ * 旧版带 user 上下文的接口 — 保留兼容,内部走时间感知逻辑
+ * 行为变化:以前 "completed/IN_PROGRESS 都生" → 现在 "仅 completed 且周期已到"
+ */
+export async function generateRecurringInstances(user: SessionUser, projectId: string) {
+  requirePermission(user.roleCode, RESOURCE.PROJECT, ACTION.UPDATE);
+  const project = await prisma.project.findFirst({
+    where: { id: projectId, deletedAt: null, ...(ownerViaContract(user) as Prisma.ProjectWhereInput) }
+  });
+  if (!project) throw new ApiError(ERROR_CODES.NOT_FOUND, "项目不存在", 404);
+  const now = new Date();
+  return prisma.$transaction(async (tx) => generateDueForProject(tx, projectId, now, user.id));
+}
+
+/** Cron 入口:扫描所有 active 项目,生成到期的循环实例;无 user 上下文 */
+export async function generateAllRecurringInstances(now: Date = new Date()): Promise<{
+  scanned: number;
+  generated: number;
+  perProject: { projectId: string; generated: number }[];
+}> {
+  const SYSTEM_ACTOR_ID = "system:cron";
+  const projects = await prisma.project.findMany({
+    where: { deletedAt: null, status: { in: ["PLANNED", "IN_PROGRESS", "SUSPENDED"] } },
+    select: { id: true }
+  });
+  let total = 0;
+  const perProject: { projectId: string; generated: number }[] = [];
+  for (const p of projects) {
+    const r = await prisma.$transaction(async (tx) => generateDueForProject(tx, p.id, now, SYSTEM_ACTOR_ID));
+    if (r.generated > 0) {
+      perProject.push({ projectId: p.id, generated: r.generated });
+      total += r.generated;
+    }
+  }
+  return { scanned: projects.length, generated: total, perProject };
+}
+
+// =====================================================
+// P2:我的任务 inbox
+// =====================================================
+export type MyTaskDto = {
+  id: string;
+  taskName: string;
+  taskDescription: string | null;
+  status: WorkflowTaskStatus;
+  reviewStatus: WorkflowReviewStatus | null;
+  projectId: string;
+  projectNo: string;
+  projectName: string;
+  phase: string;
+  phaseName: string;
+  requiresDeliverable: boolean;
+  requiresTwoStepReview: boolean;
+  isRecurring: boolean;
+  estimateDays: number | null;
+  startedAt: string | null;
+  completedAt: string | null;
+  updatedAt: string;
+  projectStatus: string;
+};
+
+export async function getMyTasks(
+  user: SessionUser,
+  params: { statuses?: WorkflowTaskStatus[]; limit?: number } = {}
+): Promise<{ total: number; items: MyTaskDto[] }> {
+  requirePermission(user.roleCode, RESOURCE.PROJECT, ACTION.READ);
+  const statuses = params.statuses && params.statuses.length > 0 ? params.statuses : ["PENDING", "IN_PROGRESS", "BLOCKED"];
+  const limit = Math.min(params.limit ?? 50, 200);
+  // SALES 行级隔离:只看自己合同挂的项目
+  const where: Prisma.WorkflowTaskInstanceWhereInput = {
+    assigneeId: user.id,
+    deletedAt: null,
+    status: { in: statuses },
+    project: {
+      deletedAt: null,
+      ...(user.roleCode === "SALES" ? { contract: { ownerUserId: user.id } } : {})
+    }
+  };
+  const [items, total] = await Promise.all([
+    prisma.workflowTaskInstance.findMany({
+      where,
+      orderBy: [{ updatedAt: "desc" }],
+      take: limit,
+      include: {
+        task: { include: { stage: true } },
+        project: { select: { id: true, projectNo: true, name: true, status: true } }
+      }
+    }),
+    prisma.workflowTaskInstance.count({ where })
+  ]);
+  return {
+    total,
+    items: items.map((ins) => ({
+      id: ins.id,
+      taskName: ins.task.name,
+      taskDescription: ins.task.description,
+      status: ins.status as WorkflowTaskStatus,
+      reviewStatus: ins.reviewStatus as WorkflowReviewStatus | null,
+      projectId: ins.projectId,
+      projectNo: ins.project.projectNo,
+      projectName: ins.project.name,
+      phase: ins.task.stage.phase,
+      phaseName: ins.task.stage.name,
+      requiresDeliverable: ins.task.requiresDeliverable,
+      requiresTwoStepReview: ins.task.requiresTwoStepReview,
+      isRecurring: ins.task.isRecurring,
+      estimateDays: ins.task.estimateDays,
+      startedAt: ins.status === "IN_PROGRESS" || ins.status === "COMPLETED" ? ins.updatedAt.toISOString() : null,
+      completedAt: ins.completedAt ? ins.completedAt.toISOString() : null,
+      updatedAt: ins.updatedAt.toISOString(),
+      projectStatus: ins.project.status
+    }))
+  };
+}
+
+// =====================================================
+// P2:Admin 视角的工作流概览(统计面板)
+// =====================================================
+export type WorkflowOverview = {
+  totals: {
+    projects: number;
+    activeTasks: number;
+    blockedTasks: number;
+    inReview: number;
+    overdue: number; // 超过 estimateDays 仍未 COMPLETED 的 IN_PROGRESS
+  };
+  byStatus: { status: WorkflowTaskStatus; count: number }[];
+  byServiceType: { serviceType: string; activeTasks: number; projects: number }[];
+};
+
+export async function getWorkflowOverview(user: SessionUser): Promise<WorkflowOverview> {
+  // 只给管理员
+  if (user.roleCode !== "ADMIN") {
+    throw new ApiError(ERROR_CODES.FORBIDDEN, "仅管理员可查看工作流概览", 403);
+  }
+  const [byStatus, activeProjects, blocked, reviewing] = await Promise.all([
+    prisma.workflowTaskInstance.groupBy({
+      by: ["status"],
+      where: { deletedAt: null },
+      _count: { _all: true }
+    }),
+    prisma.project.count({
+      where: { deletedAt: null, status: { in: ["PLANNED", "IN_PROGRESS", "SUSPENDED"] } }
+    }),
+    prisma.workflowTaskInstance.count({ where: { status: "BLOCKED", deletedAt: null } }),
+    prisma.workflowTaskInstance.count({ where: { reviewStatus: "REVIEWING", deletedAt: null } }),
+    prisma.project.count({ where: { deletedAt: null } }),
+  
+  ]);
+
+  // 超期:IN_PROGRESS + updatedAt - createdAt > 估算天数 → 视为"超期风险"
+  // 用简化方法:updatedAt 距今 N 天(项目起期 ~ 任务起期)
+  const candidateOverdue = await prisma.workflowTaskInstance.findMany({
+    where: { status: "IN_PROGRESS", deletedAt: null },
+    include: { task: true }
+  });
+  const now = Date.now();
+  let overdue = 0;
+  for (const c of candidateOverdue) {
+    if (!c.task.estimateDays) continue;
+    const elapsedDays = (now - c.createdAt.getTime()) / (24 * 60 * 60 * 1000);
+    if (elapsedDays > c.task.estimateDays) overdue++;
+  }
+
+  const byStatusArr: { status: WorkflowTaskStatus; count: number }[] = byStatus.map((b) => ({
+    status: b.status as WorkflowTaskStatus,
+    count: b._count._all
+  }));
+  const activeTasks = byStatusArr
+    .filter((b) => b.status === "PENDING" || b.status === "IN_PROGRESS")
+    .reduce((s, b) => s + b.count, 0);
+
+  // 按 serviceType 聚合:一次 query 完成
+  const byServiceProjectRaw = await prisma.project.findMany({
+    where: { deletedAt: null, status: { in: ["PLANNED", "IN_PROGRESS", "SUSPENDED"] } },
+    select: {
+      id: true,
+      contract: { select: { serviceType: true } },
+      _count: { select: { taskInstances: { where: { deletedAt: null, status: { in: ["PENDING", "IN_PROGRESS"] } } } } }
+    }
+  });
+  const byServiceType: { serviceType: string; activeTasks: number; projects: number }[] = [];
+  for (const p of byServiceProjectRaw) {
+    const st = p.contract?.serviceType ?? "OTHER";
+    byServiceType.push({ serviceType: st, activeTasks: p._count.taskInstances, projects: 1 });
+  }
+  // 合并相同 serviceType
+  const merged = new Map<string, { serviceType: string; activeTasks: number; projects: number }>();
+  for (const r of byServiceType) {
+    if (!merged.has(r.serviceType)) merged.set(r.serviceType, { serviceType: r.serviceType, activeTasks: 0, projects: 0 });
+    const m = merged.get(r.serviceType)!;
+    m.activeTasks += r.activeTasks;
+    m.projects += r.projects;
+  }
+  const byServiceTypeArr = Array.from(merged.values()).sort((a, b) => b.activeTasks - a.activeTasks);
+
+  return {
+    totals: {
+      projects: activeProjects,
+      activeTasks,
+      blockedTasks: blocked,
+      inReview: reviewing,
+      overdue
+    },
+    byStatus: byStatusArr.sort((a, b) => b.count - a.count),
+    byServiceType: byServiceTypeArr
+  };
 }

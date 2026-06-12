@@ -316,7 +316,8 @@ model WorkflowTaskInstance {
   updatedAt        DateTime  @updatedAt @db.Timestamptz(6)
   deletedAt        DateTime? @db.Timestamptz(6)
 
-  @@unique([projectId, taskId])
+  // 包含 parentInstanceId 让循环任务可多次出现(P2 修复)
+  @@unique([projectId, taskId, parentInstanceId])
   @@index([projectId, status])
   @@index([assigneeId, status])
   @@index([parentInstanceId])

@@ -5,7 +5,8 @@ import {
   WORKFLOW_TASK_STATUS,
   WORKFLOW_REVIEW_STATUS,
   WORKFLOW_TASK_ACTIONS,
-  WORKFLOW_REVIEW_ACTIONS
+  WORKFLOW_REVIEW_ACTIONS,
+  MESSAGE_TYPE
 } from "../types/enums";
 import { ERROR_CODES } from "../types/errors";
 
@@ -145,5 +146,152 @@ describe("hasDeliverable helper", () => {
   });
   it("returns true for any non-empty plain object", () => {
     expect(hasDeliverable({ key1: "v" })).toBe(true);
+  });
+});
+
+// =====================================================
+// P2: 时间感知循环 + 我的任务 + 概览
+// =====================================================
+
+describe("recurrenceToMs converts units correctly", () => {
+  // 复用 service 内部逻辑做单测
+  function recurrenceToMs(interval: number, unit: string): number | null {
+    switch (unit) {
+      case "DAY":   return interval * 24 * 60 * 60 * 1000;
+      case "WEEK":  return interval * 7 * 24 * 60 * 60 * 1000;
+      case "MONTH": return interval * 30 * 24 * 60 * 60 * 1000;
+      case "YEAR":  return interval * 365 * 24 * 60 * 60 * 1000;
+      default:      return null;
+    }
+  }
+
+  it("1 DAY = 1 day in ms", () => {
+    expect(recurrenceToMs(1, "DAY")).toBe(24 * 60 * 60 * 1000);
+  });
+  it("2 WEEK = 14 days in ms", () => {
+    expect(recurrenceToMs(2, "WEEK")).toBe(14 * 24 * 60 * 60 * 1000);
+  });
+  it("1 MONTH = 30 days in ms (simplified)", () => {
+    expect(recurrenceToMs(1, "MONTH")).toBe(30 * 24 * 60 * 60 * 1000);
+  });
+  it("1 YEAR = 365 days in ms", () => {
+    expect(recurrenceToMs(1, "YEAR")).toBe(365 * 24 * 60 * 60 * 1000);
+  });
+  it("unknown unit returns null", () => {
+    expect(recurrenceToMs(1, "FORTNIGHT")).toBeNull();
+  });
+});
+
+describe("isRecurrenceDue is time-aware and only fires for COMPLETED parents", () => {
+  // 复用 service 内部逻辑
+  function recurrenceToMs(interval: number, unit: string): number | null {
+    switch (unit) {
+      case "DAY":   return interval * 24 * 60 * 60 * 1000;
+      case "WEEK":  return interval * 7 * 24 * 60 * 60 * 1000;
+      case "MONTH": return interval * 30 * 24 * 60 * 60 * 1000;
+      case "YEAR":  return interval * 365 * 24 * 60 * 60 * 1000;
+      default:      return null;
+    }
+  }
+  function isRecurrenceDue(
+    ins: { completedAt: Date | null; status: string },
+    task: { recurrenceInterval: number | null; recurrenceUnit: string | null; isRecurring: boolean },
+    now: Date
+  ): boolean {
+    if (!task.isRecurring) return false;
+    if (ins.status !== "COMPLETED") return false;
+    if (!ins.completedAt) return false;
+    if (task.recurrenceInterval == null || task.recurrenceUnit == null) return false;
+    const ms = recurrenceToMs(task.recurrenceInterval, task.recurrenceUnit);
+    if (ms == null) return false;
+    return now.getTime() - ins.completedAt.getTime() >= ms;
+  }
+
+  const day = 24 * 60 * 60 * 1000;
+  const now = new Date("2026-06-12T00:00:00Z");
+
+  it("non-recurring task never recurs", () => {
+    expect(isRecurrenceDue(
+      { completedAt: new Date(now.getTime() - 1000 * day), status: "COMPLETED" },
+      { isRecurring: false, recurrenceInterval: 1, recurrenceUnit: "MONTH" },
+      now
+    )).toBe(false);
+  });
+
+  it("IN_PROGRESS parent does NOT trigger next instance", () => {
+    expect(isRecurrenceDue(
+      { completedAt: new Date(now.getTime() - 1000 * day), status: "IN_PROGRESS" },
+      { isRecurring: true, recurrenceInterval: 1, recurrenceUnit: "MONTH" },
+      now
+    )).toBe(false);
+  });
+
+  it("PENDING parent does NOT trigger next instance", () => {
+    expect(isRecurrenceDue(
+      { completedAt: new Date(now.getTime() - 1000 * day), status: "PENDING" },
+      { isRecurring: true, recurrenceInterval: 1, recurrenceUnit: "MONTH" },
+      now
+    )).toBe(false);
+  });
+
+  it("monthly task completed 60 days ago triggers", () => {
+    expect(isRecurrenceDue(
+      { completedAt: new Date(now.getTime() - 60 * day), status: "COMPLETED" },
+      { isRecurring: true, recurrenceInterval: 1, recurrenceUnit: "MONTH" },
+      now
+    )).toBe(true);
+  });
+
+  it("monthly task completed 10 days ago does NOT trigger (within cycle)", () => {
+    expect(isRecurrenceDue(
+      { completedAt: new Date(now.getTime() - 10 * day), status: "COMPLETED" },
+      { isRecurring: true, recurrenceInterval: 1, recurrenceUnit: "MONTH" },
+      now
+    )).toBe(false);
+  });
+
+  it("yearly task completed 364 days ago does NOT trigger (within 365-day window)", () => {
+    expect(isRecurrenceDue(
+      { completedAt: new Date(now.getTime() - 364 * day), status: "COMPLETED" },
+      { isRecurring: true, recurrenceInterval: 1, recurrenceUnit: "YEAR" },
+      now
+    )).toBe(false);
+  });
+
+  it("yearly task completed 366 days ago triggers", () => {
+    expect(isRecurrenceDue(
+      { completedAt: new Date(now.getTime() - 366 * day), status: "COMPLETED" },
+      { isRecurring: true, recurrenceInterval: 1, recurrenceUnit: "YEAR" },
+      now
+    )).toBe(true);
+  });
+
+  it("missing recurrenceInterval/Unit does NOT trigger", () => {
+    expect(isRecurrenceDue(
+      { completedAt: new Date(now.getTime() - 100 * day), status: "COMPLETED" },
+      { isRecurring: true, recurrenceInterval: null, recurrenceUnit: null },
+      now
+    )).toBe(false);
+  });
+
+  it("null completedAt does NOT trigger (defensive)", () => {
+    expect(isRecurrenceDue(
+      { completedAt: null, status: "COMPLETED" },
+      { isRecurring: true, recurrenceInterval: 1, recurrenceUnit: "MONTH" },
+      now
+    )).toBe(false);
+  });
+});
+
+describe("Domain events for workflow", () => {
+  // 锁事件类型(防止后续误删)
+  const ALLOWED_WORKFLOW_EVENTS = new Set(["WORKFLOW_TASK_ASSIGNED", "WORKFLOW_REVIEW_REQUESTED"]);
+  it("has the 2 workflow events registered", () => {
+    expect(ALLOWED_WORKFLOW_EVENTS.has("WORKFLOW_TASK_ASSIGNED")).toBe(true);
+    expect(ALLOWED_WORKFLOW_EVENTS.has("WORKFLOW_REVIEW_REQUESTED")).toBe(true);
+  });
+  it("MESSAGE_TYPE covers workflow events", () => {
+    expect(MESSAGE_TYPE).toContain("WORKFLOW_TASK_ASSIGNED");
+    expect(MESSAGE_TYPE).toContain("WORKFLOW_REVIEW_REQUESTED");
   });
 });

@@ -12,7 +12,9 @@ export type DomainEventType =
   | "INVOICE_OVERDUE_PAYMENT"
   | "PAYMENT_RECEIVED"
   | "PROJECT_DUE"
-  | "CUSTOMER_INACTIVE";
+  | "CUSTOMER_INACTIVE"
+  | "WORKFLOW_TASK_ASSIGNED"
+  | "WORKFLOW_REVIEW_REQUESTED";
 
 export type DomainEvent = {
   type: DomainEventType;
@@ -109,6 +111,20 @@ function buildMessage(uid: string, ev: DomainEvent): ResolvedMessage {
         title: `客户 ${p.customerName} 已 ${p.daysInactive} 天未跟进`,
         content: `请尽快联系客户。`,
         link: { kind: "customer", id: p.customerId }
+      };
+    case "WORKFLOW_TASK_ASSIGNED":
+      return {
+        receiverUserId: uid,
+        title: `任务「${p.taskName}」已指派给您`,
+        content: `所属项目: ${p.projectNo ?? "-"}\n预估 ${p.estimateDays ?? "-"} 天`,
+        link: { kind: "project", id: p.projectId }
+      };
+    case "WORKFLOW_REVIEW_REQUESTED":
+      return {
+        receiverUserId: uid,
+        title: `报告「${p.taskName}」等待您校核/审核`,
+        content: `项目: ${p.projectNo ?? "-"}\n提交人: ${p.submittedByName ?? "-"}`,
+        link: { kind: "project", id: p.projectId }
       };
     default:
       return { receiverUserId: uid, title: "通知", content: JSON.stringify(p) };

@@ -99,10 +99,15 @@ export type PaymentStatus = (typeof PAYMENT_STATUS)[number];
 export const MESSAGE_TYPE = [
   "CONTRACT_PENDING_REVIEW",
   "CONTRACT_EXPIRING",
+  "CONTRACT_APPROVED",
+  "CONTRACT_REJECTED",
   "INVOICE_OVERDUE_PAYMENT",
   "PAYMENT_RECEIVED",
   "PROJECT_DUE",
-  "CUSTOMER_INACTIVE"
+  "CUSTOMER_INACTIVE",
+  // 工作流引擎
+  "WORKFLOW_TASK_ASSIGNED",
+  "WORKFLOW_REVIEW_REQUESTED"
 ] as const;
 export type MessageType = (typeof MESSAGE_TYPE)[number];
 
