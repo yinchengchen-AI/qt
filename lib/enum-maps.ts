@@ -4,19 +4,6 @@
  * - 服务端 / 客户端都可引用,免去两边各写一遍
  */
 
-export const CUSTOMER_TYPE_MAP: Record<string, string> = {
-  ENTERPRISE: "企业",
-  GOV:        "政府/事业单位",
-  OTHER:      "其他"
-};
-
-export const CUSTOMER_SCALE_MAP: Record<string, string> = {
-  LARGE:  "大型",
-  MEDIUM: "中型",
-  SMALL:  "小型",
-  MICRO:  "微型"
-};
-
 export const SERVICE_TYPE_MAP: Record<string, string> = {
   SAFETY_CONSULT:    "管理咨询",
   SAFETY_TRAIN:      "宣传教育培训",
@@ -89,23 +76,6 @@ export const PROJECT_STATUS_MAP: Record<string, string> = {
   CANCELLED:   "已取消"
 };
 
-export const INVOICE_STATUS_MAP: Record<string, string> = {
-  DRAFT:           "草稿",
-  PENDING_FINANCE: "财务待审",
-  ISSUED:          "已开票",
-  REJECTED:        "已驳回",
-  VOIDED:          "已作废",
-  RED_FLUSHED:     "已红冲"
-};
-
-export const PAYMENT_STATUS_MAP: Record<string, string> = {
-  PLANNED:    "计划中",
-  CONFIRMED:  "已确认",
-  RECONCILED: "已对账",
-  REFUNDED:   "已退款",
-  CANCELLED:  "已取消"
-};
-
 export const METHOD_MAP: Record<string, string> = {
   BANK_TRANSFER: "银行转账",
   CHECK:         "支票",
@@ -113,86 +83,6 @@ export const METHOD_MAP: Record<string, string> = {
   WECHAT:        "微信",
   ALIPAY:        "支付宝",
   OTHER:         "其他"
-};
-
-export const FOLLOW_METHOD_MAP: Record<string, string> = {
-  VISIT:  "上门拜访",
-  CALL:   "电话",
-  WECHAT: "微信",
-  EMAIL:  "邮件",
-  OTHER:  "其他"
-};
-
-export const FOLLOW_RESULT_MAP: Record<string, string> = {
-  INTENT:    "有意向",
-  NO_INTENT: "无意向",
-  PENDING:   "待定",
-  SIGNED:    "已签约"
-};
-
-export const ROLE_LABEL_MAP: Record<string, string> = {
-  ADMIN:   "管理员",
-  SALES:   "业务人员",
-  FINANCE: "财务人员",
-  OPS:     "行政人员"
-};
-
-export const MESSAGE_TYPE_MAP: Record<string, string> = {
-  CONTRACT_PENDING_REVIEW:   "合同待审批",
-  CONTRACT_EXPIRING:         "合同将到期",
-  CONTRACT_APPROVED:         "合同已通过",
-  CONTRACT_REJECTED:         "合同已驳回",
-  INVOICE_OVERDUE_PAYMENT:   "开票超期",
-  PAYMENT_RECEIVED:          "回款到账",
-  PROJECT_DUE:               "项目将到期",
-  CUSTOMER_INACTIVE:         "客户静默",
-  WORKFLOW_TASK_ASSIGNED:    "任务指派",
-  WORKFLOW_REVIEW_REQUESTED: "审阅请求"
-};
-
-/* === Workflow Engine === */
-export const WORKFLOW_PHASE_MAP: Record<string, string> = {
-  PREP:        "前期准备",
-  REQUIREMENT: "需求识别",
-  CONTRACT:    "合同签订",
-  EXECUTE:     "服务实施",
-  FOLLOWUP:    "回访与改进"
-};
-
-export const WORKFLOW_TASK_STATUS_MAP: Record<string, string> = {
-  PENDING:     "待开始",
-  IN_PROGRESS: "进行中",
-  COMPLETED:   "已完成",
-  SKIPPED:     "已跳过",
-  BLOCKED:     "已阻塞"
-};
-
-export const WORKFLOW_REVIEW_STATUS_MAP: Record<string, string> = {
-  REVIEWING: "校核中",
-  REVIEWED:  "已校核",
-  APPROVED:  "已审核",
-  REJECTED:  "已驳回"
-};
-
-export const WORKFLOW_RECURRENCE_UNIT_MAP: Record<string, string> = {
-  DAY:   "天",
-  WEEK:  "周",
-  MONTH: "月",
-  YEAR:  "年"
-};
-
-export const WORKFLOW_REQUIRED_ROLE_MAP: Record<string, string> = {
-  SALES_LEAD: "业务负责人",
-  EXPERT:     "技术专家",
-  ADMIN:      "管理员",
-  OPS:        "行政"
-};
-
-export const WORKFLOW_PHASE_STATE_MAP: Record<string, string> = {
-  DONE:    "已完成",
-  PARTIAL: "进行中",
-  LOCKED:  "未解锁",
-  READY:   "待开始"
 };
 
 export function lookup<T extends Record<string, string>>(map: T, code?: string | null): string {
@@ -237,3 +127,39 @@ export const WORKFLOW_REQUIRED_ROLE_MAP: Record<string, string> = {
   ADMIN:      "管理员",
   OPS:        "行政"
 };
+
+/* === 工作流看板辅助映射 === */
+export const WORKFLOW_TASK_STATUS_TONE: Record<string, string> = {
+  PENDING:     "default",
+  IN_PROGRESS: "processing",
+  COMPLETED:   "success",
+  SKIPPED:     "warning",
+  BLOCKED:     "error"
+};
+
+export const WORKFLOW_PHASE_STATE_LABEL: Record<string, string> = {
+  DONE:    "已完成",
+  PARTIAL: "进行中",
+  LOCKED:  "未解锁",
+  READY:   "待开始"
+};
+
+export const WORKFLOW_PHASE_STATE_TONE: Record<string, string> = {
+  DONE:    "success",
+  PARTIAL: "processing",
+  LOCKED:  "default",
+  READY:   "default"
+};
+
+export const WORKFLOW_TASK_ACTION_LABEL: Record<string, string> = {
+  start:    "开始",
+  complete: "完成",
+  block:    "阻塞",
+  unblock:  "解除",
+  skip:     "跳过"
+};
+
+export const WORKFLOW_TASK_STATUS_SORT: Record<string, number> = {
+  PENDING: 0, IN_PROGRESS: 1, BLOCKED: 2, COMPLETED: 3, SKIPPED: 4
+};
+

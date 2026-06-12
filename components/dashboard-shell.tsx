@@ -40,6 +40,7 @@ import {
 import type { RoleCode } from "@/types/enums";
 import type { Action, Resource } from "@/lib/permissions";
 import { useResponsive } from "@/lib/use-breakpoint";
+import { ROLE_LABEL } from "@/lib/status";
 
 const { Sider, Header, Content } = Layout;
 const { Text } = Typography;
@@ -148,13 +149,6 @@ function toAntdMenu(items: MenuItem[]): MenuProps["items"] {
     return node;
   });
 }
-
-const ROLE_LABEL: Record<RoleCode, string> = {
-  ADMIN: "管理员",
-  SALES: "业务人员",
-  FINANCE: "财务人员",
-  OPS: "行政人员"
-};
 
 export function DashboardShell({ user, children }: Props) {
   const router = useRouter();

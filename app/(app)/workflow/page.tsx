@@ -16,6 +16,7 @@ import {
   WORKFLOW_PHASE_MAP,
   WORKFLOW_TASK_STATUS_MAP,
   WORKFLOW_REVIEW_STATUS_MAP,
+  WORKFLOW_TASK_STATUS_TONE,
 } from "@/lib/enum-maps";
 import { useResponsive } from "@/lib/use-breakpoint";
 import { TaskDrawer } from "@/components/workflow/task-drawer";
@@ -43,14 +44,6 @@ type MyTask = {
   projectStatus: string;
 };
 
-const STATUS_TONE: Record<string, string> = {
-  PENDING:     "default",
-  IN_PROGRESS: "processing",
-  COMPLETED:   "success",
-  SKIPPED:     "warning",
-  BLOCKED:     "error"
-};
-
 const STATUS_ICON: Record<string, React.ReactNode> = {
   PENDING:     <PlayCircleOutlined />,
   IN_PROGRESS: <PlayCircleOutlined />,
@@ -60,7 +53,7 @@ const STATUS_ICON: Record<string, React.ReactNode> = {
 };
 
 const FILTER_OPTIONS = [
-  { label: "待办 (PENDING/IN_PROGRESS/BLOCKED)", value: "ACTIVE" },
+  { label: "待办", value: "ACTIVE" },
   { label: "已完成", value: "DONE" }
 ];
 
@@ -164,7 +157,7 @@ export default function MyTasksPage() {
               width: 110,
               render: (v: string, r) => (
                 <Space direction="vertical" size={2}>
-                  <Tag color={STATUS_TONE[v]} icon={STATUS_ICON[v]}>
+                  <Tag color={WORKFLOW_TASK_STATUS_TONE[v]} icon={STATUS_ICON[v]}>
                     {WORKFLOW_TASK_STATUS_MAP[v]}
                   </Tag>
                   {r.reviewStatus && (

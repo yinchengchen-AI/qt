@@ -103,6 +103,8 @@ export function formatStatus(code: string | null | undefined, domain: StatusDoma
 }
 
 /** 角色 / 字典类的简短标签(供 valueEnum / select 等用) */
+
+/** 角色标签(供 valueEnum / select 等用) */
 export const ROLE_LABEL: Record<string, string> = {
   ADMIN: "管理员",
   SALES: "业务",

@@ -16,7 +16,15 @@ import {
 import { Page } from "@/components/page";
 import { PageHeader } from "@/components/page-header";
 import { TaskDrawer } from "@/components/workflow/task-drawer";
-import { WORKFLOW_PHASE_MAP, WORKFLOW_TASK_STATUS_MAP } from "@/lib/enum-maps";
+import {
+  WORKFLOW_PHASE_MAP,
+  WORKFLOW_TASK_STATUS_MAP,
+  WORKFLOW_TASK_STATUS_TONE,
+  WORKFLOW_PHASE_STATE_LABEL,
+  WORKFLOW_PHASE_STATE_TONE,
+  WORKFLOW_TASK_ACTION_LABEL,
+  WORKFLOW_TASK_STATUS_SORT
+} from "@/lib/enum-maps";
 import { useResponsive } from "@/lib/use-breakpoint";
 
 const { Text } = Typography;
@@ -49,37 +57,7 @@ type Kanban = {
   totals: { total: number; pending: number; inProgress: number; completed: number; blocked: number };
 };
 
-const STATUS_TONE: Record<string, string> = {
-  PENDING: "default",
-  IN_PROGRESS: "processing",
-  COMPLETED: "success",
-  SKIPPED: "warning",
-  BLOCKED: "error"
-};
-const PHASE_STATE_LABEL: Record<string, string> = {
-  DONE: "已完成",
-  PARTIAL: "进行中",
-  LOCKED: "未解锁",
-  READY: "待开始"
-};
-const PHASE_STATE_TONE: Record<string, string> = {
-  DONE: "success",
-  PARTIAL: "processing",
-  LOCKED: "default",
-  READY: "default"
-};
 
-const ACTION_MAP: Record<string, { label: string }> = {
-  start:    { label: "已开始" },
-  complete: { label: "已完成" },
-  block:    { label: "已阻塞" },
-  unblock:  { label: "已解除" },
-  skip:     { label: "已跳过" }
-};
-
-const STATUS_SORT: Record<string, number> = {
-  PENDING: 0, IN_PROGRESS: 1, BLOCKED: 2, COMPLETED: 3, SKIPPED: 4
-};
 
 export default function WorkflowBoardPage() {
   const params = useSearchParams();
@@ -107,7 +85,7 @@ export default function WorkflowBoardPage() {
         throw new Error((errData as { message?: string }).message ?? `操作失败 (${res.status})`);
       }
       notification.success({
-        message: ACTION_MAP[action]?.label ?? action,
+        message: WORKFLOW_TASK_ACTION_LABEL[action] ? "已" + WORKFLOW_TASK_ACTION_LABEL[action] : action ?? action,
         placement: "topRight"
       });
       mutate();
@@ -189,7 +167,7 @@ export default function WorkflowBoardPage() {
           const hasInProgress = col.tasks.some((t) => t.status === "IN_PROGRESS");
 
           const sorted = [...col.tasks].sort(
-            (a, b) => (STATUS_SORT[a.status] ?? 9) - (STATUS_SORT[b.status] ?? 9)
+            (a, b) => (WORKFLOW_TASK_STATUS_SORT[a.status] ?? 9) - (WORKFLOW_TASK_STATUS_SORT[b.status] ?? 9)
           );
 
           return (
@@ -210,8 +188,8 @@ export default function WorkflowBoardPage() {
                   <Text strong style={{ fontSize: 13 }}>
                     {WORKFLOW_PHASE_MAP[col.phase] ?? col.name}
                   </Text>
-                  <Tag color={PHASE_STATE_TONE[col.phaseState]} style={{ fontSize: 10, margin: 0 }}>
-                    {PHASE_STATE_LABEL[col.phaseState]}
+                  <Tag color={WORKFLOW_PHASE_STATE_TONE[col.phaseState]} style={{ fontSize: 10, margin: 0 }}>
+                    {WORKFLOW_PHASE_STATE_LABEL[col.phaseState]}
                   </Tag>
                   <Text type="secondary" style={{ fontSize: 11 }}>
                     {col.byStatus.COMPLETED + col.byStatus.SKIPPED}/{col.total}
@@ -226,7 +204,7 @@ export default function WorkflowBoardPage() {
                   return (
                     <Tag
                       key={s}
-                      color={STATUS_TONE[s]}
+                      color={WORKFLOW_TASK_STATUS_TONE[s]}
                       style={{ margin: 0, fontSize: 10, padding: "0 4px", lineHeight: "18px" }}
                     >
                       {WORKFLOW_TASK_STATUS_MAP[s]} {cnt}
@@ -266,7 +244,7 @@ export default function WorkflowBoardPage() {
                         }}
                       >
                         <Space size={4} wrap style={{ marginBottom: 4 }}>
-                          <Tag color={STATUS_TONE[t.status]} style={{ margin: 0, fontSize: 11 }}>
+                          <Tag color={WORKFLOW_TASK_STATUS_TONE[t.status]} style={{ margin: 0, fontSize: 11 }}>
                             {WORKFLOW_TASK_STATUS_MAP[t.status]}
                           </Tag>
                           {t.requiresTwoStepReview && (
