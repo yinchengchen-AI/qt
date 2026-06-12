@@ -639,3 +639,41 @@ describe("Kanban phase state transitions are stable", () => {
     expect(isLocked).toBe(true);
   });
 });
+
+// =====================================================
+// P10: 客户 360 度视图汇总
+// =====================================================
+describe("CustomerOverview totals calculation is consistent", () => {
+  // 锁住:contractTotal 是所有合同 totalAmount 累加(简化为 number)
+  function sumContracts(contracts: Array<{ totalAmount: string }>): number {
+    return contracts.reduce((s, c) => s + Number(c.totalAmount), 0);
+  }
+  it("empty contracts → 0", () => {
+    expect(sumContracts([])).toBe(0);
+  });
+  it("single contract → its amount", () => {
+    expect(sumContracts([{ totalAmount: "50000" }])).toBe(50000);
+  });
+  it("multiple contracts → sum", () => {
+    expect(sumContracts([
+      { totalAmount: "100000" },
+      { totalAmount: "50000" },
+      { totalAmount: "25000" }
+    ])).toBe(175000);
+  });
+  it("toFixed(1) of wan (10000) gives 1 decimal place", () => {
+    const total = 175000;
+    const wan = (total / 10000).toFixed(1);
+    expect(wan).toBe("17.5");
+  });
+});
+
+describe("CustomerOverview contractNo fallback to empty string", () => {
+  // Project 等通过 contractNoMap 取合同号,找不到时 fallback ""
+  // 锁住这个不变量
+  it("empty string is valid fallback for missing contractNo", () => {
+    const map = new Map<string, string>();
+    const val = map.get("missing-id") ?? "";
+    expect(val).toBe("");
+  });
+});

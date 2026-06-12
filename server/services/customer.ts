@@ -173,3 +173,155 @@ export async function softDeleteCustomer(user: SessionUser, id: string) {
     return r;
   });
 }
+
+// =====================================================
+// P10: 客户 360 度视图 — 聚合 contracts/projects/invoices/payments
+// =====================================================
+export type CustomerOverview = {
+  contracts: Array<{
+    id: string;
+    contractNo: string;
+    title: string;
+    serviceType: string;
+    status: string;
+    signDate: string;
+    startDate: string;
+    endDate: string;
+    totalAmount: string;
+  }>;
+  projects: Array<{
+    id: string;
+    projectNo: string;
+    name: string;
+    status: string;
+    serviceType: string | null;
+    startDate: string;
+    endDate: string;
+    contractId: string;
+    contractNo: string;
+  }>;
+  invoices: Array<{
+    id: string;
+    invoiceNo: string;
+    status: string;
+    amount: string;
+    actualIssueDate: string | null;
+    contractId: string;
+    contractNo: string;
+  }>;
+  payments: Array<{
+    id: string;
+    paymentNo: string;
+    status: string;
+    amount: string;
+    receiveDate: string;
+    contractId: string;
+    contractNo: string;
+  }>;
+  totals: {
+    contractCount: number;
+    projectCount: number;
+    invoiceCount: number;
+    paymentCount: number;
+    contractTotal: number; // 元
+    invoicedTotal: number;
+    paidTotal: number;
+  };
+};
+
+export async function getCustomerOverview(
+  user: SessionUser,
+  customerId: string
+): Promise<CustomerOverview> {
+  requirePermission(user.roleCode, RESOURCE.CUSTOMER, ACTION.READ);
+  // 1. 客户存在性 + 行级隔离
+  const c = await prisma.customer.findFirst({ where: { id: customerId, deletedAt: null, ...ownerEq(user) } });
+  if (!c) throw new ApiError(ERROR_CODES.NOT_FOUND, "客户不存在", 404);
+
+  // 2. 一次性查所有相关数据
+  const contracts = await prisma.contract.findMany({
+    where: { customerId, deletedAt: null, ...ownerEq(user) },
+    orderBy: { signDate: "desc" }
+  });
+  const contractIds = contracts.map((c) => c.id);
+  const [projects, invoices, payments] = await Promise.all([
+    prisma.project.findMany({
+      where: { contractId: { in: contractIds }, deletedAt: null, ...ownerEq(user) },
+      orderBy: { createdAt: "desc" }
+    }),
+    prisma.invoice.findMany({
+      where: { contractId: { in: contractIds }, deletedAt: null, ...ownerEq(user) },
+      orderBy: { applyDate: "desc" }
+    }),
+    prisma.payment.findMany({
+      where: { contractId: { in: contractIds }, deletedAt: null, ...ownerEq(user) },
+      orderBy: { receivedAt: "desc" }
+    })
+  ]);
+  // 合同号 map
+  const contractNoMap = new Map(contracts.map((c) => [c.id, c.contractNo]));
+  // 数字汇总(用 string 转为 number 累加,避开 Decimal 序列化问题)
+  let contractTotal = 0;
+  for (const ct of contracts) {
+    contractTotal += Number(ct.totalAmount);
+  }
+  let invoicedTotal = 0;
+  for (const inv of invoices) {
+    invoicedTotal += Number(inv.amount);
+  }
+  let paidTotal = 0;
+  for (const p of payments) {
+    paidTotal += Number(p.amount);
+  }
+  return {
+    contracts: contracts.map((c) => ({
+      id: c.id,
+      contractNo: c.contractNo,
+      title: c.title,
+      serviceType: c.serviceType,
+      status: c.status,
+      signDate: c.signDate.toISOString(),
+      startDate: c.startDate.toISOString(),
+      endDate: c.endDate.toISOString(),
+      totalAmount: c.totalAmount.toString()
+    })),
+    projects: projects.map((p) => ({
+      id: p.id,
+      projectNo: p.projectNo,
+      name: p.name,
+      status: p.status,
+      serviceType: null, // Project 没有 serviceType,通过 contract 关联
+      startDate: p.startDate.toISOString(),
+      endDate: p.endDate.toISOString(),
+      contractId: p.contractId,
+      contractNo: contractNoMap.get(p.contractId) ?? ""
+    })),
+    invoices: invoices.map((i) => ({
+      id: i.id,
+      invoiceNo: i.invoiceNo,
+      status: i.status,
+      amount: i.amount.toString(),
+      actualIssueDate: i.actualIssueDate ? i.actualIssueDate.toISOString() : null,
+      contractId: i.contractId,
+      contractNo: contractNoMap.get(i.contractId) ?? ""
+    })),
+    payments: payments.map((p) => ({
+      id: p.id,
+      paymentNo: p.paymentNo,
+      status: p.status,
+      amount: p.amount.toString(),
+      receiveDate: p.receivedAt.toISOString(),
+      contractId: p.contractId,
+      contractNo: contractNoMap.get(p.contractId) ?? ""
+    })),
+    totals: {
+      contractCount: contracts.length,
+      projectCount: projects.length,
+      invoiceCount: invoices.length,
+      paymentCount: payments.length,
+      contractTotal,
+      invoicedTotal,
+      paidTotal
+    }
+  };
+}
