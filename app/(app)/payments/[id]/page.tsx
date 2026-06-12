@@ -5,7 +5,7 @@ import { useParams, useRouter } from "next/navigation";
 import type { Payment as PaymentEntity } from "@/lib/types/entities";
 import useSWR from "swr";
 import { useSession } from "next-auth/react";
-import { useState } from "react";
+import { useRef } from "react";
 import { Page } from "@/components/page";
 import { PageHeader } from "@/components/page-header";
 import { DetailPageSkeleton } from "@/components/detail-page-skeleton";
@@ -30,8 +30,10 @@ export default function PaymentDetailPage() {
   const { data: session } = useSession();
   const { data, isLoading, mutate } = useSWR<PaymentEntity>(`/api/payments/${id}`);
   const payment = data;
-  const [bankRefNo, setBankRefNo] = useState("");
-  const [reason, setReason] = useState("");
+  // 弹窗里要回传的值用 ref,避免 Modal.confirm 静态 onOk 拿不到新值
+  // (antd 的静态 Modal 不会随父组件重渲染,onOk 捕获的是点击触发时的旧闭包)
+  const bankRefNoRef = useRef("");
+  const reasonRef = useRef("");
   const { run } = useActionCall({ baseUrl: `/api/payments/${id}`, reload: () => mutate() });
   // 后端存的是 userId,前端要展示姓名;查不到时 fallback 到原 id
   const recorderName = useUserName(payment?.recorderUserId ?? null, "—");
@@ -49,19 +51,51 @@ export default function PaymentDetailPage() {
   const isFinance = roleCode === "FINANCE" || roleCode === "ADMIN";
   const status = payment.status;
 
-  const askConfirm = () => Modal.confirm({
-    title: "确认回款(财务)",
-    content: <Input value={bankRefNo} onChange={(e) => setBankRefNo(e.target.value)} placeholder="银行流水号(必填)" />,
-    onOk: async () => {
-      if (!bankRefNo) { Modal.destroyAll(); return; }
-      await run("confirm", { bankRefNo }); setBankRefNo("");
-    }
-  });
-  const askRefund = () => Modal.confirm({
-    title: "退款(财务)",
-    content: <Input.TextArea rows={2} value={reason} onChange={(e) => setReason(e.target.value)} placeholder="退款原因" />,
-    onOk: async () => { await run("refund", { reason }); setReason(""); }
-  });
+  const askConfirm = () => {
+    bankRefNoRef.current = "";
+    Modal.confirm({
+      title: "确认回款(财务)",
+      content: (
+        <Input
+          autoFocus
+          placeholder="银行流水号(必填)"
+          onChange={(e) => { bankRefNoRef.current = e.target.value; }}
+          onPressEnter={async (e) => {
+            // 回车直接提交,避开鼠标点 OK 时漏改 state 的问题
+            e.preventDefault();
+            const ref = bankRefNoRef.current.trim();
+            if (!ref) return;
+            await run("confirm", { bankRefNo: ref });
+            bankRefNoRef.current = "";
+            Modal.destroyAll();
+          }}
+        />
+      ),
+      onOk: async () => {
+        const ref = bankRefNoRef.current.trim();
+        if (!ref) { Modal.destroyAll(); return; }
+        await run("confirm", { bankRefNo: ref });
+        bankRefNoRef.current = "";
+      }
+    });
+  };
+  const askRefund = () => {
+    reasonRef.current = "";
+    Modal.confirm({
+      title: "退款(财务)",
+      content: (
+        <Input.TextArea
+          rows={2}
+          placeholder="退款原因"
+          onChange={(e) => { reasonRef.current = e.target.value; }}
+        />
+      ),
+      onOk: async () => {
+        await run("refund", { reason: reasonRef.current });
+        reasonRef.current = "";
+      }
+    });
+  };
   return (
     <Page>
       <PageHeader
