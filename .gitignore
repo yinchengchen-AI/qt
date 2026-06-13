@@ -65,3 +65,6 @@ backups/
 
 # per-server deploy record (untracked, 保留在服务端)
 docs/*部署记录*.md
+
+# pnpm 11 auto-generated
+pnpm-workspace.yaml
