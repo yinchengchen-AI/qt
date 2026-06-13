@@ -25,6 +25,7 @@ model Role {
   createdAt   DateTime @default(now()) @db.Timestamptz(6)
   updatedAt   DateTime @updatedAt @db.Timestamptz(6)
   users       User[]
+  workflowTasks WorkflowTask[]
 
   @@index([code])
 }
@@ -280,7 +281,9 @@ model WorkflowTask {
   name                  String
   sort                  Int
   description           String?
-  requiredRole          String?  // 期望执行角色(枚举占位, 由运营在 admin 后台维护)
+  // 期望执行角色：与 Role.code 对齐，删除 Role 时 RESTRICT（工作流里还在引用不能删）
+  requiredRole          String?
+  requiredRoleRef       Role?    @relation(fields: [requiredRole], references: [code], onDelete: Restrict, onUpdate: Cascade)
   requiresDeliverable   Boolean  @default(false)
   requiresOnsite        Boolean  @default(false)   // 跨阶段控制点: 现场前沟通确认
   requiresTwoStepReview Boolean  @default(false)   // 跨阶段控制点: 报告类校核+审核二审
@@ -292,6 +295,7 @@ model WorkflowTask {
   instances WorkflowTaskInstance[]
 
   @@index([stageId, sort])
+  @@index([requiredRole])
 }
 
 model WorkflowTaskInstance {

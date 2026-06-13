@@ -30,10 +30,10 @@ import { PageHeader } from "@/components/page-header";
 import {
   WORKFLOW_PHASE_MAP,
   WORKFLOW_RECURRENCE_UNIT_MAP,
-  SERVICE_TYPE_MAP,
-  WORKFLOW_REQUIRED_ROLE_MAP
+  SERVICE_TYPE_MAP
 } from "@/lib/enum-maps";
-import { WORKFLOW_PHASE_ORDER, WORKFLOW_RECURRENCE_UNIT } from "@/types/enums";
+import { ROLE_CODES, WORKFLOW_PHASE_ORDER, WORKFLOW_RECURRENCE_UNIT } from "@/types/enums";
+import { useRoleNameMap } from "@/lib/role-lookup";
 
 const { Text } = Typography;
 
@@ -97,6 +97,7 @@ export default function TemplateDetailPage() {
   // 查同 serviceType 下所有版本,看是否有上一版可对比
   const { data: allVersions } = useSWR<Array<{ id: string; version: number; serviceType: string }>>("/api/admin/workflow-templates");
   const prevVersion = allVersions?.filter((v) => v.serviceType === data?.serviceType && v.id !== data?.id).sort((a, b) => b.version - a.version)[0];
+  const roleNameMap = useRoleNameMap();
   const [metaForm] = Form.useForm();
   const [taskForm] = Form.useForm();
 
@@ -388,7 +389,7 @@ export default function TemplateDetailPage() {
                     {t.requiredRole && (
                       <div style={{ marginTop: 4 }}>
                         <Text type="secondary" style={{ fontSize: 12 }}>期望角色: </Text>
-                        <Tag>{WORKFLOW_REQUIRED_ROLE_MAP[t.requiredRole] ?? t.requiredRole}</Tag>
+                        <Tag>{roleNameMap[t.requiredRole] ?? t.requiredRole}</Tag>
                       </div>
                     )}
                     {t.isRecurring && (
@@ -440,7 +441,7 @@ export default function TemplateDetailPage() {
         okText="添加"
         width={640}
       >
-        <TaskFormFields form={taskForm} onFinish={onAddTask} />
+        <TaskFormFields form={taskForm} onFinish={onAddTask} roleNameMap={roleNameMap} />
       </Modal>
 
       <Modal
@@ -451,7 +452,7 @@ export default function TemplateDetailPage() {
         okText="保存"
         width={640}
       >
-        <TaskFormFields form={taskForm} onFinish={onUpdateTask} />
+        <TaskFormFields form={taskForm} onFinish={onUpdateTask} roleNameMap={roleNameMap} />
       </Modal>
       <Modal
         open={addingStage || editingStage !== null}
@@ -550,7 +551,7 @@ function MigrationModal({ fromTask, candidates, onClose, onMigrated }: { fromTas
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-function TaskFormFields({ form, onFinish }: { form: FormInstance<any>; onFinish: (vals: Record<string, unknown>) => void }) {
+function TaskFormFields({ form, onFinish, roleNameMap }: { form: FormInstance<any>; onFinish: (vals: Record<string, unknown>) => void; roleNameMap: Record<string, string> }) {
   return (
     <Form form={form} layout="vertical" onFinish={onFinish} initialValues={{ sort: 99, requiresDeliverable: false, requiresOnsite: false, requiresTwoStepReview: false, isRecurring: false }}>
       <Form.Item name="code" label="任务编码 (英文,模板内唯一)" rules={[{ required: true, max: 50, pattern: /^[A-Z0-9_]+$/ }]}>
@@ -566,7 +567,7 @@ function TaskFormFields({ form, onFinish }: { form: FormInstance<any>; onFinish:
         <Input.TextArea rows={2} maxLength={2000} showCount />
       </Form.Item>
       <Form.Item name="requiredRole" label="期望执行角色">
-        <Select allowClear options={Object.entries(WORKFLOW_REQUIRED_ROLE_MAP).map(([v, l]) => ({ value: v, label: l }))} />
+        <Select allowClear options={ROLE_CODES.map((c) => ({ value: c, label: roleNameMap[c] ?? c }))} />
       </Form.Item>
       <Form.Item name="estimateDays" label="预估天数">
         <InputNumber min={1} max={365} style={{ width: "100%" }} />

@@ -2,13 +2,14 @@
 import { useEffect, useState } from "react";
 import { ProCard } from "@ant-design/pro-components";
 import { Column } from "@ant-design/charts";
-import { Col, Row, Space, Typography, Badge, theme } from "antd";
+import { Badge, Col, Row, Space, Tag, Typography, theme } from "antd";
+import { CalendarOutlined } from "@ant-design/icons";
 import { formatStatus } from "@/lib/status";
 import { Page } from "@/components/page";
 import { PageHeader } from "@/components/page-header";
 import { StatGrid, type StatItem } from "@/components/stat-grid";
 import { EmptyState } from "@/components/empty-state";
-import { formatCompact, formatCurrency } from "@/lib/format";
+import { formatCompact, formatCurrency, formatDate } from "@/lib/format";
 import { StatusTag } from "@/components/status-tag";
 import { MyTasksWidget } from "@/components/workflow/my-tasks-widget";
 import { useResponsive } from "@/lib/use-breakpoint";
@@ -17,7 +18,7 @@ const { Text } = Typography;
 const { useToken } = theme;
 
 type DashboardData = {
-  overview: { contractAmount: number; invoiceAmount: number; paymentAmount: number; unpaidAmount: number; invoiceRate: number; paymentRate: number; contractCount: number; invoiceCount: number; paymentCount: number };
+  overview: { contractAmount: number; invoiceAmount: number; paymentAmount: number; unpaidAmount: number; invoiceRate: number; paymentRate: number; contractCount: number; invoiceCount: number; paymentCount: number; range: { from?: string; to?: string } };
   distribution: { byScale: { key: string; count: number }[]; byType: { key: string; count: number }[]; byStatus: { key: string; count: number }[] };
   townDistribution: { town: string | null; count: number }[];
   agingBuckets: Record<string, number>;
@@ -60,10 +61,24 @@ export default function DashboardPage() {
 
   const { overview: o, customers: cust, projects: proj, invoices: inv, payments: pay, contracts: cont, topCustomers: top } = data;
 
+  // ── 统计区间(取自 overview.range,接口默认本月) ──
+  const rangeFrom = o.range?.from ? new Date(o.range.from) : null;
+  const rangeTo = o.range?.to ? new Date(o.range.to) : null;
+  const now = new Date();
+  // 是否"本月":起点 = 当前年/月 1 号 00:00
+  const isThisMonth =
+    !!rangeFrom && rangeTo != null &&
+    rangeFrom.getFullYear() === now.getFullYear() &&
+    rangeFrom.getMonth() === now.getMonth() &&
+    rangeFrom.getDate() === 1;
+  // 权限提示:SALES 角色只看到自己 owner 的合同/发票/回款(由后端 ownerEq / ownerViaContract 注入)
+  const permHint = "数据权限:管理员/财务可看全员;销售仅看本人 owner 的合同、对应发票与回款。";
+
   // ── 五大维度 KPI ──
   const kpiItems: StatItem[] = [
     {
       label: "客户总数",
+      tooltip: <>客户档案实时数量,包含潜在/在跟/已签约等全部状态。<br/><b>不受统计区间影响</b>。<br/>{permHint}</>,
       value: cust.total,
       suffix: "家",
       description: `本月新增 ${cust.newThisMonth} 家`,
@@ -71,19 +86,23 @@ export default function DashboardPage() {
     },
     {
       label: "合同总额",
+      tooltip: <>合同状态为 <b>已生效 / 执行中 / 已完成</b>(对应枚举 EFFECTIVE / EXECUTING / COMPLETED),<b>签订日期</b>落在统计区间内的合同金额合计。<br/>草稿、待审、终止、过期不计入。<br/>{permHint}</>,
       value: formatCompact(o.contractAmount),
       suffix: "元",
       description: `共 ${o.contractCount} 份有效合同`
     },
     {
       label: "项目总数",
+      tooltip: <>项目档案的<b>实时状态分布</b>(按状态分组计数),不按时间窗口过滤。<br/>"已完成"涵盖 已交付 / 已验收 / 已关闭(对应枚举 DELIVERED / ACCEPTED / CLOSED)。<br/>{permHint}</>,
       value: proj.total,
       suffix: "个",
       description: `进行中 ${proj.byStatus.find(s => s.status === "IN_PROGRESS")?.count ?? 0} 个`,
-      delta: { value: `${((proj.byStatus.find(s => s.status === "COMPLETED")?.count ?? 0) / Math.max(proj.total, 1) * 100).toFixed(0)}% 完成`, direction: "flat" }
+      // 项目"已完成"包含 DELIVERED / ACCEPTED / CLOSED;project 没有 COMPLETED 状态
+      delta: { value: `${proj.byStatus.filter(s => ["DELIVERED", "ACCEPTED", "CLOSED"].includes(s.status)).reduce((sum, s) => sum + s.count, 0) / Math.max(proj.total, 1) * 100 | 0}% 完成`, direction: "flat" }
     },
     {
       label: "已开票额",
+      tooltip: <>开票状态为 <b>已开票</b>(枚举 ISSUED),<b>实际开票日期</b>(actualIssueDate)落在统计区间内的金额合计。<br/>待财务审核、作废、红冲不计入。"开票率"= 已开票额 ÷ 合同总额。<br/>{permHint}</>,
       value: formatCompact(o.invoiceAmount),
       suffix: "元",
       description: `开票率 ${o.invoiceRate}% · ${o.invoiceCount} 张`,
@@ -91,6 +110,7 @@ export default function DashboardPage() {
     },
     {
       label: "已回款额",
+      tooltip: <>回款状态为 <b>已确认 / 已对账</b>(枚举 CONFIRMED / RECONCILED),<b>到账日期</b>(receivedAt)落在统计区间内的金额合计。<br/>计划中、退款、作废不计入。"回款率"= 已回款额 ÷ 已开票额。"应收"= 已开票额 − 已回款额。<br/>{permHint}</>,
       value: formatCompact(o.paymentAmount),
       suffix: "元",
       description: `回款率 ${o.paymentRate}% · ${o.paymentCount} 笔`,
@@ -108,7 +128,19 @@ export default function DashboardPage() {
 
   return (
     <Page>
-      <PageHeader title="业务总览" subtitle="实时经营数据快照 — 客户、合同、项目、开票、回款" />
+      <PageHeader title="业务总览" subtitle="默认按本月统计(后端接口 monthRange 决定);鼠标悬停 KPI 标题旁的 ⓘ 可查看口径说明。" />
+
+      <section style={{ marginBottom: 12, padding: "10px 14px", background: "#fafafa", border: "1px solid #f0f0f0", borderRadius: 6, display: "flex", alignItems: "center", flexWrap: "wrap", gap: 8 }}>
+        <CalendarOutlined style={{ color: "#8c8c8c" }} />
+        <Text type="secondary" style={{ fontSize: 12 }}>统计区间</Text>
+        <Text strong style={{ fontSize: 13 }}>
+          {rangeFrom ? formatDate(rangeFrom) : "—"}
+          {"  ~  "}
+          {rangeTo ? formatDate(rangeTo) : "—"}
+        </Text>
+        {isThisMonth ? <Tag color="blue" style={{ marginInlineStart: 4 }}>本月</Tag> : null}
+        <Text type="secondary" style={{ fontSize: 12, marginInlineStart: "auto" }}>{permHint}</Text>
+      </section>
 
       <section style={{ marginBottom: 24 }}>
         <StatGrid items={kpiItems} columns={5} />

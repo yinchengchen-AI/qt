@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
-import { Card, Col, Row, Skeleton, Typography } from "antd";
+import { Card, Col, Row, Skeleton, Tooltip, Typography } from "antd";
+import { InfoCircleOutlined } from "@ant-design/icons";
 import { useResponsive } from "@/lib/use-breakpoint";
 
 const { Text } = Typography;
@@ -11,6 +12,8 @@ export type StatItem = {
   suffix?: ReactNode;
   description?: ReactNode;
   delta?: { value: ReactNode; direction?: "up" | "down" | "flat" };
+  /** 鼠标悬停 label 旁的 ⓘ 图标时显示,用于说明该 KPI 的统计口径(时间范围 / 状态过滤 / 权限范围)。 */
+  tooltip?: ReactNode;
 };
 
 type Props = {
@@ -52,9 +55,16 @@ export function StatGrid({ items, columns = 4, loading, className }: Props) {
                 <Skeleton active paragraph={{ rows: 2 }} title={false} />
               ) : (
                 <>
-                  <Text type="secondary" style={{ fontSize: 13 }}>
-                    {it.label}
-                  </Text>
+                  <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+                    <Text type="secondary" style={{ fontSize: 13 }}>
+                      {it.label}
+                    </Text>
+                    {it.tooltip ? (
+                      <Tooltip title={it.tooltip} placement="top">
+                        <InfoCircleOutlined style={{ color: "#bfbfbf", fontSize: 13, cursor: "help" }} />
+                      </Tooltip>
+                    ) : null}
+                  </div>
                   <div
                     style={{
                       display: "flex",

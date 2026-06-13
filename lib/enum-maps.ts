@@ -125,13 +125,6 @@ export const WORKFLOW_RECURRENCE_UNIT_MAP: Record<string, string> = {
   YEAR:  "年"
 };
 
-export const WORKFLOW_REQUIRED_ROLE_MAP: Record<string, string> = {
-  SALES_LEAD: "业务负责人",
-  EXPERT:     "技术专家",
-  ADMIN:      "管理员",
-  OPS:        "行政"
-};
-
 /* === 工作流看板辅助映射 === */
 export const WORKFLOW_TASK_STATUS_TONE: Record<string, string> = {
   PENDING:     "default",

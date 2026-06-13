@@ -111,8 +111,8 @@ export const MESSAGE_TYPE = [
 ] as const;
 export type MessageType = (typeof MESSAGE_TYPE)[number];
 
-// 4 个内置角色
-export const ROLE_CODES = ["ADMIN", "SALES", "FINANCE", "OPS"] as const;
+// 5 个内置角色 (与 WorkflowTask.requiredRole 共享 code 空间)
+export const ROLE_CODES = ["ADMIN", "SALES", "FINANCE", "OPS", "EXPERT"] as const;
 export type RoleCode = (typeof ROLE_CODES)[number];
 
 // =====================================================

@@ -1,13 +1,12 @@
 "use client";
 import useSWR from "swr";
-import { useState } from "react";
-import { App as AntdApp, Button, Empty, Segmented, Space, Table, Tag, Tooltip, Typography } from "antd";
+import { useEffect, useState } from "react";
+import { Button, Empty, Segmented, Space, Table, Tag, Typography } from "antd";
 import {
   CheckCircleOutlined,
   PlayCircleOutlined,
   ReloadOutlined,
-  StopOutlined,
-  ThunderboltOutlined
+  StopOutlined
 } from "@ant-design/icons";
 import { useRouter } from "next/navigation";
 import { Page } from "@/components/page";
@@ -60,56 +59,25 @@ const FILTER_OPTIONS = [
 export default function MyTasksPage() {
   const router = useRouter();
   const { isMobile } = useResponsive();
-  const { message } = AntdApp.useApp();
   const [filter, setFilter] = useState<string>("ACTIVE");
   const [drawerTask, setDrawerTask] = useState<MyTask | null>(null);
-  const [selectedIds, setSelectedIds] = useState<React.Key[]>([]);
-  const [batchBusy, setBatchBusy] = useState(false);
   const statuses = filter === "ACTIVE" ? "PENDING,IN_PROGRESS,BLOCKED" : "COMPLETED,SKIPPED";
   const { data, isLoading, mutate } = useSWR<{ total: number; items: MyTask[] }>(
     `/api/workflow/my-tasks?statuses=${statuses}&limit=100`
   );
 
-  const doBatch = async (action: "start" | "complete" | "block" | "unblock" | "skip" | "assign", extra: Record<string, unknown> = {}) => {
-    if (selectedIds.length === 0) return;
-    setBatchBusy(true);
-    try {
-      const r = await fetch("/api/workflow-tasks/batch-action", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include",
-        body: JSON.stringify({ taskIds: selectedIds.map(String), action, ...extra })
-      });
-      const j = await r.json();
-      if (j.code !== 0) { message.error(j.message); return; }
-      const { succeeded, failed } = j.data;
-      if (failed.length > 0) {
-        message.warning(`成功 ${succeeded.length} 条,失败 ${failed.length} 条(可能阶段锁定或状态不允许)`);
-      } else {
-        message.success(`批量操作成功:${succeeded.length} 条`);
-      }
-      setSelectedIds([]);
-      await mutate();
-    } finally {
-      setBatchBusy(false);
+  // 抽屉打开期间,SWR 重新拉取后把 status/reviewStatus/completedAt 同步回 drawerTask,让按钮立即反映新状态
+  useEffect(() => {
+    if (!drawerTask || !data) return;
+    const updated = data.items.find((x) => x.id === drawerTask.id);
+    if (updated && (
+      updated.status !== drawerTask.status ||
+      updated.reviewStatus !== drawerTask.reviewStatus ||
+      updated.completedAt !== drawerTask.completedAt
+    )) {
+      setDrawerTask({ ...drawerTask, status: updated.status, reviewStatus: updated.reviewStatus, completedAt: updated.completedAt });
     }
-  };
-
-  const callTask = async (taskId: string, path: string, body: unknown = {}) => {
-    const r = await fetch(`/api/workflow-tasks/${taskId}${path}`, {
-      method: path === "assign" || path === "remark" ? "PATCH" : "POST",
-      headers: { "Content-Type": "application/json" },
-      credentials: "include",
-      body: JSON.stringify(body)
-    });
-    const j = await r.json();
-    if (j.code !== 0) {
-      message.error(j.message);
-      return;
-    }
-    message.success("操作成功");
-    await mutate();
-  };
+  }, [data]);
 
   return (
     <Page>
@@ -130,23 +98,9 @@ export default function MyTasksPage() {
       ) : !data || data.items.length === 0 ? (
         <Empty description={filter === "ACTIVE" ? "暂无待办任务" : "暂无完成记录"} />
       ) : (
-        <>
-        {selectedIds.length > 0 && (
-          <div style={{ marginBottom: 12, padding: 12, background: "#e6f4ff", borderRadius: 6, display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
-            <Text>已选 <Text strong>{selectedIds.length}</Text> 项</Text>
-            <Button size="small" loading={batchBusy} onClick={() => doBatch("start")}>批量开始</Button>
-            <Button size="small" loading={batchBusy} onClick={() => doBatch("complete")}>批量完成</Button>
-            <Button size="small" loading={batchBusy} danger onClick={() => doBatch("block")}>批量阻塞</Button>
-            <Button size="small" onClick={() => setSelectedIds([])}>清空选择</Button>
-          </div>
-        )}
         <Table<MyTask>
           rowKey="id"
           dataSource={data.items}
-          rowSelection={{
-            selectedRowKeys: selectedIds,
-            onChange: (keys) => setSelectedIds(keys)
-          }}
           pagination={{ pageSize: 20, size: isMobile ? "small" : "middle" }}
           size={isMobile ? "small" : "middle"}
           scroll={{ x: "max-content" }}
@@ -207,54 +161,17 @@ export default function MyTasksPage() {
               render: (v: string) => new Date(v).toLocaleString("zh-CN")
             },
             {
-              title: "操作",
-              dataIndex: "id",
-              width: 200,
+              title: "项目",
+              dataIndex: "projectId",
+              width: 120,
               render: (_: unknown, r) => (
-                <Space wrap size={4}>
-                  {r.status === "PENDING" && (
-                    <Button
-                      size="small"
-                      type="primary"
-                      onClick={() => callTask(r.id, "/action", { action: "start" })}
-                    >
-                      开始
-                    </Button>
-                  )}
-                  {r.status === "IN_PROGRESS" && (
-                    <Button
-                      size="small"
-                      type="primary"
-                      onClick={() => callTask(r.id, "/action", { action: "complete" })}
-                    >
-                      完成
-                    </Button>
-                  )}
-                  {r.status === "BLOCKED" && (
-                    <Button size="small" onClick={() => callTask(r.id, "/action", { action: "unblock" })}>
-                      解阻
-                    </Button>
-                  )}
-                  {r.requiresTwoStepReview && r.status === "IN_PROGRESS" && !r.reviewStatus && (
-                    <Tooltip title="提交校核">
-                      <Button
-                        size="small"
-                        icon={<ThunderboltOutlined />}
-                        onClick={() => callTask(r.id, "/review", { action: "submit" })}
-                      >
-                        校核
-                      </Button>
-                    </Tooltip>
-                  )}
-                  <Button size="small" onClick={() => router.push(`/projects/${r.projectId}`)}>
-                    打开项目
-                  </Button>
-                </Space>
+                <Button size="small" onClick={() => router.push(`/projects/${r.projectId}`)}>
+                  打开项目
+                </Button>
               )
             }
           ]}
         />
-        </>
       )}
 
       <TaskDrawer task={drawerTask} open={!!drawerTask} onClose={() => setDrawerTask(null)} onChanged={() => mutate()} canEdit={true} />

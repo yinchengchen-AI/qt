@@ -1044,6 +1044,10 @@ export type HistoryEntry = {
   actorName: string | null;
   at: string;
   diff: { before: unknown; after: unknown } | null;
+  /** 项目级动作(如 WORKFLOW_INSTANTIATE)没有关联任务实例,此时 instanceId = null */
+  instanceId: string | null;
+  taskName: string | null;
+  taskCode: string | null;
 };
 
 const WORKFLOW_INSTANCE_ACTIONS = new Set([
@@ -1099,8 +1103,79 @@ export async function getTaskHistory(user: SessionUser, instanceId: string): Pro
       actorId: l.actorId,
       actorName: actorMap.get(l.actorId) ?? null,
       at: l.at.toISOString(),
-      diff: l.diff ? (l.diff as { before: unknown; after: unknown }) : null
+      diff: l.diff ? (l.diff as { before: unknown; after: unknown }) : null,
+      instanceId: l.entity === "WorkflowTaskInstance" ? l.entityId : null,
+      taskName: null,
+      taskCode: null
     }))
+  };
+}
+
+/**
+ * 读整个项目下的工作流活动流(项目级 + 所有任务实例)
+ * - 项目级动作:WORKFLOW_INSTANTIATE / WORKFLOW_RECURRING_GENERATE / WORKFLOW_RECURRING_SKIPPED_PROJECT_ENDED
+ * - 任务实例级:start / complete / block / unblock / skip / assign / remark / 附件增删 / 校核
+ * - 每条都补 instanceId / taskName / taskCode,前端无须再做一次反查
+ */
+export async function getProjectHistory(user: SessionUser, projectId: string): Promise<{ items: HistoryEntry[] }> {
+  requirePermission(user.roleCode, RESOURCE.PROJECT, ACTION.READ);
+  // 行级隔离:SALES 走 ownerUserId 校验,非 SALES 直通
+  const project = await prisma.project.findFirst({
+    where: {
+      id: projectId,
+      deletedAt: null,
+      ...(ownerViaContract(user) as Prisma.ProjectWhereInput)
+    },
+    select: { id: true }
+  });
+  if (!project) throw new ApiError(ERROR_CODES.NOT_FOUND, "项目不存在", 404);
+
+  // 项目下所有未删实例的 id + task 名/码(用于 diff 行上下文)
+  const allInstances = await prisma.workflowTaskInstance.findMany({
+    where: { projectId, deletedAt: null },
+    select: { id: true, task: { select: { name: true, code: true } } }
+  });
+  const allInstanceIds = allInstances.map((x) => x.id);
+  const instanceNameMap = new Map(allInstances.map((x) => [x.id, { name: x.task.name, code: x.task.code }]));
+
+  // 项目级 + 任务实例级的所有 log
+  const logs = await prisma.operationLog.findMany({
+    where: {
+      OR: [
+        { entity: "Project", entityId: projectId, action: { in: Array.from(WORKFLOW_INSTANCE_ACTIONS) } },
+        ...(allInstanceIds.length > 0
+          ? [{ entity: "WorkflowTaskInstance", entityId: { in: allInstanceIds } }]
+          : [])
+      ]
+    },
+    orderBy: { at: "desc" },
+    take: 200
+  });
+
+  // 操作人姓名批量查询
+  const actorIds = Array.from(new Set(logs.map((l) => l.actorId)));
+  const actors = await prisma.user.findMany({
+    where: { id: { in: actorIds } },
+    select: { id: true, name: true }
+  });
+  const actorMap = new Map(actors.map((a) => [a.id, a.name]));
+
+  return {
+    items: logs.map((l) => {
+      const isTaskLog = l.entity === "WorkflowTaskInstance";
+      const meta = isTaskLog ? instanceNameMap.get(l.entityId) : null;
+      return {
+        id: l.id,
+        action: l.action,
+        actorId: l.actorId,
+        actorName: actorMap.get(l.actorId) ?? null,
+        at: l.at.toISOString(),
+        diff: l.diff ? (l.diff as { before: unknown; after: unknown }) : null,
+        instanceId: isTaskLog ? l.entityId : null,
+        taskName: meta?.name ?? null,
+        taskCode: meta?.code ?? null
+      };
+    })
   };
 }
 
@@ -1341,6 +1416,7 @@ export type KanbanColumn = {
   tasks: Array<{
     id: string;
     name: string;
+    code: string;
     status: WorkflowTaskStatus;
     assigneeId: string | null;
     requiresTwoStepReview: boolean;
@@ -1369,7 +1445,7 @@ export async function getProjectKanban(user: SessionUser, projectId: string): Pr
   if (!project) throw new ApiError(ERROR_CODES.NOT_FOUND, "项目不存在", 404);
   const instances = await prisma.workflowTaskInstance.findMany({
     where: { projectId, deletedAt: null },
-    include: { task: { include: { stage: { select: { id: true, phase: true, code: true, name: true, sort: true, isRequired: true } } } } },
+    include: { task: { select: { name: true, code: true, requiresTwoStepReview: true, stage: { select: { id: true, phase: true, code: true, name: true, sort: true, isRequired: true } } } } },
     orderBy: [{ createdAt: "asc" }]
   });
   // 按 phase 分组
@@ -1396,6 +1472,7 @@ export async function getProjectKanban(user: SessionUser, projectId: string): Pr
     col.tasks.push({
       id: ins.id,
       name: ins.task.name,
+      code: ins.task.code,
       status: ins.status as WorkflowTaskStatus,
       assigneeId: ins.assigneeId,
       requiresTwoStepReview: ins.task.requiresTwoStepReview,

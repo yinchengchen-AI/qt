@@ -43,21 +43,25 @@ export async function GET(req: Request) {
       getInvoiceAging(user),
       getTopCustomers(user, "contract", 5),
       prisma.customer.count({ where: { deletedAt: null, ...own } as Prisma.CustomerWhereInput }),
+      // project 是"当前状态快照",不按时间过滤(IN_PROGRESS / ACCEPTED 这些是当下事实)
       prisma.project.groupBy({
         by: ["status"], where: { deletedAt: null, ...ownVia } as Prisma.ProjectWhereInput,
         _count: { _all: true }
       }),
+      // 合同按签订日期在范围内(与 overview.contractAmount 同口径)
       prisma.contract.groupBy({
-        by: ["status"], where: { deletedAt: null, ...own } as Prisma.ContractWhereInput,
+        by: ["status"], where: { deletedAt: null, signDate: { gte: from, lte: to }, ...own } as Prisma.ContractWhereInput,
         _count: { _all: true }, _sum: { totalAmount: true }
       }),
       // invoice / payment: SALES 隔离走 contract 关系(否则 SALES 看到全公司)
+      // 时间范围按开票日期,与 overview.invoiceAmount 同口径
       prisma.invoice.groupBy({
-        by: ["status"], where: { deletedAt: null, ...ownVia } as Prisma.InvoiceWhereInput,
+        by: ["status"], where: { deletedAt: null, actualIssueDate: { gte: from, lte: to }, ...ownVia } as Prisma.InvoiceWhereInput,
         _count: { _all: true }, _sum: { amount: true }
       }),
+      // 回款按到账日期在范围内,与 overview.paymentAmount 同口径
       prisma.payment.groupBy({
-        by: ["status"], where: { deletedAt: null, ...ownVia } as Prisma.PaymentWhereInput,
+        by: ["status"], where: { deletedAt: null, receivedAt: { gte: from, lte: to }, ...ownVia } as Prisma.PaymentWhereInput,
         _count: { _all: true }, _sum: { amount: true }
       }),
       prisma.customer.count({
@@ -69,6 +73,7 @@ export async function GET(req: Request) {
       })
     ]);
 
+        // 区域分布反映"现有客户的地域结构",全期统计;不按 from/to 过滤
     const townMap: Record<string, number> = {};
     for (const r of townRows) {
       const k = r.town || "";

@@ -32,9 +32,9 @@ export function useUserLookup(): Map<string, LookupUser> {
   return map;
 }
 
-/** 单 id 解析成姓名,无值或查不到时回落到 "—" 或原 id */
+/** 单 id 解析成姓名;无值或查不到时一律回落 fallback(不再回显原始 ID) */
 export function useUserName(id: string | null | undefined, fallback = "—"): string {
   const map = useUserLookup();
   if (!id) return fallback;
-  return map.get(id)?.name ?? id;
+  return map.get(id)?.name ?? fallback;
 }

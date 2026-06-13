@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { ROLE_CODES } from "@/types/enums";
 
 const isoDate = z.iso.datetime();
 
@@ -8,7 +9,7 @@ export const announcementCreateSchema = z.object({
   pinned: z.boolean().default(false),
   effectiveFrom: isoDate.optional(),
   effectiveTo: isoDate.optional(),
-  targetRoles: z.array(z.enum(["ADMIN", "SALES", "FINANCE", "OPS"])).default([])
+  targetRoles: z.array(z.enum(ROLE_CODES)).default([])
 });
 
 export const announcementUpdateSchema = announcementCreateSchema.partial();

@@ -1,7 +1,6 @@
 "use client";
-import { ProCard, ProDescriptions, ProTable } from "@ant-design/pro-components";
-import { Button, Space, Tag, Modal, Typography } from "antd";
-import { PlusOutlined } from "@ant-design/icons";
+import { ProCard, ProDescriptions } from "@ant-design/pro-components";
+import { Button, Col, Modal, Row, Space, Tag, Typography } from "antd";
 import { useParams, useRouter } from "next/navigation";
 import type { Project as ProjectEntity } from "@/lib/types/entities";
 import useSWR from "swr";
@@ -13,12 +12,10 @@ import { StatusTag } from "@/components/status-tag";
 import { useActionCall } from "@/lib/use-action-call";
 import { FilePdfOutlined } from "@ant-design/icons";
 import { openPrintWindow } from "@/lib/print-client";
-import { useUserName } from "@/lib/user-lookup";
-import { ProgressLogDrawer } from "@/components/file/progress-log-drawer";
 import { CurrencyCell, DateTimeCell } from "@/components/table-cells";
-import { useResponsive } from "@/lib/use-breakpoint";
 import { WorkflowSection } from "@/components/workflow/workflow-section";
 import { UpgradeModal } from "@/components/workflow/upgrade-modal";
+import { ProjectHistory } from "@/components/workflow/project-history";
 import { AppstoreOutlined, DownloadOutlined, ThunderboltOutlined } from "@ant-design/icons";
 
 
@@ -33,11 +30,9 @@ export default function ProjectDetailPage() {
   const params = useParams();
   const id = String(params.id);
   const router = useRouter();
-  const { isMobile } = useResponsive();
   const { data, isLoading, mutate } = useSWR<ProjectEntity>(`/api/projects/${id}`);
   const project = data;
   const { run } = useActionCall({ baseUrl: `/api/projects/${id}`, reload: () => mutate() });
-  const [progressOpen, setProgressOpen] = useState(false);
   const [upgradeOpen, setUpgradeOpen] = useState(false);
 
   if (isLoading || !project) {
@@ -60,9 +55,7 @@ export default function ProjectDetailPage() {
   })();
 
   const contractNo = project.contract?.contractNo ?? project.contractNo ?? "-";
-  // 项目已结束 / 关闭后禁止再记进度(状态机不允许)
-  const canLogProgress = ["PLANNED", "IN_PROGRESS", "SUSPENDED"].includes(project.status);
-  // 工作流任务实例:同上,结束态不允许流转
+  // 结束态不允许工作流流转(项目状态机)
   const canEditWorkflow = ["PLANNED", "IN_PROGRESS", "SUSPENDED"].includes(project.status);
 
   // 取消项目:拉一次工作流,统计未完成必交付任务,二次确认
@@ -108,11 +101,6 @@ export default function ProjectDetailPage() {
         meta={<StatusTag status={project.status} domain="project" />}
         actions={
           <Space wrap>
-            {canLogProgress && (
-              <Button key="progress" icon={<PlusOutlined />} onClick={() => setProgressOpen(true)}>
-                记录里程碑
-              </Button>
-            )}
             <Button key="pdf" icon={<FilePdfOutlined />} onClick={() => openPrintWindow(`/api/projects/${id}/pdf`)}>导出 PDF</Button>
             <Button
               key="board"
@@ -160,67 +148,44 @@ export default function ProjectDetailPage() {
       <ProCard>
         <div style={{ whiteSpace: "pre-wrap", wordBreak: "break-word" }}>{project.serviceScope}</div>
       </ProCard>
-      <PageHeader
-        level="section"
-        title="服务工作流"
-        actions={
-          <Space wrap>
-            <Button
-              icon={<DownloadOutlined />}
-              onClick={() => {
-                window.open(`/api/projects/${id}/workflow/export`, "_blank");
-              }}
-            >
-              导出 JSON
-            </Button>
-            <Button
-              icon={<ThunderboltOutlined />}
-              onClick={() => setUpgradeOpen(true)}
-              disabled={!canEditWorkflow}
-            >
-              升级到最新模板
-            </Button>
-          </Space>
-        }
-      />
-      <ProCard>
-        <WorkflowSection projectId={id} canEdit={canEditWorkflow} />
-      </ProCard>
+      <Row gutter={[16, 16]}>
+        <Col xs={24} lg={16}>
+          <PageHeader
+            level="section"
+            title="服务工作流"
+            actions={
+              <Space wrap>
+                <Button
+                  icon={<DownloadOutlined />}
+                  onClick={() => {
+                    window.open(`/api/projects/${id}/workflow/export`, "_blank");
+                  }}
+                >
+                  导出 JSON
+                </Button>
+                <Button
+                  icon={<ThunderboltOutlined />}
+                  onClick={() => setUpgradeOpen(true)}
+                  disabled={!canEditWorkflow}
+                >
+                  升级到最新模板
+                </Button>
+              </Space>
+            }
+          />
+          <ProCard>
+            <WorkflowSection projectId={id} canEdit={canEditWorkflow} />
+          </ProCard>
+        </Col>
+        <Col xs={24} lg={8}>
+          <PageHeader level="section" title="活动历史" />
+          <ProCard>
+            <ProjectHistory projectId={id} canEdit={canEditWorkflow} />
+          </ProCard>
+        </Col>
+      </Row>
       <UpgradeModal projectId={id} open={upgradeOpen} onClose={() => setUpgradeOpen(false)} onUpgraded={() => mutate()} />
-      <PageHeader level="section" title="里程碑日志" subtitle="仅作文字记录,数字进度已并入上方「工作流派生进度」" />
-      <ProCard>
-        <ProTable
-          rowKey="id"
-          search={false}
-          options={false}
-          pagination={{ pageSize: 10, size: isMobile ? "small" : undefined }}
-          dataSource={project.progressLogs ?? []}
-          scroll={{ x: 'max-content' }}
-          sticky={isMobile}
-          columns={[
-            { title: "时间", dataIndex: "at", valueType: "dateTime", width: 180, render: (_, r) => <DateTimeCell value={r.at as string} /> },
-            {
-              title: "操作人",
-              dataIndex: "userId",
-              width: 120,
-              render: (_, r) => <ProgressUserName id={r.userId as string} />
-            },
-            { title: "说明", dataIndex: "remark" }
-          ]}
-        />
-      </ProCard>
-      <ProgressLogDrawer
-        projectId={id}
-        open={progressOpen}
-        onClose={() => setProgressOpen(false)}
-        onSaved={() => mutate()}
-      />
     </Page>
   );
 }
 
-// 拆出来是因为 useUserName 必须在 hook 顶层调用;写成内联 render 会破坏 hooks 规则
-function ProgressUserName({ id }: { id: string }) {
-  const name = useUserName(id, "—");
-  return <span>{name}</span>;
-}

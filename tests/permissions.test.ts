@@ -30,7 +30,7 @@ describe("Role permissions", () => {
     expect(hasPermission("OPS", RESOURCE.INVOICE, ACTION.CREATE)).toBe(false);
   });
 
-  it("ROLE_PERMISSIONS covers all 4 built-in roles", () => {
-    expect(Object.keys(ROLE_PERMISSIONS).sort()).toEqual(["ADMIN", "FINANCE", "OPS", "SALES"]);
+  it("ROLE_PERMISSIONS covers all 5 built-in roles", () => {
+    expect(Object.keys(ROLE_PERMISSIONS).sort()).toEqual(["ADMIN", "EXPERT", "FINANCE", "OPS", "SALES"]);
   });
 });

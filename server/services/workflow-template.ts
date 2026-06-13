@@ -203,7 +203,7 @@ export async function updateTask(
       const dup = await tx.workflowTask.findFirst({ where: { code: input.code, stageId: t.stageId, id: { not: taskId } } });
       if (dup) throw new ApiError(ERROR_CODES.VALIDATION_FAILED, `任务编码 ${input.code} 在该阶段下已存在`, 422);
     }
-    const data: Prisma.WorkflowTaskUpdateInput = {};
+    const data: Prisma.WorkflowTaskUncheckedUpdateInput = {};
     if (input.code !== undefined) data.code = input.code;
     if (input.name !== undefined) data.name = input.name;
     if (input.sort !== undefined) data.sort = input.sort;

@@ -74,7 +74,7 @@ export default function WorkflowTemplatesPage() {
     <Page>
       <PageHeader
         title="工作流模板"
-        subtitle="按服务类型管理 5 阶段的任务定义。修改仅影响新实例化的项目。"
+        subtitle="按服务类型管理流程模板与各阶段任务定义。修改仅影响新实例化的项目。"
         actions={
           <Space>
             <Text type="secondary" style={{ fontSize: 12 }}>

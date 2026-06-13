@@ -107,7 +107,7 @@ export default function DepartmentDetailPage() {
             { title: "成员数", dataIndex: "memberCount", render: (_: unknown, r: Dept) => <Tag color={r.memberCount > 0 ? "green" : "default"}>{r.memberCount} 人</Tag> },
             { title: "子部门", dataIndex: "childCount", render: (_: unknown, r: Dept) => <Tag color={r.childCount > 0 ? "blue" : "default"}>{r.childCount} 个</Tag> },
             { title: "创建时间", dataIndex: "createdAt", render: (_: unknown, r: Dept) => <DateCell value={r.createdAt} /> },
-            { title: "更新时间", dataIndex: "updatedAt", render: (_: unknown, r: Dept) => <DateCell value={r.createdAt} /> }
+            { title: "更新时间", dataIndex: "updatedAt", render: (_: unknown, r: Dept) => <DateCell value={r.updatedAt} /> }
           ]}
         />
       </ProCard>

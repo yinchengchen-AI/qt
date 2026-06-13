@@ -86,6 +86,20 @@ export const ROLE_PERMISSIONS: Record<RoleCode, Permission[]> = {
     { resource: RESOURCE.STATISTICS, actions: R },
     { resource: RESOURCE.MESSAGE, actions: CRUD },
     { resource: RESOURCE.ANNOUNCEMENT, actions: CRUD }
+  ],
+  // 技术专家：现场勘查 / 报告撰写等"专业执行"角色,权限与 SALES 同
+  EXPERT: [
+    { resource: RESOURCE.DEPARTMENT, actions: R },
+    { resource: RESOURCE.USER, actions: R },
+    { resource: RESOURCE.DICTIONARY, actions: R },
+    { resource: RESOURCE.CUSTOMER, actions: [...CRU, ACTION.EXPORT] },
+    { resource: RESOURCE.CONTRACT, actions: [...CRU, ACTION.EXPORT] },
+    { resource: RESOURCE.PROJECT, actions: [...CRU, ACTION.EXPORT] },
+    { resource: RESOURCE.INVOICE, actions: [...CR, ACTION.EXPORT] },
+    { resource: RESOURCE.PAYMENT, actions: [...CR, ACTION.EXPORT] },
+    { resource: RESOURCE.STATISTICS, actions: R },
+    { resource: RESOURCE.MESSAGE, actions: CRUD },
+    { resource: RESOURCE.ANNOUNCEMENT, actions: R }
   ]
 };
 

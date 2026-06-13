@@ -1,6 +1,6 @@
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-nocheck -- 业务数据全部由 patches/_seed_writer.mjs 注入生成,数据结构是 JS 字面量暂不细化
-// 种子：4 角色 + 4 账号 + 字典
+// 种子：5 角色 + 4 账号 + 字典
 import { PrismaClient } from "@prisma/client";
 import { PrismaPg } from "@prisma/adapter-pg";
 import "dotenv/config";
@@ -53,25 +53,25 @@ type SeedTemplate = {
 
 // 通用 4 阶段(所有 9 类服务一致)
 const COMMON_PREP_TASKS: SeedTask[] = [
-  { code: "VISIT_INIT",     name: "委托单位初访",       description: "了解委托单位及项目基本概况、安全管理现状、技术要求、服务目的", requiredRole: "SALES_LEAD", estimateDays: 3 },
-  { code: "MATCH_CHECK",    name: "服务匹配度评估",     description: "分析服务要求、自身业务能力、风险程度及法律责任", requiredRole: "SALES_LEAD", estimateDays: 2 },
-  { code: "COST_ESTIMATE",  name: "费用测算",           description: "按工作量/人员/技术含量测算成本,分析达成目标的可行性", requiredRole: "SALES_LEAD", estimateDays: 2 },
-  { code: "QUOTE_BID",      name: "报价/投标",          description: "通过洽谈、竞价、投标等方式确定服务费用,接受项目委托", requiredRole: "SALES_LEAD", estimateDays: 5 },
-  { code: "INTERNAL_KICKOFF", name: "内部立项",         description: "内部立项审批", requiredRole: "SALES_LEAD", requiresDeliverable: true, estimateDays: 2 }
+  { code: "VISIT_INIT",     name: "委托单位初访",       description: "了解委托单位及项目基本概况、安全管理现状、技术要求、服务目的", requiredRole: "SALES", estimateDays: 3 },
+  { code: "MATCH_CHECK",    name: "服务匹配度评估",     description: "分析服务要求、自身业务能力、风险程度及法律责任", requiredRole: "SALES", estimateDays: 2 },
+  { code: "COST_ESTIMATE",  name: "费用测算",           description: "按工作量/人员/技术含量测算成本,分析达成目标的可行性", requiredRole: "SALES", estimateDays: 2 },
+  { code: "QUOTE_BID",      name: "报价/投标",          description: "通过洽谈、竞价、投标等方式确定服务费用,接受项目委托", requiredRole: "SALES", estimateDays: 5 },
+  { code: "INTERNAL_KICKOFF", name: "内部立项",         description: "内部立项审批", requiredRole: "SALES", requiresDeliverable: true, estimateDays: 2 }
 ];
 const COMMON_REQ_TASKS: SeedTask[] = [
-  { code: "REQ_DISCUSS",    name: "服务内容沟通",       description: "充分沟通安全生产特点、服务内容、时限、频次", requiredRole: "SALES_LEAD", estimateDays: 3 },
+  { code: "REQ_DISCUSS",    name: "服务内容沟通",       description: "充分沟通安全生产特点、服务内容、时限、频次", requiredRole: "SALES", estimateDays: 3 },
   { code: "WORK_PLAN",      name: "服务工作方案编制",   description: "任务/进度/资源规划", requiredRole: "EXPERT", requiresDeliverable: true, requiresTwoStepReview: true, estimateDays: 5 },
   { code: "PLAN_REVIEW",    name: "方案内部评审",       description: "方案内部评审会", requiredRole: "ADMIN", estimateDays: 2 }
 ];
 const COMMON_CONTRACT_TASKS: SeedTask[] = [
-  { code: "TERM_DISCUSS",   name: "合同条款协商",       description: "责权对等的合同条款协商", requiredRole: "SALES_LEAD", estimateDays: 3 },
+  { code: "TERM_DISCUSS",   name: "合同条款协商",       description: "责权对等的合同条款协商", requiredRole: "SALES", estimateDays: 3 },
   { code: "CONTRACT_REVIEW", name: "合同评审",          description: "合同评审(责权对等)", requiredRole: "ADMIN", estimateDays: 2 },
-  { code: "CONTRACT_SIGN",  name: "合同签订",           description: "书面服务合同签订", requiredRole: "SALES_LEAD", estimateDays: 1 },
+  { code: "CONTRACT_SIGN",  name: "合同签订",           description: "书面服务合同签订", requiredRole: "SALES", estimateDays: 1 },
   { code: "CONTRACT_ARCHIVE", name: "合同归档",         description: "合同正本归档", requiredRole: "OPS", requiresDeliverable: true, estimateDays: 1 }
 ];
 const COMMON_FOLLOWUP_TASKS: SeedTask[] = [
-  { code: "SATISFACTION",   name: "满意度回访",         description: "电话/网络/现场回访,记录满意度与具体意见", requiredRole: "SALES_LEAD", requiresDeliverable: true, estimateDays: 7 },
+  { code: "SATISFACTION",   name: "满意度回访",         description: "电话/网络/现场回访,记录满意度与具体意见", requiredRole: "SALES", requiresDeliverable: true, estimateDays: 7 },
   { code: "FEEDBACK_LOG",   name: "意见反馈记录",       description: "汇总反馈意见", requiredRole: "OPS", estimateDays: 2 },
   { code: "IMPROVEMENT_PLAN", name: "改进措施制定",     description: "针对不足制定改进措施", requiredRole: "ADMIN", requiresDeliverable: true, estimateDays: 5 },
   { code: "IMPROVEMENT_DO", name: "改进措施落实",       description: "落实改进措施并跟踪", requiredRole: "OPS", estimateDays: 14 }
@@ -113,7 +113,7 @@ const EXECUTE_BY_TYPE: Record<string, SeedTask[]> = {
     { code: "FILING_RECEIPT",    name: "备案回执",           description: "备案回执(可选)", requiredRole: "OPS", requiresDeliverable: true, isRequired: false, estimateDays: 7 }
   ],
   RESIDENT: [
-    { code: "RES_PLAN",          name: "派驻方案",           description: "派驻人数/周期/频次方案", requiredRole: "SALES_LEAD", requiresDeliverable: true, estimateDays: 3 },
+    { code: "RES_PLAN",          name: "派驻方案",           description: "派驻人数/周期/频次方案", requiredRole: "SALES", requiresDeliverable: true, estimateDays: 3 },
     { code: "RES_PERSONNEL",     name: "派驻人员确定",       description: "派驻人员确定", requiredRole: "ADMIN", estimateDays: 2 },
     { code: "PRE_TRAINING",      name: "岗前培训",           description: "派驻人员岗前培训", requiredRole: "EXPERT", estimateDays: 3 },
     { code: "MONTHLY_REPORT",    name: "月度报告",           description: "派驻期间月度报告(循环 1 MONTH)", requiredRole: "EXPERT", requiresDeliverable: true, requiresTwoStepReview: true, requiresOnsite: true, isRecurring: true, recurrenceUnit: "MONTH", recurrenceInterval: 1, estimateDays: 3 },
@@ -124,10 +124,10 @@ const EXECUTE_BY_TYPE: Record<string, SeedTask[]> = {
     { code: "REQ_RESEARCH",      name: "需求调研",           description: "政策/战略/规划/方案方向调研", requiredRole: "EXPERT", estimateDays: 3 },
     { code: "STRATEGY_DOCS",     name: "战略/规划/方案编制", description: "战略/规划/方案编制", requiredRole: "EXPERT", requiresDeliverable: true, requiresTwoStepReview: true, estimateDays: 14 },
     { code: "DOC_INTERNAL_REVIEW", name: "内部评审",         description: "方案内部评审", requiredRole: "EXPERT", estimateDays: 2 },
-    { code: "CLIENT_CONFIRM",    name: "客户对接确认",       description: "与客户对接确认方案", requiredRole: "SALES_LEAD", estimateDays: 3 },
+    { code: "CLIENT_CONFIRM",    name: "客户对接确认",       description: "与客户对接确认方案", requiredRole: "SALES", estimateDays: 3 },
     { code: "POLICY_BRIEF",      name: "政策解读/方案审核意见", description: "政策解读报告或方案审核意见", requiredRole: "EXPERT", requiresDeliverable: true, estimateDays: 5 },
     { code: "TECH_PROMOTE",      name: "新技术推广",         description: "应急领域新技术/产品/材料/设备推广(可选)", requiredRole: "EXPERT", isRequired: false, estimateDays: 7 },
-    { code: "SEMINAR_ORG",       name: "研讨交流组织",       description: "先进安全管理和技术交流研讨(可选)", requiredRole: "SALES_LEAD", isRequired: false, estimateDays: 7 }
+    { code: "SEMINAR_ORG",       name: "研讨交流组织",       description: "先进安全管理和技术交流研讨(可选)", requiredRole: "SALES", isRequired: false, estimateDays: 7 }
   ],
   SURVEY: [
     { code: "SURVEY_PLAN",       name: "普查方案",           description: "普查指标/范围/时间表", requiredRole: "EXPERT", requiresDeliverable: true, estimateDays: 3 },
@@ -165,7 +165,7 @@ const EXECUTE_BY_TYPE: Record<string, SeedTask[]> = {
     { code: "EP_DRAFT",          name: "预案初稿",           description: "应急预案初稿编制", requiredRole: "EXPERT", requiresDeliverable: true, estimateDays: 7 },
     { code: "EP_INT_REVIEW",     name: "预案内部评审",       description: "预案内部评审", requiredRole: "EXPERT", estimateDays: 2 },
     { code: "EP_EXT_REVIEW",     name: "预案专家评审",       description: "预案专家评审", requiredRole: "EXPERT", requiresDeliverable: true, requiresTwoStepReview: true, estimateDays: 3 },
-    { code: "EP_CLIENT_CONFIRM", name: "客户确认",           description: "委托单位确认预案", requiredRole: "SALES_LEAD", estimateDays: 2 },
+    { code: "EP_CLIENT_CONFIRM", name: "客户确认",           description: "委托单位确认预案", requiredRole: "SALES", estimateDays: 2 },
     { code: "DRILL_PLAN",        name: "演练方案",           description: "应急预案演练方案", requiredRole: "EXPERT", requiresDeliverable: true, estimateDays: 5 },
     { code: "DRILL_EXEC",        name: "演练实施 + 评估",    description: "演练实施与评估", requiredRole: "EXPERT", requiresOnsite: true, estimateDays: 3 },
     { code: "EP_FILING",         name: "备案提交",           description: "应急预案备案提交", requiredRole: "OPS", requiresDeliverable: true, estimateDays: 2 },
@@ -635,10 +635,11 @@ async function seedBusinessData() {
 
 async function main() {
   const roleDefs = [
-    { code: "ADMIN", name: "管理员", description: "系统管理员" },
-    { code: "SALES", name: "业务人员", description: "负责客户/合同/项目推进" },
+    { code: "ADMIN",   name: "管理员",   description: "系统管理员" },
+    { code: "SALES",   name: "业务人员", description: "负责客户/合同/项目推进" },
     { code: "FINANCE", name: "财务人员", description: "负责开票/回款/对账" },
-    { code: "OPS", name: "行政人员", description: "基础信息维护" }
+    { code: "OPS",     name: "行政人员", description: "基础信息维护" },
+    { code: "EXPERT",  name: "技术专家", description: "承担现场勘查、报告撰写等专业工作" }
   ] as const;
 
   for (const r of roleDefs) {
@@ -789,7 +790,7 @@ async function main() {
 
   await seedBusinessData();
   await seedWorkflowTemplates();
-  console.log("✅ Seed 完成：4 角色 + 4 账号（密码 123456）+ 5 部门 + 15 类字典 + 12 客户 + 15 联系人 + 18 跟进 + 13 合同 + 10 项目 + 10 发票 + 12 回款 + 5 公告 + 16 消息 + 4 Sequence 续号点");
+  console.log("✅ Seed 完成：5 角色 + 4 账号（密码 123456）+ 5 部门 + 15 类字典 + 12 客户 + 15 联系人 + 18 跟进 + 13 合同 + 10 项目 + 10 发票 + 12 回款 + 5 公告 + 16 消息 + 4 Sequence 续号点");
 }
 
 main()

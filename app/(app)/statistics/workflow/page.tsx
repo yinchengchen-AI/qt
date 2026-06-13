@@ -11,7 +11,7 @@ import { Column } from "@ant-design/charts";
 import { Page } from "@/components/page";
 import { PageHeader } from "@/components/page-header";
 import { useResponsive } from "@/lib/use-breakpoint";
-import { WORKFLOW_PHASE_MAP, WORKFLOW_TASK_STATUS_MAP, SERVICE_TYPE_MAP } from "@/lib/enum-maps";
+import { WORKFLOW_PHASE_MAP, WORKFLOW_TASK_STATUS_MAP, SERVICE_TYPE_MAP, WORKFLOW_REVIEW_STATUS_MAP } from "@/lib/enum-maps";
 
 const { Text } = Typography;
 
@@ -228,7 +228,7 @@ export default function WorkflowStatsPage() {
                       <Tag color={STATUS_TONE[r.status]}>
                         {WORKFLOW_TASK_STATUS_MAP[r.status] ?? r.status}
                       </Tag>
-                      {r.reviewStatus && <Tag color="purple">{r.reviewStatus}</Tag>}
+                      {r.reviewStatus && <Tag color="purple">{WORKFLOW_REVIEW_STATUS_MAP[r.reviewStatus] ?? r.reviewStatus}</Tag>}
                     </Space>
                   </Space>
                 )

@@ -1,45 +1,31 @@
 "use client";
 // P5: 任务实例抽屉
-// 内容: 完整信息 + 状态机操作 + 备注编辑 + 附件上传/列表 + 活动历史 + diff 视图
+// 内容: 完整信息 + 状态机操作 + 备注编辑 + 附件上传/列表
+// 活动历史已移至项目详情页(/projects/{id})的 ProjectHistory 组件
 import { useState } from "react";
-import useSWR from "swr";
-import { App as AntdApp, Button, Drawer, Empty, Skeleton, Space, Table, Tag, Typography, Upload, Popconfirm } from "antd";
+import { App as AntdApp, Button, Drawer, Empty, Space, Tag, Typography, Upload, Popconfirm } from "antd";
 import {
   CheckCircleOutlined,
-  ClockCircleOutlined,
   DeleteOutlined,
-  ExclamationCircleOutlined,
-  HistoryOutlined,
-  LockOutlined,
   PaperClipOutlined,
   PlayCircleOutlined,
   SaveOutlined,
   StopOutlined,
-  ThunderboltOutlined,
-  UserOutlined
+  ThunderboltOutlined
 } from "@ant-design/icons";
 import {
   WORKFLOW_PHASE_MAP,
   WORKFLOW_TASK_STATUS_MAP,
   WORKFLOW_REVIEW_STATUS_MAP,
-  WORKFLOW_REQUIRED_ROLE_MAP,
   WORKFLOW_RECURRENCE_UNIT_MAP
 } from "@/lib/enum-maps";
 import { useResponsive } from "@/lib/use-breakpoint";
 import { useUserName } from "@/lib/user-lookup";
+import { useRoleNameMap } from "@/lib/role-lookup";
 
 const { Text, Title } = Typography;
 import { Input } from "antd";
 const { TextArea } = Input;
-
-type HistoryEntry = {
-  id: string;
-  action: string;
-  actorId: string;
-  actorName: string | null;
-  at: string;
-  diff: { before: unknown; after: unknown } | null;
-};
 
 type Attachment = { id: string; name: string; mimeType: string; size: number; uploadedBy?: string; uploadedAt?: string };
 
@@ -71,24 +57,6 @@ type TaskInstance = {
   parentInstanceId?: string | null;
 };
 
-const ACTION_LABEL: Record<string, string> = {
-  WORKFLOW_INSTANTIATE: "模板实例化",
-  WORKFLOW_TASK_START: "开始任务",
-  WORKFLOW_TASK_COMPLETE: "完成任务",
-  WORKFLOW_TASK_BLOCK: "阻塞任务",
-  WORKFLOW_TASK_UNBLOCK: "解除阻塞",
-  WORKFLOW_TASK_SKIP: "跳过任务",
-  WORKFLOW_TASK_ASSIGN: "重新指派",
-  WORKFLOW_TASK_REMARK: "更新备注",
-  WORKFLOW_TASK_ATTACHMENT_ADD: "新增附件",
-  WORKFLOW_TASK_ATTACHMENT_REMOVE: "删除附件",
-  WORKFLOW_REVIEW_SUBMIT: "提交校核",
-  WORKFLOW_REVIEW_APPROVE: "审核通过",
-  WORKFLOW_REVIEW_REJECT: "驳回校核",
-  WORKFLOW_RECURRING_GENERATE: "循环生成",
-  WORKFLOW_RECURRING_GENERATE_PARENT: "循环实例"
-};
-
 const STATUS_TONE: Record<string, string> = {
   PENDING: "default",
   IN_PROGRESS: "processing",
@@ -96,28 +64,6 @@ const STATUS_TONE: Record<string, string> = {
   SKIPPED: "warning",
   BLOCKED: "error"
 };
-
-const BEFORE_LABEL: Record<string, string> = {
-  status: "状态",
-  assigneeId: "指派人",
-  reviewStatus: "二审状态",
-  remark: "备注"
-};
-
-function diffForDisplay(diff: { before: unknown; after: unknown } | null): { key: string; before: string; after: string }[] {
-  if (!diff) return [];
-  const b = (diff.before ?? {}) as Record<string, unknown>;
-  const a = (diff.after ?? {}) as Record<string, unknown>;
-  const keys = new Set<string>([...Object.keys(b), ...Object.keys(a)]);
-  const rows: { key: string; before: string; after: string }[] = [];
-  for (const k of keys) {
-    const before = String(b[k] ?? "—");
-    const after = String(a[k] ?? "—");
-    if (before === after) continue;
-    rows.push({ key: k, before, after });
-  }
-  return rows;
-}
 
 function readAttachments(att: unknown): Attachment[] {
   if (!att) return [];
@@ -144,12 +90,11 @@ export function TaskDrawer({
 }) {
   const { message } = AntdApp.useApp();
   const { isMobile } = useResponsive();
+  const roleNameMap = useRoleNameMap();
+  const assigneeName = useUserName(task?.assigneeId ?? null, "未指派");
   const [busy, setBusy] = useState(false);
   const [remarkDraft, setRemarkDraft] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
-  const { data: hist, isLoading: histLoading, mutate: histMutate } = useSWR<{ items: HistoryEntry[] }>(
-    open && task ? `/api/workflow-tasks/${task.id}/history` : null
-  );
 
   if (!task || !open) return null;
 
@@ -157,14 +102,13 @@ export function TaskDrawer({
     setBusy(true);
     try {
       const r = await fetch(`/api/workflow-tasks/${task.id}${path}`, {
-        method: path === "assign" || path === "remark" ? "PATCH" : "POST",
+        method: path === "/assign" || path === "/remark" ? "PATCH" : "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
         body: JSON.stringify(body)
       });
       const j = await r.json();
       if (j.code !== 0) { message.error(j.message); return false; }
-      await histMutate();
       onChanged?.();
       return true;
     } finally {
@@ -204,7 +148,6 @@ export function TaskDrawer({
       const linkJ = await link.json();
       if (linkJ.code !== 0) { message.error(linkJ.message); return false; }
       message.success("已上传");
-      await histMutate();
       onChanged?.();
       return false; // antd: false = 阻止默认上传
     } finally {
@@ -224,7 +167,6 @@ export function TaskDrawer({
     const j = await r.json();
     if (j.code !== 0) { message.error(j.message); return; }
     message.success("已删除");
-    await histMutate();
     onChanged?.();
   };
 
@@ -251,7 +193,7 @@ export function TaskDrawer({
       <Space size={4} wrap style={{ marginBottom: 8 }}>
         <Tag>{task.code}</Tag>
         <Tag color="blue">{task.phase ? (WORKFLOW_PHASE_MAP[task.phase] ?? task.phase) : "—"}</Tag>
-        {task.requiredRole && <Tag>{WORKFLOW_REQUIRED_ROLE_MAP[task.requiredRole] ?? task.requiredRole}</Tag>}
+        {task.requiredRole && <Tag>{roleNameMap[task.requiredRole] ?? task.requiredRole}</Tag>}
         {task.requiresDeliverable && <Tag color="cyan">需交付物</Tag>}
         {task.requiresOnsite && <Tag color="gold">现场</Tag>}
         {task.requiresTwoStepReview && <Tag color="purple">二审</Tag>}
@@ -266,6 +208,32 @@ export function TaskDrawer({
         <Text type="secondary" style={{ fontSize: 12 }}>所属项目:</Text>
         <Text style={{ fontSize: 12 }}>{task.projectName} · {task.projectNo}</Text>
       </Space>
+
+      {/* 上下文摘要:补回卡片上收掉的信息 */}
+      <div style={{ marginBottom: 12, padding: "8px 12px", background: "#fafafa", borderRadius: 6 }}>
+        <Space size={[4, 4]} wrap>
+          <Text type="secondary" style={{ fontSize: 12 }}>指派人:</Text>
+          <Text style={{ fontSize: 12 }}>{assigneeName}</Text>
+          {task.reviewStatus && (
+            <>
+              <Text type="secondary" style={{ fontSize: 12, marginLeft: 8 }}>审阅:</Text>
+              <Text style={{ fontSize: 12 }}>{WORKFLOW_REVIEW_STATUS_MAP[task.reviewStatus] ?? task.reviewStatus}</Text>
+            </>
+          )}
+          {task.completedAt && (
+            <>
+              <Text type="secondary" style={{ fontSize: 12, marginLeft: 8 }}>完成于:</Text>
+              <Text style={{ fontSize: 12 }}>{new Date(task.completedAt).toLocaleString("zh-CN")}</Text>
+            </>
+          )}
+          {task.reviewedAt && (
+            <>
+              <Text type="secondary" style={{ fontSize: 12, marginLeft: 8 }}>审阅于:</Text>
+              <Text style={{ fontSize: 12 }}>{new Date(task.reviewedAt).toLocaleString("zh-CN")}</Text>
+            </>
+          )}
+        </Space>
+      </div>
 
       {/* 状态机按钮 */}
       {canEdit && (
@@ -348,43 +316,6 @@ export function TaskDrawer({
               )}
             </div>
           ))}
-        </Space>
-      )}
-
-      {/* 活动历史 + diff */}
-      <Title level={5}><HistoryOutlined /> 活动历史</Title>
-      {histLoading ? (
-        <Skeleton active />
-      ) : !hist || hist.items.length === 0 ? (
-        <Empty description="暂无活动" />
-      ) : (
-        <Space orientation="vertical" size={12} style={{ width: "100%" }}>
-          {hist.items.map((h) => {
-            const diffRows = diffForDisplay(h.diff);
-            return (
-              <div key={h.id} style={{ borderLeft: "3px solid #1677ff", paddingLeft: 10, paddingBottom: 8, borderBottom: "1px dashed #f0f0f0" }}>
-                <Space size={6} wrap>
-                  <Tag color="blue" style={{ margin: 0 }}>{ACTION_LABEL[h.action] ?? h.action}</Tag>
-                  <Space size={2}><UserOutlined /><span>{h.actorName ?? h.actorId.slice(0, 8)}</span></Space>
-                  <Space size={2}><ClockCircleOutlined /><span>{new Date(h.at).toLocaleString("zh-CN")}</span></Space>
-                </Space>
-                {diffRows.length > 0 && (
-                  <Table
-                    size="small"
-                    style={{ marginTop: 6 }}
-                    pagination={false}
-                    showHeader
-                    columns={[
-                      { title: "字段", dataIndex: "key", width: 100, render: (k: string) => <Text type="secondary">{BEFORE_LABEL[k] ?? k}</Text> },
-                      { title: "变更前", dataIndex: "before", render: (v: string) => <Text delete>{v}</Text> },
-                      { title: "变更后", dataIndex: "after", render: (v: string) => <Text strong type="success">{v}</Text> }
-                    ]}
-                    dataSource={diffRows}
-                  />
-                )}
-              </div>
-            );
-          })}
         </Space>
       )}
     </Drawer>

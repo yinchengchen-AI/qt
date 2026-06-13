@@ -15,7 +15,8 @@ const ROLE_DEFS = [
   { code: "ADMIN",   name: "管理员",   description: "系统管理员" },
   { code: "SALES",   name: "业务人员", description: "负责客户/合同/项目推进" },
   { code: "FINANCE", name: "财务人员", description: "负责开票/回款/对账" },
-  { code: "OPS",     name: "行政人员", description: "基础信息维护" }
+  { code: "OPS",     name: "行政人员", description: "基础信息维护" },
+  { code: "EXPERT",  name: "技术专家", description: "承担现场勘查、报告撰写等专业工作" }
 ] as const;
 
 async function main(): Promise<void> {
