@@ -1,7 +1,7 @@
 // 回款详情 → 打印页 HTML
 import { err } from "@/lib/api";
 import { requireSession } from "@/lib/session";
-import { METHOD_MAP } from "@/lib/enum-maps";
+import { METHOD_MAP, PAYMENT_STATUS_MAP } from "@/lib/enum-maps";
 import { requirePermission, RESOURCE, ACTION } from "@/lib/permissions";
 import { getPayment } from "@/server/services/payment";
 import { prisma } from "@/lib/prisma";
@@ -21,7 +21,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
 
     const doc: PrintDoc = {
       title: `回款 - ${p.paymentNo}`,
-      subtitle: `金额 ¥${Number(p.amount).toFixed(2)} · 状态 ${p.status}`,
+      subtitle: `金额 ¥${Number(p.amount).toFixed(2)} · 状态 ${PAYMENT_STATUS_MAP[p.status] ?? p.status}`,
       mainRows: [
         { label: "回款号", value: p.paymentNo },
         { label: "金额", value: Number(p.amount).toFixed(2) },
@@ -30,7 +30,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
         { label: "银行流水号", value: p.bankRefNo ?? "—" },
         { label: "收款行", value: p.bankName ?? "—" },
         { label: "关联发票号", value: p.invoice?.invoiceNo ?? "—" },
-        { label: "状态", value: p.status },
+        { label: "状态", value: PAYMENT_STATUS_MAP[p.status] ?? p.status },
         { label: "登记人", value: recorder ? `${recorder.name} (${recorder.employeeNo})` : p.recorderUserId },
         { label: "对账人", value: reconciler ? `${reconciler.name} (${reconciler.employeeNo})` : "—" },
         { label: "对账时间", value: p.reconciledAt ? new Date(p.reconciledAt).toLocaleString("zh-CN") : "—" },

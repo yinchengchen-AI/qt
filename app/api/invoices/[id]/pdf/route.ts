@@ -1,7 +1,7 @@
 // 发票详情 → 打印页 HTML
 import { err } from "@/lib/api";
 import { requireSession } from "@/lib/session";
-import { INVOICE_TYPE_MAP } from "@/lib/enum-maps";
+import { INVOICE_TYPE_MAP, INVOICE_STATUS_MAP, PAYMENT_STATUS_MAP } from "@/lib/enum-maps";
 import { requirePermission, RESOURCE, ACTION } from "@/lib/permissions";
 import { getInvoice } from "@/server/services/invoice";
 import { prisma } from "@/lib/prisma";
@@ -36,7 +36,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
         { label: "不含税金额", value: Number(inv.amountExcludingTax).toFixed(2) },
         { label: "申请日", value: new Date(inv.applyDate).toLocaleDateString("zh-CN") },
         { label: "实际开票日", value: inv.actualIssueDate ? new Date(inv.actualIssueDate).toLocaleDateString("zh-CN") : "—" },
-        { label: "状态", value: inv.status },
+        { label: "状态", value: INVOICE_STATUS_MAP[inv.status] ?? inv.status },
         { label: "申请人", value: applicant ? `${applicant.name} (${applicant.employeeNo})` : inv.applicantUserId },
         { label: "财务审核人", value: finance ? `${finance.name} (${finance.employeeNo})` : "—" },
         { label: "审核时间", value: inv.reviewedAt ? new Date(inv.reviewedAt).toLocaleString("zh-CN") : "—" },
@@ -56,7 +56,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
           rows: payments.length
             ? payments.map((p) => ({
                 label: p.paymentNo,
-                value: `¥${Number(p.amount).toFixed(2)} · 到账 ${new Date(p.receivedAt).toLocaleString("zh-CN")} · ${p.status}`
+                value: `¥${Number(p.amount).toFixed(2)} · 到账 ${new Date(p.receivedAt).toLocaleString("zh-CN")} · ${PAYMENT_STATUS_MAP[p.status] ?? p.status}`
               }))
             : [{ label: "(无)", value: "" }]
         }

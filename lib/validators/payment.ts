@@ -18,8 +18,8 @@ export const paymentActionSchema = z.object({
   bankRefNo: z.string().max(50).optional(),
   reason: z.string().max(500).optional(),
   allocations: z.array(z.object({
-    invoiceId: z.string().optional(),
-    projectId: z.string().optional(),
+    invoiceId: z.string().nullable().optional(),
+    projectId: z.string().nullable().optional(),
     amount: z.number()
   })).optional()
 });

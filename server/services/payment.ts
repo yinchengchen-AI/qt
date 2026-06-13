@@ -36,9 +36,33 @@ export async function getPayment(user: SessionUser, id: string) {
   requirePermission(user.roleCode, RESOURCE.PAYMENT, ACTION.READ);
   const p = await prisma.payment.findFirst({
     where: { id, deletedAt: null, ...(ownerViaContract(user) as Prisma.PaymentWhereInput) },
-    include: { allocations: true, invoice: { select: { id: true, invoiceNo: true, amount: true } } }
+    include: { allocations: { include: { invoice: { select: { id: true, invoiceNo: true } } } }, invoice: { select: { id: true, invoiceNo: true, amount: true } } }
   });
   if (!p) throw new ApiError(ERROR_CODES.NOT_FOUND, "回款不存在", 404);
+  // 详情展示需要:发票编号(从 invoice 嵌套拍平)、项目编号/名称(PaymentAllocation 无 project 关系,用 projectId 反查)
+  // TODO(数据模型):在 schema 给 PaymentAllocation 加 project 关系,可让 include 一把出
+  for (const a of p.allocations) {
+    if (a.invoice?.invoiceNo) {
+      (a as unknown as { invoiceNo?: string | null }).invoiceNo = a.invoice.invoiceNo;
+    }
+  }
+  const projectIds = Array.from(
+    new Set(p.allocations.map((a) => a.projectId).filter((x): x is string => Boolean(x)))
+  );
+  if (projectIds.length > 0) {
+    const projects = await prisma.project.findMany({
+      where: { id: { in: projectIds } },
+      select: { id: true, projectNo: true, name: true }
+    });
+    const byId = new Map(projects.map((x) => [x.id, x]));
+    for (const a of p.allocations) {
+      if (a.projectId && byId.has(a.projectId)) {
+        const proj = byId.get(a.projectId)!;
+        (a as unknown as { projectNo?: string; projectName?: string }).projectNo = proj.projectNo;
+        (a as unknown as { projectNo?: string; projectName?: string }).projectName = proj.name;
+      }
+    }
+  }
   return p;
 }
 
@@ -171,6 +195,14 @@ export async function paymentAction(user: SessionUser, id: string, input: Paymen
     }
 
     if (input.action === "allocate") {
+      // 对账后(RECONCILED)及终态(REFUNDED/CANCELLED)锁定分配,避免事后篡改
+      if (!["PLANNED", "CONFIRMED"].includes(p.status)) {
+        throw new ApiError(
+          ERROR_CODES.ENTITY_IMMUTABLE,
+          `当前状态 ${p.status} 不允许修改分配明细(仅 PLANNED / CONFIRMED 可重分配)`,
+          403
+        );
+      }
       if (!input.allocations || input.allocations.length === 0) {
         throw new ApiError(ERROR_CODES.VALIDATION_FAILED, "请提供分配明细", 400);
       }

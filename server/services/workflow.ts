@@ -1184,7 +1184,7 @@ export async function getProjectHistory(user: SessionUser, projectId: string): P
 // =====================================================
 type AttachmentItem = { id: string; name: string; mimeType: string; size: number; uploadedBy?: string; uploadedAt?: string };
 
-function readAttachments(att: unknown): AttachmentItem[] {
+export function readAttachments(att: unknown): AttachmentItem[] {
   if (!att) return [];
   if (Array.isArray(att)) return att as AttachmentItem[];
   if (typeof att === "object") {

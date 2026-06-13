@@ -160,3 +160,40 @@ export const WORKFLOW_TASK_STATUS_SORT: Record<string, number> = {
   PENDING: 0, IN_PROGRESS: 1, BLOCKED: 2, COMPLETED: 3, SKIPPED: 4
 };
 
+
+/* === 发票/回款状态(PDF 路由用) === */
+export const INVOICE_STATUS_MAP: Record<string, string> = {
+  DRAFT:            "草稿",
+  PENDING_FINANCE:  "待财务审核",
+  ISSUED:           "已开票",
+  REJECTED:         "已驳回",
+  VOIDED:           "已作废",
+  RED_FLUSHED:      "已红冲"
+};
+
+export const PAYMENT_STATUS_MAP: Record<string, string> = {
+  PLANNED:    "计划中",
+  CONFIRMED:  "已确认",
+  RECONCILED: "已对账",
+  REFUNDED:   "已退款",
+  CANCELLED:  "已取消"
+};
+
+/* === 工作流动作(项目活动历史用,标签与 components/workflow/project-history.tsx 对齐) === */
+export const WORKFLOW_ACTION_MAP: Record<string, string> = {
+  WORKFLOW_INSTANTIATE:            "模板实例化",
+  WORKFLOW_TASK_START:             "开始任务",
+  WORKFLOW_TASK_COMPLETE:          "完成任务",
+  WORKFLOW_TASK_BLOCK:             "阻塞任务",
+  WORKFLOW_TASK_UNBLOCK:           "解除阻塞",
+  WORKFLOW_TASK_SKIP:              "跳过任务",
+  WORKFLOW_TASK_ASSIGN:            "重新指派",
+  WORKFLOW_TASK_REMARK:            "更新备注",
+  WORKFLOW_TASK_ATTACHMENT_ADD:    "新增附件",
+  WORKFLOW_TASK_ATTACHMENT_REMOVE: "删除附件",
+  WORKFLOW_REVIEW_SUBMIT:          "提交校核",
+  WORKFLOW_REVIEW_APPROVE:         "审核通过",
+  WORKFLOW_REVIEW_REJECT:          "驳回校核",
+  WORKFLOW_RECURRING_GENERATE:     "循环生成",
+  WORKFLOW_RECURRING_GENERATE_PARENT: "循环实例"
+};

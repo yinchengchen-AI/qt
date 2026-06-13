@@ -88,12 +88,17 @@ export function MyTasksWidget() {
                 {t.taskName}
               </Text>
               {t.requiresTwoStepReview && <Tag color="purple">二审</Tag>}
-              <Text type="secondary" style={{ fontSize: 12, flexShrink: 0 }}>
-                {WORKFLOW_PHASE_MAP[t.phase] ?? t.phase}
-              </Text>
-              <Text type="secondary" style={{ fontSize: 12, flexShrink: 0 }}>
-                {t.projectNo}
-              </Text>
+              <div style={{ textAlign: "right", flexShrink: 0, maxWidth: 200, lineHeight: 1.4 }}>
+                <div style={{ fontSize: 12, color: "rgba(0,0,0,0.85)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                  {WORKFLOW_PHASE_MAP[t.phase] ?? t.phase}
+                </div>
+                <div
+                  style={{ fontSize: 12, color: "rgba(0,0,0,0.65)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}
+                  title={`${t.projectName} (${t.projectNo})`}
+                >
+                  {t.projectName}
+                </div>
+              </div>
             </div>
           ))}
         </Space>

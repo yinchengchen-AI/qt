@@ -108,6 +108,10 @@ export type PaymentAllocation = {
   id: string;
   invoiceId: string;
   projectId: string;
+  /** 关联展示用,后端 getPayment include 一并 select;老数据/重分配后未回填时为 undefined */
+  invoiceNo?: string | null;
+  projectNo?: string | null;
+  projectName?: string | null;
   amount: string;
   remark: string | null;
 };
