@@ -3,10 +3,9 @@
 // 内容: 完整信息 + 状态机操作 + 备注编辑 + 附件上传/列表
 // 活动历史已移至项目详情页(/projects/{id})的 ProjectHistory 组件
 import { useState } from "react";
-import { App as AntdApp, Button, Drawer, Empty, Space, Tag, Typography, Upload, Popconfirm } from "antd";
+import { App as AntdApp, Button, Drawer, Space, Tag, Typography, Upload } from "antd";
 import {
   CheckCircleOutlined,
-  DeleteOutlined,
   PaperClipOutlined,
   PlayCircleOutlined,
   SaveOutlined,
@@ -22,6 +21,8 @@ import {
 import { useResponsive } from "@/lib/use-breakpoint";
 import { useUserName } from "@/lib/user-lookup";
 import { useRoleNameMap } from "@/lib/role-lookup";
+import { AttachmentList, type AttachmentItem } from "@/components/file/attachment-list";
+import { uploadFileToMinIO } from "@/lib/upload-client";
 
 const { Text, Title } = Typography;
 import { Input } from "antd";
@@ -122,50 +123,39 @@ export function TaskDrawer({
     if (ok) message.success("备注已保存");
   };
 
-  // 附件上传走 presign 流程
-  const handleUpload = async (file: File) => {
+  // 附件上传:先调 uploadFileToMinIO 走 tmp/ 路径上传到 MinIO,
+  // 再 POST 到 /api/workflow-tasks/{id}/attachments 关联到当前任务
+  const handleUpload = async (file: File): Promise<boolean> => {
     setUploading(true);
     try {
-      // 1. 拿预签名 URL
-      const pre = await fetch("/api/files/presign-upload", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include",
-        body: JSON.stringify({ filename: file.name, mimeType: file.type || "application/octet-stream", size: file.size })
-      });
-      const preJ = await pre.json();
-      if (preJ.code !== 0) { message.error(preJ.message); return false; }
-      // 2. PUT 到 MinIO
-      const put = await fetch(preJ.data.url, { method: "PUT", body: file, headers: { "Content-Type": file.type || "application/octet-stream" } });
-      if (!put.ok) { message.error(`上传失败 ${put.status}`); return false; }
-      // 3. 关联到 task
+      const res = await uploadFileToMinIO(file, {});
       const link = await fetch(`/api/workflow-tasks/${task.id}/attachments`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
-        body: JSON.stringify({ attachmentId: preJ.data.attachmentId })
+        body: JSON.stringify({ attachmentId: res.id })
       });
       const linkJ = await link.json();
-      if (linkJ.code !== 0) { message.error(linkJ.message); return false; }
+      if (linkJ.code !== 0) throw new Error(linkJ.message || "关联到任务失败");
       message.success("已上传");
       onChanged?.();
       return false; // antd: false = 阻止默认上传
+    } catch (e) {
+      message.error((e as Error).message);
+      return false;
     } finally {
       setUploading(false);
     }
   };
 
-  const handleDownload = async (att: Attachment) => {
-    const r = await fetch(`/api/files/${att.id}/presign-download`, { method: "POST", credentials: "include" });
+  // 自定义删除:既移除 task JSON 关联,又软删 Attachment 记录
+  const handleDeleteAttachment = async (item: AttachmentItem): Promise<void> => {
+    const r = await fetch(`/api/workflow-tasks/${task.id}/attachments/${item.id}`, {
+      method: "DELETE",
+      credentials: "include"
+    });
     const j = await r.json();
-    if (j.code !== 0) { message.error(j.message); return; }
-    window.open(j.data.url, "_blank");
-  };
-
-  const handleDeleteAttachment = async (att: Attachment) => {
-    const r = await fetch(`/api/workflow-tasks/${task.id}/attachments/${att.id}`, { method: "DELETE", credentials: "include" });
-    const j = await r.json();
-    if (j.code !== 0) { message.error(j.message); return; }
+    if (j.code !== 0) throw new Error(j.message || "删除失败");
     message.success("已删除");
     onChanged?.();
   };
@@ -294,30 +284,18 @@ export function TaskDrawer({
       )}
 
       {/* 附件 */}
-      <Title level={5}><PaperClipOutlined /> 附件 ({attachments.length})</Title>
+      <Title level={5}><PaperClipOutlined /> 附件</Title>
       {canEdit && (
         <Upload beforeUpload={handleUpload} showUploadList={false} accept="*/*" disabled={uploading}>
-          <Button size="small" loading={uploading} style={{ marginBottom: 8 }}>上传附件</Button>
+          <Button size="small" loading={uploading} style={{ marginBottom: 12 }}>上传附件</Button>
         </Upload>
       )}
-      {attachments.length === 0 ? (
-        <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无附件" />
-      ) : (
-        <Space orientation="vertical" size={4} style={{ width: "100%", marginBottom: 16 }}>
-          {attachments.map((a) => (
-            <div key={a.id} style={{ display: "flex", alignItems: "center", gap: 8, padding: 6, background: "#fafafa", borderRadius: 4 }}>
-              <PaperClipOutlined />
-              <Text style={{ flex: 1, cursor: "pointer" }} onClick={() => handleDownload(a)}>{a.name}</Text>
-              <Text type="secondary" style={{ fontSize: 12 }}>{(a.size / 1024).toFixed(1)} KB</Text>
-              {canEdit && (
-                <Popconfirm title="删除此附件?" onConfirm={() => handleDeleteAttachment(a)}>
-                  <Button size="small" type="text" danger icon={<DeleteOutlined />} />
-                </Popconfirm>
-              )}
-            </div>
-          ))}
-        </Space>
-      )}
+      <AttachmentList
+        items={attachments as AttachmentItem[]}
+        allowDelete={canEdit}
+        customDelete={canEdit ? handleDeleteAttachment : undefined}
+        showHeader={false}
+      />
     </Drawer>
   );
 }

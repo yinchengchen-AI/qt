@@ -25,6 +25,9 @@ export function AttachmentList(props: {
   showHeader?: boolean;
   // 删除前回调(父组件先发 DELETE 请求,成功后再调 prop.onDeleted 让上层刷新)
   onDeleted?: (id: string) => void;
+  // 自定义删除逻辑:返回 Promise;若提供则用它替代默认的 DELETE /api/files/{id}
+  // (例如任务抽屉需要走 /api/workflow-tasks/{taskId}/attachments/{attId})
+  customDelete?: (item: AttachmentItem) => Promise<void>;
 }) {
   const { message } = AntdApp.useApp();
   const { isMobile } = useResponsive();
@@ -34,7 +37,8 @@ export function AttachmentList(props: {
     allowPreview = true,
     emptyText = "暂无附件",
     showHeader = true,
-    onDeleted
+    onDeleted,
+    customDelete
   } = props;
   const [preview, setPreview] = useState<AttachmentItem | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
@@ -63,12 +67,18 @@ export function AttachmentList(props: {
   const handleDelete = async (item: AttachmentItem) => {
     setDeletingId(item.id);
     try {
-      const r = await fetch(`/api/files/${item.id}`, {
-        method: "DELETE",
-        credentials: "include"
-      });
-      const j = await r.json();
-      if (j.code !== 0) throw new Error(j.message || "删除失败");
+      if (customDelete) {
+        // 自定义删除(由父组件负责发请求 + 处理结果)
+        await customDelete(item);
+      } else {
+        // 默认:软删 Attachment 记录(对象本身留 MinIO)
+        const r = await fetch(`/api/files/${item.id}`, {
+          method: "DELETE",
+          credentials: "include"
+        });
+        const j = await r.json();
+        if (j.code !== 0) throw new Error(j.message || "删除失败");
+      }
       void message.success("已删除");
       onDeleted?.(item.id);
     } catch (e) {

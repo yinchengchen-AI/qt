@@ -98,15 +98,29 @@ function buildAllowedOrigins(): string[] {
 // =====================================================
 // 业务规则:MIME 白名单 + 大小限制
 // =====================================================
+// 业务常见附件白名单(2026-06 放宽至 14 种);以下类型一律不放行:
+//   - image/svg+xml / text/html / application/javascript: 可内嵌脚本,等同任意 XSS
+//   - video/* / audio/*: 当前业务无场景,后续如要加再单独评审
+//   - application/x-msdownload 等可执行类型: 永远不收
 export const ALLOWED_MIME_TYPES = new Set<string>([
+  // 文档
   "application/pdf",
   "application/msword",
   "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
   "application/vnd.ms-excel",
   "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+  // 图片
   "image/jpeg",
   "image/png",
-  "image/webp"
+  "image/webp",
+  "image/gif",
+  "image/bmp",
+  "image/tiff",
+  // 文本
+  "text/plain",
+  "text/csv",
+  // 压缩包
+  "application/zip"
 ]);
 
 export const MAX_FILE_SIZE = 20 * 1024 * 1024; // 20 MB
@@ -138,7 +152,13 @@ const MIME_TO_EXT: Record<string, string> = {
   "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": "xlsx",
   "image/jpeg": "jpg",
   "image/png": "png",
-  "image/webp": "webp"
+  "image/webp": "webp",
+  "image/gif": "gif",
+  "image/bmp": "bmp",
+  "image/tiff": "tiff",
+  "text/plain": "txt",
+  "text/csv": "csv",
+  "application/zip": "zip"
 };
 export function extFromMime(mime: string): string {
   return MIME_TO_EXT[mime] ?? "bin";
