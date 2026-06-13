@@ -19,7 +19,7 @@ npx prisma generate
 echo "==> pnpm build"
 pnpm build
 
-echo "==> pnpm seed (idempotent: customer check + workflow lock-if-in-use)"
+echo "==> pnpm seed (idempotent: workflow templates lock-if-in-use; 业务数据不 seed)"
 pnpm seed
 
 echo "==> systemctl restart qt-app"

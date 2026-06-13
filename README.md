@@ -43,24 +43,56 @@ docker compose -f docker-compose.minio.yml up -d
 cp .env.example .env       # 按需修改(默认 minioadmin/minioadmin 是 dev 合规值)
 npm install
 npx prisma db push
-npm run seed
+npm run seed                # 写入 5 角色 / 5 部门 / 字典 / 9 类工作流模板(系统管理数据)
 ```
 
-### 3. 起服务
+### 3. 创建初始管理员
+
+seed 不再写入任何业务账号,需要手动创建第一个管理员:
+
+```bash
+npm run create-admin -- \
+  --employeeNo admin \
+  --name "系统管理员" \
+  --email admin@example.com \
+  --password 'Your-Strong-Pwd-2026'   # 至少 8 字符
+```
+
+忘记密码可重置:`tsx scripts/reset-password.ts --employeeNo <id> --password <newPwd>`。
+
+### 4. 起服务
 
 ```bash
 npm run dev
-# 打开 http://localhost:3000
+# 打开 http://localhost:3000,用工号 + 上面设的密码登录
 ```
 
-## 测试账号
+## 种子数据策略
 
-| 工号 | 角色 | 密码 |
+`prisma/seed.ts` 只插**系统管理数据**,业务数据**不**进 seed,生产环境使用真实数据。
+
+| 类别 | 是否 seed | 备注 |
 |---|---|---|
-| `admin` | 管理员 | `123456` |
-| `sales` | 业务人员 | `123456` |
-| `finance` | 财务人员 | `123456` |
-| `ops` | 行政人员 | `123456` |
+| 角色(Role)5 条 | ✅ | `ADMIN / SALES / FINANCE / OPS / EXPERT`,含 `lib/permissions` 全量权限位 |
+| 部门(Department)5 条 | ✅ | 业务/技术/财务 + 技术部下两个子组 |
+| 数据字典(Dictionary)~ 60 条 | ✅ | `SERVICE_TYPE / CUSTOMER_TYPE / CUSTOMER_SCALE / CUSTOMER_INDUSTRY / CUSTOMER_SOURCE / PAYMENT_RECEIVE_METHOD / FOLLOW_METHOD / FOLLOW_RESULT` |
+| 工作流模板(WorkflowTemplate)9 份 | ✅ | 9 类服务 × 5 阶段(PREP/REQ/CONTRACT/EXECUTE/FOLLOWUP),需库内有 ADMIN 用户才会写入 |
+| 用户 / 客户 / 合同 / 项目 / 发票 / 回款 / 跟进 / 联系人 | ❌ | 生产真实数据,本/测/线一致地走 UI / API / 导入 |
+| 公告 / 站内信 | ❌ | 同上 |
+
+**生产部署顺序**
+
+```bash
+npx prisma migrate deploy
+npm run seed-roles          # 5 角色(与 prisma/seed.ts 同源, 单脚本可独立跑)
+npm run seed-dicts          # 8 类字典
+npm run create-admin -- --employeeNo <真实工号> --name <真名> --email <公司邮箱> --password '<强密码>'
+npm run seed                # 此时会找到 ADMIN, 写入 9 份工作流模板
+```
+
+> **生产密码**: 不再使用 README / 文档里写死的 `123456` 等弱密码。`create-admin` 强制 ≥ 8 字符,生产请用密码管理器生成的随机串。
+>
+> **Workflow 模板 locked 护栏**: seed 检测到 `WorkflowTaskInstance` 有非软删记录时,只更新模板 `name` / `description` 元数据,不会重建 stage / task(避免在跑的工作流丢历史)。
 
 ## 脚本
 
@@ -75,7 +107,10 @@ npm run dev
 | `npm run test:e2e` | E2E(Playwright) |
 | `npx prisma db push` | 同步 schema 到 DB |
 | `npx prisma migrate dev` | 创建/应用 migration |
-| `npm run seed` | 跑种子 |
+| `npm run seed` | 跑系统管理 seed(角色/部门/字典/工作流模板) |
+| `npm run seed-roles` | 只插 5 角色(创建首个 admin 前用) |
+| `npm run seed-dicts` | 只插 8 类字典 |
+| `npm run create-admin` | CLI 创建账号,首登前必跑(`--employeeNo` / `--name` / `--email` / `--password` 必填) |
 
 ## 当前状态:v0.2.0(2026-06-12)移动端 + 自动登录 待发布
 

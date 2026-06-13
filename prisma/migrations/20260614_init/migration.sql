@@ -1,3 +1,25 @@
+-- =====================================================
+-- 合并后的 init 迁移 (2026-06-14 squashed from 14 migrations)
+--
+-- 由以下迁移合并而来(逐个应用后,DB 终态与本文件等价):
+--   20260609_init
+--   20260609_rls              (RLS 启用 + 业务表行级策略)
+--   20260610_departments      (User.department 字符串 -> Department FK,数据迁移已折进当前 schema)
+--   20260610_drop_invoice_project_id
+--   20260611_add_customer_town
+--   20260611_attachments
+--   20260611_invoice_attachments
+--   20260611_remove_credit_add_contact
+--   20260611_remove_customer_level
+--   20260612_workflow_engine
+--   20260612_workflow_unique_fix    (unique 索引已在当前 schema 体现)
+--   20260613_drop_progress_log_percent
+--   20260613_drop_project_milestones
+--   20260614_align_workflow_role    (FK + EXPERT 占位,EXPERT 占位由 seed 写入最终权限)
+--
+-- 注:应用此 init 到全新 DB 后,需要运行 `pnpm seed` 写入 admin/角色/字典/工作流模板等业务数据
+-- =====================================================
+
 -- CreateSchema
 CREATE SCHEMA IF NOT EXISTS "public";
 
@@ -24,7 +46,7 @@ CREATE TABLE "User" (
     "phone" TEXT,
     "passwordHash" TEXT NOT NULL,
     "roleId" TEXT NOT NULL,
-    "department" TEXT,
+    "departmentId" TEXT,
     "status" TEXT NOT NULL DEFAULT 'ACTIVE',
     "lastLoginAt" TIMESTAMPTZ(6),
     "wechatWorkId" TEXT,
@@ -48,14 +70,13 @@ CREATE TABLE "Customer" (
     "province" TEXT NOT NULL,
     "city" TEXT NOT NULL,
     "address" TEXT,
+    "town" TEXT,
+    "contactName" TEXT,
+    "contactTitle" TEXT,
     "contactPhone" TEXT NOT NULL,
-    "contactEmail" TEXT,
     "sourceChannel" TEXT,
-    "level" TEXT NOT NULL DEFAULT 'C',
     "ownerUserId" TEXT NOT NULL,
     "status" TEXT NOT NULL DEFAULT 'LEAD',
-    "creditLimitAmount" DECIMAL(18,2),
-    "paymentTermDays" INTEGER NOT NULL DEFAULT 30,
     "createdAt" TIMESTAMPTZ(6) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updatedAt" TIMESTAMPTZ(6) NOT NULL,
     "createdById" TEXT NOT NULL,
@@ -155,7 +176,6 @@ CREATE TABLE "Project" (
     "startDate" TIMESTAMPTZ(6) NOT NULL,
     "endDate" TIMESTAMPTZ(6) NOT NULL,
     "budgetAmount" DECIMAL(18,2),
-    "milestones" JSONB,
     "status" TEXT NOT NULL DEFAULT 'PLANNED',
     "createdAt" TIMESTAMPTZ(6) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updatedAt" TIMESTAMPTZ(6) NOT NULL,
@@ -171,7 +191,6 @@ CREATE TABLE "ProjectProgressLog" (
     "id" TEXT NOT NULL,
     "projectId" TEXT NOT NULL,
     "userId" TEXT NOT NULL,
-    "percent" INTEGER NOT NULL,
     "remark" TEXT NOT NULL,
     "at" TIMESTAMPTZ(6) NOT NULL DEFAULT CURRENT_TIMESTAMP,
 
@@ -179,11 +198,82 @@ CREATE TABLE "ProjectProgressLog" (
 );
 
 -- CreateTable
+CREATE TABLE "WorkflowTemplate" (
+    "id" TEXT NOT NULL,
+    "serviceType" TEXT NOT NULL,
+    "name" TEXT NOT NULL,
+    "version" INTEGER NOT NULL DEFAULT 1,
+    "isActive" BOOLEAN NOT NULL DEFAULT true,
+    "description" TEXT,
+    "createdById" TEXT NOT NULL,
+    "createdAt" TIMESTAMPTZ(6) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" TIMESTAMPTZ(6) NOT NULL,
+    "deletedAt" TIMESTAMPTZ(6),
+
+    CONSTRAINT "WorkflowTemplate_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "WorkflowStage" (
+    "id" TEXT NOT NULL,
+    "templateId" TEXT NOT NULL,
+    "phase" TEXT NOT NULL,
+    "code" TEXT NOT NULL,
+    "name" TEXT NOT NULL,
+    "sort" INTEGER NOT NULL,
+    "description" TEXT,
+    "isRequired" BOOLEAN NOT NULL DEFAULT true,
+
+    CONSTRAINT "WorkflowStage_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "WorkflowTask" (
+    "id" TEXT NOT NULL,
+    "stageId" TEXT NOT NULL,
+    "code" TEXT NOT NULL,
+    "name" TEXT NOT NULL,
+    "sort" INTEGER NOT NULL,
+    "description" TEXT,
+    "requiredRole" TEXT,
+    "requiresDeliverable" BOOLEAN NOT NULL DEFAULT false,
+    "requiresOnsite" BOOLEAN NOT NULL DEFAULT false,
+    "requiresTwoStepReview" BOOLEAN NOT NULL DEFAULT false,
+    "isRecurring" BOOLEAN NOT NULL DEFAULT false,
+    "recurrenceUnit" TEXT,
+    "recurrenceInterval" INTEGER,
+    "estimateDays" INTEGER,
+
+    CONSTRAINT "WorkflowTask_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "WorkflowTaskInstance" (
+    "id" TEXT NOT NULL,
+    "projectId" TEXT NOT NULL,
+    "taskId" TEXT NOT NULL,
+    "status" TEXT NOT NULL DEFAULT 'PENDING',
+    "assigneeId" TEXT,
+    "parentInstanceId" TEXT,
+    "reviewStatus" TEXT,
+    "reviewedById" TEXT,
+    "reviewedAt" TIMESTAMPTZ(6),
+    "completedAt" TIMESTAMPTZ(6),
+    "completedById" TEXT,
+    "remark" TEXT,
+    "attachments" JSONB,
+    "createdAt" TIMESTAMPTZ(6) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" TIMESTAMPTZ(6) NOT NULL,
+    "deletedAt" TIMESTAMPTZ(6),
+
+    CONSTRAINT "WorkflowTaskInstance_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
 CREATE TABLE "Invoice" (
     "id" TEXT NOT NULL,
     "invoiceNo" TEXT NOT NULL,
     "invoiceCode" TEXT,
-    "projectId" TEXT NOT NULL,
     "contractId" TEXT NOT NULL,
     "customerId" TEXT NOT NULL,
     "customerName" TEXT NOT NULL,
@@ -333,6 +423,20 @@ CREATE TABLE "Dictionary" (
 );
 
 -- CreateTable
+CREATE TABLE "Department" (
+    "id" TEXT NOT NULL,
+    "code" TEXT NOT NULL,
+    "name" TEXT NOT NULL,
+    "parentId" TEXT,
+    "sort" INTEGER NOT NULL DEFAULT 0,
+    "isActive" BOOLEAN NOT NULL DEFAULT true,
+    "createdAt" TIMESTAMPTZ(6) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" TIMESTAMPTZ(6) NOT NULL,
+
+    CONSTRAINT "Department_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
 CREATE TABLE "Sequence" (
     "id" TEXT NOT NULL,
     "prefix" TEXT NOT NULL,
@@ -341,6 +445,23 @@ CREATE TABLE "Sequence" (
     "updatedAt" TIMESTAMPTZ(6) NOT NULL,
 
     CONSTRAINT "Sequence_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "Attachment" (
+    "id" TEXT NOT NULL,
+    "objectKey" TEXT NOT NULL,
+    "bucket" TEXT NOT NULL,
+    "originalName" TEXT NOT NULL,
+    "mimeType" TEXT NOT NULL,
+    "size" INTEGER NOT NULL,
+    "uploadedById" TEXT NOT NULL,
+    "contractId" TEXT,
+    "invoiceId" TEXT,
+    "uploadedAt" TIMESTAMPTZ(6) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "deletedAt" TIMESTAMPTZ(6),
+
+    CONSTRAINT "Attachment_pkey" PRIMARY KEY ("id")
 );
 
 -- CreateIndex
@@ -362,6 +483,9 @@ CREATE INDEX "User_roleId_idx" ON "User"("roleId");
 CREATE INDEX "User_status_idx" ON "User"("status");
 
 -- CreateIndex
+CREATE INDEX "User_departmentId_idx" ON "User"("departmentId");
+
+-- CreateIndex
 CREATE UNIQUE INDEX "Customer_code_key" ON "Customer"("code");
 
 -- CreateIndex
@@ -372,9 +496,6 @@ CREATE INDEX "Customer_ownerUserId_idx" ON "Customer"("ownerUserId");
 
 -- CreateIndex
 CREATE INDEX "Customer_status_idx" ON "Customer"("status");
-
--- CreateIndex
-CREATE INDEX "Customer_level_idx" ON "Customer"("level");
 
 -- CreateIndex
 CREATE INDEX "Customer_customerType_idx" ON "Customer"("customerType");
@@ -425,16 +546,40 @@ CREATE INDEX "Project_managerUserId_idx" ON "Project"("managerUserId");
 CREATE UNIQUE INDEX "Project_contractId_name_key" ON "Project"("contractId", "name");
 
 -- CreateIndex
-CREATE INDEX "ProjectProgressLog_projectId_idx" ON "ProjectProgressLog"("projectId");
+CREATE INDEX "WorkflowTemplate_serviceType_idx" ON "WorkflowTemplate"("serviceType");
+
+-- CreateIndex
+CREATE INDEX "WorkflowTemplate_isActive_idx" ON "WorkflowTemplate"("isActive");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "WorkflowTemplate_serviceType_isActive_key" ON "WorkflowTemplate"("serviceType", "isActive");
+
+-- CreateIndex
+CREATE INDEX "WorkflowStage_templateId_phase_idx" ON "WorkflowStage"("templateId", "phase");
+
+-- CreateIndex
+CREATE INDEX "WorkflowTask_stageId_sort_idx" ON "WorkflowTask"("stageId", "sort");
+
+-- CreateIndex
+CREATE INDEX "WorkflowTask_requiredRole_idx" ON "WorkflowTask"("requiredRole");
+
+-- CreateIndex
+CREATE INDEX "WorkflowTaskInstance_projectId_status_idx" ON "WorkflowTaskInstance"("projectId", "status");
+
+-- CreateIndex
+CREATE INDEX "WorkflowTaskInstance_assigneeId_status_idx" ON "WorkflowTaskInstance"("assigneeId", "status");
+
+-- CreateIndex
+CREATE INDEX "WorkflowTaskInstance_parentInstanceId_idx" ON "WorkflowTaskInstance"("parentInstanceId");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "WorkflowTaskInstance_projectId_taskId_parentInstanceId_key" ON "WorkflowTaskInstance"("projectId", "taskId", "parentInstanceId");
 
 -- CreateIndex
 CREATE UNIQUE INDEX "Invoice_invoiceNo_key" ON "Invoice"("invoiceNo");
 
 -- CreateIndex
 CREATE UNIQUE INDEX "Invoice_linkedInvoiceId_key" ON "Invoice"("linkedInvoiceId");
-
--- CreateIndex
-CREATE INDEX "Invoice_projectId_idx" ON "Invoice"("projectId");
 
 -- CreateIndex
 CREATE INDEX "Invoice_status_idx" ON "Invoice"("status");
@@ -503,10 +648,34 @@ CREATE INDEX "Dictionary_category_isActive_sort_idx" ON "Dictionary"("category",
 CREATE UNIQUE INDEX "Dictionary_category_code_key" ON "Dictionary"("category", "code");
 
 -- CreateIndex
+CREATE UNIQUE INDEX "Department_code_key" ON "Department"("code");
+
+-- CreateIndex
+CREATE INDEX "Department_parentId_isActive_sort_idx" ON "Department"("parentId", "isActive", "sort");
+
+-- CreateIndex
 CREATE UNIQUE INDEX "Sequence_prefix_year_key" ON "Sequence"("prefix", "year");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "Attachment_objectKey_key" ON "Attachment"("objectKey");
+
+-- CreateIndex
+CREATE INDEX "Attachment_contractId_deletedAt_idx" ON "Attachment"("contractId", "deletedAt");
+
+-- CreateIndex
+CREATE INDEX "Attachment_invoiceId_deletedAt_idx" ON "Attachment"("invoiceId", "deletedAt");
+
+-- CreateIndex
+CREATE INDEX "Attachment_uploadedById_idx" ON "Attachment"("uploadedById");
+
+-- CreateIndex
+CREATE INDEX "Attachment_deletedAt_idx" ON "Attachment"("deletedAt");
 
 -- AddForeignKey
 ALTER TABLE "User" ADD CONSTRAINT "User_roleId_fkey" FOREIGN KEY ("roleId") REFERENCES "Role"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "User" ADD CONSTRAINT "User_departmentId_fkey" FOREIGN KEY ("departmentId") REFERENCES "Department"("id") ON DELETE SET NULL ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE "ContactPerson" ADD CONSTRAINT "ContactPerson_customerId_fkey" FOREIGN KEY ("customerId") REFERENCES "Customer"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
@@ -527,7 +696,22 @@ ALTER TABLE "Project" ADD CONSTRAINT "Project_contractId_fkey" FOREIGN KEY ("con
 ALTER TABLE "ProjectProgressLog" ADD CONSTRAINT "ProjectProgressLog_projectId_fkey" FOREIGN KEY ("projectId") REFERENCES "Project"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
 
 -- AddForeignKey
-ALTER TABLE "Invoice" ADD CONSTRAINT "Invoice_projectId_fkey" FOREIGN KEY ("projectId") REFERENCES "Project"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+ALTER TABLE "WorkflowStage" ADD CONSTRAINT "WorkflowStage_templateId_fkey" FOREIGN KEY ("templateId") REFERENCES "WorkflowTemplate"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "WorkflowTask" ADD CONSTRAINT "WorkflowTask_stageId_fkey" FOREIGN KEY ("stageId") REFERENCES "WorkflowStage"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "WorkflowTask" ADD CONSTRAINT "WorkflowTask_requiredRole_fkey" FOREIGN KEY ("requiredRole") REFERENCES "Role"("code") ON DELETE RESTRICT ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "WorkflowTaskInstance" ADD CONSTRAINT "WorkflowTaskInstance_projectId_fkey" FOREIGN KEY ("projectId") REFERENCES "Project"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "WorkflowTaskInstance" ADD CONSTRAINT "WorkflowTaskInstance_taskId_fkey" FOREIGN KEY ("taskId") REFERENCES "WorkflowTask"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "Invoice" ADD CONSTRAINT "Invoice_contractId_fkey" FOREIGN KEY ("contractId") REFERENCES "Contract"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE "Invoice" ADD CONSTRAINT "Invoice_linkedInvoiceId_fkey" FOREIGN KEY ("linkedInvoiceId") REFERENCES "Invoice"("id") ON DELETE SET NULL ON UPDATE CASCADE;
@@ -550,3 +734,106 @@ ALTER TABLE "PaymentAllocation" ADD CONSTRAINT "PaymentAllocation_paymentId_fkey
 -- AddForeignKey
 ALTER TABLE "PaymentAllocation" ADD CONSTRAINT "PaymentAllocation_invoiceId_fkey" FOREIGN KEY ("invoiceId") REFERENCES "Invoice"("id") ON DELETE SET NULL ON UPDATE CASCADE;
 
+-- AddForeignKey
+ALTER TABLE "Department" ADD CONSTRAINT "Department_parentId_fkey" FOREIGN KEY ("parentId") REFERENCES "Department"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "Attachment" ADD CONSTRAINT "Attachment_uploadedById_fkey" FOREIGN KEY ("uploadedById") REFERENCES "User"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "Attachment" ADD CONSTRAINT "Attachment_contractId_fkey" FOREIGN KEY ("contractId") REFERENCES "Contract"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "Attachment" ADD CONSTRAINT "Attachment_invoiceId_fkey" FOREIGN KEY ("invoiceId") REFERENCES "Invoice"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+
+
+
+-- =====================================================
+-- Row-Level Security (RLS) — 业务表行级隔离
+-- 配合应用层事务内 SET LOCAL app.user_id / app.user_role
+-- =====================================================
+
+-- 启用 RLS
+ALTER TABLE "Customer" ENABLE ROW LEVEL SECURITY;
+ALTER TABLE "Contract" ENABLE ROW LEVEL SECURITY;
+ALTER TABLE "Project" ENABLE ROW LEVEL SECURITY;
+ALTER TABLE "Invoice" ENABLE ROW LEVEL SECURITY;
+ALTER TABLE "Payment" ENABLE ROW LEVEL SECURITY;
+
+-- Customer: SALES 只能看 ownerUserId = current_setting('app.user_id') 的客户
+CREATE POLICY customer_sales_isolation ON "Customer"
+  USING (
+    current_setting('app.bypass_rls', true) = 'on'
+    OR
+    (
+      current_setting('app.user_role', true) = 'SALES'
+      AND "ownerUserId" = current_setting('app.user_id', true)
+    )
+    OR
+    (
+      current_setting('app.user_role', true) IN ('ADMIN', 'FINANCE', 'OPS')
+    )
+  );
+
+-- Contract: SALES 通过 ownerUserId 过滤
+CREATE POLICY contract_sales_isolation ON "Contract"
+  USING (
+    current_setting('app.bypass_rls', true) = 'on'
+    OR
+    (
+      current_setting('app.user_role', true) = 'SALES'
+      AND "ownerUserId" = current_setting('app.user_id', true)
+    )
+    OR
+    (
+      current_setting('app.user_role', true) IN ('ADMIN', 'FINANCE', 'OPS')
+    )
+  );
+
+-- Project: RLS 仅做"非 SALES 也能看到"的兜底,SALES 行级过滤由应用层
+-- (Project 表无 ownerUserId,跨表 JOIN 不适合放进 PG RLS 的 USING)
+CREATE POLICY project_sales_isolation ON "Project"
+  USING (
+    current_setting('app.bypass_rls', true) = 'on'
+    OR
+    current_setting('app.user_role', true) IN ('ADMIN', 'FINANCE', 'OPS', 'SALES')
+  );
+
+-- Invoice: SALES 通过 contract.ownerUserId 过滤(开票仅关联合同,不再绑项目)
+CREATE POLICY invoice_sales_isolation ON "Invoice"
+  USING (
+    current_setting('app.bypass_rls', true) = 'on'
+    OR
+    current_setting('app.user_role', true) IN ('ADMIN', 'FINANCE', 'OPS')
+    OR
+    (
+      current_setting('app.user_role', true) = 'SALES'
+      AND EXISTS (
+        SELECT 1 FROM "Contract" c
+        WHERE c.id = "Invoice"."contractId"
+          AND c."ownerUserId" = current_setting('app.user_id', true)
+      )
+    )
+  );
+
+-- Payment: 通过 contract.ownerUserId
+CREATE POLICY payment_sales_isolation ON "Payment"
+  USING (
+    current_setting('app.bypass_rls', true) = 'on'
+    OR
+    current_setting('app.user_role', true) IN ('ADMIN', 'FINANCE', 'OPS')
+    OR
+    (
+      current_setting('app.user_role', true) = 'SALES'
+      AND EXISTS (
+        SELECT 1 FROM "Contract" c
+        WHERE c.id = "Payment"."contractId"
+          AND c."ownerUserId" = current_setting('app.user_id', true)
+      )
+    )
+  );
+
+-- 注释:app.bypass_rls 用于 cron jobs / 内部调用时绕过 RLS
+-- 应用层 Service 应在事务开始时设置:
+--   SET LOCAL app.user_id = 'xxx';
+--   SET LOCAL app.user_role = 'SALES';
