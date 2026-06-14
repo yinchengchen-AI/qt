@@ -1,0 +1,30 @@
+# /etc/systemd/system/qt-app.service
+# Next.js 生产服务 (native Node + systemd)
+# 启用: sudo cp ops/qt-app.service /etc/systemd/system/ && sudo systemctl daemon-reload
+#        sudo systemctl enable --now qt-app
+# 查看: journalctl -u qt-app -f
+
+[Unit]
+Description=qt-biz Next.js app
+After=network.target
+
+[Service]
+Type=simple
+User=qt
+Group=qt
+WorkingDirectory=/opt/qt
+EnvironmentFile=/opt/qt/.env
+ExecStart=/usr/bin/pnpm start
+Restart=on-failure
+RestartSec=3
+
+# 资源
+LimitNOFILE=65535
+
+# 日志走 journald,不要再 nohup 输出到文件
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=qt-app
+
+[Install]
+WantedBy=multi-user.target

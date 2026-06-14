@@ -1,31 +1,89 @@
 #!/usr/bin/env bash
-# 数据库备份：每日 1 次，保留 30 天
-# 用法：./scripts/backup.sh
+# 数据库备份 + (可选) MinIO 镜像。dev / 生产统一用这一份。
+#
+# 用法:
+#   ./scripts/backup.sh                            # 本地 (默认 qitai-postgres, ./backups)
+#   DOCKER_PG=qt-postgres BACKUP_DIR=/opt/qt/backups \
+#     BACKUP_MIRROR_MINIO=1 ./scripts/backup.sh     # 生产
+#
+# 行为差异由 env var 控制,不需要再单独维护 backup-prod.sh。
+#   DATABASE_URL         PG 连接串 (供主机 pg_dump 走;容器内 pg_dump 不读)
+#   DOCKER_PG            容器名 (默认 qitai-postgres,生产 cron 覆盖为 qt-postgres)
+#   BACKUP_DIR           本地备份目录 (默认 ./backups,生产建议 /opt/qt/backups)
+#   DAYS_TO_KEEP         本地/远端保留天数 (默认 30)
+#   BACKUP_MIRROR_MINIO  1 = 强制镜像到 MinIO; 0 = 强制跳过; auto = 自动检测
+#   MINIO_BACKUP_BUCKET  MinIO 桶名 (默认 qt-backups)
+#   MINIO_ALIAS          MinIO alias 名 (默认 local)
+#   MINIO_ENDPOINT       MinIO 端点 (默认 http://127.0.0.1:9000)
+#
+# 输出可重定向给 cron,所以保留 echo 时间戳行;不要 echo 到 stderr。
 set -euo pipefail
 
+# --- 配置 ---
 BACKUP_DIR=${BACKUP_DIR:-./backups}
 DAYS_TO_KEEP=${DAYS_TO_KEEP:-30}
-DB_URL=${DATABASE_URL:-postgresql://qt_app:qt_app_pass@localhost:5432/qt_biz?schema=public}
+DOCKER_PG=${DOCKER_PG:-qitai-postgres}
+DB_URL=${DATABASE_URL:-postgresql://qitai:qitai_pass@localhost:5432/qt_biz?schema=public}
+DB_NAME=$(echo "$DB_URL" | sed -E 's|.*/([^?]+)(\?.*)?$|\1|')
+DB_USER=$(echo "$DB_URL" | sed -E 's|.*://([^:]+):.*|\1|')
+MIGRATION_URL=${MIGRATION_DATABASE_URL:-$DATABASE_URL}
+SUPER_PW=$(echo "$MIGRATION_URL" | sed -E 's|.*://[^:]+:([^@]+)@.*|\1|')
+
+MINIO_BACKUP_BUCKET=${MINIO_BACKUP_BUCKET:-qt-backups}
+MINIO_ALIAS=${MINIO_ALIAS:-local}
+MINIO_ENDPOINT=${MINIO_ENDPOINT:-http://127.0.0.1:9000}
+MC=${MC:-/usr/local/bin/mc}
+PG_RESTORE=${PG_RESTORE:-pg_restore}
+
+# --- 自动检测是否镜像 MinIO ---
+if [ "${BACKUP_MIRROR_MINIO:-auto}" = "auto" ]; then
+  if [ -x "$MC" ] && [ -n "${MINIO_ACCESS_KEY:-}" ] && [ -n "${MINIO_SECRET_KEY:-}" ]; then
+    BACKUP_MIRROR_MINIO=1
+  else
+    BACKUP_MIRROR_MINIO=0
+  fi
+fi
 
 mkdir -p "$BACKUP_DIR"
 TS=$(date +"%Y%m%d_%H%M%S")
-FILE="$BACKUP_DIR/qt_biz_$TS.dump"
+FILE="$BACKUP_DIR/${DB_NAME}_$TS.dump"
 
-# 用 pg_dump 导出（custom format，压缩好）
-# 注意：需要 PG 客户端工具；可由 alpine postgresql-client 镜像提供
-DOCKER_PG=${DOCKER_PG:-qitai-postgres}
+# --- 1) pg_dump (服务器端 PG 16,走容器内二进制) ---
+echo "[$(date +%FT%T)] pg_dump ($DOCKER_PG, $DB_NAME) -> $FILE"
+docker exec -e PGPASSWORD="$SUPER_PW" "$DOCKER_PG" \
+  pg_dump --format=custom --no-owner --no-acl --schema=public -U "$DB_USER" -d "$DB_NAME" \
+  > "$FILE"
+echo "  -> $(du -h "$FILE" | cut -f1)"
 
-if command -v pg_dump >/dev/null 2>&1; then
-  pg_dump --format=custom --no-owner --no-acl --file="$FILE" "$DB_URL"
+# --- 2) 完整性校验 (主机有 pg_restore 时) ---
+if command -v "$PG_RESTORE" >/dev/null 2>&1; then
+  echo "[$(date +%FT%T)] pg_restore --list (integrity check)"
+  if "$PG_RESTORE" --list "$FILE" >/dev/null; then
+    ENTRIES=$("$PG_RESTORE" --list "$FILE" | wc -l | tr -d ' ')
+    echo "  -> OK ($ENTRIES entries)"
+  else
+    echo "  -> FAIL: dump $FILE 不可读,保留待排查" >&2
+    exit 1
+  fi
 else
-  docker exec "$DOCKER_PG" pg_dump -U qitai -d qt_biz -F c -f "/tmp/qt_biz_$TS.dump"
-  docker cp "$DOCKER_PG:/tmp/qt_biz_$TS.dump" "$FILE"
-  docker exec "$DOCKER_PG" rm -f "/tmp/qt_biz_$TS.dump"
+  echo "  (skip integrity check: $PG_RESTORE not found)"
 fi
 
-echo "✓ 备份完成：$FILE"
-ls -lh "$FILE"
+# --- 3) MinIO 镜像 (可选) ---
+if [ "$BACKUP_MIRROR_MINIO" = "1" ]; then
+  echo "[$(date +%FT%T)] mc cp -> $MINIO_ALIAS/$MINIO_BACKUP_BUCKET"
+  "$MC" --quiet alias set "$MINIO_ALIAS" "$MINIO_ENDPOINT" "$MINIO_ACCESS_KEY" "$MINIO_SECRET_KEY" >/dev/null
+  "$MC" --quiet mb --ignore-existing "$MINIO_ALIAS/$MINIO_BACKUP_BUCKET" >/dev/null
+  "$MC" cp "$FILE" "$MINIO_ALIAS/$MINIO_BACKUP_BUCKET/$(basename "$FILE")"
+else
+  echo "  (skip MinIO mirror: BACKUP_MIRROR_MINIO=$BACKUP_MIRROR_MINIO)"
+fi
 
-# 清理 N 天前的旧备份
-find "$BACKUP_DIR" -name "qt_biz_*.dump" -mtime +$DAYS_TO_KEEP -delete 2>/dev/null || true
-echo "✓ 已清理 ${DAYS_TO_KEEP} 天前的旧备份"
+# --- 4) 清理 N 天前的旧备份 ---
+echo "[$(date +%FT%T)] cleanup > ${DAYS_TO_KEEP}d"
+find "$BACKUP_DIR" -name "${DB_NAME}_*.dump" -mtime +"$DAYS_TO_KEEP" -delete 2>/dev/null || true
+if [ "$BACKUP_MIRROR_MINIO" = "1" ]; then
+  "$MC" rm --recursive --force --older-than "${DAYS_TO_KEEP}d" \
+    "$MINIO_ALIAS/$MINIO_BACKUP_BUCKET/" 2>/dev/null || true
+fi
+echo "[OK] backup done: $FILE"

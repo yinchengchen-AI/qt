@@ -347,10 +347,10 @@ PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 0 1 * * * root . /opt/qt/.env >/dev/null 2>&1; /usr/bin/curl -sS -X POST -H "Authorization: Bearer ${CRON_SECRET}" http://127.0.0.1:3000/api/jobs/run-all >> /var/log/qt-cron.log 2>&1
 
 # 每日 03:00 数据库备份(走主机 pg_dump 到 /opt/qt/backups,并 mc mirror 到 MinIO qt-backups 桶)
-0 3 * * * root /opt/qt/scripts/backup-prod.sh >> /var/log/qt-cron.log 2>&1
+0 3 * * * root cd /opt/qt && set -a && . /opt/qt/.env && set +a && DOCKER_PG=qt-postgres BACKUP_DIR=/opt/qt/backups BACKUP_MIRROR_MINIO=1 /opt/qt/scripts/backup.sh >> /var/log/qt-cron.log 2>&1
 ```
 
-### 阶段 M:备份脚本(新增 `scripts/backup-prod.sh`)
+### 阶段 M:备份脚本(`scripts/backup.sh`,dev/prod 统一版,行为差异由 env 控制)
 
 规约:
 
@@ -358,7 +358,7 @@ PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 - `pg_dump --format=custom --no-owner --no-acl` 输出到 `/opt/qt/backups/qt_biz_$(date +%Y%m%d_%H%M%S).dump`
 - 用 `mc` 客户端(mc 静态二进制,放 `/usr/local/bin/mc`)镜像到 `local/qt-backups`(local alias 指向 MinIO 容器)
 - 清理本地和远端 > 30 天的旧文件
-- `chmod +x scripts/backup-prod.sh`
+- `chmod +x scripts/backup.sh`, `/opt/qt/scripts/deploy.sh` 同
 
 ## 四、冒烟测试(部署后必跑)
 
@@ -401,7 +401,7 @@ docker stats --no-stream                     # 观察 PG/MinIO 内存
 | `/opt/qt/.env`                                          | 新建                           | 阶段 D 生成,`chmod 600`                     |
 | `/opt/qt/docker-compose.prod.yml`                       | 新建                           | 阶段 E,生产用,密码走 env 替换               |
 | `/opt/qt/scripts/create-admin.ts`                       | **新文件,由我提交 commit**     | 阶段 I 规约                                 |
-| `/opt/qt/scripts/backup-prod.sh`                        | 新建                           | 阶段 M                                      |
+| `/opt/qt/scripts/backup.sh` (dev/prod 统一版) | 调整           | 阶段 M; cron 入口在 `ops/qt-jobs.cron`                                      |
 | `/opt/qt/scripts/deploy.sh`                             | 新建                           | 日常运维                                    |
 | `/opt/qt/package.json`                                  | 微调(加 `"create-admin"` 脚本) | 阶段 I 随 create-admin.ts 一起提交          |
 | `/opt/qt/docs/部署记录 — qt-biz v0.1.0 — Aliyun ECS.md` | 新建                           | 部署完成后由我回填实际命令输出与 smoke 结果 |
