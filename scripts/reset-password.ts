@@ -70,12 +70,13 @@ async function main(): Promise<void> {
 
   // Resolve target user
   const user = await prisma.user.findFirst({
-    where: args.id
-      ? { id: args.id }
-      : { employeeNo: args.employeeNo },
+    where: {
+      ...(args.id ? { id: args.id } : { employeeNo: args.employeeNo }),
+      deletedAt: null
+    },
     select: { id: true, employeeNo: true, name: true, email: true, status: true, deletedAt: true }
   });
-  if (!user || user.deletedAt) {
+  if (!user) {
     console.error(`User not found: ${args.id ?? args.employeeNo}`);
     process.exit(1);
   }

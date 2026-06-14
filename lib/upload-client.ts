@@ -42,10 +42,13 @@ export async function uploadFileToMinIO(file: File, opts: UploadOpts = {}): Prom
   const { attachmentId, url } = presign.data;
 
   // 2. PUT 到 MinIO(走 fetch,无 CORS 预检干扰)
+  // 注意:url 走的是 Next.js 同源代理 /api/files/upload/{id},不是 MinIO 直连,
+  // 所以需要 credentials: "include" 把 next-auth 的 session cookie 带上,
+  // 否则服务端 requireSession() 会 401。
   const putRes = await fetch(url, {
     method: "PUT",
     body: file,
-    credentials: "omit"
+    credentials: "include"
   });
   if (!putRes.ok) {
     throw new Error(`上传到 MinIO 失败: ${putRes.status} ${putRes.statusText}`);

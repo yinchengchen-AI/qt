@@ -73,7 +73,14 @@ export function FilePreviewModal(props: {
   const [text, setText] = useState<string>("");
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState<string | null>(null);
-
+  // SSR 期 window 不存在;先给个保守默认值,挂载后再按视口收紧
+  const [viewportWidth, setViewportWidth] = useState<number>(1000);
+  useEffect(() => {
+    const update = () => setViewportWidth(window.innerWidth);
+    update();
+    window.addEventListener("resize", update);
+    return () => window.removeEventListener("resize", update);
+  }, []);
   // 拉 blob URL(只在 attachment 变化时重新拉);同时若 mime 是文本类,额外缓存解码后的字符串
   useEffect(() => {
     if (!attachment) {
@@ -176,7 +183,7 @@ export function FilePreviewModal(props: {
       open={!!attachment}
       onCancel={onClose}
       footer={null}
-      width={Math.min(window.innerWidth - 40, isPdf ? 1000 : 720)}
+      width={Math.min(viewportWidth - 40, isPdf ? 1000 : 720)}
       destroyOnHidden
       title={
         attachment ? (
