@@ -9,7 +9,7 @@
 |---|---|---|
 | 通知通道（email / wechatWork） | `lib/notify-config.ts`、`server/events/channels.ts`、`server/events/dispatcher.ts` | ✅ 完成 |
 | 公告系统（CRUD + 靶向 + 软删） | `server/services/announcement.ts`、`app/api/announcements/**`、`app/announcements/page.tsx`、`lib/validators/announcement.ts` | ✅ 完成 |
-| RLS 兜底（5 张表 policy） | `prisma/migrations/20260609_rls/migration.sql`、`lib/rls.ts` | ✅ 完成 |
+| RLS 兜底（5 张表 policy） | `prisma/migrations/20260614_init/migration.sql`、`lib/rls.ts` | ✅ 完成 |
 | i18n 基础（zh-CN / en-US） | `lib/i18n.ts` | ✅ 完成 |
 | 备份脚本 | `scripts/prod/backup.sh` | ✅ 完成 |
 | 审计清理脚本 | `scripts/prod/audit-cleanup.sh` | ✅ 完成 |

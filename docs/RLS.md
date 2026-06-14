@@ -3,7 +3,7 @@
 ## 现状
 
 - **5 张核心表**（Customer / Contract / Project / Invoice / Payment）已配置 RLS policy
-- 迁移文件：`prisma/migrations/20260609_rls/migration.sql`
+- 迁移文件：`prisma/migrations/20260614_init/migration.sql`
 - 角色：`qt_app`（应用账户，**BYPASSRLS**）+ `qitai`（超管，迁移用）
 
 ## 设计权衡

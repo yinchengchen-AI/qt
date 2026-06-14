@@ -97,7 +97,7 @@ DB 层兜底：PG RLS policy  // 即使 service 漏写，DB 也会拦截
 ```
 
 - **应用层**（`lib/permissions.ts`、`server/services/*.ts`）注入 `where: { ownerUserId: user.id }`，SALES 自动只看自己负责的客户
-- **DB 层**（`prisma/migrations/20260609_rls/migration.sql`）对 5 张核心表建 RLS policy，事务内 `set_config('app.user_id', ..., true)` 设 GUC
+- **DB 层**（`prisma/migrations/20260614_init/migration.sql`）对 5 张核心表建 RLS policy，事务内 `set_config('app.user_id', ..., true)` 设 GUC
 - **bypass_rls=on** 显式开关：cron / 内部任务用，避免误伤
 
 **经验**：任何"安全相关"的逻辑不能只靠应用层。**RLS 兜底成本极低（一次 SQL 迁移），收益极高（即使代码出 bug 也不会越权）**。
@@ -226,7 +226,7 @@ dev 模式无：
 | 状态机 | 各 service 的 `submit/approve/issue/confirm` 函数 | switch 强制迁移 |
 | 统计 | `server/services/statistics.ts` | 总览 / 账龄 / Top / 业绩 |
 | 导出 | `lib/excel.ts` | exceljs 流式生成 |
-| RLS | `lib/rls.ts`、`prisma/migrations/20260609_rls/migration.sql` | DB 层兜底 |
+| RLS | `lib/rls.ts`、`prisma/migrations/20260614_init/migration.sql` | DB 层兜底 |
 | 通知 | `lib/notify-config.ts` | env 驱动通道开关 |
 
 ### 4.2 测试与文档

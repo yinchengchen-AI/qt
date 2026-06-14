@@ -517,7 +517,7 @@ P3 阶段交付：通知三通道、公告系统、RLS 兜底、备份/审计脚
 |---|---|
 | 通知 | `lib/notify-config.ts`、`server/events/channels.ts`、`server/events/dispatcher.ts` |
 | 公告 | `server/services/announcement.ts`、`app/api/announcements/**`、`app/announcements/page.tsx`、`lib/validators/announcement.ts` |
-| RLS | `prisma/migrations/20260609_rls/migration.sql`、`lib/rls.ts` |
+| RLS | `prisma/migrations/20260614_init/migration.sql`、`lib/rls.ts` |
 | i18n | `lib/i18n.ts` |
 | 备份 | `scripts/prod/backup.sh`、`scripts/prod/audit-cleanup.sh`、`scripts/dev/loadtest.mjs` |
 | Vercel | `vercel.json`、`app/api/jobs/run-all/route.ts` |
