@@ -2,7 +2,7 @@
 
 # 阿里云 ECS 单主机部署方案 — qt-biz v0.1.0
 
-> **目标**:`yinchengchen-AI/qt@main`(`ff6ef4d`)部署到阿里云杭州区一台全新 Aliyun Linux 3 ECS,IP+HTTP,全栈同机(Docker 跑 PG/MinIO,native 跑 Node 应用 + nginx 反代 + systemd 托管),首登通过新增 CLI 脚本 `scripts/create-admin.ts` 建第一个 admin。
+> **目标**:`yinchengchen-AI/qt@main`(`ff6ef4d`)部署到阿里云杭州区一台全新 Aliyun Linux 3 ECS,IP+HTTP,全栈同机(Docker 跑 PG/MinIO,native 跑 Node 应用 + nginx 反代 + systemd 托管),首登通过新增 CLI 脚本 `scripts/shared/create-admin.ts` 建第一个 admin。
 
 ## 一、拓扑与组件
 
@@ -249,14 +249,14 @@ pnpm build
 # 验证: ls .next/BUILD_ID 存在
 ```
 
-### 阶段 I:建第一个 admin(新增 `scripts/create-admin.ts`)
+### 阶段 I:建第一个 admin(新增 `scripts/shared/create-admin.ts`)
 
 文件规格(将在下次实施时由我创建并提交,先列规约):
 
-- 入口:`pnpm tsx scripts/create-admin.ts --employeeNo <id> --name <名> --email <邮箱>`(也可 `--password <pwd>` 非交互;不传则 prompt)
+- 入口:`pnpm tsx scripts/shared/create-admin.ts --employeeNo <id> --name <名> --email <邮箱>`(也可 `--password <pwd>` 非交互;不传则 prompt)
 - 行为:从 `process.env.DATABASE_URL` 读连接;`bcrypt` cost=10;查 `Role.code='ADMIN'` 拿 `roleId`;`prisma.user.create` 写一条 `status='ACTIVE'`;打印新建 userId 即结束
 - 失败回滚:任一错误抛错,无副作用
-- 写完会追加到 `package.json` 的 scripts 段:`"create-admin": "tsx scripts/create-admin.ts"`
+- 写完会追加到 `package.json` 的 scripts 段:`"create-admin": "tsx scripts/shared/create-admin.ts"`
 
 执行:
 
@@ -347,10 +347,10 @@ PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 0 1 * * * root . /opt/qt/.env >/dev/null 2>&1; /usr/bin/curl -sS -X POST -H "Authorization: Bearer ${CRON_SECRET}" http://127.0.0.1:3000/api/jobs/run-all >> /var/log/qt-cron.log 2>&1
 
 # 每日 03:00 数据库备份(走主机 pg_dump 到 /opt/qt/backups,并 mc mirror 到 MinIO qt-backups 桶)
-0 3 * * * root cd /opt/qt && set -a && . /opt/qt/.env && set +a && DOCKER_PG=qt-postgres BACKUP_DIR=/opt/qt/backups BACKUP_MIRROR_MINIO=1 /opt/qt/scripts/backup.sh >> /var/log/qt-cron.log 2>&1
+0 3 * * * root cd /opt/qt && set -a && . /opt/qt/.env && set +a && DOCKER_PG=qt-postgres BACKUP_DIR=/opt/qt/backups BACKUP_MIRROR_MINIO=1 /opt/qt/scripts/prod/backup.sh >> /var/log/qt-cron.log 2>&1
 ```
 
-### 阶段 M:备份脚本(`scripts/backup.sh`,dev/prod 统一版,行为差异由 env 控制)
+### 阶段 M:备份脚本(`scripts/prod/backup.sh`,dev/prod 统一版,行为差异由 env 控制)
 
 规约:
 
@@ -358,7 +358,7 @@ PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 - `pg_dump --format=custom --no-owner --no-acl` 输出到 `/opt/qt/backups/qt_biz_$(date +%Y%m%d_%H%M%S).dump`
 - 用 `mc` 客户端(mc 静态二进制,放 `/usr/local/bin/mc`)镜像到 `local/qt-backups`(local alias 指向 MinIO 容器)
 - 清理本地和远端 > 30 天的旧文件
-- `chmod +x scripts/backup.sh`, `/opt/qt/scripts/deploy.sh` 同
+- `chmod +x scripts/prod/backup.sh`, `/opt/qt/scripts/prod/deploy.sh` 同
 
 ## 四、冒烟测试(部署后必跑)
 
@@ -389,7 +389,7 @@ docker stats --no-stream                     # 观察 PG/MinIO 内存
 | 看 MinIO 日志 | `docker logs -f qt-minio`                                    |
 | 重启应用      | `systemctl restart qt-app`                                   |
 | 重启 PG       | `docker compose -f /opt/qt/docker-compose.prod.yml restart postgres` |
-| 代码更新      | 新增 `scripts/deploy.sh`,内容: `cd /opt/qt && git pull && pnpm install --frozen-lockfile && DATABASE_URL="$MIGRATION_DATABASE_URL" npx prisma migrate deploy && pnpm build && systemctl restart qt-app && curl -fsS http://127.0.0.1:3000/login > /dev/null && echo OK` |
+| 代码更新      | 新增 `scripts/prod/deploy.sh`,内容: `cd /opt/qt && git pull && pnpm install --frozen-lockfile && DATABASE_URL="$MIGRATION_DATABASE_URL" npx prisma migrate deploy && pnpm build && systemctl restart qt-app && curl -fsS http://127.0.0.1:3000/login > /dev/null && echo OK` |
 | 备份恢复      | `pg_restore --clean --if-exists -d qt_biz /opt/qt/backups/qt_biz_XXXX.dump`(用 `MIGRATION_DATABASE_URL` 登) |
 | 回滚代码      | `cd /opt/qt && git checkout <good-sha> && pnpm install --frozen-lockfile && pnpm build && systemctl restart qt-app`;DB 回滚需手工 `prisma migrate resolve --rolled-back <name>`(不推荐,优先用备份恢复) |
 | SSH 改密钥    | 部署稳定后:`ssh-keygen` 本地生成 → `ssh-copy-id root@<IP>` → 改 `/etc/ssh/sshd_config.d/00-disable-password.conf` 禁密码 |
@@ -400,9 +400,9 @@ docker stats --no-stream                     # 观察 PG/MinIO 内存
 | ------------------------------------------------------- | ------------------------------ | ------------------------------------------- |
 | `/opt/qt/.env`                                          | 新建                           | 阶段 D 生成,`chmod 600`                     |
 | `/opt/qt/docker-compose.prod.yml`                       | 新建                           | 阶段 E,生产用,密码走 env 替换               |
-| `/opt/qt/scripts/create-admin.ts`                       | **新文件,由我提交 commit**     | 阶段 I 规约                                 |
-| `/opt/qt/scripts/backup.sh` (dev/prod 统一版) | 调整           | 阶段 M; cron 入口在 `ops/qt-jobs.cron`                                      |
-| `/opt/qt/scripts/deploy.sh`                             | 新建                           | 日常运维                                    |
+| `/opt/qt/scripts/shared/create-admin.ts`                       | **新文件,由我提交 commit**     | 阶段 I 规约                                 |
+| `/opt/qt/scripts/prod/backup.sh` (dev/prod 统一版) | 调整           | 阶段 M; cron 入口在 `ops/qt-jobs.cron`                                      |
+| `/opt/qt/scripts/prod/deploy.sh`                             | 新建                           | 日常运维                                    |
 | `/opt/qt/package.json`                                  | 微调(加 `"create-admin"` 脚本) | 阶段 I 随 create-admin.ts 一起提交          |
 | `/opt/qt/docs/部署记录 — qt-biz v0.1.0 — Aliyun ECS.md` | 新建                           | 部署完成后由我回填实际命令输出与 smoke 结果 |
 | `/etc/nginx/conf.d/qt.conf`                             | 新建                           | 阶段 K                                      |
@@ -419,8 +419,8 @@ docker stats --no-stream                     # 观察 PG/MinIO 内存
 - **不开 Docker log rotation 之外的额外归档**:`daemon.json` 已配 100m×3,够用半年
 - **无 rate limit**:nginx 不开 `limit_req`;v0.2 加
 - **无 Sentry / 错误追踪**:v0.2 接入
-- **无 CI/CD**:`scripts/deploy.sh` 手跑;v0.2 加 GitHub Actions
-- **不跑 seed**:留空库,`scripts/create-admin.ts` 建首个 admin(README 里 4 个 test 账号全部不进生产)
+- **无 CI/CD**:`scripts/prod/deploy.sh` 手跑;v0.2 加 GitHub Actions
+- **不跑 seed**:留空库,`scripts/shared/create-admin.ts` 建首个 admin(README 里 4 个 test 账号全部不进生产)
 - **保留 `prisma/seed.ts` 头部 `@ts-nocheck`**:P1 已知,不影响生产
 - **保留 `server/jobs/runner.ts` 无分布式锁**:P1 已知,单实例场景下不重复触发
 
@@ -442,4 +442,4 @@ docker stats --no-stream                     # 观察 PG/MinIO 内存
 
 </proposed_plan>
 
-确认这份方案可以直接开干的话,回我"OK"或者指出要改哪几条;我会把 `scripts/create-admin.ts` 落到 commit,然后等你贴公网 IP + 密码,按阶段 A → 阶段 M 顺序执行,每完成一段给你贴关键命令输出。
+确认这份方案可以直接开干的话,回我"OK"或者指出要改哪几条;我会把 `scripts/shared/create-admin.ts` 落到 commit,然后等你贴公网 IP + 密码,按阶段 A → 阶段 M 顺序执行,每完成一段给你贴关键命令输出。

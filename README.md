@@ -58,7 +58,7 @@ npm run create-admin -- \
   --password 'Your-Strong-Pwd-2026'   # 至少 8 字符
 ```
 
-忘记密码可重置:`tsx scripts/reset-password.ts --employeeNo <id> --password <newPwd>`。
+忘记密码可重置:`tsx scripts/shared/reset-password.ts --employeeNo <id> --password <newPwd>`。
 
 ### 4. 起服务
 
@@ -519,7 +519,7 @@ P3 阶段交付：通知三通道、公告系统、RLS 兜底、备份/审计脚
 | 公告 | `server/services/announcement.ts`、`app/api/announcements/**`、`app/announcements/page.tsx`、`lib/validators/announcement.ts` |
 | RLS | `prisma/migrations/20260609_rls/migration.sql`、`lib/rls.ts` |
 | i18n | `lib/i18n.ts` |
-| 备份 | `scripts/backup.sh`、`scripts/audit-cleanup.sh`、`scripts/loadtest.mjs` |
+| 备份 | `scripts/prod/backup.sh`、`scripts/prod/audit-cleanup.sh`、`scripts/dev/loadtest.mjs` |
 | Vercel | `vercel.json`、`app/api/jobs/run-all/route.ts` |
 | 文档 | `docs/RLS.md`、`docs/P3_REVIEW.md` |
 
@@ -534,8 +534,8 @@ node tests/p3-flow.mjs
 ### 压测
 
 ```bash
-node scripts/loadtest.mjs           # 默认 50 并发 × 5s
-CONCURRENCY=100 DURATION_MS=10000 node scripts/loadtest.mjs
+node scripts/dev/loadtest.mjs           # 默认 50 并发 × 5s
+CONCURRENCY=100 DURATION_MS=10000 node scripts/dev/loadtest.mjs
 ```
 
 dev 模式实测（C50/C100）：RPS 460-500，P95 < 280ms。详见 `docs/P3_REVIEW.md`。
@@ -556,7 +556,7 @@ WECHAT_WORK_WEBHOOK_URL="https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=..
 
 ### 备份与定时任务
 
-- **本地 cron**：`bash scripts/backup.sh` + crontab `0 2 * * *`
+- **本地 cron**：`bash scripts/prod/backup.sh` + crontab `0 2 * * *`
 - **Vercel Cron**：`vercel.json` 已配 `POST /api/jobs/run-all` 每日 01:00 UTC
 - **Cron Secret**：`.env` 设 `CRON_SECRET`，Vercel Cron 自动注入 Bearer 鉴权
 

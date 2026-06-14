@@ -88,7 +88,7 @@
 
 系统内置 5 种角色,对应不同工作场景。权限边界在 **客户端 + 服务端 双重校验**,前端看不到的菜单 / 按钮同时后端也会拒绝。
 
-> 角色定义在 `prisma/seed.ts`(`seedRoles()`)和 `scripts/seed-roles.ts` 中,以 `ADMIN / SALES / FINANCE / OPS / EXPERT` 为准。本节不再列举具体账号 — 账号由管理员通过 **系统管理 / 用户管理** 创建并分配角色,初始管理员用 `pnpm create-admin` 创建。
+> 角色定义在 `prisma/seed.ts`(`seedRoles()`)和 `scripts/shared/seed-roles.ts` 中,以 `ADMIN / SALES / FINANCE / OPS / EXPERT` 为准。本节不再列举具体账号 — 账号由管理员通过 **系统管理 / 用户管理** 创建并分配角色,初始管理员用 `pnpm create-admin` 创建。
 
 ### 3.1 角色一览
 

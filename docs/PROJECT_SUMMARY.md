@@ -235,8 +235,8 @@ dev 模式无：
 |---|---|
 | 单元 | `tests/permissions.test.ts` |
 | E2E | `tests/e2e-flow.mjs`、`tests/p2-flow.mjs`、`tests/p3-flow.mjs` |
-| 压测 | `scripts/loadtest.mjs` |
-| 运维 | `scripts/backup.sh`、`scripts/audit-cleanup.sh` |
+| 压测 | `scripts/dev/loadtest.mjs` |
+| 运维 | `scripts/prod/backup.sh`、`scripts/prod/audit-cleanup.sh` |
 | 文档 | `docs/{CODE_REVIEW,P2_REVIEW,P3_REVIEW,RLS,PROJECT_SUMMARY}.md` |
 
 ---

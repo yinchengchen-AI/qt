@@ -13,8 +13,8 @@ PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 # 03:00 - 数据库每日备份 (本地 + MinIO qt-backups 桶镜像)
 0 3 * * * root cd /opt/qt && set -a && . /opt/qt/.env && set +a && \
     DOCKER_PG=qt-postgres BACKUP_DIR=/opt/qt/backups BACKUP_MIRROR_MINIO=1 \
-    /opt/qt/scripts/backup.sh >> /var/log/qt-cron.log 2>&1
+    /opt/qt/scripts/prod/backup.sh >> /var/log/qt-cron.log 2>&1
 
 # 04:00 (每月 1 号) - 审计日志清理,默认保留 5 年
 0 4 1 * * root cd /opt/qt && set -a && . /opt/qt/.env && set +a && \
-    DOCKER_PG=qt-postgres /opt/qt/scripts/audit-cleanup.sh 5 >> /var/log/qt-cron.log 2>&1
+    DOCKER_PG=qt-postgres /opt/qt/scripts/prod/audit-cleanup.sh 5 >> /var/log/qt-cron.log 2>&1

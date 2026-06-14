@@ -11,9 +11,9 @@
 | 公告系统（CRUD + 靶向 + 软删） | `server/services/announcement.ts`、`app/api/announcements/**`、`app/announcements/page.tsx`、`lib/validators/announcement.ts` | ✅ 完成 |
 | RLS 兜底（5 张表 policy） | `prisma/migrations/20260609_rls/migration.sql`、`lib/rls.ts` | ✅ 完成 |
 | i18n 基础（zh-CN / en-US） | `lib/i18n.ts` | ✅ 完成 |
-| 备份脚本 | `scripts/backup.sh` | ✅ 完成 |
-| 审计清理脚本 | `scripts/audit-cleanup.sh` | ✅ 完成 |
-| 压测工具 | `scripts/loadtest.mjs` | ✅ 完成 |
+| 备份脚本 | `scripts/prod/backup.sh` | ✅ 完成 |
+| 审计清理脚本 | `scripts/prod/audit-cleanup.sh` | ✅ 完成 |
+| 压测工具 | `scripts/dev/loadtest.mjs` | ✅ 完成 |
 | 文档 | `docs/RLS.md`、`docs/P3_REVIEW.md` | ✅ 完成 |
 
 ---
@@ -22,7 +22,7 @@
 
 ### 2.1 测试方法
 
-- 工具：`scripts/loadtest.mjs`（Node 原生 fetch，无第三方依赖）
+- 工具：`scripts/dev/loadtest.mjs`（Node 原生 fetch，无第三方依赖）
 - 目标：`/api/customers?page=1&pageSize=20`（读密集 + DB 查询 + 行级 where）
 - 压测账户：登录 `admin`（admin 的 customer 列表非空，含 owner 客户）
 - 环境：dev mode（`next dev`）— 生产构建会显著优于该数据
@@ -122,14 +122,14 @@ npx tsc --noEmit  # 0 错误
 
 ## 6. 备份与审计清理
 
-### 6.1 备份脚本 `scripts/backup.sh`
+### 6.1 备份脚本 `scripts/prod/backup.sh`
 
 - 工具：`pg_dump -Fc`（custom format，压缩比高）
 - 保留：30 天
 - 路径：`/var/backups/qt/qt_YYYYMMDD_HHMMSS.dump`
 - 调度：crontab `0 2 * * *`
 
-### 6.2 审计清理 `scripts/audit-cleanup.sh`
+### 6.2 审计清理 `scripts/prod/audit-cleanup.sh`
 
 - 策略：保留 5 年（设计文档 §13 假设）
 - 实现：按年分批 DELETE `OperationLog WHERE createdAt < now() - 5y`
@@ -139,7 +139,7 @@ npx tsc --noEmit  # 0 错误
 
 ```bash
 # 备份
-bash scripts/backup.sh
+bash scripts/prod/backup.sh
 # 输出：/var/backups/qt/qt_20260609_120000.dump (size=...)
 
 # 恢复
