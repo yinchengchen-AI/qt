@@ -21,9 +21,10 @@ npx --no-install prisma generate
 
 echo "==> pnpm build"
 pnpm build
-
-echo "==> pnpm seed (idempotent: workflow templates lock-if-in-use; 业务数据不 seed)"
-pnpm seed
+# 生产日常更新不再 seed: roles/dicts/depts/workflow templates 已在首次部署时落地,
+# 重复跑 pnpm seed 会 (1) 浪费时间 (9 份 workflow template × 5 阶段 × N 任务 = 几百次 DB 写),
+# (2) 即使 idempotent, 也有微弱的角色权限/部门字段被 update 覆盖风险。
+# 新机器/灾备恢复/重置环境部署时, 手动跑: cd /opt/qt && pnpm seed
 
 echo "==> systemctl restart qt-app"
 systemctl restart qt-app
