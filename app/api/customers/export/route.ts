@@ -7,7 +7,7 @@ import { err } from "@/lib/api";
 import { requireSession } from "@/lib/session";
 import { requirePermission, RESOURCE, ACTION } from "@/lib/permissions";
 import { listCustomers } from "@/server/services/customer";
-import { exportToXlsx } from "@/lib/excel";
+import { exportToXlsx, exportMaxRows } from "@/lib/excel";
 import { prisma } from "@/lib/prisma";
 import { ALLOWED_DICTIONARY_CATEGORIES } from "@/lib/dictionary-categories";
 import { CUSTOMER_STATUS_MAP } from "@/lib/enum-maps";
@@ -36,8 +36,9 @@ export async function GET(req: Request) {
     requirePermission(user.roleCode, RESOURCE.CUSTOMER, ACTION.EXPORT);
     const url = new URL(req.url);
     const params = query.parse(Object.fromEntries(url.searchParams));
-    // pageSize=10000 当作"全量"上限
-    const { list } = await listCustomers(user, { page: 1, pageSize: 10000, ...params });
+    // pageSize 用 exportMaxRows() 兜底,防止单次导出 OOM;按时间倒序,导出后可以补差量
+    const max = exportMaxRows();
+    const { list, total: _total } = await listCustomers(user, { page: 1, pageSize: max, ...params });
     const dict = await loadDict();
     const label = (cat: string, code?: string | null) => code ? (dict[`${cat}::${code}`] ?? code) : "";
     const ts = new Date().toISOString().slice(0, 10);

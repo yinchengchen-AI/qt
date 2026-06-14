@@ -39,11 +39,26 @@ function redact<T>(v: T): T {
   return out as T;
 }
 
+// AUDIT_FULL_PAYLOAD=false 时,before/after 只保留字段名(用于知道改了哪些字段),不存值
+// 高敏部署可关闭以减少 PII 暴露面;默认 true 保持行为不变
+const FULL_PAYLOAD = (process.env.AUDIT_FULL_PAYLOAD ?? "true").toLowerCase() !== "false";
+function stripValues<T>(v: T): T {
+  if (v == null || typeof v !== "object") return v;
+  if (Array.isArray(v)) return v.map(() => ({} as Record<string, unknown>)) as unknown as T;
+  const out: Record<string, unknown> = {};
+  for (const k of Object.keys(v as Record<string, unknown>)) out[k] = "<redacted>";
+  return out as T;
+}
+
 export async function audit(tx: Prisma.TransactionClient, input: AuditInput) {
   // diff 字段：合并 before/after 为单 JSON；若都没有则 null
+  const b = input.before;
+  const a = input.after;
+  const bOut = b !== undefined ? (FULL_PAYLOAD ? redact(b) : stripValues(b)) : null;
+  const aOut = a !== undefined ? (FULL_PAYLOAD ? redact(a) : stripValues(a)) : null;
   const diff =
-    input.before !== undefined || input.after !== undefined
-      ? { before: input.before !== undefined ? redact(input.before) : null, after: input.after !== undefined ? redact(input.after) : null }
+    b !== undefined || a !== undefined
+      ? { before: bOut, after: aOut }
       : PrismaNS.JsonNull;
   return tx.operationLog.create({
     data: {

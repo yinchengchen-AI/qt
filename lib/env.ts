@@ -49,8 +49,18 @@ export const env = createEnv({
 });
 
 // 启动时 fail-fast 校验:仅在生产环境强制关键配置
-// 延迟到首次访问时执行,避免在 import 阶段打断构建
+// 模块加载即执行一次(见下方 IIFE),失败立即抛错
 let _startupChecked = false;
+// 模块加载时立即执行一次生产环境校验;失败即抛错,防止部署到生产时仍带占位密钥运行
+// (旧版只在首次 getPublicBaseUrl() 才检查,但首页/登录页等路径可能不调用它,占位值会一直存活)
+try {
+  assertProductionConfig();
+} catch (e) {
+  // 仅在生产环境重抛;开发/测试时打印警告以免影响本地启 dev
+  if (env.NODE_ENV === "production") throw e;
+  console.warn("[env] 非生产环境,跳过启动期配置校验:", e instanceof Error ? e.message : e);
+}
+
 export function assertProductionConfig(): void {
   if (_startupChecked) return;
   _startupChecked = true;

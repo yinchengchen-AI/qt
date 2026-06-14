@@ -13,7 +13,8 @@ import { audit } from "@/server/audit";
 import { invalidateAuthCache } from "@/lib/auth";
 import type { Prisma } from "@prisma/client";
 
-const PASSWORD_SALT_ROUNDS = 10;
+// OWASP 建议 ≥ 12;兼顾登录延迟
+const PASSWORD_SALT_ROUNDS = 12;
 const PASSWORD_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789!@#$%&*";
 
 function randomPassword(len = 10): string {
@@ -30,6 +31,23 @@ function randomPassword(len = 10): string {
   }
   return out;
 }
+
+// list 接口统一禁掉 passwordHash（之前用 include 漏过该字段 → 高危）
+const USER_LIST_SELECT = {
+  id: true,
+  employeeNo: true,
+  name: true,
+  email: true,
+  phone: true,
+  roleId: true,
+  departmentId: true,
+  status: true,
+  wechatWorkId: true,
+  lastLoginAt: true,
+  createdAt: true,
+  updatedAt: true,
+  deletedAt: true
+} as const;
 
 export async function listUsers(
   user: SessionUser,
@@ -65,7 +83,9 @@ export async function listUsers(
       orderBy: { createdAt: "desc" },
       skip: (page - 1) * pageSize,
       take: pageSize,
-      include: {
+      // 显式 select 锁住字段集合,即便后面 schema 加 passwordHash2 也不会外泄
+      select: {
+        ...USER_LIST_SELECT,
         role: { select: { id: true, code: true, name: true } },
         department: { select: { id: true, code: true, name: true } }
       }
@@ -74,7 +94,6 @@ export async function listUsers(
   ]);
   return { list, total, page, pageSize };
 }
-
 export async function getUser(user: SessionUser, id: string) {
   requirePermission(user.roleCode, RESOURCE.USER, ACTION.READ);
   const u = await prisma.user.findFirst({

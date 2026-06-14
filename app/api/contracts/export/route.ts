@@ -4,7 +4,7 @@ import { err } from "@/lib/api";
 import { requireSession } from "@/lib/session";
 import { requirePermission, RESOURCE, ACTION } from "@/lib/permissions";
 import { listContracts } from "@/server/services/contract";
-import { exportToXlsx } from "@/lib/excel";
+import { exportToXlsx, exportMaxRows } from "@/lib/excel";
 import { SERVICE_TYPE_MAP, PAYMENT_METHOD_MAP } from "@/lib/enum-maps";
 
 const query = z.object({
@@ -19,7 +19,9 @@ export async function GET(req: Request) {
     requirePermission(user.roleCode, RESOURCE.CONTRACT, ACTION.EXPORT);
     const url = new URL(req.url);
     const params = query.parse(Object.fromEntries(url.searchParams));
-    const { list } = await listContracts(user, { page: 1, pageSize: 10000, ...params });
+    // pageSize 用 exportMaxRows() 兜底,防止单次导出 OOM
+    const max = exportMaxRows();
+    const { list, total: _total } = await listContracts(user, { page: 1, pageSize: max, ...params });
     const ts = new Date().toISOString().slice(0, 10);
     const buf = await exportToXlsx(
       list as unknown as Record<string, unknown>[],

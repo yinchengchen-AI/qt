@@ -6,6 +6,7 @@ import { prisma } from "./prisma";
 import { encode as defaultJwtEncode, decode as defaultJwtDecode } from "next-auth/jwt";
 import { ROLE_PERMISSIONS, type Action, type Resource } from "./permissions";
 import type { RoleCode } from "@/types/enums";
+import { envBool } from "./env-bool";
 
 declare module "next-auth" {
   interface Session {
@@ -40,8 +41,8 @@ declare module "next-auth/jwt" {
 
 // 角色 / ACTIVE 状态的轻量缓存，避免每个请求都打 DB。
 // 失效策略：TTL 到期自动失效；ADMIN 改角色/禁用户时无法即时反映。
-// 30s 在"及时撤销"和"DB 压力"之间取中间值；如需立即撤销可缩短到 5s。
-const CACHE_TTL_MS = 30_000;
+// 5s 在"及时撤销"和"DB 压力"之间取保守中间值；禁用/角色变更已通过 invalidateAuthCache 主动失效。
+const CACHE_TTL_MS = 5_000;
 type CachedUser = { id: string; employeeNo: string; roleCode: RoleCode };
 const userCache = new Map<string, { value: CachedUser | null; expiresAt: number }>();
 
@@ -69,14 +70,6 @@ async function loadActiveUser(uid: string): Promise<CachedUser | null> {
 /** 角色 / 状态变更后调用，清掉指定用户的缓存 */
 export function invalidateAuthCache(uid: string): void {
   userCache.delete(uid);
-}
-
-// env 字符串的布尔解析: "true"/"1"/"yes" (大小写不敏感) 视为 true, 其余 (含 "false"/"0"/空/undefined) 一律 false。
-// !!process.env.X 是经典 bug — 任何非空字符串 (包括 "false") 都是 truthy,会导致 FORCE_HTTPS=false 被当成 true,
-// 触发 useSecureCookies=true, 浏览器在 HTTP 下不存 secure cookie,登录 CSRF token 不匹配,登录后无法跳转。
-function envBool(name: string): boolean {
-  const v = (process.env[name] ?? "").trim().toLowerCase();
-  return v === "true" || v === "1" || v === "yes";
 }
 
 const isProd = process.env.NODE_ENV === "production";
@@ -155,7 +148,7 @@ export const authOptions: AuthOptions = {
         // 决定 effective maxAge (false → 8h, true/缺省 → session.maxAge = 7d)。
         // 这里不再覆盖 token.exp,因为 NextAuth 内置 encode 会用 setExpirationTime(maxAge) 把它覆盖掉。
       }
-      // 缓存查 user,确认仍 ACTIVE;30s 内复用,避免每个请求都打 DB
+      // 缓存查 user,确认仍 ACTIVE;5s 内复用,避免每个请求都打 DB
       if (token.uid) {
         const u = await loadActiveUser(token.uid);
         if (!u) {

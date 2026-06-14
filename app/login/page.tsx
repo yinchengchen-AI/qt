@@ -23,6 +23,11 @@ function mapAuthError(code?: string | null) {
 
 // 仅开发/预览环境开放快速填充;生产构建时 NODE_ENV 会被静态替换为 "production",
 // Next.js 的 dead-code elimination 会把整段折掉,DOM 上不会渲染测试卡。
+// 密码统一从 DEV_QUICK_FILL_PASSWORD 读(默认占位串),避免明文密码字面量进 git 历史。
+const QUICK_FILL_PASSWORD =
+  process.env.NODE_ENV !== "production"
+    ? process.env.DEV_QUICK_FILL_PASSWORD ?? "dev-only-fill"
+    : "";
 const QUICK_ACCOUNTS: { no: string; label: string }[] =
   process.env.NODE_ENV !== "production"
     ? [
@@ -37,11 +42,20 @@ const SHOW_QUICK_FILL = process.env.NODE_ENV !== "production";
 
 type FormValues = { employeeNo: string; password: string };
 
+// 解析 callbackUrl,只允许站内相对路径,避免钓鱼/开放重定向
+// 规则: 必须以 "/" 开头,且不以 "//" 开头(防 protocol-relative URL)
+function safeCallbackUrl(raw: string | null | undefined): string {
+  if (!raw) return "/dashboard";
+  if (!raw.startsWith("/") || raw.startsWith("//")) return "/dashboard";
+  if (raw.startsWith("/\\") || raw.startsWith("/%5C") || raw.startsWith("/%2f")) return "/dashboard";
+  return raw;
+}
+
 function LoginForm() {
   const { message } = AntdApp.useApp();
   const router = useRouter();
   const search = useSearchParams();
-  const callbackUrl = search.get("callbackUrl") ?? "/dashboard";
+  const callbackUrl = safeCallbackUrl(search.get("callbackUrl"));
 
   const [form] = Form.useForm<FormValues>();
   const [remember, setRemember] = useState(true);
@@ -90,7 +104,7 @@ function LoginForm() {
 
   function fillAccount(no: string) {
     if (!SHOW_QUICK_FILL) return;
-    form.setFieldsValue({ employeeNo: no, password: "123456" });
+    form.setFieldsValue({ employeeNo: no, password: QUICK_FILL_PASSWORD });
     setError(null);
   }
 
@@ -196,7 +210,6 @@ function LoginForm() {
   );
 }
 
-/* 数字从 0 滚动到目标值 */
 function useCountUp(target: number, duration = 1400, delay = 300) {
   const [value, setValue] = useState(0);
   useEffect(() => {

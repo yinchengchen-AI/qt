@@ -146,40 +146,27 @@ export async function canReadAttachment(att: AttachmentForRead, userId: string):
   //   4) 关联发票: 发票的 applicantUserId / createdById,或发票所属合同的 owner/createdBy
   //   5) 都没有(tmp 上传) -> 仅上传者可读
   if (att.uploadedById === userId) return true;
-  const u = await prisma.user.findUnique({
-    where: { id: userId },
-    select: { role: { select: { code: true } } }
-  });
-  const isPrivileged = u?.role?.code === "ADMIN" || u?.role?.code === "FINANCE";
-  if (isPrivileged) return true;
-  let canSee = false;
-  if (att.contractId) {
-    const c = await prisma.contract.findUnique({
-      where: { id: att.contractId },
-      select: { ownerUserId: true, createdById: true }
-    });
-    canSee = !!(c && (c.ownerUserId === userId || c.createdById === userId));
-  }
-  if (!canSee && att.invoice) {
-    canSee = att.invoice.applicantUserId === userId || att.invoice.createdById === userId;
-    if (!canSee && att.invoice.contract) {
-      const c = att.invoice.contract;
-      canSee = c.ownerUserId === userId || c.createdById === userId;
-    }
-  }
-  if (!canSee) {
-    const tasks = await prisma.workflowTaskInstance.findMany({
+
+  // 单次并行查询: 角色 + 合同 owner + 工作流任务中的合同 owner
+  // (避免 3 次顺序往返,典型 50-150ms 节省)
+  const [u, contract, tasks] = await Promise.all([
+    prisma.user.findUnique({ where: { id: userId }, select: { role: { select: { code: true } } } }),
+    att.contractId
+      ? prisma.contract.findUnique({ where: { id: att.contractId }, select: { ownerUserId: true, createdById: true } })
+      : Promise.resolve(null),
+    prisma.workflowTaskInstance.findMany({
       where: { deletedAt: null, attachments: { path: ["items"], array_contains: [{ id: att.id }] } },
-      select: {
-        id: true,
-        project: { select: { contract: { select: { ownerUserId: true, createdById: true } } } }
-      }
-    });
-    canSee = tasks.some(
-      (t) => t.project.contract?.ownerUserId === userId || t.project.contract?.createdById === userId
-    );
-  }
-  return canSee;
+      select: { id: true, project: { select: { contract: { select: { ownerUserId: true, createdById: true } } } } }
+    })
+  ]);
+  if (u?.role?.code === "ADMIN" || u?.role?.code === "FINANCE") return true;
+  if (contract && (contract.ownerUserId === userId || contract.createdById === userId)) return true;
+  if (att.invoice && (att.invoice.applicantUserId === userId || att.invoice.createdById === userId)) return true;
+  const invoiceContract = att.invoice?.contract;
+  if (invoiceContract && (invoiceContract.ownerUserId === userId || invoiceContract.createdById === userId)) return true;
+  return tasks.some(
+    (t) => t.project.contract?.ownerUserId === userId || t.project.contract?.createdById === userId
+  );
 }
 
 export async function presignDownload(input: PresignDownloadInput): Promise<PresignDownloadResult> {

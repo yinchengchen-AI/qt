@@ -8,6 +8,9 @@ export default function GlobalError({
   error: Error & { digest?: string };
   reset: () => void;
 }) {
+  // 生产环境绝不直接渲染 error.message:可能包含 DB 错误文本/文件路径/堆栈片段
+  // 仅展示 stable 的 error.digest,详细消息应进 Sentry/日志
+  const showMessage = process.env.NODE_ENV !== "production" && !!error.message;
   return (
     <html lang="zh-CN">
       <body style={{ margin: 0, minHeight: "100vh" }}>
@@ -24,7 +27,12 @@ export default function GlobalError({
             </Space>
           }
         >
-          {error.message ? (
+          {error.digest ? (
+            <p style={{ marginTop: 12, color: "#999", fontSize: 12 }}>
+              错误编号: {error.digest}
+            </p>
+          ) : null}
+          {showMessage ? (
             <pre
               style={{
                 maxWidth: 560,

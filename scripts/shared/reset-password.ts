@@ -93,7 +93,7 @@ async function main(): Promise<void> {
     process.exit(2);
   }
 
-  const passwordHash = await bcrypt.hash(pwd, 10);
+  const passwordHash = await bcrypt.hash(pwd, 12);
   await prisma.user.update({
     where: { id: user.id },
     data: { passwordHash }

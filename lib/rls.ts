@@ -5,9 +5,8 @@
 //   PG 层 RLS 策略 USING (current_setting('app.user_role', true) = 'SALES'
 //                         AND ownerUserId = current_setting('app.user_id', true))
 //
-// 注意：Prisma 7 + @prisma/adapter-pg 的事务 API：
-//   prisma.$transaction(async (tx) => { ... })
-// 在 callback 中调用 tx.$executeRawUnsafe 即可设 GUC
+// 安全要点：用参数化 set_config($1, $2, true) 而不是字符串拼接,即便上游意外传入
+// 包含特殊字符的 id/role 也不会被解释为 SQL。
 
 import type { Prisma, PrismaClient } from "@prisma/client";
 import type { SessionUser } from "./session";
@@ -19,23 +18,20 @@ type TxOrClient = Prisma.TransactionClient | PrismaClient;
  * 必须在所有 read/write 之前调用
  */
 export async function applyRlsContext(tx: TxOrClient, user: SessionUser): Promise<void> {
-  // set_config(name, value, is_local=true) 比 SET LOCAL 灵活（带默认值）
-  // 第 3 个参数 true 表示只在当前事务内生效
-  const safeId = user.id.replace(/'/g, "''");
-  const safeRole = user.roleCode.replace(/'/g, "''");
-  await tx.$executeRawUnsafe(`SELECT set_config('app.user_id', '${safeId}', true)`);
-  await tx.$executeRawUnsafe(`SELECT set_config('app.user_role', '${safeRole}', true)`);
+  // 参数化 set_config(name, value, is_local=true) - 第 3 个参数 true 表示只在当前事务内生效
+  await tx.$executeRaw`SELECT set_config('app.user_id', ${user.id}, true)`;
+  await tx.$executeRaw`SELECT set_config('app.user_role', ${user.roleCode}, true)`;
   // 显式置空 bypass_rls
-  await tx.$executeRawUnsafe(`SELECT set_config('app.bypass_rls', 'off', true)`);
+  await tx.$executeRaw`SELECT set_config('app.bypass_rls', 'off', true)`;
 }
 
 /**
  * 用于 cron / 内部调用，绕过 RLS
  */
 export async function bypassRlsContext(tx: TxOrClient): Promise<void> {
-  await tx.$executeRawUnsafe(`SELECT set_config('app.bypass_rls', 'on', true)`);
-  await tx.$executeRawUnsafe(`SELECT set_config('app.user_id', '', true)`);
-  await tx.$executeRawUnsafe(`SELECT set_config('app.user_role', '', true)`);
+  await tx.$executeRaw`SELECT set_config('app.bypass_rls', 'on', true)`;
+  await tx.$executeRaw`SELECT set_config('app.user_id', '', true)`;
+  await tx.$executeRaw`SELECT set_config('app.user_role', '', true)`;
 }
 
 /**

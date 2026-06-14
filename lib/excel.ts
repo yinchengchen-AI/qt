@@ -1,5 +1,13 @@
 // 简单 xlsx 导出：用 exceljs 流式生成
+// 安全注意: 调用方必须自行限制 rows 长度,防止单次请求拉百万行导致 OOM
 import ExcelJS from "exceljs";
+
+// 导出路由单次请求允许的最大行数(可通过 EXPORT_MAX_ROWS 调整,生产建议 1000-5000)
+export function exportMaxRows(): number {
+  const n = Number(process.env.EXPORT_MAX_ROWS ?? "1000");
+  return Number.isFinite(n) && n > 0 ? Math.min(n, 10_000) : 1000;
+}
+
 
 export type ExcelColumn<T> = { header: string; key: keyof T | string; width?: number; formatter?: (v: unknown, row: T) => string | number };
 
