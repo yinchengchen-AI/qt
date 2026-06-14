@@ -33,5 +33,5 @@ echo "==> smoke test (waiting 3s for app boot)"
 sleep 3
 curl -fsS -o /dev/null -w "  login  : %{http_code}\n" http://127.0.0.1:3000/login
 curl -fsS -o /dev/null -w "  dashboard: %{http_code} (expect 307)\n" http://127.0.0.1:3000/dashboard
-curl -fsS -o /dev/null -w "  api/customers: %{http_code} (expect 401)\n" http://127.0.0.1:3000/api/customers
+curl -sS -o /dev/null -w "  api/customers: %{http_code} (expect 401)\n" http://127.0.0.1:3000/api/customers
 echo "[OK] deploy done"
