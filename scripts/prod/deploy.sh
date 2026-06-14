@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # 日常更新部署: git pull + install + migrate + build + restart + smoke
-# 用法: 在 /opt/qt 目录下, sudo -E ./scripts/deploy.sh
+# 用法: 在 /opt/qt 目录下, sudo -E ./scripts/prod/deploy.sh
 set -euo pipefail
-cd "$(dirname "$0")/.."
+cd "$(dirname "$0")/../.."
 
 echo "==> git pull"
 git pull --ff-only
