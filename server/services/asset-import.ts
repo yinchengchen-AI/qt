@@ -47,7 +47,10 @@ const COLUMNS: Record<AssetType, string[]> = {
     "title", "customerName", "serviceType", "year", "scope", "highlights", "result", "projectId"],
   PATENT: ["name", "description", "validFrom", "validTo", "tags",
     "patentType", "patentNo", "name", "applicants", "applicationDate", "grantDate"],
-  OTHER: ["name", "description", "validFrom", "validTo", "tags", "freeText"]
+  OTHER: ["name", "description", "validFrom", "validTo", "tags", "freeText"],
+  // v1 标书素材库新增 — 这两类以附件上传为主,v1 不支持 xlsx 导入
+  PERSONNEL_CERT: ["name", "description", "validFrom", "validTo", "tags", "userId", "certificateType", "certificateNo", "issuingAuthority", "scanFileId"],
+  TEMPLATE: ["name", "description", "tags", "serviceType", "templateFileId"]
 };
 
 /** 把扁平行转成 AssetCreateInput 形状(type 强校验) */
@@ -153,6 +156,26 @@ function rowToInput(type: AssetType, values: Record<string, string>): Record<str
         type, ...common,
         attributes: { freeText: values.freeText || undefined }
       };
+    case "PERSONNEL_CERT":
+      // 人员证书 v1 不支持 xlsx 导入(需用户 picker + 附件上传)
+      throw new ApiError(
+        ERROR_CODES.VALIDATION_FAILED,
+        "人员证书 (PERSONNEL_CERT) 请通过资产录入页面上传,不支持 xlsx 导入",
+        400
+      );
+    case "TEMPLATE":
+      // 投标模板 v1 不支持 xlsx 导入(需附件上传)
+      throw new ApiError(
+        ERROR_CODES.VALIDATION_FAILED,
+        "投标模板 (TEMPLATE) 请通过资产录入页面上传,不支持 xlsx 导入",
+        400
+      );
+    default:
+      throw new ApiError(
+        ERROR_CODES.VALIDATION_FAILED,
+        `未知资产类型: ${type}`,
+        400
+      );
   }
 }
 

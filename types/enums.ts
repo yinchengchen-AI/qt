@@ -167,7 +167,7 @@ export type WorkflowPhaseState = (typeof WORKFLOW_PHASE_STATE)[number];
 // 企业资产库 (v1)
 // =====================================================
 
-// asset.type 8 种
+// asset.type 10 种 (v1 标书素材库 +PERSONNEL_CERT+TEMPLATE)
 export const ASSET_TYPE = [
   "LICENSE",
   "CERTIFICATE",
@@ -176,7 +176,9 @@ export const ASSET_TYPE = [
   "TEAM_MEMBER",
   "CASE",
   "PATENT",
-  "OTHER"
+  "OTHER",
+  "PERSONNEL_CERT",
+  "TEMPLATE"
 ] as const;
 export type AssetType = (typeof ASSET_TYPE)[number];
 

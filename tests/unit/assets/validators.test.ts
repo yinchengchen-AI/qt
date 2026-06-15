@@ -295,3 +295,17 @@ describe("CASE.attributes 回填字段完整性", () => {
     expect(r.success).toBe(true);
   });
 });
+
+describe("ASSET_TYPE extension (bid asset library v1)", () => {
+  it("includes 10 types (8 original + PERSONNEL_CERT + TEMPLATE)", async () => {
+    const { ASSET_TYPE } = await import("@/types/enums");
+    expect(ASSET_TYPE.length).toBe(10);
+    expect(new Set(ASSET_TYPE)).toEqual(
+      new Set([
+        "LICENSE", "CERTIFICATE", "QUALIFICATION", "PERFORMANCE",
+        "TEAM_MEMBER", "CASE", "PATENT", "OTHER",
+        "PERSONNEL_CERT", "TEMPLATE"
+      ])
+    );
+  });
+});
