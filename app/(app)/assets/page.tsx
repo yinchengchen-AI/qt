@@ -46,7 +46,7 @@ export default function AssetsHomePage() {
     <Page>
       <PageHeader
         title="企业资产"
-        subtitle="统一管理营业执照 / 资质 / 业绩 / 团队 / 案例 / 专利 等企业素材"
+        subtitle="标书素材库 · 统一管理资质 / 业绩 / 团队 / 案例 / 模板 / 证书"
         actions={
           <Space>
             <Button icon={<DatabaseOutlined />} onClick={() => router.push("/assets/list")}>资产列表</Button>
