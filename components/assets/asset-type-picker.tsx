@@ -11,7 +11,8 @@ import {
   FileSearchOutlined,
   CopyrightOutlined,
   MoreOutlined,
-  CheckCircleFilled
+  CheckCircleFilled,
+  FileTextOutlined   // v1 标书素材库新增
 } from "@ant-design/icons";
 import type { AssetType } from "@/types/enums";
 import { ASSET_TYPE } from "@/types/enums";
@@ -31,7 +32,10 @@ export const ASSET_TYPE_ITEMS: Item[] = [
   { value: "TEAM_MEMBER",   label: "团队成员", icon: TeamOutlined,           desc: "关键人员/简历" },
   { value: "CASE",          label: "项目案例", icon: FileSearchOutlined,    desc: "案例展示" },
   { value: "PATENT",        label: "专利软著", icon: CopyrightOutlined,      desc: "知识产权" },
-  { value: "OTHER",         label: "其他",     icon: MoreOutlined,           desc: "自由文本" }
+  { value: "OTHER",         label: "其他",     icon: MoreOutlined,           desc: "自由文本" },
+  // v1 标书素材库新增
+  { value: "PERSONNEL_CERT", label: "人员证书", icon: SafetyCertificateOutlined, desc: "员工持证/个人证书" },
+  { value: "TEMPLATE",        label: "投标模板", icon: FileTextOutlined,         desc: "投标函/报价单/授权书" }
 ];
 
 type Props = {
