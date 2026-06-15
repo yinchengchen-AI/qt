@@ -16,6 +16,8 @@ import { Form, Input, InputNumber } from "antd";
 import dayjs from "dayjs";
 import { FormGrid } from "@/components/form";
 import { useDict, groupDictByLegacy } from "@/lib/dict-client";
+import { PreviewableProFormUploadButton as UploadButton } from "@/components/file/pro-form-upload-button";
+import { proCustomRequest } from "@/lib/upload-client";
 
 // 通用工具:fetch + 设置多个 form 字段
 async function fetchJSON<T = unknown>(url: string): Promise<T | null> {
@@ -487,6 +489,106 @@ export function OtherFields() {
   );
 }
 
+export function PersonnelCertFields() {
+  const dictList = useDict("PERSONNEL_CERT_TYPE");
+  const certTypeOptions = useMemo(
+    () => dictList.map((d) => ({ value: d.code, label: d.label })),
+    [dictList]
+  );
+  return (
+    <FormGrid columns={2}>
+      <ProFormText
+        name={["attributes", "userId"]}
+        label="内部员工 ID"
+        tooltip="从员工 picker 选入;必须指向 ACTIVE 状态的 User"
+        rules={[{ required: true, message: "请选择内部员工" }]}
+        placeholder="如:user-001"
+      />
+      <ProFormSelect
+        name={["attributes", "certificateType"]}
+        label="证书类型"
+        options={certTypeOptions}
+        rules={[{ required: true, message: "请选择证书类型" }]}
+        showSearch
+      />
+      <ProFormText
+        name={["attributes", "certificateNo"]}
+        label="证书编号"
+        rules={[{ required: true, message: "请填写证书编号" }]}
+      />
+      <ProFormText
+        name={["attributes", "issuingAuthority"]}
+        label="颁发机构"
+        rules={[{ required: true, message: "请填写颁发机构" }]}
+      />
+      <div style={{ gridColumn: "1 / -1" }}>
+        <ProForm.Item
+          name={["attributes", "scanFileId"]}
+          label="证书扫描件"
+          tooltip="支持 PDF / 图片;新建时上传到 tmp/ 路径,保存后自动绑定到该资产"
+          rules={[{ required: true, message: "请上传证书扫描件" }]}
+        >
+          <UploadButton
+            name="scanFileId"
+            label="证书扫描件"
+            max={1}
+            fieldProps={{
+              name: "file",
+              listType: "text",
+              // 新建阶段 assetId 尚未生成,先传 null 落到 tmp/;创建后 service 会回填 assetId
+              customRequest: proCustomRequest({ assetId: null })
+            }}
+          />
+        </ProForm.Item>
+      </div>
+    </FormGrid>
+  );
+}
+
+export function TemplateFields() {
+  const dictList = useDict("SERVICE_TYPE");
+  const serviceTypeOptions = useMemo(() => groupDictByLegacy(dictList), [dictList]);
+  return (
+    <FormGrid columns={2}>
+      <ProFormSelect
+        name={["attributes", "serviceType"]}
+        label="服务类型(可选)"
+        tooltip="留空表示通用模板;填写后限定该模板只用于此服务类型"
+        options={serviceTypeOptions}
+        allowClear
+        showSearch
+      />
+      <ProFormSelect
+        name="tags"
+        label="标签"
+        mode="tags"
+        fieldProps={{
+          tokenSeparators: [",", "，", ";", "；"],
+          placeholder: "如:投标函/报价单/授权书"
+        }}
+      />
+      <div style={{ gridColumn: "1 / -1" }}>
+        <ProForm.Item
+          name={["attributes", "templateFileId"]}
+          label="模板文件"
+          rules={[{ required: true, message: "请上传模板文件" }]}
+        >
+          <UploadButton
+            name="templateFileId"
+            label="模板文件"
+            max={1}
+            fieldProps={{
+              name: "file",
+              listType: "text",
+              customRequest: proCustomRequest({ assetId: null })
+            }}
+          />
+        </ProForm.Item>
+      </div>
+    </FormGrid>
+  );
+}
+
 const TYPE_FIELDS: Record<string, () => React.JSX.Element> = {
   LICENSE: LicenseFields,
   CERTIFICATE: CertificateFields,
@@ -495,7 +597,10 @@ const TYPE_FIELDS: Record<string, () => React.JSX.Element> = {
   TEAM_MEMBER: TeamMemberFields,
   CASE: CaseFields,
   PATENT: PatentFields,
-  OTHER: OtherFields
+  OTHER: OtherFields,
+  // v1 标书素材库新增
+  PERSONNEL_CERT: PersonnelCertFields,
+  TEMPLATE: TemplateFields
 };
 
 export function AssetTypeFields({ type }: { type?: string }) {
