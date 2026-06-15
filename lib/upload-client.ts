@@ -12,7 +12,11 @@ export type UploadedAttachment = {
   uploadedAt: string;
 };
 
-export type UploadOpts = { contractId?: string | null; invoiceId?: string | null };
+export type UploadOpts = {
+  contractId?: string | null;
+  invoiceId?: string | null;
+  assetId?: string | null;   // v1 标书素材库新增
+};
 
 export async function uploadFileToMinIO(file: File, opts: UploadOpts = {}): Promise<UploadedAttachment> {
   // 1. 调后端拿 PUT URL
@@ -25,7 +29,8 @@ export async function uploadFileToMinIO(file: File, opts: UploadOpts = {}): Prom
       mimeType: file.type || "application/octet-stream",
       size: file.size,
       contractId: opts.contractId ?? null,
-      invoiceId: opts.invoiceId ?? null
+      invoiceId: opts.invoiceId ?? null,
+      assetId: opts.assetId ?? null
     })
   });
   if (!presignRes.ok) {
