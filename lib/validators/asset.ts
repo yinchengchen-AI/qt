@@ -108,6 +108,24 @@ const OtherAttrs = z.object({
   freeText: z.string().max(5000).optional().or(z.literal(""))
 });
 
+// 9. 人员证书 (v1 标书素材库)
+const PersonnelCertAttrs = z.object({
+  userId: z.string().min(1, "请选择内部员工"),
+  certificateType: z.string().min(1, "请选择证书类型"),
+  certificateNo: z.string().min(1, "请填写证书编号"),
+  issuingAuthority: z.string().min(1, "请填写颁发机构"),
+  scanFileId: z.string().min(1, "请上传证书扫描件")
+});
+
+// 10. 投标模板 (v1 标书素材库)
+const TemplateAttrs = z.object({
+  serviceType: z.string().optional(),
+  templateFileId: z.string().min(1, "请上传模板文件")
+});
+
+export const personnelCertSchema = PersonnelCertAttrs;
+export const templateSchema = TemplateAttrs;
+
 export const assetCreateSchema = z
   .discriminatedUnion("type", [
     z.object({ type: z.literal("LICENSE"), ...baseFields, attributes: LicenseAttrs }),
@@ -117,7 +135,10 @@ export const assetCreateSchema = z
     z.object({ type: z.literal("TEAM_MEMBER"), ...baseFields, attributes: TeamMemberAttrs }),
     z.object({ type: z.literal("CASE"), ...baseFields, attributes: CaseAttrs }),
     z.object({ type: z.literal("PATENT"), ...baseFields, attributes: PatentAttrs }),
-    z.object({ type: z.literal("OTHER"), ...baseFields, attributes: OtherAttrs })
+    z.object({ type: z.literal("OTHER"), ...baseFields, attributes: OtherAttrs }),
+    // v1 标书素材库新增
+    z.object({ type: z.literal("PERSONNEL_CERT"), ...baseFields, attributes: PersonnelCertAttrs }),
+    z.object({ type: z.literal("TEMPLATE"), ...baseFields, attributes: TemplateAttrs })
   ])
   .refine(
     (v) => {

@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { assetCreateSchema, assetUpdateSchema, assetListQuerySchema } from "@/lib/validators/asset";
+import { assetCreateSchema, assetUpdateSchema, assetListQuerySchema, personnelCertSchema, templateSchema } from "@/lib/validators/asset";
 
 describe("assetCreateSchema (LICENSE)", () => {
   const baseLicense = {
@@ -307,5 +307,92 @@ describe("ASSET_TYPE extension (bid asset library v1)", () => {
         "PERSONNEL_CERT", "TEMPLATE"
       ])
     );
+  });
+});
+
+
+describe("personnelCertSchema", () => {
+  const base = {
+    userId: "user-123",
+    certificateType: "REGISTERED_SAFETY_ENGINEER",
+    certificateNo: "1234567890",
+    issuingAuthority: "应急管理部",
+    scanFileId: "att-abc"
+  };
+  it("accepts full payload", () => {
+    expect(personnelCertSchema.safeParse(base).success).toBe(true);
+  });
+  it("rejects missing userId", () => {
+    const r = personnelCertSchema.safeParse({ ...base, userId: "" });
+    expect(r.success).toBe(false);
+  });
+  it("rejects missing certificateType", () => {
+    const r = personnelCertSchema.safeParse({ ...base, certificateType: "" });
+    expect(r.success).toBe(false);
+  });
+  it("rejects missing scanFileId", () => {
+    const r = personnelCertSchema.safeParse({ ...base, scanFileId: "" });
+    expect(r.success).toBe(false);
+  });
+});
+
+describe("templateSchema", () => {
+  const base = { templateFileId: "att-xyz" };
+  it("accepts payload with only templateFileId (serviceType optional)", () => {
+    expect(templateSchema.safeParse(base).success).toBe(true);
+  });
+  it("accepts payload with serviceType set", () => {
+    expect(templateSchema.safeParse({ ...base, serviceType: "EVALUATION" }).success).toBe(true);
+  });
+  it("rejects missing templateFileId", () => {
+    expect(templateSchema.safeParse({}).success).toBe(false);
+  });
+});
+
+describe("assetCreateSchema (PERSONNEL_CERT / TEMPLATE branch)", () => {
+  it("accepts valid PERSONNEL_CERT payload", () => {
+    const r = assetCreateSchema.safeParse({
+      type: "PERSONNEL_CERT",
+      name: "某员工安全工程师证",
+      tags: [],
+      attributes: {
+        userId: "user-1",
+        certificateType: "REGISTERED_SAFETY_ENGINEER",
+        certificateNo: "X-001",
+        issuingAuthority: "应急部",
+        scanFileId: "att-1"
+      }
+    });
+    expect(r.success).toBe(true);
+  });
+  it("accepts valid TEMPLATE payload (no serviceType)", () => {
+    const r = assetCreateSchema.safeParse({
+      type: "TEMPLATE",
+      name: "通用投标函",
+      tags: ["投标函"],
+      attributes: { templateFileId: "att-tpl-1" }
+    });
+    expect(r.success).toBe(true);
+  });
+  it("rejects PERSONNEL_CERT missing scanFileId", () => {
+    const r = assetCreateSchema.safeParse({
+      type: "PERSONNEL_CERT",
+      name: "x",
+      tags: [],
+      attributes: {
+        userId: "u", certificateType: "T", certificateNo: "N", issuingAuthority: "I"
+        // scanFileId 缺失
+      }
+    });
+    expect(r.success).toBe(false);
+  });
+  it("rejects TEMPLATE missing templateFileId", () => {
+    const r = assetCreateSchema.safeParse({
+      type: "TEMPLATE",
+      name: "x",
+      tags: [],
+      attributes: {}  // 无 templateFileId
+    });
+    expect(r.success).toBe(false);
   });
 });
