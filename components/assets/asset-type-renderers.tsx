@@ -1,6 +1,7 @@
 // 详情页 type-specific 渲染(右栏基本信息展示)
 // 关键链接:PERFORMANCE / CASE 中"客户 / 合同 / 项目"显示为可点击 Link,跳到对应详情
-import { Descriptions, Tag, Spin } from "antd";
+import { Descriptions, Tag, Spin, Button } from "antd";
+import { DownloadOutlined } from "@ant-design/icons";
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { SERVICE_TYPE_MAP } from "@/lib/enum-maps";
@@ -199,6 +200,60 @@ export function OtherRenderer({ a }: { a: Record<string, unknown> }) {
   ]);
 }
 
+export function PersonnelCertRenderer({ a }: { a: Record<string, unknown> }) {
+  const scanFileId = a.scanFileId as string | undefined;
+  return (
+    <>
+      {renderPairs([
+        ["内部员工 ID", String(a.userId ?? "-")],
+        ["证书类型", String(a.certificateType ?? "-")],
+        ["证书编号", String(a.certificateNo ?? "-")],
+        ["颁发机构", String(a.issuingAuthority ?? "-")]
+      ])}
+      {scanFileId ? (
+        <div style={{ marginTop: 12 }}>
+          <Button
+            type="link"
+            icon={<DownloadOutlined />}
+            href={`/api/assets/attachments/${scanFileId}/download`}
+            target="_blank"
+          >
+            下载证书扫描件
+          </Button>
+        </div>
+      ) : (
+        <div style={{ marginTop: 12, color: "#999", fontSize: 12 }}>未上传证书扫描件</div>
+      )}
+    </>
+  );
+}
+
+export function TemplateRenderer({ a }: { a: Record<string, unknown> }) {
+  const templateFileId = a.templateFileId as string | undefined;
+  return (
+    <>
+      {renderPairs([
+        ["服务类型", serviceTypeLabel(String(a.serviceType ?? "")) || "通用(全部)"],
+        ["模板文件 ID", String(a.templateFileId ?? "-")]
+      ])}
+      {templateFileId ? (
+        <div style={{ marginTop: 12 }}>
+          <Button
+            type="link"
+            icon={<DownloadOutlined />}
+            href={`/api/assets/attachments/${templateFileId}/download`}
+            target="_blank"
+          >
+            下载模板文件
+          </Button>
+        </div>
+      ) : (
+        <div style={{ marginTop: 12, color: "#999", fontSize: 12 }}>未上传模板文件</div>
+      )}
+    </>
+  );
+}
+
 const RENDERERS: Record<string, (props: { a: Record<string, unknown> }) => React.JSX.Element> = {
   LICENSE: LicenseRenderer,
   CERTIFICATE: CertificateRenderer,
@@ -207,7 +262,10 @@ const RENDERERS: Record<string, (props: { a: Record<string, unknown> }) => React
   TEAM_MEMBER: TeamMemberRenderer,
   CASE: CaseRenderer,
   PATENT: PatentRenderer,
-  OTHER: OtherRenderer
+  OTHER: OtherRenderer,
+  // v1 标书素材库新增
+  PERSONNEL_CERT: PersonnelCertRenderer,
+  TEMPLATE: TemplateRenderer
 };
 
 export function AssetAttributesRenderer({ type, attributes }: { type: string; attributes: unknown }) {
