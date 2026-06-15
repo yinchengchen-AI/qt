@@ -7,7 +7,8 @@ export type StatusDomain =
   | "invoice"
   | "payment"
   | "message"
-  | "announcement";
+  | "announcement"
+  | "asset";
 
 export type Tone = "default" | "info" | "processing" | "success" | "warning" | "danger";
 
@@ -77,6 +78,7 @@ const MESSAGE: Record<string, StatusMeta> = {
   CUSTOMER_INACTIVE:       { label: "客户静默",   tone: "default" },
   WORKFLOW_TASK_ASSIGNED:    { label: "任务指派",   tone: "info" },
   WORKFLOW_REVIEW_REQUESTED: { label: "审阅请求",   tone: "info" },
+  ASSET_EXPIRING:            { label: "资产到期",   tone: "warning" },
 };
 
 const ANNOUNCEMENT: Record<string, StatusMeta> = {
@@ -86,6 +88,13 @@ const ANNOUNCEMENT: Record<string, StatusMeta> = {
   DRAFT:      { label: "草稿",    tone: "default" }
 };
 
+const ASSET: Record<string, StatusMeta> = {
+  VALID:         { label: "有效",       tone: "success" },
+  EXPIRING_SOON: { label: "即将到期",   tone: "warning" },
+  EXPIRED:       { label: "已过期",     tone: "danger" },
+  ARCHIVED:      { label: "已归档",     tone: "default" }
+};
+
 const DOMAIN_MAP: Record<StatusDomain, Record<string, StatusMeta>> = {
   customer: CUSTOMER,
   contract: CONTRACT,
@@ -93,7 +102,8 @@ const DOMAIN_MAP: Record<StatusDomain, Record<string, StatusMeta>> = {
   invoice: INVOICE,
   payment: PAYMENT,
   message: MESSAGE,
-  announcement: ANNOUNCEMENT
+  announcement: ANNOUNCEMENT,
+  asset: ASSET
 };
 
 export function formatStatus(code: string | null | undefined, domain: StatusDomain): StatusMeta {

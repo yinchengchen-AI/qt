@@ -3,8 +3,21 @@
 import { prisma } from "@/lib/prisma";
 import { emit } from "@/server/events/bus";
 import { generateAllRecurringInstances } from "@/server/services/workflow";
+import { runAssetExpiryJob } from "@/server/services/asset-expiry-job";
 
-export type JobResult = { job: string; created: number; scanned: number; durationMs: number };
+/**
+ * 单个 job 一次执行的统计。
+ * - created:产生副作用的条数(发了几条消息/建了几个实例)
+ * - scanned:扫描的候选数
+ * - updated:就地更新的条数(如状态重算写库的);非所有 job 都有,允许 undefined
+ */
+export type JobResult = {
+  job: string;
+  created: number;
+  scanned: number;
+  updated?: number;
+  durationMs: number;
+};
 
 export async function runAllJobs(now = new Date()): Promise<JobResult[]> {
   const admins = await prisma.user.findMany({
@@ -16,7 +29,8 @@ export async function runAllJobs(now = new Date()): Promise<JobResult[]> {
     invoiceOverdueJob(now, admins),
     projectDueJob(now, admins),
     customerInactiveJob(now),
-    recurringTasksJob(now)
+    recurringTasksJob(now),
+    runAssetExpiryJob(now, admins)
   ]);
 }
 

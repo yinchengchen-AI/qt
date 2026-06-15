@@ -162,3 +162,29 @@ export type WorkflowPhase = (typeof WORKFLOW_PHASE_ORDER)[number];
 // 锁定状态:DONE 全部完成;PARTIAL 部分完成;LOCKED 前置未达;READY 可开始
 export const WORKFLOW_PHASE_STATE = ["DONE", "PARTIAL", "LOCKED", "READY"] as const;
 export type WorkflowPhaseState = (typeof WORKFLOW_PHASE_STATE)[number];
+
+// =====================================================
+// 企业资产库 (v1)
+// =====================================================
+
+// asset.type 8 种
+export const ASSET_TYPE = [
+  "LICENSE",
+  "CERTIFICATE",
+  "QUALIFICATION",
+  "PERFORMANCE",
+  "TEAM_MEMBER",
+  "CASE",
+  "PATENT",
+  "OTHER"
+] as const;
+export type AssetType = (typeof ASSET_TYPE)[number];
+
+// asset.status
+export const ASSET_STATUS = [
+  "VALID",
+  "EXPIRING_SOON",
+  "EXPIRED",
+  "ARCHIVED"
+] as const;
+export type AssetStatus = (typeof ASSET_STATUS)[number];

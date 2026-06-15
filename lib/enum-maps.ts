@@ -197,3 +197,25 @@ export const WORKFLOW_ACTION_MAP: Record<string, string> = {
   WORKFLOW_RECURRING_GENERATE:     "循环生成",
   WORKFLOW_RECURRING_GENERATE_PARENT: "循环实例"
 };
+
+export const ASSET_TYPE_MAP: Record<string, string> = {
+  LICENSE:        "营业执照",
+  CERTIFICATE:    "资质证书",
+  QUALIFICATION:  "认证体系",
+  PERFORMANCE:    "业绩证明",
+  TEAM_MEMBER:    "团队成员",
+  CASE:           "项目案例",
+  PATENT:         "专利软著",
+  OTHER:          "其他"
+};
+
+/** SERVICE_TYPE_MAP 的 Select options 形式(供 ProFormSelect 直接用) */
+export const SERVICE_TYPE_OPTIONS: { value: string; label: string }[] =
+  Object.entries(SERVICE_TYPE_MAP).map(([value, label]) => ({ value, label }));
+
+export const ASSET_STATUS_MAP: Record<string, string> = {
+  VALID:         "有效",
+  EXPIRING_SOON: "即将到期",
+  EXPIRED:       "已过期",
+  ARCHIVED:      "已归档"
+};

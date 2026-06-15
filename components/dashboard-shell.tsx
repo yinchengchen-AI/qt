@@ -32,6 +32,7 @@ import {
   SettingOutlined,
   UserOutlined,
   DownOutlined,
+  DatabaseOutlined,
 } from "@ant-design/icons";
 import type { RoleCode } from "@/types/enums";
 import type { Action, Resource } from "@/lib/permissions";
@@ -53,6 +54,7 @@ const MENU: MenuItem[] = [
   { path: "/customers", name: "客户管理", icon: <TeamOutlined /> },
   { path: "/contracts", name: "合同管理", icon: <FileTextOutlined /> },
   { path: "/projects", name: "项目管理", icon: <ProjectOutlined /> },
+  { path: "/assets", name: "企业资产", icon: <DatabaseOutlined /> },
   { path: "/workflow", name: "我的工作流", icon: <PlayCircleOutlined /> },
   { path: "/invoices", name: "开票管理", icon: <BookOutlined /> },
   { path: "/payments", name: "回款管理", icon: <PayCircleOutlined /> },

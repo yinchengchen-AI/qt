@@ -27,6 +27,12 @@ const TYPE_TO_TEMPLATE: Record<string, (p: Record<string, unknown>, uid: string)
     content: `到期日：${formatDate(p.endDate)}`,
     link: { kind: "contract", id: p.contractId }
   }),
+  ASSET_EXPIRING: (p) => ({
+    receiverUserId: "",
+    title: `资产「${p.assetName}」将于 ${p.daysLeft} 天后到期`,
+    content: `资产编号: ${p.assetCode ?? "-"}\n到期日: ${formatDate(p.validTo)}`,
+    link: { kind: "asset", id: p.assetId }
+  }),
   CONTRACT_APPROVED: (p) => ({
     receiverUserId: "",
     title: `合同 ${p.contractNo} 已审批通过`,

@@ -16,15 +16,15 @@ datasource db {
 // Auth & Users
 // =====================================================
 model Role {
-  id          String   @id @default(cuid())
-  code        String   @unique
-  name        String
-  description String?
-  permissions Json
-  isSystem    Boolean  @default(false)
-  createdAt   DateTime @default(now()) @db.Timestamptz(6)
-  updatedAt   DateTime @updatedAt @db.Timestamptz(6)
-  users       User[]
+  id            String         @id @default(cuid())
+  code          String         @unique
+  name          String
+  description   String?
+  permissions   Json
+  isSystem      Boolean        @default(false)
+  createdAt     DateTime       @default(now()) @db.Timestamptz(6)
+  updatedAt     DateTime       @updatedAt @db.Timestamptz(6)
+  users         User[]
   workflowTasks WorkflowTask[]
 
   @@index([code])
@@ -59,11 +59,11 @@ model User {
 // Customers
 // =====================================================
 model Customer {
-  id                      String    @id @default(cuid())
-  code                    String    @unique
+  id                      String  @id @default(cuid())
+  code                    String  @unique
   name                    String
   shortName               String?
-  unifiedSocialCreditCode String?   @unique
+  unifiedSocialCreditCode String? @unique
   customerType            String // ENTERPRISE | GOV | OTHER
   industry                String?
   scale                   String? // LARGE | MEDIUM | SMALL | MICRO
@@ -73,17 +73,17 @@ model Customer {
   town                    String?
 
   // 主联系人信息(姓名 / 职务 / 电话);废除原 creditLimitAmount / paymentTermDays / contactEmail
-  contactName             String?
-  contactTitle            String?
-  contactPhone            String
-  sourceChannel           String?
-  ownerUserId             String
-  status                  String    @default("LEAD") // LEAD | NEGOTIATING | SIGNED | LOST | FROZEN
-  createdAt               DateTime  @default(now()) @db.Timestamptz(6)
-  updatedAt               DateTime  @updatedAt @db.Timestamptz(6)
-  createdById             String
-  updatedById             String
-  deletedAt               DateTime? @db.Timestamptz(6)
+  contactName   String?
+  contactTitle  String?
+  contactPhone  String
+  sourceChannel String?
+  ownerUserId   String
+  status        String    @default("LEAD") // LEAD | NEGOTIATING | SIGNED | LOST | FROZEN
+  createdAt     DateTime  @default(now()) @db.Timestamptz(6)
+  updatedAt     DateTime  @updatedAt @db.Timestamptz(6)
+  createdById   String
+  updatedById   String
+  deletedAt     DateTime? @db.Timestamptz(6)
 
   contracts Contract[]
   payments  Payment[]
@@ -209,7 +209,7 @@ model Project {
   updatedById   String
   deletedAt     DateTime? @db.Timestamptz(6)
 
-  progressLogs ProjectProgressLog[]
+  progressLogs  ProjectProgressLog[]
   taskInstances WorkflowTaskInstance[]
 
   @@unique([contractId, name])
@@ -227,7 +227,6 @@ model ProjectProgressLog {
   at        DateTime @default(now()) @db.Timestamptz(6)
 }
 
-
 // =====================================================
 // Workflow Engine — 服务类型工作流 (P0: 数据模型 + seed)
 // =====================================================
@@ -239,15 +238,15 @@ model ProjectProgressLog {
 // reviewStatus: null | REVIEWING | REVIEWED | APPROVED | REJECTED (requiresTwoStepReview=true 时使用)
 // recurrenceUnit: DAY | WEEK | MONTH | YEAR
 model WorkflowTemplate {
-  id          String   @id @default(cuid())
-  serviceType String   // SERVICE_TYPE
+  id          String    @id @default(cuid())
+  serviceType String // SERVICE_TYPE
   name        String
-  version     Int      @default(1)
-  isActive    Boolean  @default(true)
+  version     Int       @default(1)
+  isActive    Boolean   @default(true)
   description String?
   createdById String
-  createdAt   DateTime @default(now()) @db.Timestamptz(6)
-  updatedAt   DateTime @updatedAt @db.Timestamptz(6)
+  createdAt   DateTime  @default(now()) @db.Timestamptz(6)
+  updatedAt   DateTime  @updatedAt @db.Timestamptz(6)
   deletedAt   DateTime? @db.Timestamptz(6)
 
   stages WorkflowStage[]
@@ -258,15 +257,15 @@ model WorkflowTemplate {
 }
 
 model WorkflowStage {
-  id          String   @id @default(cuid())
+  id          String           @id @default(cuid())
   templateId  String
   template    WorkflowTemplate @relation(fields: [templateId], references: [id], onDelete: Cascade)
-  phase       String   // PREP | REQUIREMENT | CONTRACT | EXECUTE | FOLLOWUP
+  phase       String // PREP | REQUIREMENT | CONTRACT | EXECUTE | FOLLOWUP
   code        String
   name        String
   sort        Int
   description String?
-  isRequired  Boolean  @default(true)
+  isRequired  Boolean          @default(true)
 
   tasks WorkflowTask[]
 
@@ -274,7 +273,7 @@ model WorkflowStage {
 }
 
 model WorkflowTask {
-  id                    String   @id @default(cuid())
+  id                    String        @id @default(cuid())
   stageId               String
   stage                 WorkflowStage @relation(fields: [stageId], references: [id], onDelete: Cascade)
   code                  String
@@ -283,13 +282,13 @@ model WorkflowTask {
   description           String?
   // 期望执行角色：与 Role.code 对齐，删除 Role 时 RESTRICT（工作流里还在引用不能删）
   requiredRole          String?
-  requiredRoleRef       Role?    @relation(fields: [requiredRole], references: [code], onDelete: Restrict, onUpdate: Cascade)
-  requiresDeliverable   Boolean  @default(false)
-  requiresOnsite        Boolean  @default(false)   // 跨阶段控制点: 现场前沟通确认
-  requiresTwoStepReview Boolean  @default(false)   // 跨阶段控制点: 报告类校核+审核二审
-  isRecurring           Boolean  @default(false)
-  recurrenceUnit        String?  // DAY | WEEK | MONTH | YEAR
-  recurrenceInterval    Int?     // 配合 unit, e.g. 1 MONTH = 每月
+  requiredRoleRef       Role?         @relation(fields: [requiredRole], references: [code], onDelete: Restrict, onUpdate: Cascade)
+  requiresDeliverable   Boolean       @default(false)
+  requiresOnsite        Boolean       @default(false) // 跨阶段控制点: 现场前沟通确认
+  requiresTwoStepReview Boolean       @default(false) // 跨阶段控制点: 报告类校核+审核二审
+  isRecurring           Boolean       @default(false)
+  recurrenceUnit        String? // DAY | WEEK | MONTH | YEAR
+  recurrenceInterval    Int? // 配合 unit, e.g. 1 MONTH = 每月
   estimateDays          Int?
 
   instances WorkflowTaskInstance[]
@@ -299,24 +298,24 @@ model WorkflowTask {
 }
 
 model WorkflowTaskInstance {
-  id               String    @id @default(cuid())
+  id               String       @id @default(cuid())
   projectId        String
-  project          Project   @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  project          Project      @relation(fields: [projectId], references: [id], onDelete: Cascade)
   taskId           String
   task             WorkflowTask @relation(fields: [taskId], references: [id], onDelete: Cascade)
-  status           String    @default("PENDING") // PENDING | IN_PROGRESS | COMPLETED | SKIPPED | BLOCKED
+  status           String       @default("PENDING") // PENDING | IN_PROGRESS | COMPLETED | SKIPPED | BLOCKED
   assigneeId       String?
-  parentInstanceId String?   // 循环任务的上一个实例
-  reviewStatus     String?   // null | REVIEWING | REVIEWED | APPROVED | REJECTED
+  parentInstanceId String? // 循环任务的上一个实例
+  reviewStatus     String? // null | REVIEWING | REVIEWED | APPROVED | REJECTED
   reviewedById     String?
-  reviewedAt       DateTime? @db.Timestamptz(6)
-  completedAt      DateTime? @db.Timestamptz(6)
+  reviewedAt       DateTime?    @db.Timestamptz(6)
+  completedAt      DateTime?    @db.Timestamptz(6)
   completedById    String?
   remark           String?
-  attachments      Json?     // MinIO 交付物 keys
-  createdAt        DateTime  @default(now()) @db.Timestamptz(6)
-  updatedAt        DateTime  @updatedAt @db.Timestamptz(6)
-  deletedAt        DateTime? @db.Timestamptz(6)
+  attachments      Json? // MinIO 交付物 keys
+  createdAt        DateTime     @default(now()) @db.Timestamptz(6)
+  updatedAt        DateTime     @updatedAt @db.Timestamptz(6)
+  deletedAt        DateTime?    @db.Timestamptz(6)
 
   // 包含 parentInstanceId 让循环任务可多次出现(P2 修复)
   @@unique([projectId, taskId, parentInstanceId])
@@ -549,23 +548,56 @@ model Sequence {
 // - soft delete: deletedAt 不为 null 视为已删,MinIO 对象保留
 // =====================================================
 model Attachment {
-  id           String    @id @default(cuid())
-  objectKey    String    @unique
+  id           String        @id @default(cuid())
+  objectKey    String        @unique
   bucket       String
   originalName String
   mimeType     String
   size         Int
   uploadedById String
-  uploadedBy   User      @relation(fields: [uploadedById], references: [id])
+  uploadedBy   User          @relation(fields: [uploadedById], references: [id])
   contractId   String?
-  contract     Contract? @relation("ContractAttachments", fields: [contractId], references: [id], onDelete: SetNull)
+  contract     Contract?     @relation("ContractAttachments", fields: [contractId], references: [id], onDelete: SetNull)
   invoiceId    String?
-  invoice      Invoice?  @relation("InvoiceAttachments", fields: [invoiceId], references: [id], onDelete: SetNull)
-  uploadedAt   DateTime  @default(now()) @db.Timestamptz(6)
-  deletedAt    DateTime? @db.Timestamptz(6)
+  invoice      Invoice?      @relation("InvoiceAttachments", fields: [invoiceId], references: [id], onDelete: SetNull)
+  assetId      String?
+  asset        CompanyAsset? @relation("AssetAttachments", fields: [assetId], references: [id], onDelete: SetNull)
+  uploadedAt   DateTime      @default(now()) @db.Timestamptz(6)
+  deletedAt    DateTime?     @db.Timestamptz(6)
 
   @@index([contractId, deletedAt])
   @@index([invoiceId, deletedAt])
   @@index([uploadedById])
+  @@index([assetId, deletedAt])
   @@index([deletedAt])
+}
+
+// =====================================================
+// Company Assets (企业资产库 v1)
+// - 8 种 type:LICENSE|CERTIFICATE|QUALIFICATION|PERFORMANCE|TEAM_MEMBER|CASE|PATENT|OTHER
+// - attributes 为类型特定字段的 JSON 容器,由 Zod 校验
+// - tags 用 PG 数组列(支持 hasEvery 查询)
+// - status 字段冗余存,读时由 computeAssetStatus() 重算
+// =====================================================
+model CompanyAsset {
+  id          String    @id @default(cuid())
+  code        String    @unique
+  type        String
+  name        String
+  description String?
+  attributes  Json
+  tags        String[]  @default([])
+  status      String    @default("VALID")
+  validFrom   DateTime? @db.Timestamptz(6)
+  validTo     DateTime? @db.Timestamptz(6)
+  ownerUserId String
+  createdAt   DateTime  @default(now()) @db.Timestamptz(6)
+  updatedAt   DateTime  @updatedAt @db.Timestamptz(6)
+  deletedAt   DateTime? @db.Timestamptz(6)
+
+  attachments Attachment[] @relation("AssetAttachments")
+
+  @@index([type, status, deletedAt])
+  @@index([validTo, deletedAt])
+  @@index([ownerUserId])
 }

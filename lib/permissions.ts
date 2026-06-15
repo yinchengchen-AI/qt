@@ -17,7 +17,8 @@ export const RESOURCE = {
   ANNOUNCEMENT: "ANNOUNCEMENT",
   OPERATION_LOG: "OPERATION_LOG",
   DEPARTMENT: "DEPARTMENT",
-  WORKFLOW_TEMPLATE: "WORKFLOW_TEMPLATE"
+  WORKFLOW_TEMPLATE: "WORKFLOW_TEMPLATE",
+  ASSET: "ASSET"
 } as const;
 export type Resource = (typeof RESOURCE)[keyof typeof RESOURCE];
 
@@ -58,7 +59,8 @@ export const ROLE_PERMISSIONS: Record<RoleCode, Permission[]> = {
     { resource: RESOURCE.PAYMENT, actions: [...CR, ACTION.EXPORT] },
     { resource: RESOURCE.STATISTICS, actions: R },
     { resource: RESOURCE.MESSAGE, actions: CRUD },
-    { resource: RESOURCE.ANNOUNCEMENT, actions: R }
+    { resource: RESOURCE.ANNOUNCEMENT, actions: R },
+    { resource: RESOURCE.ASSET, actions: R }
   ],
   FINANCE: [
     { resource: RESOURCE.DEPARTMENT, actions: R },
@@ -71,7 +73,8 @@ export const ROLE_PERMISSIONS: Record<RoleCode, Permission[]> = {
     { resource: RESOURCE.PAYMENT, actions: [...CRUD, ACTION.EXPORT] },
     { resource: RESOURCE.STATISTICS, actions: R_EXPORT },
     { resource: RESOURCE.MESSAGE, actions: CRUD },
-    { resource: RESOURCE.ANNOUNCEMENT, actions: R }
+    { resource: RESOURCE.ANNOUNCEMENT, actions: R },
+    { resource: RESOURCE.ASSET, actions: R }
   ],
   OPS: [
     { resource: RESOURCE.DEPARTMENT, actions: CRUD },
@@ -85,7 +88,8 @@ export const ROLE_PERMISSIONS: Record<RoleCode, Permission[]> = {
     { resource: RESOURCE.PAYMENT, actions: [...R, ACTION.EXPORT] },
     { resource: RESOURCE.STATISTICS, actions: R },
     { resource: RESOURCE.MESSAGE, actions: CRUD },
-    { resource: RESOURCE.ANNOUNCEMENT, actions: CRUD }
+    { resource: RESOURCE.ANNOUNCEMENT, actions: CRUD },
+    { resource: RESOURCE.ASSET, actions: R }
   ],
   // 技术专家：现场勘查 / 报告撰写等"专业执行"角色,权限与 SALES 同
   EXPERT: [
@@ -99,7 +103,8 @@ export const ROLE_PERMISSIONS: Record<RoleCode, Permission[]> = {
     { resource: RESOURCE.PAYMENT, actions: [...CR, ACTION.EXPORT] },
     { resource: RESOURCE.STATISTICS, actions: R },
     { resource: RESOURCE.MESSAGE, actions: CRUD },
-    { resource: RESOURCE.ANNOUNCEMENT, actions: R }
+    { resource: RESOURCE.ANNOUNCEMENT, actions: R },
+    { resource: RESOURCE.ASSET, actions: R }
   ]
 };
 

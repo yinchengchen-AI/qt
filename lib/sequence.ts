@@ -5,7 +5,8 @@ const PREFIX_MAP = {
   CUSTOMER: "QT-C",      // QT-C-YYYYMM-#### 月度
   CONTRACT: "QT-HT",     // QT-HT-YYYY-####
   PROJECT: "QT-P",       // QT-P-YYYY-####
-  PAYMENT: "QT-PAY"      // QT-PAY-YYYY-####
+  PAYMENT: "QT-PAY",     // QT-PAY-YYYY-####
+  ASSET: "QT-ASSET"      // QT-ASSET-YYYY-####
 } as const;
 type SeqType = keyof typeof PREFIX_MAP;
 
