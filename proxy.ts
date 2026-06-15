@@ -4,7 +4,7 @@
 //   - 登录:每 IP 5 次/分钟,超过直接 429
 //   - CRON:每 IP 10 次/分钟(正常 cron 频率低,留余量)
 //
-// 注意:Next.js middleware 跑在 Edge runtime;此实现不依赖 Node 特有 API,
+// 注意:Next.js proxy 跑在 Edge runtime;此实现不依赖 Node 特有 API,
 // 部署到 Vercel / 自托管 Node 都能用。多实例部署需替换为共享存储(Redis)。
 
 import { NextRequest, NextResponse } from "next/server";
@@ -42,7 +42,7 @@ function gcIfNeeded() {
   }
 }
 
-export function middleware(req: NextRequest) {
+export function proxy(req: NextRequest) {
   const { pathname } = req.nextUrl;
   // 登录端点:NextAuth 把所有 /api/auth/* 都路由过来,这里只对 credentials 回调限流
   // (其它端点如 session/csrf 频次低且安全由 NextAuth 自身管)
