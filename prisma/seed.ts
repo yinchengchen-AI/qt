@@ -403,6 +403,13 @@ async function main() {
     { category: "FOLLOW_RESULT", code: "NO_INTENT", label: "无意向", sort: 2 },
     { category: "FOLLOW_RESULT", code: "PENDING", label: "待定", sort: 3 },
     { category: "FOLLOW_RESULT", code: "SIGNED", label: "已签约", sort: 4 },
+    // 人员证书类型 - 标书素材库 v1
+    { category: "PERSONNEL_CERT_TYPE", code: "REGISTERED_SAFETY_ENGINEER", label: "注册安全工程师", sort: 10 },
+    { category: "PERSONNEL_CERT_TYPE", code: "SAFETY_EVALUATOR",          label: "安全评价师",       sort: 20 },
+    { category: "PERSONNEL_CERT_TYPE", code: "EMERGENCY_RESCUER",         label: "应急救援员",       sort: 30 },
+    { category: "PERSONNEL_CERT_TYPE", code: "TRAINING_INSTRUCTOR",       label: "培训师资",         sort: 40 },
+    { category: "PERSONNEL_CERT_TYPE", code: "SPECIAL_OPERATION",         label: "特种作业操作证",   sort: 50 },
+    { category: "PERSONNEL_CERT_TYPE", code: "OTHER",                     label: "其他",             sort: 999 },
   ];
   for (const d of dictDefs) {
     await prisma.dictionary.upsert({
