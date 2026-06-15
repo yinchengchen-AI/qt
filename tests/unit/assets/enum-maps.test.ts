@@ -4,8 +4,8 @@ import { ASSET_TYPE_MAP, ASSET_STATUS_MAP, SERVICE_TYPE_MAP, SERVICE_TYPE_OPTION
 import { ASSET_TYPE, ASSET_STATUS, SERVICE_TYPE } from "@/types/enums";
 
 describe("enum-maps 中文映射完整性", () => {
-  it("ASSET_TYPE 8 种全部有中文 label", () => {
-    expect(ASSET_TYPE.length).toBe(8);
+  it("ASSET_TYPE 10 种全部有中文 label (8 原有 + PERSONNEL_CERT + TEMPLATE)", () => {
+    expect(ASSET_TYPE.length).toBe(10);
     for (const t of ASSET_TYPE) {
       expect(ASSET_TYPE_MAP[t], `${t} 缺中文`).toBeDefined();
       expect(ASSET_TYPE_MAP[t]).not.toBe(t);

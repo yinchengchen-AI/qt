@@ -240,7 +240,9 @@ export const ASSET_TYPE_MAP: Record<string, string> = {
   TEAM_MEMBER:    "团队成员",
   CASE:           "项目案例",
   PATENT:         "专利软著",
-  OTHER:          "其他"
+  OTHER:          "其他",
+  PERSONNEL_CERT: "人员证书",
+  TEMPLATE:       "投标模板"
 };
 
 /** SERVICE_TYPE_MAP 的 Select options 形式(供 ProFormSelect 直接用) */
