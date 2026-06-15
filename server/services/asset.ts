@@ -117,15 +117,94 @@ async function assertPerformanceContractAmount(
   return attributes;
 }
 
+/**
+ * v1 标书素材库:校验 PERSONNEL_CERT / TEMPLATE 的类型特定字段
+ *  - PERSONNEL_CERT:userId 引用 ACTIVE User
+ *  - TEMPLATE:serviceType 字典存在(可选字段)
+ *  - 两种类型都需要 attachmentId 存在 + 归属当前 user
+ * 抛出 ApiError 阻断后续 prisma.create
+ */
+async function validateAssetTypeSpecific(
+  user: SessionUser,
+  type: string,
+  attributes: Record<string, unknown> | undefined
+): Promise<void> {
+  if (type !== "PERSONNEL_CERT" && type !== "TEMPLATE") return;
+  if (type === "PERSONNEL_CERT") {
+    const userId = String(attributes?.userId ?? "");
+    if (!userId) {
+      throw new ApiError(ERROR_CODES.ASSET_USER_INVALID, "员工不存在或已停用", 400);
+    }
+    const u = await prisma.user.findFirst({
+      where: { id: userId, status: "ACTIVE", deletedAt: null }
+    });
+    if (!u) {
+      throw new ApiError(ERROR_CODES.ASSET_USER_INVALID, "员工不存在或已停用", 400);
+    }
+  }
+  if (type === "TEMPLATE" && attributes?.serviceType) {
+    const svc = await prisma.dictionary.findFirst({
+      where: { category: "SERVICE_TYPE", code: String(attributes.serviceType), deletedAt: null }
+    });
+    if (!svc) {
+      throw new ApiError(ERROR_CODES.ASSET_SERVICE_TYPE_INVALID, "服务类型无效", 400);
+    }
+  }
+  // 附件必填 + 越权校验(回填在 rlsTransaction 内做)
+  const attachmentIdKey = type === "PERSONNEL_CERT" ? "scanFileId" : "templateFileId";
+  const attachmentId = String(attributes?.[attachmentIdKey] ?? "");
+  if (!attachmentId) {
+    throw new ApiError(
+      ERROR_CODES.ASSET_ATTACHMENT_REQUIRED,
+      type === "PERSONNEL_CERT" ? "请上传证书扫描件" : "请上传模板文件",
+      400
+    );
+  }
+  const att = await prisma.attachment.findFirst({ where: { id: attachmentId, deletedAt: null } });
+  if (!att) {
+    throw new ApiError(ERROR_CODES.ASSET_ATTACHMENT_REQUIRED, "附件不存在", 400);
+  }
+  if (att.uploadedById !== user.id) {
+    // 防越权:不允许使用他人上传的 attachment
+    throw new ApiError(ERROR_CODES.FORBIDDEN, "无权使用此附件", 403);
+  }
+}
+
+/**
+ * v1 标书素材库:把"tmp/ 路径下,assetId=null"的 attachment 回填到当前 assetId
+ * 在 rlsTransaction 内部调用,失败则回滚整个事务
+ */
+async function fillAttachmentAssetId(
+  tx: Prisma.TransactionClient,
+  assetId: string,
+  type: string,
+  attributes: Record<string, unknown> | undefined
+): Promise<void> {
+  if (type !== "PERSONNEL_CERT" && type !== "TEMPLATE") return;
+  const attachmentIdKey = type === "PERSONNEL_CERT" ? "scanFileId" : "templateFileId";
+  const attachmentId = String(attributes?.[attachmentIdKey] ?? "");
+  if (!attachmentId) return;
+  const att = await tx.attachment.findFirst({ where: { id: attachmentId, deletedAt: null } });
+  if (!att) return; // validateAssetTypeSpecific 已经验过,这里静默
+  if (att.assetId === null) {
+    await tx.attachment.update({ where: { id: attachmentId }, data: { assetId } });
+  } else if (att.assetId !== assetId) {
+    // 已被其他资产绑定 → 越权
+    throw new ApiError(ERROR_CODES.FORBIDDEN, "此附件已绑定其他资产", 403);
+  }
+}
+
 export async function createAsset(user: SessionUser, input: AssetCreateInput) {
   requirePermission(user.roleCode, RESOURCE.ASSET, ACTION.CREATE);
   const data = assetCreateSchema.parse(input);
   // 强约束:PERFORMANCE 选了合同,金额必须一致(同时允许自动回填)
   const validatedAttrs = await assertPerformanceContractAmount(data.type, data.attributes as Record<string, unknown>);
+  // v1 标书素材库:类型特定字段预校验(抛错则不写 DB,避免 dangling asset)
+  await validateAssetTypeSpecific(user, data.type, data.attributes as Record<string, unknown> | undefined);
   const code = await nextBusinessNo("ASSET");
   const status = computeAssetStatus(data.validFrom, data.validTo);
-  const asset = await rlsTransaction(prisma, user, (tx) =>
-    tx.companyAsset.create({
+  const asset = await rlsTransaction(prisma, user, async (tx) => {
+    const created = await tx.companyAsset.create({
       data: {
         code,
         type: data.type,
@@ -138,8 +217,11 @@ export async function createAsset(user: SessionUser, input: AssetCreateInput) {
         validTo: data.validTo ? new Date(data.validTo) : null,
         ownerUserId: user.id
       }
-    })
-  );
+    });
+    // 附件 assetId 回填(在同一事务内,失败回滚)
+    await fillAttachmentAssetId(tx, created.id, data.type, data.attributes as Record<string, unknown> | undefined);
+    return created;
+  });
   await audit(prisma, {
     actorId: user.id,
     action: "ASSET_CREATE",
@@ -166,6 +248,13 @@ export async function updateAsset(user: SessionUser, id: string, input: AssetUpd
     existing.type,
     candidateMerged
   );
+  // v1 标书素材库:PERSONNEL_CERT/TEMPLATE 编辑时类型特定校验(仅当 attributes 在变)
+  if (
+    candidateMerged !== undefined &&
+    (existing.type === "PERSONNEL_CERT" || existing.type === "TEMPLATE")
+  ) {
+    await validateAssetTypeSpecific(user, existing.type, candidateMerged);
+  }
   // assertPerformanceContractAmount 可能自动补 contractAmount,需要把补的内容也写回去
   const mergedAttributes = data.attributes
     ? (validatedAttrs as Record<string, unknown>)
