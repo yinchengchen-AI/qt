@@ -29,6 +29,7 @@ export type PresignUploadInput = {
   contractId?: string | null;
   invoiceId?: string | null;
   uploadedById: string;
+  assetId?: string | null;   // v1 标书素材库新增
 };
 
 export type PresignUploadResult = {
@@ -74,7 +75,8 @@ export async function presignUpload(input: PresignUploadInput): Promise<PresignU
       size: input.size,
       uploadedById: input.uploadedById,
       contractId: input.contractId ?? null,
-      invoiceId: input.invoiceId ?? null
+      invoiceId: input.invoiceId ?? null,
+      assetId: input.assetId ?? null   // v1 新增
     }
   });
   const yyyy = now.getUTCFullYear();
@@ -82,12 +84,15 @@ export async function presignUpload(input: PresignUploadInput): Promise<PresignU
   // 路径规则:
   //   合同关联: contracts/{contractId}/{yyyy}/{mm}/{cuid}-{name}.{ext}
   //   发票关联: invoices/{invoiceId}/{yyyy}/{mm}/{cuid}-{name}.{ext}
+  //   资产关联: assets/{assetId}/{yyyy}/{mm}/{cuid}-{name}.{ext}      (v1 标书素材库)
   //   暂未绑定: tmp/{yyyy}/{mm}/{cuid}-{name}.{ext}
   const objectKey = input.contractId
     ? `contracts/${input.contractId}/${yyyy}/${mm}/${att.id}-${safeName}.${ext}`
     : input.invoiceId
       ? `invoices/${input.invoiceId}/${yyyy}/${mm}/${att.id}-${safeName}.${ext}`
-      : `tmp/${yyyy}/${mm}/${att.id}-${safeName}.${ext}`;
+      : input.assetId
+        ? `assets/${input.assetId}/${yyyy}/${mm}/${att.id}-${safeName}.${ext}`
+        : `tmp/${yyyy}/${mm}/${att.id}-${safeName}.${ext}`;
 
   await prisma.attachment.update({
     where: { id: att.id },

@@ -1,22 +1,13 @@
-﻿// POST /api/files/presign-upload
-// body: { filename, mimeType, size, contractId?, invoiceId? }
+// POST /api/files/presign-upload
+// body: { filename, mimeType, size, contractId?, invoiceId?, assetId? }
 // 鉴权 + 校验 + 创建 Attachment 记录 + 返回 PUT 预签名 URL
-import { z } from "zod";
 import { ok, err } from "@/lib/api";
 import { requireSession } from "@/lib/session";
 import { isMinioEnabled } from "@/lib/env";
 import { presignUpload } from "@/server/storage/presign";
 import { ApiError } from "@/lib/api";
 import { ERROR_CODES } from "@/types/errors";
-
-const bodySchema = z.object({
-  filename: z.string().min(1).max(255),
-  mimeType: z.string().min(1).max(127),
-  size: z.number().int().positive(),
-  contractId: z.string().optional().nullable(),
-  invoiceId: z.string().optional().nullable()
-  // 注:contractId / invoiceId 都为 null 时,仍允许上传(给工作流任务等场景用)
-});
+import { presignUploadBodySchema } from "@/lib/validators/upload";
 
 export async function POST(req: Request) {
   try {
@@ -29,13 +20,14 @@ export async function POST(req: Request) {
     }
     const user = await requireSession();
     const raw = await req.json();
-    const body = bodySchema.parse(raw);
+    const body = presignUploadBodySchema.parse(raw);
     const result = await presignUpload({
       filename: body.filename,
       mimeType: body.mimeType,
       size: body.size,
       contractId: body.contractId ?? null,
       invoiceId: body.invoiceId ?? null,
+      assetId: body.assetId ?? null,        // v1 新增
       uploadedById: user.id
     });
     return ok(result);
