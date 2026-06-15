@@ -74,8 +74,9 @@ ops/legacy/*.sql
 ops/legacy/csv/
 ops/legacy/*-inspect.json
 
-# 上会话 superpowers 临时目录
-docs/superpowers/
+# superpowers 辅助目录:只 ignore 临时/缓存产物,设计文档 specs/ 要被 git 追踪
+docs/superpowers/.transcripts/
+docs/superpowers/.cache/
 
 # 但保留 ops/legacy/ 下的 README 和 reports/ (重要的文档/报告)
 !ops/legacy/README.md
