@@ -24,7 +24,7 @@ export function LocationCascader({
   };
 
   return (
-    <Cascader<any>
+    <Cascader<DivisionNode>
       value={value}
       onChange={handleChange}
       options={DIVISIONS}

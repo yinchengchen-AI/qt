@@ -6,7 +6,7 @@ import {
   ProFormText,
   ProFormSelect,
   ProFormDigit,
-  ProFormDatePicker,
+  ProFormDatePicker
 } from "@ant-design/pro-components";
 import { App as AntdApp, Space, Typography } from "antd";
 import { StatusTag } from "@/components/status-tag";
@@ -35,6 +35,8 @@ export default function EditContractPage() {
   const id = String(params.id);
   const router = useRouter();
   const { message } = AntdApp.useApp();
+  // ProForm 的 ProFormRef 类型未导出,用 any 承载动态表单引用
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const formRef = useRef<any>(null);
   const { data, isLoading } = // eslint-disable-next-line @typescript-eslint/no-explicit-any -- edit page reads many dynamic fields
   useSWR<any>(`/api/contracts/${id}`);

@@ -105,10 +105,10 @@ export function WorkflowSection({ projectId, canEdit }: { projectId: string; can
   const { message } = AntdApp.useApp();
   const { data, isLoading, error, mutate } = useSWR<WorkflowDto>(`/api/projects/${projectId}/workflow`);
   const { isMobile } = useResponsive();
-  const roleNameMap = useRoleNameMap();
   const [initing, setIniting] = useState(false);
 
   // 抽屉打开期间,SWR 重新拉取后把最新任务同步回 drawerTask,让操作按钮立即反映新状态
+  // 依赖项只放 data: 仅在服务端数据刷新时同步,避免 drawerTask 自更新导致循环
   useEffect(() => {
     if (!drawerTask || !data) return;
     for (const stage of data.stages) {
@@ -118,6 +118,7 @@ export function WorkflowSection({ projectId, canEdit }: { projectId: string; can
         return;
       }
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [data]);
 
   const handleInit = async () => {

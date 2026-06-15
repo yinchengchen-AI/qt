@@ -6,7 +6,7 @@ import {
   ProFormText,
   ProFormSelect,
   ProFormDigit,
-  ProFormDatePicker,
+  ProFormDatePicker
 } from "@ant-design/pro-components";
 import { App as AntdApp, Space, Tag, Typography } from "antd";
 import { useRouter } from "next/navigation";
@@ -40,6 +40,8 @@ type Customer = {
 export default function NewContractPage() {
   const router = useRouter();
   const { message } = AntdApp.useApp();
+  // ProForm 的 ProFormRef 类型未导出,用 any 承载动态表单引用
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const formRef = useRef<any>(null);
   const serviceType = useDict("SERVICE_TYPE");
 

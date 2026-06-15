@@ -24,6 +24,8 @@ export default function EditProjectPage() {
   const id = String(params.id);
   const router = useRouter();
   const { message } = AntdApp.useApp();
+  // ProForm 的 ProFormRef 类型未导出,用 any 承载动态表单引用
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const formRef = useRef<any>(null);
   const { data, isLoading } = // eslint-disable-next-line @typescript-eslint/no-explicit-any -- edit page reads many dynamic fields
   useSWR<any>(`/api/projects/${id}`);

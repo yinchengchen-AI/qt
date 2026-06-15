@@ -179,7 +179,7 @@ function resolveIdsInDiff(
   });
 }
 
-export function ProjectHistory({ projectId, canEdit }: { projectId: string; canEdit: boolean }) {
+export function ProjectHistory({ projectId, canEdit: _canEdit }: { projectId: string; canEdit: boolean }) {
   const { data, isLoading } = useSWR<{ items: ProjectHistoryEntry[] }>(`/api/projects/${projectId}/history`);
   const userNameMap = useUserLookup();
 

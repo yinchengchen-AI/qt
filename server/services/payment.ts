@@ -39,31 +39,31 @@ export async function getPayment(user: SessionUser, id: string) {
     include: { allocations: { include: { invoice: { select: { id: true, invoiceNo: true } } } }, invoice: { select: { id: true, invoiceNo: true, amount: true } } }
   });
   if (!p) throw new ApiError(ERROR_CODES.NOT_FOUND, "回款不存在", 404);
+
   // 详情展示需要:发票编号(从 invoice 嵌套拍平)、项目编号/名称(PaymentAllocation 无 project 关系,用 projectId 反查)
   // TODO(数据模型):在 schema 给 PaymentAllocation 加 project 关系,可让 include 一把出
-  for (const a of p.allocations) {
-    if (a.invoice?.invoiceNo) {
-      (a as unknown as { invoiceNo?: string | null }).invoiceNo = a.invoice.invoiceNo;
-    }
-  }
   const projectIds = Array.from(
     new Set(p.allocations.map((a) => a.projectId).filter((x): x is string => Boolean(x)))
   );
-  if (projectIds.length > 0) {
-    const projects = await prisma.project.findMany({
-      where: { id: { in: projectIds } },
-      select: { id: true, projectNo: true, name: true }
-    });
-    const byId = new Map(projects.map((x) => [x.id, x]));
-    for (const a of p.allocations) {
-      if (a.projectId && byId.has(a.projectId)) {
-        const proj = byId.get(a.projectId)!;
-        (a as unknown as { projectNo?: string; projectName?: string }).projectNo = proj.projectNo;
-        (a as unknown as { projectNo?: string; projectName?: string }).projectName = proj.name;
-      }
-    }
-  }
-  return p;
+  const projects = projectIds.length > 0
+    ? await prisma.project.findMany({
+        where: { id: { in: projectIds } },
+        select: { id: true, projectNo: true, name: true }
+      })
+    : [];
+  const projectById = new Map(projects.map((x) => [x.id, x]));
+
+  const allocations = p.allocations.map((a) => {
+    const proj = a.projectId ? projectById.get(a.projectId) : undefined;
+    return {
+      ...a,
+      invoiceNo: a.invoice?.invoiceNo ?? null,
+      projectNo: proj?.projectNo ?? null,
+      projectName: proj?.name ?? null
+    };
+  });
+
+  return { ...p, allocations };
 }
 
 export async function createPayment(user: SessionUser, input: PaymentCreateInput) {

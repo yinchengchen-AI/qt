@@ -12,7 +12,6 @@ import {
   Badge,
   Drawer,
   Empty,
-  Tooltip,
   Typography,
   theme,
   type MenuProps
@@ -25,7 +24,6 @@ import {
   DashboardOutlined,
   TeamOutlined,
   FileTextOutlined,
-  AppstoreOutlined,
   ProjectOutlined,
   PlayCircleOutlined,
   BookOutlined,

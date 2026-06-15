@@ -80,6 +80,13 @@ export async function updateCustomer(user: SessionUser, id: string, input: Custo
   requirePermission(user.roleCode, RESOURCE.CUSTOMER, ACTION.UPDATE);
   const existing = await prisma.customer.findFirst({ where: { id, deletedAt: null, ...ownerEq(user) } });
   if (!existing) throw new ApiError(ERROR_CODES.NOT_FOUND, "客户不存在", 404);
+  if (
+    input.ownerUserId &&
+    input.ownerUserId !== existing.ownerUserId &&
+    user.roleCode !== "ADMIN"
+  ) {
+    throw new ApiError(ERROR_CODES.FORBIDDEN, "仅管理员可转移客户负责人", 403);
+  }
   return prisma.customer.update({
     where: { id },
     data: {

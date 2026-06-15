@@ -1,6 +1,6 @@
 "use client";
 import { ProCard, ProDescriptions, ProTable } from "@ant-design/pro-components";
-import { Button, Card, Col, Empty, Row, Space, Statistic, Tabs, Typography } from "antd";
+import { Button, Card, Col, Empty, Row, Space, Statistic, Tabs } from "antd";
 import { PlusOutlined, FilePdfOutlined } from "@ant-design/icons";
 import { useParams, useRouter } from "next/navigation";
 import useSWR from "swr";
@@ -15,8 +15,6 @@ import { CurrencyCell, DateCell, DateTimeCell } from "@/components/table-cells";
 import { FollowUpDrawer } from "@/components/file/follow-up-drawer";
 import { openPrintWindow } from "@/lib/print-client";
 import { useResponsive } from "@/lib/use-breakpoint";
-
-const { Text } = Typography;
 
 type Customer = {
   id: string; code: string; name: string; shortName: string | null;
@@ -130,7 +128,7 @@ export default function CustomerDetailPage() {
             { title: "客户名称", dataIndex: "name" },
             { title: "简称", dataIndex: "shortName", render: (v) => v || "—" },
             { title: "统一社会信用代码", dataIndex: "unifiedSocialCreditCode", render: (v) => v || "—" },
-            { title: "客户类型", dataIndex: "customerType", render: (_, r) => typeLabel },
+            { title: "客户类型", dataIndex: "customerType", render: () => typeLabel },
             { title: "行业", dataIndex: "industry", render: () => industryLabel },
             { title: "来源渠道", dataIndex: "sourceChannel", render: () => sourceLabel },
             { title: "规模", dataIndex: "scale", render: () => scaleLabel },

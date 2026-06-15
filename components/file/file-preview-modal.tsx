@@ -13,8 +13,6 @@ export type PreviewableAttachment = {
   size?: number;
 };
 
-type LoadedBlob = { url: string; text: string };
-
 // Office 文件可走微软在线预览;需对象对外可达(预签 GET URL 满足)
 const OFFICE_MIME = new Set([
   "application/msword",

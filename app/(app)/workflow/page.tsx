@@ -67,6 +67,7 @@ export default function MyTasksPage() {
   );
 
   // 抽屉打开期间,SWR 重新拉取后把 status/reviewStatus/completedAt 同步回 drawerTask,让按钮立即反映新状态
+  // 依赖项只放 data: 仅在服务端数据刷新时同步,避免 drawerTask 自更新导致循环
   useEffect(() => {
     if (!drawerTask || !data) return;
     const updated = data.items.find((x) => x.id === drawerTask.id);
@@ -77,6 +78,7 @@ export default function MyTasksPage() {
     )) {
       setDrawerTask({ ...drawerTask, status: updated.status, reviewStatus: updated.reviewStatus, completedAt: updated.completedAt });
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [data]);
 
   return (

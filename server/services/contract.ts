@@ -299,14 +299,19 @@ export async function reviewContract(user: SessionUser, id: string, input: Revie
 export async function terminateContract(user: SessionUser, id: string, reason?: string) {
   requirePermission(user.roleCode, RESOURCE.CONTRACT, ACTION.DELETE);
   if (user.roleCode !== "ADMIN") throw new ApiError(ERROR_CODES.FORBIDDEN, "仅管理员可终止合同", 403);
-  const c = await prisma.contract.findFirst({ where: { id, deletedAt: null, ...ownerEq(user) } });
-  if (!c) throw new ApiError(ERROR_CODES.NOT_FOUND, "合同不存在", 404);
-  if (!["EFFECTIVE", "EXECUTING"].includes(c.status)) {
-    throw new ApiError(ERROR_CODES.ENTITY_IMMUTABLE, "当前状态不可终止", 403);
-  }
-  return prisma.contract.update({
-    where: { id },
-    data: { status: "TERMINATED", reviewComment: reason ?? null, updatedById: user.id }
+  return prisma.$transaction(async (tx) => {
+    const c = await tx.contract.findFirst({ where: { id, deletedAt: null, ...ownerEq(user) } });
+    if (!c) throw new ApiError(ERROR_CODES.NOT_FOUND, "合同不存在", 404);
+    if (!["EFFECTIVE", "EXECUTING"].includes(c.status)) {
+      throw new ApiError(ERROR_CODES.ENTITY_IMMUTABLE, "当前状态不可终止", 403);
+    }
+    const before = { status: c.status };
+    const updated = await tx.contract.update({
+      where: { id },
+      data: { status: "TERMINATED", reviewComment: reason ?? null, updatedById: user.id }
+    });
+    await audit(tx, { actorId: user.id, action: "CONTRACT_TERMINATE", entity: "Contract", entityId: id, before, after: { status: "TERMINATED" } });
+    return updated;
   });
 }
 

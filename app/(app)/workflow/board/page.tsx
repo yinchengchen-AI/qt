@@ -52,7 +52,6 @@ type Kanban = {
 
 export default function WorkflowBoardPage() {
   const params = useSearchParams();
-  const projectId = params.get("projectId") ?? "";
   const router = useRouter();
   const { isMobile } = useResponsive();
   const { data, isLoading } = useSWR<Kanban>(

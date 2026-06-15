@@ -12,7 +12,6 @@ import { prisma } from "@/lib/prisma";
 import bcrypt from "bcrypt";
 import * as readline from "node:readline/promises";
 import { stdin as input, stdout as output } from "node:process";
-import { randomBytes } from "node:crypto";
 
 type Args = {
   id?: string;
@@ -41,11 +40,6 @@ function parseArgs(argv: string[]): Args {
     }
   }
   return out;
-}
-
-function generatePassword(len = 20): string {
-  // 20 字符 base64url-ish, 避免 /+= 字符; 取前 len 个
-  return randomBytes(32).toString("base64").replace(/[/+=]/g, "").slice(0, len);
 }
 
 async function promptPassword(): Promise<string> {

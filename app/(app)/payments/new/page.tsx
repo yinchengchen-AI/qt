@@ -46,6 +46,8 @@ export default function NewPaymentPage() {
   const presetContract = search.get("contractId") ?? undefined;
   const presetInvoice = search.get("invoiceId") ?? undefined;
   const { message } = AntdApp.useApp();
+  // ProForm 的 ProFormRef 类型未导出,用 any 承载动态表单引用
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const formRef = useRef<any>(null);
   const [pickedContract, setPickedContract] = useState<Contract | null>(null);
 

@@ -102,7 +102,7 @@ export default function CustomersPage() {
         }}
         columns={[
           // 搜索专属列:仅在 ProTable 搜索表单里出现,数据来自 params.keyword
-          { title: "关键词", dataIndex: "keyword", hideInTable: true, fieldProps: { placeholder: "客户名 / 简称 / 编号", onChange: (e: React.ChangeEvent<HTMLInputElement>) => { if (searchDebounceRef.current) clearTimeout(searchDebounceRef.current); searchDebounceRef.current = setTimeout(() => actionRef.current?.reload(), 400); } } },
+          { title: "关键词", dataIndex: "keyword", hideInTable: true, fieldProps: { placeholder: "客户名 / 简称 / 编号", onChange: (_e: React.ChangeEvent<HTMLInputElement>) => { if (searchDebounceRef.current) clearTimeout(searchDebounceRef.current); searchDebounceRef.current = setTimeout(() => actionRef.current?.reload(), 400); } } },
           { title: "客户编号", dataIndex: "code", search: false, width: 180, fixed: !isMobile ? "left" : undefined },
           {
             title: "客户名称",

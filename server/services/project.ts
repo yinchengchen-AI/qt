@@ -245,7 +245,7 @@ export async function projectAction(user: SessionUser, id: string, input: Projec
 }
 export async function createProject(user: SessionUser, input: ProjectCreateInput) {
   requirePermission(user.roleCode, RESOURCE.PROJECT, ACTION.CREATE);
-  const project = await prisma.$transaction(async (tx) => {
+  return prisma.$transaction(async (tx) => {
     const contract = await tx.contract.findFirst({ where: { id: input.contractId, deletedAt: null, ...ownerEq(user) } });
     if (!contract) throw new ApiError(ERROR_CODES.NOT_FOUND, "合同不存在", 404);
     // R-05
@@ -257,7 +257,7 @@ export async function createProject(user: SessionUser, input: ProjectCreateInput
       throw new ApiError(ERROR_CODES.PROJECT_DATE_OUT_OF_RANGE, "项目结束日期不能晚于合同结束日期", 422);
     }
     const projectNo = await nextBusinessNo("PROJECT");
-    return tx.project.create({
+    const project = await tx.project.create({
       data: {
         projectNo,
         contractId: input.contractId,
@@ -272,17 +272,16 @@ export async function createProject(user: SessionUser, input: ProjectCreateInput
         updatedById: user.id
       }
     });
-  });
-  // P1: 创建项目后自动实例化工作流(失败不阻塞项目创建,记录审计即可)
-  try {
-    await instantiateProjectWorkflow(user, project.id);
-  } catch (e) {
-    if (e instanceof ApiError && e.errorCode === ERROR_CODES.WORKFLOW_TEMPLATE_NOT_FOUND) {
-      // 合同 serviceType 没模板,跳过(常见于 OTHER)
-      console.warn(`[workflow] project ${project.id} skipped auto-init:`, e.message);
-    } else {
-      console.error(`[workflow] project ${project.id} auto-init failed:`, e);
+    // P1: 创建项目后自动实例化工作流;缺少模板时不阻塞,其它错误随事务回滚
+    try {
+      await instantiateProjectWorkflow(user, project.id, { tx });
+    } catch (e) {
+      if (e instanceof ApiError && e.errorCode === ERROR_CODES.WORKFLOW_TEMPLATE_NOT_FOUND) {
+        console.warn(`[workflow] project ${project.id} skipped auto-init:`, e.message);
+      } else {
+        throw e;
+      }
     }
-  }
-  return project;
+    return project;
+  });
 }

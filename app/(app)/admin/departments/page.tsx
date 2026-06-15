@@ -20,6 +20,12 @@ type Department = {
   children?: Department[];
 };
 
+type TreeNode = {
+  key: string;
+  title: React.ReactNode;
+  children: TreeNode[];
+};
+
 export default function DepartmentsPage() {
   const router = useRouter();
   const { message } = AntdApp.useApp();
@@ -122,7 +128,6 @@ export default function DepartmentsPage() {
   ];
 
   // 树形展示的 treeSelectable 转换
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const renderTitle = (d: Department) => (
     <Space size={4}>
       <Text strong={!d.parentId}>{d.name}</Text>
@@ -139,12 +144,12 @@ export default function DepartmentsPage() {
     </Space>
   );
   // antd Tree 要求每层节点都有 key;原代码只给顶层加 key,子节点直接用裸对象,以前 children 永远 undefined 才没暴露
-  const buildTreeNode = (d: Department): any => ({
+  const buildTreeNode = (d: Department): TreeNode => ({
     key: d.id,
     title: renderTitle(d),
     children: (d.children ?? []).map(buildTreeNode)
   });
-  const treeData: any[] = data.map(buildTreeNode);
+  const treeData: TreeNode[] = data.map(buildTreeNode);
 
   return (
     <Page>

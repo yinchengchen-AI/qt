@@ -53,11 +53,11 @@ const REVIEW_TRANSITIONS: Record<
 export async function instantiateProjectWorkflow(
   user: SessionUser,
   projectId: string,
-  opts: { force?: boolean } = {}
+  opts: { force?: boolean; tx?: Prisma.TransactionClient } = {}
 ) {
   requirePermission(user.roleCode, RESOURCE.PROJECT, ACTION.UPDATE);
 
-  return prisma.$transaction(async (tx) => {
+  const run = async (tx: Prisma.TransactionClient) => {
     const project = await tx.project.findFirst({
       where: {
         id: projectId,
@@ -125,7 +125,12 @@ export async function instantiateProjectWorkflow(
     });
 
     return { templateId: template.id, serviceType: project.contract.serviceType, created: created.length };
-  });
+  };
+
+  if (opts.tx) {
+    return run(opts.tx);
+  }
+  return prisma.$transaction(run);
 }
 
 // =====================================================
