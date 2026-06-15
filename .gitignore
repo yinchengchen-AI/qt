@@ -68,3 +68,15 @@ docs/*部署记录*.md
 
 # pnpm 11 auto-generated
 pnpm-workspace.yaml
+
+# legacy migration archive — 只 ignore 大文件 (SQL dump / CSV 兜底), 保留 README + 报告
+ops/legacy/*.sql
+ops/legacy/csv/
+ops/legacy/*-inspect.json
+
+# 上会话 superpowers 临时目录
+docs/superpowers/
+
+# 但保留 ops/legacy/ 下的 README 和 reports/ (重要的文档/报告)
+!ops/legacy/README.md
+!ops/legacy/reports/

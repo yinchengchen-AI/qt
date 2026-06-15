@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef } from "react";
+import { useMemo, useRef } from "react";
 import {
   ProForm,
   ProFormText,
@@ -10,7 +10,7 @@ import {
 } from "@ant-design/pro-components";
 import { App as AntdApp, Space, Tag, Typography } from "antd";
 import { useRouter } from "next/navigation";
-import { useDict } from "@/lib/dict-client";
+import { useDict, groupDictByLegacy } from "@/lib/dict-client";
 import { proCustomRequest } from "@/lib/upload-client";
 import { PreviewableProFormUploadButton as UploadButton } from "@/components/file/pro-form-upload-button";
 import { Page } from "@/components/page";
@@ -44,6 +44,7 @@ export default function NewContractPage() {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const formRef = useRef<any>(null);
   const serviceType = useDict("SERVICE_TYPE");
+  const serviceTypeOptions = useMemo(() => groupDictByLegacy(serviceType), [serviceType]);
 
   return (
     <Page compact>
@@ -139,7 +140,7 @@ export default function NewContractPage() {
                 name="serviceType"
                 label="服务类型"
                 placeholder="请选择"
-                options={serviceType.map((d) => ({ value: d.code, label: d.label }))}
+                options={serviceTypeOptions}
                 rules={[{ required: true, message: "请选择服务类型" }]}
                 showSearch
                 fieldProps={{ size: "large" }}

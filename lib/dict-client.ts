@@ -49,3 +49,22 @@ export async function refreshDict(category: string) {
   await loadDict(category);
   notify(category);
 }
+
+
+/**
+ * 字典分组 helper: 把 category 下的字典按 'LEGACY-' 前缀切成 system / legacy 两组
+ * 用于 SERVICE_TYPE 这种有 22 个旧条目的场景
+ *
+ * 返回 antd Select 的 options 格式: [{ label: '系统服务类型', options: [...] }, { label: '历史服务类型 (FineUI)', options: [...] }]
+ */
+export function groupDictByLegacy(
+  items: DictItem[],
+  opts?: { systemLabel?: string; legacyLabel?: string }
+): { label: string; options: DictItem[] }[] {
+  const system = items.filter((d) => !d.code.startsWith('LEGACY-'));
+  const legacy = items.filter((d) => d.code.startsWith('LEGACY-'));
+  const out = [];
+  if (system.length > 0) out.push({ label: opts?.systemLabel ?? '系统服务类型', options: system });
+  if (legacy.length > 0) out.push({ label: opts?.legacyLabel ?? '历史服务类型 (FineUI 迁移)', options: legacy });
+  return out;
+}

@@ -3,7 +3,7 @@
 // 关键链接:
 //   - PERFORMANCE:customer + contract 双向 picker,选合同后自动回填服务类型/金额/日期
 //   - CASE:project picker,选项目后自动回填客户名/服务类型/年份
-import { useEffect } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   ProForm,
   ProFormText,
@@ -15,7 +15,7 @@ import {
 import { Form, Input, InputNumber } from "antd";
 import dayjs from "dayjs";
 import { FormGrid } from "@/components/form";
-import { SERVICE_TYPE_OPTIONS } from "@/lib/enum-maps";
+import { useDict, groupDictByLegacy } from "@/lib/dict-client";
 
 // 通用工具:fetch + 设置多个 form 字段
 async function fetchJSON<T = unknown>(url: string): Promise<T | null> {
@@ -153,7 +153,18 @@ function CustomerPicker({ name, label = "客户", required = true }: { name: [st
 }
 
 /** 合同 picker:按 customerId 过滤,关键词搜合同号/标题;选中后回填服务类型/金额/日期 */
-function ContractPicker({ name, customerId, label = "关联合同" }: { name: [string, string]; customerId?: string; label?: string }) {
+function ContractPicker({
+  name,
+  customerId,
+  label = "关联合同",
+  onContractPicked
+}: {
+  name: [string, string];
+  customerId?: string;
+  label?: string;
+  /** 选中后通知父组件合同的 totalAmount(供合同金额字段强约束) */
+  onContractPicked?: (amount: number | null) => void;
+}) {
   const form = Form.useFormInstance();
   return (
     <ProFormSelect
@@ -206,6 +217,8 @@ function ContractPicker({ name, customerId, label = "关联合同" }: { name: [s
             "attributes.signDate": undefined,
             "attributes.completedDate": undefined
           });
+          // 清合同也清父组件的 contractTotalAmount,释放锁定
+          onContractPicked?.(null);
           return;
         }
         // serviceType 只在用户未主动选过时回填(避免覆盖)
@@ -218,19 +231,29 @@ function ContractPicker({ name, customerId, label = "关联合同" }: { name: [s
         if (Object.keys(patch).length > 0) {
           form?.setFieldsValue(patch);
         }
+        // 通知父组件合同的 totalAmount(供合同金额字段强约束)
+        onContractPicked?.(typeof opt.contractAmount === "number" ? opt.contractAmount : null);
       }}
     />
   );
 }
 
 export function PerformanceFields() {
-  // 用 onChange 回调(在 CustomerPicker/ContractPicker 内部)实现回填,这里只读 customerId 控制 ContractPicker disabled
+  const dictList = useDict("SERVICE_TYPE");
+  const serviceTypeOptions = useMemo(() => groupDictByLegacy(dictList), [dictList]);
+  // 用 onChange 回调(在 CustomerPicker/ContractPicker 内部)实现回填
   const form = Form.useFormInstance();
   const customerId = Form.useWatch(["attributes", "customerId"], form) as string | undefined;
+  // 业绩证明强约束:选合同后合同金额 = contract.totalAmount,字段锁住
+  const [contractTotalAmount, setContractTotalAmount] = useState<number | null>(null);
   return (
     <FormGrid columns={2}>
       <CustomerPicker name={["attributes", "customerId"]} />
-      <ContractPicker name={["attributes", "contractId"]} customerId={customerId} />
+      <ContractPicker
+        name={["attributes", "contractId"]}
+        customerId={customerId}
+        onContractPicked={(amt) => setContractTotalAmount(amt)}
+      />
       <ProFormText
         name={["attributes", "projectName"]}
         label="项目名称"
@@ -253,15 +276,36 @@ export function PerformanceFields() {
         label="服务类型"
         tooltip="从合同自动回填,可手工覆盖"
         rules={[{ required: true, message: "请选择服务类型" }]}
-        options={SERVICE_TYPE_OPTIONS}
+        options={serviceTypeOptions}
         showSearch
       />
       <ProFormDigit
         name={["attributes", "contractAmount"]}
-        label="合同金额(元)"
+        label={contractTotalAmount != null ? "合同金额(元) · 来自所选合同" : "合同金额(元)"}
+        tooltip={
+          contractTotalAmount != null
+            ? `选了合同后,业绩金额必须等于合同金额 ¥${contractTotalAmount.toLocaleString()}`
+            : "未选合同时可自由填写;选了合同后会被锁定"
+        }
         min={0}
-        tooltip="从合同自动回填,可手工覆盖"
-        fieldProps={{ prefix: "¥", style: { width: "100%" } }}
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        rules={contractTotalAmount != null ? [(_rule: any, _value: any) => ({
+          validator(_r: unknown, value: unknown) {
+            if (value == null) return Promise.resolve();
+            if (Number(value) !== contractTotalAmount) {
+              return Promise.reject(new Error(`业绩金额必须等于合同金额(¥${contractTotalAmount!.toLocaleString()})`));
+            }
+            return Promise.resolve();
+          }
+        })] : []}
+        fieldProps={{
+          prefix: "¥",
+          style: { width: "100%" },
+          // 选了合同就锁住,避免用户输入不一致金额
+          disabled: contractTotalAmount != null,
+          // disabled 会让 ProFormDigit 不显示值;加 readOnly 兜底
+          readOnly: contractTotalAmount != null
+        }}
       />
       <ProFormDateTimePicker
         name={["attributes", "signDate"]}
@@ -360,6 +404,8 @@ function ProjectPicker({ name, label = "关联项目" }: { name: [string, string
 }
 
 export function CaseFields() {
+  const dictList = useDict("SERVICE_TYPE");
+  const serviceTypeOptions = useMemo(() => groupDictByLegacy(dictList), [dictList]);
   return (
     <FormGrid columns={2}>
       <ProjectPicker name={["attributes", "projectId"]} />
@@ -380,7 +426,7 @@ export function CaseFields() {
         label="服务类型"
         tooltip="从项目→合同自动回填"
         rules={[{ required: true }]}
-        options={SERVICE_TYPE_OPTIONS}
+        options={serviceTypeOptions}
         showSearch
       />
       <ProForm.Item

@@ -1,7 +1,7 @@
 "use client";
 import { ProTable, type ProColumns } from "@ant-design/pro-components";
-import { App as AntdApp, Button, Tag, Space, Switch } from "antd";
-import { useState } from "react";
+import { App as AntdApp, Button, Tag, Space, Switch, Radio, Table, Empty } from "antd";
+import React, { useState } from "react";
 import { useSWRConfig } from "swr";
 import { Page } from "@/components/page";
 import { PageHeader } from "@/components/page-header";
@@ -23,6 +23,25 @@ export default function DictionariesPage() {
   const { message, modal } = AntdApp.useApp();
   const { mutate } = useSWRConfig();
   const [editing, setEditing] = useState<Dict | null>(null);
+  const [mode, setMode] = useState<"table" | "tree">("table");
+  const [treeData, setTreeData] = useState<{ code: string; label: string; children: unknown[] }[]>([]);
+  const [treeLoading, setTreeLoading] = useState(false);
+
+  // 切到树模式时拉一次 REGION 树
+  React.useEffect(() => {
+    if (mode !== "tree") return;
+    let cancelled = false;
+    setTreeLoading(true);
+    fetch("/api/dictionaries?category=REGION&tree=true", { credentials: "include" })
+      .then((r) => r.json())
+      .then((j) => {
+        if (cancelled) return;
+        if (j.code === 0) setTreeData(j.data);
+        else message.error(j.message);
+      })
+      .finally(() => { if (!cancelled) setTreeLoading(false); });
+    return () => { cancelled = true; };
+  }, [mode, message]);
   const [createOpen, setCreateOpen] = useState(false);
   const [includeInactive, setIncludeInactive] = useState(true);
 
@@ -102,9 +121,22 @@ export default function DictionariesPage() {
         subtitle="15 类白名单内的下拉 / 单选 / 状态枚举;支持增 / 改 / 启停 / 重排"
         actions={
           <Space>
-            <span style={{ fontSize: 13, color: "rgba(0,0,0,0.65)" }}>
-              <Switch size="small" checked={includeInactive} onChange={setIncludeInactive} /> 包含已停用
-            </span>
+            <Radio.Group
+              size="small"
+              value={mode}
+              onChange={(e) => setMode(e.target.value)}
+              optionType="button"
+              style={{ marginRight: 8 }}
+              options={[
+                { label: "表格", value: "table" },
+                { label: "树视图 (REGION)", value: "tree" }
+              ]}
+            />
+            {mode === "table" ? (
+              <span style={{ fontSize: 13, color: "rgba(0,0,0,0.65)" }}>
+                <Switch size="small" checked={includeInactive} onChange={setIncludeInactive} /> 包含已停用
+              </span>
+            ) : null}
             <Button type="primary" onClick={() => setCreateOpen(true)}>
               新增字典项
             </Button>

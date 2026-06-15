@@ -142,6 +142,9 @@ export async function getContract(user: SessionUser, id: string) {
 
 export async function createContract(user: SessionUser, input: ContractCreateInput) {
   requirePermission(user.roleCode, RESOURCE.CONTRACT, ACTION.CREATE);
+  // Dictionary 兜底: 防止 zod 放行后写入任意 serviceType
+  const st = await prisma.dictionary.findUnique({ where: { category_code: { category: "SERVICE_TYPE", code: input.serviceType } } });
+  if (!st) throw new ApiError(ERROR_CODES.VALIDATION_FAILED, `serviceType ${input.serviceType} not in dictionary`, 400);
   // R-03
   const customer = await prisma.customer.findFirst({ where: { id: input.customerId, deletedAt: null } });
   if (!customer) throw new ApiError(ERROR_CODES.NOT_FOUND, "客户不存在", 404);

@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef } from "react";
+import { useMemo, useRef } from "react";
 import {
   ProForm,
   ProFormText,
@@ -12,7 +12,7 @@ import { App as AntdApp, Space, Typography } from "antd";
 import { StatusTag } from "@/components/status-tag";
 import { useParams, useRouter } from "next/navigation";
 import useSWR from "swr";
-import { useDict } from "@/lib/dict-client";
+import { useDict, groupDictByLegacy } from "@/lib/dict-client";
 import { Page } from "@/components/page";
 import { PageHeader } from "@/components/page-header";
 import { FormSection, FormGrid, FormCard, SubmitBar } from "@/components/form";
@@ -41,6 +41,7 @@ export default function EditContractPage() {
   const { data, isLoading } = // eslint-disable-next-line @typescript-eslint/no-explicit-any -- edit page reads many dynamic fields
   useSWR<any>(`/api/contracts/${id}`);
   const serviceType = useDict("SERVICE_TYPE");
+  const serviceTypeOptions = useMemo(() => groupDictByLegacy(serviceType), [serviceType]);
 
   if (isLoading || !data) {
     return (
@@ -134,7 +135,7 @@ export default function EditContractPage() {
               <ProFormSelect
                 name="serviceType"
                 label="服务类型"
-                options={serviceType.map((d) => ({ value: d.code, label: d.label }))}
+                options={serviceTypeOptions}
                 showSearch
                 rules={[{ required: true, message: "请选择服务类型" }]}
                 fieldProps={{ size: "large" }}

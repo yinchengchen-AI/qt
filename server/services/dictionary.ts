@@ -63,6 +63,7 @@ export type DictCreateInput = {
   category: string;
   code: string;
   label: string;
+  parentCode?: string | null;
   sort?: number;
 };
 
@@ -79,11 +80,28 @@ export async function createDict(actor: SessionUser, input: DictCreateInput) {
       409
     );
   }
+  // 父级 code (如果传了) 必须同 category 且存在
+  let resolvedParent: string | null = null;
+  if (input.parentCode) {
+    const parent = await prisma.dictionary.findUnique({
+      where: { category_code: { category: input.category, code: input.parentCode } },
+      select: { code: true }
+    });
+    if (!parent) {
+      throw new ApiError(
+        ERROR_CODES.VALIDATION_FAILED,
+        `父级字典 ${input.category}.${input.parentCode} 不存在`,
+        400
+      );
+    }
+    resolvedParent = parent.code;
+  }
   const d = await prisma.dictionary.create({
     data: {
       category: input.category,
       code: input.code,
       label: input.label,
+      parentCode: resolvedParent,
       sort: input.sort ?? 0
     }
   });
@@ -92,7 +110,7 @@ export async function createDict(actor: SessionUser, input: DictCreateInput) {
     action: "DICTIONARY_CREATE",
     entity: "Dictionary",
     entityId: d.id,
-    after: { category: d.category, code: d.code, label: d.label }
+    after: { category: d.category, code: d.code, label: d.label, parentCode: d.parentCode }
   });
   return d;
 }

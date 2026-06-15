@@ -1,4 +1,4 @@
-"use client";
+import { useEffect, useState } from "react";
 import { App as AntdApp, Form, Input, InputNumber, Modal, Select } from "antd";
 import {
   ALLOWED_DICTIONARY_CATEGORIES,
@@ -15,10 +15,32 @@ type Props = {
 export function CreateDictModal({ open, onClose, onSaved, defaultCategory }: Props) {
   const { message } = AntdApp.useApp();
   const [form] = Form.useForm();
+  // 当前选中的 category:用于过滤 parentCode 选项
+  const category = Form.useWatch("category", form);
+  // 拉取同 category 下所有字典项 (含父级引用)
+  const [parentOptions, setParentOptions] = useState<{ code: string; label: string; parentCode: string | null }[]>([]);
+  const [parentLoading, setParentLoading] = useState(false);
+  useEffect(() => {
+    if (!open || !category) { setParentOptions([]); return; }
+    let cancelled = false;
+    setParentLoading(true);
+    fetch(`/api/dictionaries?category=${encodeURIComponent(category)}&pageSize=200&includeInactive=true`, { credentials: "include" })
+      .then((r) => r.json())
+      .then((j) => {
+        if (cancelled) return;
+        if (j.code === 0) setParentOptions(j.data.list);
+        else setParentOptions([]);
+      })
+      .catch(() => { if (!cancelled) setParentOptions([]); })
+      .finally(() => { if (!cancelled) setParentLoading(false); });
+    return () => { cancelled = true; };
+  }, [open, category]);
 
   async function onSubmit() {
     try {
       const v = await form.validateFields();
+      // 提交时把空 parentCode 删掉,让后端按"无"处理
+      if (v.parentCode === "" || v.parentCode === undefined) delete v.parentCode;
       const r = await fetch("/api/dictionaries", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -50,6 +72,7 @@ export function CreateDictModal({ open, onClose, onSaved, defaultCategory }: Pro
       onOk={onSubmit}
       okText="保存"
       cancelText="取消"
+      width={520}
     >
       <Form layout="vertical" form={form} initialValues={{ category: defaultCategory, sort: 0 }}>
         <Form.Item name="category" label="分类" rules={[{ required: true }]}>
@@ -59,20 +82,40 @@ export function CreateDictModal({ open, onClose, onSaved, defaultCategory }: Pro
               label: DICTIONARY_CATEGORY_LABEL[c] ?? c
             }))}
             showSearch
+            onChange={() => form.setFieldValue("parentCode", undefined)}
           />
         </Form.Item>
         <Form.Item
           name="code"
           label="代码"
+          tooltip="同 category 内唯一;树形字典建议用 R{父 ID}.{ID} 或 {父}.{子} 形式"
           rules={[
             { required: true, max: 40 },
-            { pattern: /^[A-Z][A-Z0-9_]*$/, message: "大写字母/数字/下划线,以大写字母开头" }
+            { pattern: /^[A-Z][A-Z0-9_.]*$/, message: "大写字母/数字/下划线/点,以大写字母开头" }
           ]}
         >
-          <Input placeholder="如 新类型" />
+          <Input placeholder="如 R2.30" />
         </Form.Item>
         <Form.Item name="label" label="标签" rules={[{ required: true, max: 80 }]}>
           <Input maxLength={80} showCount />
+        </Form.Item>
+        <Form.Item
+          name="parentCode"
+          label="父级代码"
+          tooltip="树形字典 (如 REGION) 用,留空 = 顶级;选后 code 要与父级 code 一致(后端校验)"
+        >
+          <Select
+            allowClear
+            loading={parentLoading}
+            disabled={!category}
+            placeholder={category ? "顶级 (无父级)" : "先选分类"}
+            showSearch
+            optionFilterProp="label"
+            options={parentOptions.map((p) => ({
+              value: p.code,
+              label: `${p.code}  ·  ${p.label}${p.parentCode ? `  (父 ${p.parentCode})` : "  (顶级)"}`
+            }))}
+          />
         </Form.Item>
         <Form.Item name="sort" label="排序" rules={[{ type: "number", min: 0, max: 9999 }]}>
           <InputNumber min={0} max={9999} style={{ width: "100%" }} />

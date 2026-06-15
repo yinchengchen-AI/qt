@@ -18,7 +18,7 @@ const attachment = z.object({
 export const contractCreateSchema = z.object({
   customerId: z.string().min(1, "请选择客户"),
   title: z.string().min(2, "合同标题至少 2 个字符").max(200),
-  serviceType: z.enum(SERVICE_TYPE),
+  serviceType: z.string().min(1),  // 兼容 LEGACY-* 旧服务类型 (Dictionary 校验在 service 层做)
   signDate: isoDate,
   startDate: isoDate,
   endDate: isoDate,

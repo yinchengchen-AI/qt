@@ -51,7 +51,7 @@ const PerformanceAttrs = z.object({
   customerName: z.string().min(1, "客户名称必填").max(200),
   customerContact: z.string().max(100).optional().or(z.literal("")),
   customerId: z.string().optional(),                // 关联客户 ID(从 picker 写入)
-  serviceType: z.enum(SERVICE_TYPE),
+  serviceType: z.string().min(1),  // 兼容 LEGACY-*
   contractAmount: z.number().nonnegative("合同金额不能为负").optional(),
   signDate: z.iso.datetime().optional().or(z.literal("")),
   completedDate: z.iso.datetime().optional().or(z.literal("")),
@@ -86,7 +86,7 @@ const CaseAttrs = z.object({
   projectId: z.string().optional(),
   title: z.string().min(1, "案例标题必填").max(200),
   customerName: z.string().min(1, "客户名称必填").max(200),
-  serviceType: z.enum(SERVICE_TYPE),
+  serviceType: z.string().min(1),  // 兼容 LEGACY-*
   year: z.number().int().min(2000).max(2100),
   scope: z.string().min(1, "项目内容必填").max(2000),
   highlights: z.string().max(5000).optional().or(z.literal("")),

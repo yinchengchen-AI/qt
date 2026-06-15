@@ -497,17 +497,23 @@ model OperationLog {
 }
 
 model Dictionary {
-  id        String   @id @default(cuid())
-  category  String
-  code      String
-  label     String
-  sort      Int      @default(0)
-  isActive  Boolean  @default(true)
-  createdAt DateTime @default(now()) @db.Timestamptz(6)
-  updatedAt DateTime @updatedAt @db.Timestamptz(6)
+  id         String   @id @default(cuid())
+  category   String
+  code       String
+  label      String
+  // 自引用:支持树形字典 (如 REGION: 省/市/区/街道)
+  // 同 category 内 parentCode 引用上级 code,顶级为 null
+  // 与 @@unique([category, code]) 联合保证 (category, parentCode, code) 在同一字典内唯一
+  parentCode String?
+  sort       Int      @default(0)
+  isActive   Boolean  @default(true)
+  createdAt  DateTime @default(now()) @db.Timestamptz(6)
+  updatedAt  DateTime @updatedAt @db.Timestamptz(6)
 
   @@unique([category, code])
+  @@unique([category, parentCode, code])
   @@index([category, isActive, sort])
+  @@index([category, parentCode])
 }
 
 // 部门管理（树形自引用）

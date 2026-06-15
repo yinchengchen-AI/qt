@@ -18,6 +18,15 @@ export async function GET(req: Request) {
     if (sp.category && !sp.page && !sp.includeInactive && !sp.keyword) {
       const { category } = legacyQuery.parse(sp);
       requirePermission(user.roleCode, RESOURCE.DICTIONARY, ACTION.READ);
+      // ?tree=true: 返回树形 (仅 REGION 等有 parentCode 的字典)
+      if (sp.tree === "true") {
+        const flat = await prisma.dictionary.findMany({
+          where: { category, isActive: true },
+          orderBy: [{ sort: "asc" }, { code: "asc" }],
+          select: { code: true, label: true, parentCode: true, sort: true }
+        });
+        return ok(buildDictTree(flat));
+      }
       const data = await prisma.dictionary.findMany({
         where: { category, isActive: true },
         orderBy: { sort: "asc" },
@@ -45,4 +54,32 @@ export async function POST(req: Request) {
   } catch (e) {
     return err(e);
   }
+}
+
+/**
+ * 把扁平字典 (有 parentCode 字段) 拼成 antd TreeData 格式
+ *   顶级: { code, label, children: [...] }
+ *   子级递归
+ *   parentCode 引用不存在的 code 会被忽略 (作为顶级)
+ */
+type DictTreeNode = { code: string; label: string; children: DictTreeNode[] };
+function buildDictTree(
+  flat: { code: string; label: string; parentCode: string | null; sort: number }[]
+): DictTreeNode[] {
+  type Node = DictTreeNode & { _raw: typeof flat[number] };
+  const map = new Map<string, Node>();
+  for (const f of flat) {
+    map.set(f.code, { code: f.code, label: f.label, children: [], _raw: f });
+  }
+  const roots: Node[] = [];
+  for (const f of flat) {
+    const node = map.get(f.code)!;
+    if (f.parentCode && map.has(f.parentCode)) {
+      map.get(f.parentCode)!.children.push(node);
+    } else {
+      roots.push(node);
+    }
+  }
+  // UI 只要 code/label/children (去除内部 _raw)
+  return roots.map(({ code, label, children }) => ({ code, label, children }));
 }
