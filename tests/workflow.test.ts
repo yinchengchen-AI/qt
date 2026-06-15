@@ -797,7 +797,6 @@ type StubInstance = {
 const PHASE_PREP: StubInstance["task"]["stage"] = { phase: "PREP", code: "prep", name: "前期准备", sort: 1, isRequired: true };
 const PHASE_REQ_REQ: StubInstance["task"]["stage"] = { phase: "REQUIREMENT", code: "req", name: "需求识别", sort: 2, isRequired: true };
 const PHASE_REQ_OPT: StubInstance["task"]["stage"] = { phase: "REQUIREMENT", code: "opt", name: "需求(可选)", sort: 3, isRequired: false };
-const PHASE_EXEC: StubInstance["task"]["stage"] = { phase: "EXECUTE", code: "exec", name: "服务实施", sort: 4, isRequired: true };
 
 function ins(status: string, stage: StubInstance["task"]["stage"]): StubInstance {
   return { status, task: { stage } };

@@ -117,6 +117,7 @@ npm run seed                # 此时会找到 ADMIN, 写入 9 份工作流模板
 **核心模块**
 
 - 客户 / 合同 / 项目 / 开票 / 回款 五大模块 CRUD + 状态机 + 16 条跨模块校验规则
+- **工作流引擎**(项目级任务):模板按 serviceType 实例化 + 5 态状态机(PENDING/IN_PROGRESS/COMPLETED/SKIPPED/BLOCKED)+ 报告类二审(SUBMIT→APPROVE/REJECT)+ 交付物校验 + 阶段顺序锁定 + 循环任务(止期护栏)+ 时间感知循环生成(cron 入口);模板可视化编辑、跨版本 diff/迁移、Admin 概览/我的任务/超期/看板/JSON 导出
 - 合同/发票附件走 MinIO(presigned 直传,不中转应用服务器)
 - 消息中心(站内信 + 三通道通知:邮件/企微)
 - 统计分析(总览 / 账龄 / 业绩)+ xlsx 导出
@@ -128,12 +129,12 @@ npm run seed                # 此时会找到 ADMIN, 写入 9 份工作流模板
 - **移动端适配**:`<md` 折叠为汉堡 Drawer;列表 / 表单 / 详情 / 统计全场景自适应;`useResponsive` hook 统一断点(Antd 6 默认 xs/sm/md/lg/xl)
 - **「7 天内自动登录」真正生效**:登录页复选框通过自定义 `jwt.encode` 拦截 maxAge 决定 JWT 寿命,勾选 → 7d,不勾选 → 8h
 
-**质量基线(2026-06-11 重测)**
+**质量基线(2026-06-13 重测)**
 
 - `npm run typecheck` 0 errors
-- `npm run lint` 0 errors / 20 warnings(react-hooks 等未启用规则已降噪,剩 20 个 `@typescript-eslint/no-unused-vars` / `no-explicit-any` 业务 warnings,不阻塞)
-- `npm test` 17/17 通过
-- `npm run build` 成功(6 个表单页 JSX 嵌套修复后)
+- `npm run lint` 0 errors / 19 warnings(react-hooks 等未启用规则已降噪,剩 19 个 `@typescript-eslint/no-unused-vars` / `no-explicit-any` 业务 warnings,不阻塞)
+- `npm test` **142/142 通过**(6 个测试文件:`workflow` `permissions` `r17-gate` `recurring-cap` `storage-presign` `milestones-removed`)
+- `npm run build` 成功
 - dev server `/login` `/dashboard` `/contracts` 200
 
 **生产硬化(2026-06-11 落盘)**
@@ -149,6 +150,20 @@ npm run seed                # 此时会找到 ADMIN, 写入 9 份工作流模板
 - **docs(review)**:落盘 `docs/部署前代码审查 — qt-biz v0.1.0.md`,3 P0 阻断 + 4 P1 风险全部修复
 
 ## 最近更新
+
+### v0.2.0(2026-06-13)工作流引擎读路径收敛 + 修 reviewTask 死代码
+
+- **refactor(workflow)**:抽 `lib/workflow-view.ts` 共享 helper(纯函数,无 prisma 依赖)。`computePhaseView(instances, { isPhaseBlocking?, isPartial? })` 集中了 `getProjectWorkflow` / `getProjectKanban` 共用的 phase 聚合 + 状态计算 + lockReason 文案:
+  - `isPhaseBlocking` 默认 `requiredUnfinishedCount>0`(workflow 严格语义);kanban 传 `anyActive` 保留旧"任意 active 即阻塞"简化行为
+  - `isPartial` 默认 `anyActive`(kanban 语义);workflow 显式传 `completed>0` 保留旧 `computePhaseStatesForProject` 行为(纯 PENDING phase 显 `READY` 而非 `PARTIAL`)
+  - 空 phase 永远 `READY`,不被前序阻塞(与旧实现一致)
+  - `WORKFLOW_PHASE_ORDER` 5 个 phase 都建条目,调用方无需默认兜底
+  - `pickMajorityTemplateId(instances)` 给 `getProjectUpgradeCheck` / `exportProjectWorkflow` 共用,顺手把重复的 `WORKFLOW_PHASE_TO_CN` 映射也合并过来。删掉旧 `computePhaseStatesForProject` 私有函数(35 行,async 但 `_tx` / `_projectId` 参数无人使用)
+- **fix(workflow)**: `reviewTask` 里"submit 校核通知项目负责人 + 管理员"的 `emit("WORKFLOW_REVIEW_REQUESTED")` 块原本写在 `return updated;` 之后,**死代码**——总线 / dispatcher 已注册但永远不触发。挪到 return 之前 + 调换 audit 顺序后,submit 会真正发通知
+- **fix(workflow)**: `getTaskHistory` 把内联 SALES 行级隔离检查换成 `loadInstanceForUpdate`,与其他 service 一致(原内联检查不查合同 `deletedAt`,SALES 边界有偏差)
+- **test(workflow)**: `tests/workflow.test.ts` +168 行,`computePhaseView` 8 用例(空 / 全完成 / 锁 / 不阻塞 / SKIPPED / kanban PARTIAL / kanban 阻塞非空后续 / byStatus)+ `pickMajorityTemplateId` 4 用例(空 / 多数 / 并列 / null 跳过),直接覆盖读路径行为
+
+行为完全等价:`tsc --noEmit` 0 错,`vitest run` 142/142。`server/services/workflow.ts` 1678 → 1593 行,核心读路径逻辑从三处散落变成单一来源。
 
 ### v0.2.0(2026-06-12)移动端适配 + 自动登录(待发布)
 
