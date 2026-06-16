@@ -2,7 +2,7 @@ import { describe, it, expect } from "vitest";
 import { groupDictByLegacy } from "@/lib/dict-client";
 
 describe("groupDictByLegacy", () => {
-  it("把字典按 LEGACY- 前缀切成 system / legacy 两组", () => {
+  it("把字典按 LEGACY- 前缀切成 system / legacy 两组, 并把 code 映射成 value (antd Select 兼容)", () => {
     const items = [
       { code: "SAFETY_CONSULT", label: "管理咨询" },
       { code: "HAZARD_ANA", label: "安全隐患排查" },
@@ -15,18 +15,21 @@ describe("groupDictByLegacy", () => {
 
     expect(grouped[0]!.label).toBe("系统服务类型");
     expect(grouped[0]!.options).toHaveLength(3);
-    expect(grouped[0]!.options[0]!.code).toBe("SAFETY_CONSULT");
+    // 关键: 必须是 { value, label } 而不是 { code, label }
+    expect(grouped[0]!.options[0]!.value).toBe("SAFETY_CONSULT");
+    expect(grouped[0]!.options[0]!.label).toBe("管理咨询");
 
     expect(grouped[1]!.label).toBe("历史服务类型 (FineUI 迁移)");
     expect(grouped[1]!.options).toHaveLength(2);
-    expect(grouped[1]!.options[0]!.code).toBe("LEGACY-1");
-    expect(grouped[1]!.options[1]!.code).toBe("LEGACY-2.8");
+    expect(grouped[1]!.options[0]!.value).toBe("LEGACY-1");
+    expect(grouped[1]!.options[1]!.value).toBe("LEGACY-2.8");
   });
 
   it("空 legacy 数组时不返回空分组", () => {
     const grouped = groupDictByLegacy([{ code: "X", label: "Y" }]);
     expect(grouped).toHaveLength(1);
     expect(grouped[0]!.label).toBe("系统服务类型");
+    expect(grouped[0]!.options[0]!.value).toBe("X");
   });
 
   it("空 system 数组时不返回空分组", () => {
