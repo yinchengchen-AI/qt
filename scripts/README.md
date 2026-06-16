@@ -34,6 +34,23 @@ scripts/
 | 创建管理员 (任一环境) | `pnpm create-admin --employeeNo admin --name ... --email ... --role ADMIN` |
 | 重新生成行政区划数据 | `pnpm divisions` |
 
+## Prisma migrate 三件套 (npm scripts)
+
+| 用途 | 命令 | 何时用 |
+|------|------|--------|
+| 改 schema 时生成新 migration | `pnpm prisma:migrate` (= `prisma migrate dev`) | 本地开发 |
+| 看一下当前 DB 跟 migrations 差多远 | `pnpm prisma:status` (= `prisma migrate status`) | 本地/CI drift 自检 |
+| 把 migrations 应用到目标 DB,不生成新文件 | `pnpm prisma:deploy` (= `prisma migrate deploy`) | 生产部署 / CI 测试环境 |
+
+`prisma:migrate` 会改 schema,只能本地跑;`prisma:deploy` 只 apply 不改 schema,
+是 `scripts/prod/deploy.sh` 实际执行的命令(走 `MIGRATION_DATABASE_URL` 降权账号)。
+
+## CI 漂移校验
+
+`.github/workflows/ci.yml` 在 PR 上自动跑 `pnpm prisma:status`,
+**有 unapplied migration 会直接红灯**,避免再次出现"本地能跑、线上 500"的漂移。
+三件事也跑在 CI 里: lint、typecheck、vitest,都基于一次性 Postgres 16 service container。
+
 ## 脚本依赖 / 设计
 
 - `prod/backup.sh` **同时被 dev 复用**: 行为差异由 `DOCKER_PG` / `BACKUP_DIR` / `BACKUP_MIRROR_MINIO` 控制, 不需要 `backup-prod.sh` 副本。

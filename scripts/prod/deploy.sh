@@ -12,9 +12,9 @@ pnpm install --frozen-lockfile
 
 echo "==> source .env (for DATABASE_URL / MIGRATION_DATABASE_URL)"
 set -a; . ./.env; set +a
-echo "==> prisma migrate deploy (with MIGRATION_DATABASE_URL)"
+echo "==> prisma migrate deploy (用 MIGRATION_DATABASE_URL 走降权账号,只 apply 不改 schema)"
 
-DATABASE_URL="$MIGRATION_DATABASE_URL" npx --no-install prisma migrate deploy
+DATABASE_URL="$MIGRATION_DATABASE_URL" npm run prisma:deploy
 
 echo "==> prisma generate (sync client to current schema; postinstall only runs patch-package)"
 npx --no-install prisma generate

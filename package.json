@@ -17,6 +17,8 @@
     "postinstall": "patch-package",
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate dev",
+    "prisma:deploy": "prisma migrate deploy",
+    "prisma:status": "prisma migrate status",
     "prisma:studio": "prisma studio",
     "reset-password": "tsx scripts/shared/reset-password.ts",
     "seed": "tsx prisma/seed.ts",

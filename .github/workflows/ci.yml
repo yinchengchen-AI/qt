@@ -1,0 +1,118 @@
+name: ci
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+# 取消旧 run,避免反复 push 浪费 CI 配额
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # 1) Prisma drift 检查:扔一个一次性 PG,把 migrations 全部 apply 进去,
+  #    然后跑 `prisma migrate status`。任何 unapplied migration 都会让 PR 红灯。
+  prisma-drift:
+    name: prisma drift
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: qitai
+          POSTGRES_PASSWORD: qitai_pass
+          POSTGRES_DB: qt_biz_ci
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U qitai -d qt_biz_ci"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      DATABASE_URL: postgresql://qitai:qitai_pass@localhost:5432/qt_biz_ci?schema=public
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+      - name: install
+        run: pnpm install --frozen-lockfile
+      - name: prisma generate
+        run: pnpm prisma:generate
+      - name: prisma migrate status (drift check)
+        # 必须 exit 0,否则 PR 失败。把 throw-on-drift 当作 CI 的一道闸:
+        # 如果有人新加了 schema 但忘了写 migration,这里会报 "Following migrations have not yet been applied"
+        run: pnpm prisma:status
+
+  # 2) Lint + typecheck:不依赖 DB/构建,反馈最快
+  lint-typecheck:
+    name: lint + typecheck
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+      - name: install
+        run: pnpm install --frozen-lockfile
+      - name: lint
+        run: pnpm lint
+      - name: typecheck
+        run: pnpm typecheck
+
+  # 3) 跑 vitest。需要真实 PG schema(用一次性 DB + prisma:deploy 起一次)
+  test:
+    name: vitest
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: qitai
+          POSTGRES_PASSWORD: qitai_pass
+          POSTGRES_DB: qt_biz_ci
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U qitai -d qt_biz_ci"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      DATABASE_URL: postgresql://qitai:qitai_pass@localhost:5432/qt_biz_ci?schema=public
+      # 下面三个 dummy 是 lib/env.ts 校验强制的,本地 .env 里有,
+      # CI 没有 .env 所以手工注入;32 字符 dummy secret 满足 zod min(32),
+      # APP_ENC_KEY_HEX 全 0 是 .env.example 的默认值,生产环境会被 assertProductionConfig 拦下
+      NEXTAUTH_SECRET: ci-dummy-secret-please-change-me-in-real-env-32chars
+      NEXTAUTH_URL: http://localhost:3000
+      APP_ENC_KEY_HEX: 0000000000000000000000000000000000000000000000000000000000000000
+      NODE_ENV: test
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+      - name: install
+        run: pnpm install --frozen-lockfile
+      - name: prisma generate
+        run: pnpm prisma:generate
+      - name: prisma deploy (apply migrations to throwaway DB)
+        run: pnpm prisma:deploy
+      - name: vitest
+        # 当前测试集以源文件断言 + 纯函数单测为主,不需要 seed;
+        # 如果未来加真集成测试,这里先 `pnpm prisma migrate reset --force --skip-seed && pnpm seed` 再跑
+        run: pnpm test
