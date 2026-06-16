@@ -5,6 +5,7 @@ import { type SessionUser } from "@/lib/session";
 import { requirePermission, RESOURCE, ACTION } from "@/lib/permissions";
 import type { ContractCreateInput, ContractUpdateInput, ReviewActionInput } from "@/lib/validators/contract";
 import { ownerEq, parseStatusList } from "@/lib/ownership";
+import { getBillingStatus } from "@/lib/contract-billing";
 import { Prisma } from "@prisma/client";
 import { audit } from "@/server/audit";
 import { emit, listAdminUserIds } from "@/server/events/bus";
@@ -114,7 +115,38 @@ export async function listContracts(
     }),
     prisma.contract.count({ where })
   ]);
-  return { list, total, page, pageSize };
+
+  // 批量聚合每张合同的已开票(Invoice.status=ISSUED)与已回款(Payment.status IN CONFIRMED,RECONCILED)
+  // 避免 N+1;与 server/services/statistics.ts:18-30 语义一致
+  const ids = list.map((c) => c.id);
+  const [invoiceAgg, paymentAgg] = ids.length
+    ? await Promise.all([
+        prisma.invoice.groupBy({
+          by: ["contractId"],
+          where: { contractId: { in: ids }, status: "ISSUED", deletedAt: null },
+          _sum: { amount: true }
+        }),
+        prisma.payment.groupBy({
+          by: ["contractId"],
+          where: { contractId: { in: ids }, status: { in: ["CONFIRMED", "RECONCILED"] }, deletedAt: null },
+          _sum: { amount: true }
+        })
+      ])
+    : [[], []];
+  const invoicedByContract = new Map(invoiceAgg.map((r) => [r.contractId, Number(r._sum.amount ?? 0)]));
+  const paidByContract = new Map(paymentAgg.map((r) => [r.contractId, Number(r._sum.amount ?? 0)]));
+
+  const enriched = list.map((c) => {
+    const invoicedAmount = invoicedByContract.get(c.id) ?? 0;
+    const paidAmount = paidByContract.get(c.id) ?? 0;
+    return {
+      ...c,
+      invoicedAmount,
+      paidAmount,
+      billingStatus: getBillingStatus(invoicedAmount, Number(c.totalAmount))
+    };
+  });
+  return { list: enriched, total, page, pageSize };
 }
 
 export async function getContract(user: SessionUser, id: string) {
