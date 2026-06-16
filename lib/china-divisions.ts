@@ -1453,6 +1453,11 @@ export const DIVISIONS: DivisionNode[] = [
                 "value": "330113_塘栖镇",
                 "label": "塘栖镇",
                 "isLeaf": true
+              },
+              {
+                "value": "330113_临平经济技术开发区",
+                "label": "临平经济技术开发区",
+                "isLeaf": true
               }
             ]
           },

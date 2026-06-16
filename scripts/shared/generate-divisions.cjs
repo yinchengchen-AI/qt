@@ -67,7 +67,7 @@ const HANGZHOU_TOWNS = {
   ],
   "330113": [ // 临平区
     "临平街道","东湖街道","南苑街道","星桥街道","乔司街道","运河街道",
-    "崇贤街道","塘栖镇"
+    "崇贤街道","塘栖镇","临平经济技术开发区"
   ],
   "330114": [ // 钱塘区
     "下沙街道","白杨街道","河庄街道","义蓬街道","新湾街道","临江街道","前进街道"
@@ -144,9 +144,9 @@ export type DivisionNode = {
 export const DIVISIONS: DivisionNode[] = ${JSON.stringify(tree, null, 2)};
 `;
 
-fs.writeFileSync(path.join(__dirname, "..", "lib", "china-divisions.ts"), out, "utf8");
+fs.writeFileSync(path.join(__dirname, "..", "..", "lib", "china-divisions.ts"), out, "utf8");
 console.log("Generated lib/china-divisions.ts");
 console.log("Provinces:", tree.length);
 console.log("Hangzhou districts:", Object.keys(HANGZHOU_DISTRICTS).length);
 console.log("Hangzhou towns total:", Object.values(HANGZHOU_TOWNS).reduce((a, t) => a + t.length, 0));
-console.log("File size:", (fs.statSync(path.join(__dirname, "..", "lib", "china-divisions.ts")).size / 1024).toFixed(1), "KB");
+console.log("File size:", (fs.statSync(path.join(__dirname, "..", "..", "lib", "china-divisions.ts")).size / 1024).toFixed(1), "KB");
