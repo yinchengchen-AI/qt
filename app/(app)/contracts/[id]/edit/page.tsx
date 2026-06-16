@@ -13,6 +13,7 @@ import { StatusTag } from "@/components/status-tag";
 import { useParams, useRouter } from "next/navigation";
 import useSWR from "swr";
 import { useDict, groupDictByLegacy } from "@/lib/dict-client";
+import { useContractTitleAutofill } from "@/lib/use-contract-title-autofill";
 import { Page } from "@/components/page";
 import { PageHeader } from "@/components/page-header";
 import { FormSection, FormGrid, FormCard, SubmitBar } from "@/components/form";
@@ -42,6 +43,11 @@ export default function EditContractPage() {
   useSWR<any>(`/api/contracts/${id}`);
   const serviceType = useDict("SERVICE_TYPE");
   const serviceTypeOptions = useMemo(() => groupDictByLegacy(serviceType), [serviceType]);
+  const { tryAutoFill, syncFromInitial } = useContractTitleAutofill({
+    formRef,
+    serviceType,
+    customerName: (data as { customerName?: string } | undefined)?.customerName ?? ""
+  });
 
   if (isLoading || !data) {
     return (
@@ -63,6 +69,13 @@ export default function EditContractPage() {
         </FormCard>
       </Page>
     );
+  }
+
+  // 既有标题若就是自动生成的格式,初始化 hook 的 ref 让后续 serviceType/signDate 改动顺带重算;
+  // 手工改过的标题不动
+  if (data) {
+    const y = data.signDate ? new Date(data.signDate).getFullYear() : null;
+    syncFromInitial(data.title, data.serviceType, y);
   }
 
   return (
@@ -157,7 +170,10 @@ export default function EditContractPage() {
                 options={serviceTypeOptions}
                 showSearch
                 rules={[{ required: true, message: "请选择服务类型" }]}
-                fieldProps={{ size: "large" }}
+                fieldProps={{
+                  size: "large",
+                  onChange: () => tryAutoFill()
+                }}
               />
               <ProFormSelect
                 name="paymentMethod"
@@ -171,7 +187,16 @@ export default function EditContractPage() {
 
           <FormSection title="服务期">
             <FormGrid columns={3}>
-              <ProFormDatePicker name="signDate" label="签订日期" rules={[{ required: true }]} fieldProps={{ size: "large", style: { width: "100%" } }} />
+              <ProFormDatePicker
+                name="signDate"
+                label="签订日期"
+                rules={[{ required: true }]}
+                fieldProps={{
+                  size: "large",
+                  style: { width: "100%" },
+                  onChange: () => tryAutoFill()
+                }}
+              />
               <ProFormDatePicker name="startDate" label="服务起期" rules={[{ required: true }]} fieldProps={{ size: "large", style: { width: "100%" } }} />
               <ProFormDatePicker
                 name="endDate"

@@ -13,6 +13,7 @@ import { App as AntdApp, Space, Tag, Typography } from "antd";
 
 import { useRouter } from "next/navigation";
 import { useDict, groupDictByLegacy } from "@/lib/dict-client";
+import { useContractTitleAutofill } from "@/lib/use-contract-title-autofill";
 import { proCustomRequest } from "@/lib/upload-client";
 import { PreviewableProFormUploadButton as UploadButton } from "@/components/file/pro-form-upload-button";
 import { Page } from "@/components/page";
@@ -56,6 +57,7 @@ export default function NewContractPage() {
   const serviceType = useDict("SERVICE_TYPE");
   const serviceTypeOptions = useMemo(() => groupDictByLegacy(serviceType), [serviceType]);
   const [selectedCustomerLabel, setSelectedCustomerLabel] = useState("");
+  const { tryAutoFill } = useContractTitleAutofill({ formRef, serviceType, customerName: selectedCustomerLabel });
 
   // 会话异步加载完成后再把当前用户写入签订人默认值;initialValue 是一次性应用,
   // 第一次渲染时 session 还没回来,这里补一次 setFieldValue
@@ -122,7 +124,10 @@ export default function NewContractPage() {
                   optionFilterProp: "label",
                   onChange: (_value: unknown, option: unknown) => {
                     const o = option as { label?: string } | undefined;
-                    setSelectedCustomerLabel(o?.label ?? "");
+                    const label = o?.label ?? "";
+                    setSelectedCustomerLabel(label);
+                    // 客户/服务类型/签订日变化时尝试自动填充合同标题(空标题或仍是上次自动填充值才覆盖)
+                    tryAutoFill({ customerName: label });
                   }
                 }}
                 request={async (params: { keyWords?: string }) => {
@@ -184,7 +189,10 @@ export default function NewContractPage() {
                 options={serviceTypeOptions}
                 rules={[{ required: true, message: "请选择服务类型" }]}
                 showSearch
-                fieldProps={{ size: "large" }}
+                fieldProps={{
+                  size: "large",
+                  onChange: () => tryAutoFill()
+                }}
               />
               <ProFormSelect
                 name="paymentMethod"
@@ -225,7 +233,16 @@ export default function NewContractPage() {
 
           <FormSection title="服务期">
             <FormGrid columns={3}>
-              <ProFormDatePicker name="signDate" label="签订日期" rules={[{ required: true }]} fieldProps={{ size: "large", style: { width: "100%" } }} />
+              <ProFormDatePicker
+                name="signDate"
+                label="签订日期"
+                rules={[{ required: true }]}
+                fieldProps={{
+                  size: "large",
+                  style: { width: "100%" },
+                  onChange: () => tryAutoFill()
+                }}
+              />
               <ProFormDatePicker name="startDate" label="服务起期" rules={[{ required: true }]} fieldProps={{ size: "large", style: { width: "100%" } }} />
               <ProFormDatePicker
                 name="endDate"
