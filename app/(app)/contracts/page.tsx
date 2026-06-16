@@ -1,6 +1,6 @@
 "use client";
 import { ProTable } from "@ant-design/pro-components";
-import { Button, App as AntdApp } from "antd";
+import { Button, App as AntdApp, Tag } from "antd";
 import { DownloadOutlined } from "@ant-design/icons";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -14,6 +14,7 @@ import { useDict } from "@/lib/dict-client";
 import { downloadExcel } from "@/lib/excel-client";
 import { CurrencyCell, DateCell } from "@/components/table-cells";
 import { useResponsive } from "@/lib/use-breakpoint";
+import { BILLING_STATUS_MAP } from "@/lib/enum-maps";
 
 type Row = {
   id: string;
@@ -23,6 +24,9 @@ type Row = {
   serviceType: string;
   signDate: string;
   totalAmount: string;
+  invoicedAmount: number;
+  paidAmount: number;
+  billingStatus: "NOT_STARTED" | "IN_PROGRESS" | "COMPLETED";
   status: string;
 };
 
@@ -105,6 +109,18 @@ export default function ContractsPage() {
           },
           { title: "签订日", dataIndex: "signDate", search: false, valueType: "date", width: 120, render: (_, r) => <DateCell value={r.signDate} /> },
           { title: "总额(元)", dataIndex: "totalAmount", search: false, width: 140, render: (_, r) => <CurrencyCell value={r.totalAmount} /> },
+          { title: "已开票(元)", dataIndex: "invoicedAmount", search: false, width: 140, render: (_, r) => <CurrencyCell value={r.invoicedAmount} /> },
+          { title: "已回款(元)", dataIndex: "paidAmount", search: false, width: 140, render: (_, r) => <CurrencyCell value={r.paidAmount} /> },
+          {
+            title: "开票状态",
+            dataIndex: "billingStatus",
+            search: false,
+            width: 110,
+            render: (_, r) => {
+              const color = r.billingStatus === "COMPLETED" ? "success" : r.billingStatus === "IN_PROGRESS" ? "processing" : "default";
+              return <Tag color={color}>{BILLING_STATUS_MAP[r.billingStatus] ?? r.billingStatus}</Tag>;
+            }
+          },
           {
             title: "状态",
             dataIndex: "status",
