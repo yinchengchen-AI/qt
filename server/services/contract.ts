@@ -4,7 +4,7 @@ import { ERROR_CODES } from "@/types/errors";
 import { type SessionUser } from "@/lib/session";
 import { requirePermission, RESOURCE, ACTION } from "@/lib/permissions";
 import type { ContractCreateInput, ContractUpdateInput, ReviewActionInput } from "@/lib/validators/contract";
-import { ownerEq, parseStatusList } from "@/lib/ownership";
+import { ownerEq, ownerViaContract, parseStatusList } from "@/lib/ownership";
 import { getBillingStatus } from "@/lib/contract-billing";
 import type { BillingStatus } from "@/types/enums";
 import { Prisma } from "@prisma/client";
@@ -506,16 +506,16 @@ export async function getContractOverview(
 
   const [projects, invoices, payments, reviewLogs] = await Promise.all([
     prisma.project.findMany({
-      where: { contractId, deletedAt: null, ...ownerEq(user) },
+      where: { contractId, deletedAt: null, ...(ownerViaContract(user) as Prisma.ProjectWhereInput) },
       include: { _count: { select: { taskInstances: { where: { deletedAt: null } } } } },
       orderBy: { createdAt: "desc" }
     }),
     prisma.invoice.findMany({
-      where: { contractId, deletedAt: null, ...ownerEq(user) },
+      where: { contractId, deletedAt: null, ...(ownerViaContract(user) as Prisma.InvoiceWhereInput) },
       orderBy: { applyDate: "desc" }
     }),
     prisma.payment.findMany({
-      where: { contractId, deletedAt: null, ...ownerEq(user) },
+      where: { contractId, deletedAt: null, ...(ownerViaContract(user) as Prisma.PaymentWhereInput) },
       orderBy: { receivedAt: "desc" }
     }),
     prisma.contractReviewLog.findMany({

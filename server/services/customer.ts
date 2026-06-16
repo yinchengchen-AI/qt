@@ -9,7 +9,7 @@ import { buildCustomerUpdateData } from "@/lib/customer-update";
 import type { Prisma } from "@prisma/client";
 import { audit } from "@/server/audit";
 import { rlsTransaction } from "@/lib/rls";
-import { ownerEq, parseStatusList } from "@/lib/ownership";
+import { ownerEq, ownerViaContract, parseStatusList } from "@/lib/ownership";
 
 export async function listCustomers(
   user: SessionUser,
@@ -243,15 +243,15 @@ export async function getCustomerOverview(
   const contractIds = contracts.map((c) => c.id);
   const [projects, invoices, payments] = await Promise.all([
     prisma.project.findMany({
-      where: { contractId: { in: contractIds }, deletedAt: null, ...ownerEq(user) },
+      where: { contractId: { in: contractIds }, deletedAt: null, ...(ownerViaContract(user) as Prisma.ProjectWhereInput) },
       orderBy: { createdAt: "desc" }
     }),
     prisma.invoice.findMany({
-      where: { contractId: { in: contractIds }, deletedAt: null, ...ownerEq(user) },
+      where: { contractId: { in: contractIds }, deletedAt: null, ...(ownerViaContract(user) as Prisma.InvoiceWhereInput) },
       orderBy: { applyDate: "desc" }
     }),
     prisma.payment.findMany({
-      where: { contractId: { in: contractIds }, deletedAt: null, ...ownerEq(user) },
+      where: { contractId: { in: contractIds }, deletedAt: null, ...(ownerViaContract(user) as Prisma.PaymentWhereInput) },
       orderBy: { receivedAt: "desc" }
     })
   ]);
