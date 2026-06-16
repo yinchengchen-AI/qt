@@ -96,6 +96,10 @@ export const PAYMENT_STATUS = [
 ] as const;
 export type PaymentStatus = (typeof PAYMENT_STATUS)[number];
 
+/* === 合同开票状态(派生字段:由 invoicedAmount 与 totalAmount 比较得出,不入库) === */
+export const BILLING_STATUS = ["NOT_STARTED", "IN_PROGRESS", "COMPLETED"] as const;
+export type BillingStatus = (typeof BILLING_STATUS)[number];
+
 export const MESSAGE_TYPE = [
   "CONTRACT_PENDING_REVIEW",
   "CONTRACT_EXPIRING",

@@ -256,3 +256,10 @@ export const ASSET_STATUS_MAP: Record<string, string> = {
   EXPIRED:       "已过期",
   ARCHIVED:      "已归档"
 };
+
+/* === 合同开票状态(列表/详情/导出共用中文标签) === */
+export const BILLING_STATUS_MAP: Record<string, string> = {
+  NOT_STARTED: "未开盘",
+  IN_PROGRESS: "开盘中",
+  COMPLETED:   "开盘已完成"
+};
