@@ -72,6 +72,7 @@
     "eslint-config-next": "16.2.7",
     "mysql2": "^3.22.5",
     "patch-package": "^8.0.0",
+    "pinyin-pro": "^3.28.1",
     "prisma": "7.8.0",
     "tsx": "4.19.2",
     "typescript": "6.0.3",

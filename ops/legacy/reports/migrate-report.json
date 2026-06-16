@@ -1,62 +1,63 @@
 {
-  "startedAt": "2026-06-15T07:53:36.840Z",
-  "dryRun": false,
+  "startedAt": "2026-06-16T04:11:07.585Z",
+  "dryRun": true,
   "stages": {
     "A0_DICT_SERVICE_TYPE": {
-      "upserts": 22,
-      "ms": 29,
-      "finishedAt": "2026-06-15T07:53:37.003Z"
+      "upserts": 0,
+      "ms": 0,
+      "finishedAt": "2026-06-16T04:11:07.723Z"
     },
     "A_DICT_REGION": {
-      "upserts": 26,
-      "ms": 17,
-      "finishedAt": "2026-06-15T07:53:37.020Z"
+      "upserts": 0,
+      "ms": 0,
+      "finishedAt": "2026-06-16T04:11:07.723Z"
     },
     "B_DEPT": {
-      "upserts": 3,
-      "ms": 4,
-      "finishedAt": "2026-06-15T07:53:37.024Z"
+      "upserts": 0,
+      "ms": 0,
+      "finishedAt": "2026-06-16T04:11:07.723Z"
     },
     "C_USER": {
-      "upserts": 52,
-      "ms": 281,
-      "finishedAt": "2026-06-15T07:53:37.305Z"
+      "upserts": 0,
+      "pinyinDup": 0,
+      "ms": 220,
+      "finishedAt": "2026-06-16T04:11:07.943Z"
     },
     "D_CUSTOMER": {
-      "customers": 2091,
-      "contacts": 1838,
-      "dups": 2,
-      "noPhone": 253,
-      "noArea": 17,
-      "ms": 5446,
-      "finishedAt": "2026-06-15T07:53:42.751Z"
+      "customers": 0,
+      "contacts": 0,
+      "dups": 0,
+      "noPhone": 0,
+      "noArea": 0,
+      "ms": 1,
+      "finishedAt": "2026-06-16T04:11:07.944Z"
     },
     "E_CONTRACT_PROJECT": {
-      "contracts": 4656,
-      "projects": 4656,
-      "contractNoKept": 1375,
+      "contracts": 0,
+      "projects": 0,
+      "contractNoKept": 1396,
       "contractNoDedup": 31,
-      "contractNoGenerated": 3281,
-      "amountZeroFixed": 146,
-      "ms": 19766,
-      "finishedAt": "2026-06-15T07:54:02.517Z"
+      "contractNoGenerated": 3265,
+      "amountZeroFixed": 145,
+      "ms": 30,
+      "finishedAt": "2026-06-16T04:11:07.974Z"
     },
     "F_INVOICE": {
-      "invoices": 4926,
+      "invoices": 0,
       "invoiceNoDup": 559,
-      "ms": 7305,
-      "finishedAt": "2026-06-15T07:54:09.822Z"
+      "ms": 1,
+      "finishedAt": "2026-06-16T04:11:07.976Z"
     },
     "G_PAYMENT": {
-      "payments": 5170,
+      "payments": 0,
       "skippedZero": 1,
-      "withInvoice": 3266,
-      "withoutInvoice": 1904,
-      "ms": 18963,
-      "finishedAt": "2026-06-15T07:54:28.785Z"
+      "withInvoice": 0,
+      "withoutInvoice": 0,
+      "ms": 0,
+      "finishedAt": "2026-06-16T04:11:07.976Z"
     }
   },
   "errors": [],
   "warnings": [],
-  "finishedAt": "2026-06-15T07:54:28.785Z"
+  "finishedAt": "2026-06-16T04:11:07.976Z"
 }

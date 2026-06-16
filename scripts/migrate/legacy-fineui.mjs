@@ -17,6 +17,7 @@ import bcrypt from "bcrypt";
 import { config } from "dotenv";
 import { writeFileSync, mkdirSync } from "node:fs";
 import path from "node:path";
+import { pinyin as toPinyin } from "pinyin-pro";
 
 import {
   SERVICE_TYPE_LEGACY,
@@ -212,19 +213,41 @@ async function main() {
   {
     const t0 = Date.now();
     let upserts = 0;
-    const passwordHash = await bcrypt.hash(LEGACY_DEFAULT_PASSWORD, 12);
-    for (const u of users) {
-      const employeeNo = `LEGACY-${u.ID}`;
-      const email = `legacy.${u.ID}@qt.local`;
+    let pinyinDup = 0;
+    // 工号 = 姓名的拼音 (lowercase, 无空格无音调); 重名加 -2/-3...
+    const baseEmployeeNo = users.map((u) => {
+      const cn = (u.ChineseName || u.Name || "").toString();
+      // pinyin-pro 把非中文字符保留; 已是字母数字的直接透传
+      const py = toPinyin(cn, { toneType: "none", type: "array", nonZh: "consecutive" })
+        .join("")
+        .toLowerCase()
+        .replace(/[^a-z0-9]/g, "");
+      return py || `u${u.ID}`;
+    });
+    const used = new Map();
+    const employeeNos = baseEmployeeNo.map((b) => {
+      const n = used.get(b) || 0;
+      used.set(b, n + 1);
+      return n === 0 ? b : `${b}${n + 1}`;
+    });
+    baseEmployeeNo.forEach((b, i) => {
+      if (employeeNos[i] !== b) pinyinDup++;
+    });
+    const passwordHash = await bcrypt.hash("123456", 12);
+    for (let i = 0; i < users.length; i++) {
+      const u = users[i];
+      const employeeNo = employeeNos[i];
+      const email = `${employeeNo}@qt.local`;
       const status = ENABLED_TO_USER_STATUS[u.Enabled] ?? "DISABLED";
       const departmentId = u.DeptID && idMap.dept[u.DeptID] ? idMap.dept[u.DeptID] : null;
+      const displayName = u.ChineseName || u.Name || employeeNo;
       if (!DRY_RUN) {
         const r = await pg.user.upsert({
           where: { employeeNo },
-          update: { name: u.ChineseName || u.Name, email, passwordHash, roleId: adminRole.id, departmentId, status },
+          update: { name: displayName, email, passwordHash, roleId: adminRole.id, departmentId, status },
           create: {
             employeeNo,
-            name: u.ChineseName || u.Name,
+            name: displayName,
             email,
             passwordHash,
             roleId: adminRole.id,
@@ -238,7 +261,7 @@ async function main() {
         idMap.user[u.ID] = `user-legacy-${u.ID}`;
       }
     }
-    done("C_USER", { upserts, ms: Date.now() - t0 });
+    done("C_USER", { upserts, pinyinDup, ms: Date.now() - t0 });
   }
 
   // ============================================================
