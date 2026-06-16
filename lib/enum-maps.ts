@@ -259,7 +259,7 @@ export const ASSET_STATUS_MAP: Record<string, string> = {
 
 /* === 合同开票状态(列表/详情/导出共用中文标签) === */
 export const BILLING_STATUS_MAP: Record<string, string> = {
-  NOT_STARTED: "未开盘",
-  IN_PROGRESS: "开盘中",
-  COMPLETED:   "开盘已完成"
+  NOT_STARTED: "未开票",
+  IN_PROGRESS: "开票中",
+  COMPLETED:   "开票已完成"
 };

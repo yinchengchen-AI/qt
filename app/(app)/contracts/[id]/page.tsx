@@ -3,6 +3,7 @@ import { ProCard, ProDescriptions, ProTable } from "@ant-design/pro-components";
 import { Button, Card, Col, Empty, Row, Space, Statistic, Tabs, Tag } from "antd";
 import { useParams, useRouter } from "next/navigation";
 import type { Contract as ContractEntity } from "@/lib/types/entities";
+import type { BillingStatus } from "@/types/enums";
 import useSWR from "swr";
 import { useSession } from "next-auth/react";
 import { useState } from "react";
@@ -17,7 +18,7 @@ import { CurrencyCell, DateTimeCell, PercentCell } from "@/components/table-cell
 import { AttachmentList } from "@/components/file/attachment-list";
 import { useDict } from "@/lib/dict-client";
 import { useUserName } from "@/lib/user-lookup";
-import { PAYMENT_METHOD_MAP, SERVICE_TYPE_MAP, REVIEW_ACTION_MAP } from "@/lib/enum-maps";
+import { PAYMENT_METHOD_MAP, SERVICE_TYPE_MAP, REVIEW_ACTION_MAP, BILLING_STATUS_MAP } from "@/lib/enum-maps";
 import { useResponsive } from "@/lib/use-breakpoint";
 
 const REVIEW_ACTION_TONE: Record<string, string> = {
@@ -38,7 +39,7 @@ type Overview = {
   invoices: Array<{ id: string; invoiceNo: string; status: string; amount: string; applyDate: string; actualIssueDate: string | null }>;
   payments: Array<{ id: string; paymentNo: string; status: string; amount: string; receiveDate: string }>;
   reviewLogs: Array<{ id: string; action: string; reviewerId: string; comment: string | null; at: string }>;
-  totals: { projectCount: number; invoiceCount: number; paymentCount: number; totalAmount: number; invoicedAmount: number; paidAmount: number; workflowTaskCount: number; workflowCompleted: number };
+  totals: { projectCount: number; invoiceCount: number; paymentCount: number; totalAmount: number; invoicedAmount: number; paidAmount: number; billingStatus: BillingStatus; workflowTaskCount: number; workflowCompleted: number };
 };
 
 function ReviewerName({ id }: { id: string }) {
@@ -126,6 +127,22 @@ export default function ContractDetailPage() {
                 suffix="%"
                 
               />
+            </Card>
+          </Col>
+          <Col xs={24}>
+            <Card>
+              <div style={{ display: "flex", alignItems: "center", gap: 16, flexWrap: "wrap" }}>
+                <span style={{ fontSize: 13, color: "#666" }}>开票状态</span>
+                <Tag
+                  color={t?.billingStatus === "COMPLETED" ? "success" : t?.billingStatus === "IN_PROGRESS" ? "processing" : "default"}
+                  style={{ fontSize: 14, padding: "4px 12px" }}
+                >
+                  {BILLING_STATUS_MAP[t?.billingStatus ?? "NOT_STARTED"] ?? t?.billingStatus}
+                </Tag>
+                <span style={{ fontSize: 13, color: "#999" }}>
+                  已开票 {t ? fmtWan(t.invoicedAmount) : 0} 万 / 合同总额 {t ? fmtWan(t.totalAmount) : 0} 万
+                </span>
+              </div>
             </Card>
           </Col>
           <Col xs={24}>
