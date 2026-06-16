@@ -23,16 +23,15 @@ import {
   MenuUnfoldOutlined,
   DashboardOutlined,
   TeamOutlined,
-  FileTextOutlined,
-  ProjectOutlined,
   PlayCircleOutlined,
-  BookOutlined,
-  PayCircleOutlined,
   AreaChartOutlined,
   SettingOutlined,
   UserOutlined,
   DownOutlined,
   DatabaseOutlined,
+  AppstoreOutlined,
+  AccountBookOutlined,
+  IdcardOutlined,
 } from "@ant-design/icons";
 import type { RoleCode } from "@/types/enums";
 import type { Action, Resource } from "@/lib/permissions";
@@ -51,13 +50,27 @@ type MenuItem = {
 
 const MENU: MenuItem[] = [
   { path: "/dashboard", name: "工作台", icon: <DashboardOutlined /> },
-  { path: "/customers", name: "客户管理", icon: <TeamOutlined /> },
-  { path: "/contracts", name: "合同管理", icon: <FileTextOutlined /> },
-  { path: "/projects", name: "项目管理", icon: <ProjectOutlined /> },
+  {
+    path: "/customers",
+    name: "业务",
+    icon: <AppstoreOutlined />,
+    children: [
+      { path: "/customers", name: "客户管理" },
+      { path: "/contracts", name: "合同管理" },
+      { path: "/projects", name: "项目管理" }
+    ]
+  },
   { path: "/assets", name: "企业资产", icon: <DatabaseOutlined /> },
   { path: "/workflow", name: "我的工作流", icon: <PlayCircleOutlined /> },
-  { path: "/invoices", name: "开票管理", icon: <BookOutlined /> },
-  { path: "/payments", name: "回款管理", icon: <PayCircleOutlined /> },
+  {
+    path: "/invoices",
+    name: "财务",
+    icon: <AccountBookOutlined />,
+    children: [
+      { path: "/invoices", name: "开票管理" },
+      { path: "/payments", name: "回款管理" }
+    ]
+  },
   {
     path: "/statistics",
     name: "统计分析",
@@ -80,13 +93,20 @@ const MENU: MenuItem[] = [
     ]
   },
   {
-    path: "/admin",
-    name: "系统管理",
+    path: "/admin/users",
+    name: "员工管理",
+    icon: <IdcardOutlined />,
+    children: [
+      { path: "/admin/users", name: "员工列表" },
+      { path: "/admin/roles", name: "角色权限" },
+      { path: "/admin/departments", name: "部门管理" }
+    ]
+  },
+  {
+    path: "/admin/dictionaries",
+    name: "系统",
     icon: <SettingOutlined />,
     children: [
-      { path: "/admin/users", name: "用户管理" },
-      { path: "/admin/roles", name: "角色权限" },
-      { path: "/admin/departments", name: "部门管理" },
       { path: "/admin/dictionaries", name: "数据字典" },
       { path: "/admin/operation-logs", name: "操作日志" },
       { path: "/admin/workflow-templates", name: "工作流模板" },
@@ -642,7 +662,7 @@ const CRUMB_LABEL: Record<string, string> = {
   messages: "消息中心",
   announcements: "公告",
   admin: "系统管理",
-  users: "用户管理",
+  users: "员工管理",
   roles: "角色权限",
   departments: "部门管理",
   dictionaries: "数据字典",

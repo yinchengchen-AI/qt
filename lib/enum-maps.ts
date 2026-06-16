@@ -99,6 +99,7 @@ export const CONTRACT_STATUS_MAP: Record<string, string> = {
   PENDING_REVIEW: "待审批",
   EFFECTIVE:      "已生效",
   EXECUTING:      "执行中",
+  SUSPENDED:      "已暂停",
   COMPLETED:      "已完成",
   TERMINATED:     "已终止",
   EXPIRED:        "已过期"

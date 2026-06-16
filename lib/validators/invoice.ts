@@ -15,6 +15,8 @@ const attachment = z.object({
 
 export const invoiceCreateSchema = z.object({
   contractId: z.string().min(1, "请选择合同"),
+  // 发票号改为手工录入,不再由系统生成 DRAFT-{timestamp};系统 id 仍保留
+  invoiceNo: z.string().min(1, "请填写发票号").max(50, "发票号不超过 50 字"),
   invoiceType: z.enum(["VAT_SPECIAL", "VAT_GENERAL", "VAT_ELECTRONIC", "ELEC_NORMAL"]),
   amount: z.number().positive("金额必须大于 0"),
   taxRate: z.number().min(0).max(1).default(0.06),

@@ -13,6 +13,7 @@ import { useActionCall } from "@/lib/use-action-call";
 import { FilePdfOutlined } from "@ant-design/icons";
 import { openPrintWindow } from "@/lib/print-client";
 import { CurrencyCell, DateTimeCell } from "@/components/table-cells";
+import { useUserName } from "@/lib/user-lookup";
 import { WorkflowSection } from "@/components/workflow/workflow-section";
 import { UpgradeModal } from "@/components/workflow/upgrade-modal";
 import { ProjectHistory } from "@/components/workflow/project-history";
@@ -25,6 +26,11 @@ const ACTION_LABEL: Record<string, string> = {
 };
 
 const DESC_COL = { xs: 1, sm: 1, md: 2, lg: 2, xl: 3 } as const;
+
+function ManagerName({ id }: { id: string | null | undefined }) {
+  const name = useUserName(id, "—");
+  return <span>{name}</span>;
+}
 
 export default function ProjectDetailPage() {
   const params = useParams();
@@ -129,9 +135,11 @@ export default function ProjectDetailPage() {
         <ProDescriptions column={DESC_COL} dataSource={data} columns={[
           { title: "项目编号", dataIndex: "projectNo" },
           { title: "所属合同", dataIndex: ["contract", "contractNo"], render: () => contractNo },
+          { title: "项目负责人", dataIndex: "managerUserId", render: (_, r) => <ManagerName id={r.managerUserId as string | null} /> },
           { title: "起期", dataIndex: "startDate", render: (v) => <DateTimeCell value={v as string} /> },
           { title: "止期", dataIndex: "endDate", render: (v) => <DateTimeCell value={v as string} /> },
           { title: "预算", dataIndex: "budgetAmount", render: (v) => <CurrencyCell value={v as string} /> },
+          { title: "状态", dataIndex: "status", render: (_, r) => <StatusTag status={r.status as string} domain="project" /> },
           {
             title: "进度(工作流派生)",
             dataIndex: "progressPct",
@@ -188,4 +196,3 @@ export default function ProjectDetailPage() {
     </Page>
   );
 }
-

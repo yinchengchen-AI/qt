@@ -2,7 +2,6 @@ import { prisma } from "@/lib/prisma";
 import { ApiError } from "@/lib/api";
 import { ERROR_CODES } from "@/types/errors";
 import { type SessionUser } from "@/lib/session";
-import { nextBusinessNo } from "@/lib/sequence";
 import { requirePermission, RESOURCE, ACTION } from "@/lib/permissions";
 import type { ContractCreateInput, ContractUpdateInput, ReviewActionInput } from "@/lib/validators/contract";
 import { ownerEq, parseStatusList } from "@/lib/ownership";
@@ -151,15 +150,28 @@ export async function createContract(user: SessionUser, input: ContractCreateInp
   if (!["NEGOTIATING", "SIGNED"].includes(customer.status)) {
     throw new ApiError(ERROR_CODES.CONTRACT_CUSTOMER_STATUS, "客户当前状态不允许新建合同", 422);
   }
+  // 校验签订人:前端不传时回退为当前 user;若显式传入,确保目标用户存在且未停用
+  const signerId = input.signerId ?? user.id;
+  const signer = await prisma.user.findFirst({ where: { id: signerId, deletedAt: null } });
+  if (!signer) {
+    throw new ApiError(ERROR_CODES.NOT_FOUND, "签订人不存在", 404);
+  }
+  if (signer.status !== "ACTIVE") {
+    throw new ApiError(ERROR_CODES.VALIDATION_FAILED, "签订人必须是启用状态员工", 400);
+  }
   if (new Date(input.endDate) < new Date(input.startDate)) {
     throw new ApiError(ERROR_CODES.VALIDATION_FAILED, "结束日期不能早于开始日期", 400);
   }
+  // 合同编号唯一性预校验:DB 也有 @unique,但提前抛错返回更明确的 422 信息
+  const existingNo = await prisma.contract.findFirst({ where: { contractNo: input.contractNo, deletedAt: null } });
+  if (existingNo) {
+    throw new ApiError(ERROR_CODES.VALIDATION_FAILED, `合同编号 ${input.contractNo} 已被使用`, 422);
+  }
   return prisma.$transaction(async (tx) => {
-    const code = await nextBusinessNo("CONTRACT");
     const { taxAmount, amountExcludingTax } = calcTotals(input.totalAmount, input.taxRate);
     const created = await tx.contract.create({
       data: {
-        contractNo: code,
+        contractNo: input.contractNo,
         customerId: input.customerId,
         customerName: customer.name,
         title: input.title,
@@ -172,6 +184,7 @@ export async function createContract(user: SessionUser, input: ContractCreateInp
         taxAmount,
         amountExcludingTax,
         paymentMethod: input.paymentMethod,
+        signerId,
         installmentPlan: (input.installmentPlan ?? null) as Prisma.InputJsonValue,
         status: "DRAFT",
         ownerUserId: customer.ownerUserId,
@@ -193,8 +206,17 @@ export async function updateContract(user: SessionUser, id: string, input: Contr
   requirePermission(user.roleCode, RESOURCE.CONTRACT, ACTION.UPDATE);
   const existing = await prisma.contract.findFirst({ where: { id, deletedAt: null, ...ownerEq(user) } });
   if (!existing) throw new ApiError(ERROR_CODES.NOT_FOUND, "合同不存在", 404);
-  if (!["DRAFT", "PENDING_REVIEW"].includes(existing.status)) {
+  if (!["DRAFT", "PENDING_REVIEW", "SUSPENDED"].includes(existing.status)) {
     throw new ApiError(ERROR_CODES.ENTITY_IMMUTABLE, "当前状态不可修改", 403);
+  }
+  // 合同编号若变更需唯一性校验
+  if (input.contractNo !== undefined && input.contractNo !== existing.contractNo) {
+    const dup = await prisma.contract.findFirst({
+      where: { contractNo: input.contractNo, deletedAt: null, NOT: { id } }
+    });
+    if (dup) {
+      throw new ApiError(ERROR_CODES.VALIDATION_FAILED, `合同编号 ${input.contractNo} 已被使用`, 422);
+    }
   }
   // 重算总额
   let taxAmount = existing.taxAmount;

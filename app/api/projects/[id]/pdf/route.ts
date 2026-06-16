@@ -105,6 +105,8 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
       mainRows: [
         { label: "项目名称", value: p.name },
         { label: "所属合同", value: p.contract?.contractNo ?? p.contractId ?? "—" },
+        { label: "项目负责人", value: manager ? `${manager.name}(${manager.employeeNo})` : "—" },
+        { label: "项目状态", value: PROJECT_STATUS_MAP[p.status] ?? p.status },
         { label: "起期", value: fmtDate(p.startDate) },
         { label: "止期", value: fmtDate(p.endDate) },
         { label: "预算", value: fmtAmount(Number(p.budgetAmount)) },

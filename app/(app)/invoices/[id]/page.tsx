@@ -5,7 +5,7 @@ import { useParams, useRouter } from "next/navigation";
 import type { AttachmentSnapshot, Invoice as InvoiceEntity } from "@/lib/types/entities";
 import useSWR from "swr";
 import { useSession } from "next-auth/react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Page } from "@/components/page";
 import { PageHeader } from "@/components/page-header";
 import { DetailPageSkeleton } from "@/components/detail-page-skeleton";
@@ -28,6 +28,9 @@ export default function InvoiceDetailPage() {
   const invoice = data;
   const [reason, setReason] = useState("");
   const [invoiceNo, setInvoiceNo] = useState("");
+  useEffect(() => {
+    if (invoice?.invoiceNo) setInvoiceNo(invoice.invoiceNo);
+  }, [invoice?.invoiceNo]);
   const { run } = useActionCall({ baseUrl: `/api/invoices/${id}`, reload: () => mutate() });
 
   if (isLoading || !invoice) {

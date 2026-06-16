@@ -17,6 +17,9 @@ const attachment = z.object({
 
 export const contractCreateSchema = z.object({
   customerId: z.string().min(1, "请选择客户"),
+  // 合同编号:改为手工录入,不再由系统按 Sequence 生成;
+  // 唯一性由 DB @unique + service 层校验 P2002 兜底
+  contractNo: z.string().min(1, "请填写合同编号").max(50, "合同编号不超过 50 字"),
   title: z.string().min(2, "合同标题至少 2 个字符").max(200),
   serviceType: z.string().min(1),  // 兼容 LEGACY-* 旧服务类型 (Dictionary 校验在 service 层做)
   signDate: isoDate,
@@ -25,6 +28,9 @@ export const contractCreateSchema = z.object({
   totalAmount: z.number().positive("合同总额必须大于 0"),
   taxRate: z.number().min(0).max(1).default(0.06),
   paymentMethod: z.enum(CONTRACT_PAYMENT_METHOD),
+  // 签订人:前端表单默认选当前登录员工,允许 admin 改成任意员工;
+  // 不传时 service 层回退为当前 user.id,避免历史调用方漏字段
+  signerId: z.string().min(1).optional(),
   installmentPlan: z
     .array(
       z.object({

@@ -1,10 +1,11 @@
 "use client";
-import { ProTable, type ProColumns } from "@ant-design/pro-components";
+import { ProTable, type ActionType, type ProColumns } from "@ant-design/pro-components";
 import { App as AntdApp, Button, Space, Switch, Tag, Tree, Typography } from "antd";
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import useSWR from "swr";
 import { Page } from "@/components/page";
+import { useResponsive } from "@/lib/use-breakpoint";
 import { PageHeader } from "@/components/page-header";
 
 const { Text } = Typography;
@@ -27,6 +28,8 @@ type TreeNode = {
 };
 
 export default function DepartmentsPage() {
+  const actionRef = useRef<ActionType>(undefined);
+  const { isMobile } = useResponsive();
   const router = useRouter();
   const { message } = AntdApp.useApp();
   const [view, setView] = useState<"tree" | "list">("tree");
@@ -198,13 +201,16 @@ export default function DepartmentsPage() {
           )}
         </div>
       ) : (
-        <ProTable<Department>
+        <ProTable<Department> actionRef={actionRef}
           rowKey="id"
           loading={loading}
           columns={columns}
           search={false}
-          toolbar={{ settings: [] }}
-          pagination={{ pageSize: 50, showSizeChanger: false }}
+          scroll={{ x: 'max-content' }}
+          cardBordered={false}
+          sticky={isMobile}
+          options={{ reload: () => actionRef.current?.reload?.(), density: !isMobile, fullScreen: !isMobile }}
+          pagination={{ defaultPageSize: 50, showSizeChanger: !isMobile, size: isMobile ? "small" : undefined }}
           dataSource={flatten(data)}
         />
       )}

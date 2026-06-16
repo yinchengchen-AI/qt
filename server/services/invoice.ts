@@ -121,10 +121,17 @@ export async function createInvoice(user: SessionUser, input: InvoiceCreateInput
         422
       );
     }
+    // 发票号唯一性预校验:DB 也有 @unique,但提前抛错返回更明确的 422 信息
+    const existingNo = await tx.invoice.findFirst({
+      where: { invoiceNo: input.invoiceNo, deletedAt: null }
+    });
+    if (existingNo) {
+      throw new ApiError(ERROR_CODES.VALIDATION_FAILED, `发票号 ${input.invoiceNo} 已被使用`, 422);
+    }
     const { taxAmount, amountExcludingTax } = calcTotals(input.amount, input.taxRate);
     const invoice = await tx.invoice.create({
       data: {
-        invoiceNo: `DRAFT-${Date.now()}`,
+        invoiceNo: input.invoiceNo,
         contractId: contract.id,
         customerId: contract.customerId,
         customerName: contract.customerName,
@@ -209,8 +216,8 @@ export async function invoiceAction(user: SessionUser, id: string, input: Invoic
     if (input.action === "issue") {
       if (user.roleCode !== "FINANCE" && user.roleCode !== "ADMIN") throw new ApiError(ERROR_CODES.FORBIDDEN, "仅财务可开票", 403);
       if (inv.status !== "PENDING_FINANCE") throw new ApiError(ERROR_CODES.ENTITY_IMMUTABLE, "仅 PENDING_FINANCE 可开票", 403);
-      // R-09：电子发票号必须 20 位
-      const invoiceNo = input.invoiceNo ?? inv.invoiceNo;
+      // R-09：电子发票号必须 20 位;财务未填时沿用创建时录入的发票号
+      const invoiceNo = input.invoiceNo || inv.invoiceNo;
       if (inv.invoiceType === "VAT_ELECTRONIC" || inv.invoiceType === "ELEC_NORMAL") {
         if (!/^\d{20}$/.test(invoiceNo)) throw new ApiError(ERROR_CODES.INVOICE_INFO_INVALID, "电子发票号必须 20 位数字", 422);
       }

@@ -1,6 +1,7 @@
 "use client";
 
-import { useMemo, useRef } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { useSession } from "next-auth/react";
 import {
   ProForm,
   ProFormText,
@@ -9,6 +10,7 @@ import {
   ProFormDatePicker
 } from "@ant-design/pro-components";
 import { App as AntdApp, Space, Tag, Typography } from "antd";
+
 import { useRouter } from "next/navigation";
 import { useDict, groupDictByLegacy } from "@/lib/dict-client";
 import { proCustomRequest } from "@/lib/upload-client";
@@ -37,14 +39,31 @@ type Customer = {
   contactPhone: string;
 };
 
+type ActiveUser = {
+  id: string;
+  employeeNo: string;
+  name: string;
+};
+
 export default function NewContractPage() {
   const router = useRouter();
   const { message } = AntdApp.useApp();
+  const { data: session } = useSession();
+  const currentUserId = (session?.user as { id?: string } | undefined)?.id;
   // ProForm 的 ProFormRef 类型未导出,用 any 承载动态表单引用
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const formRef = useRef<any>(null);
   const serviceType = useDict("SERVICE_TYPE");
   const serviceTypeOptions = useMemo(() => groupDictByLegacy(serviceType), [serviceType]);
+  const [selectedCustomerLabel, setSelectedCustomerLabel] = useState("");
+
+  // 会话异步加载完成后再把当前用户写入签订人默认值;initialValue 是一次性应用,
+  // 第一次渲染时 session 还没回来,这里补一次 setFieldValue
+  useEffect(() => {
+    if (currentUserId && formRef.current) {
+      formRef.current.setFieldValue("signerId", currentUserId);
+    }
+  }, [currentUserId]);
 
   return (
     <Page compact>
@@ -53,7 +72,7 @@ export default function NewContractPage() {
         title="新建合同"
         subtitle="为洽谈中或已签约客户创建合同,提交后进入审批"
       />
-      <FormCard headerHint="选客户后会自动带出联系电话 / 邮箱 / 账期;服务止期必须晚于起期,建议不少于 30 天">
+      <FormCard headerHint="客户必须是 洽谈中 / 已签约 状态;服务止期必须晚于起期,否则无法提交">
         <ProForm
           formRef={formRef}
           layout="vertical"
@@ -91,14 +110,20 @@ export default function NewContractPage() {
               <ProFormSelect
                 name="customerId"
                 label="客户"
-                placeholder="搜索客户名 / 编号"
+                placeholder="搜索客户名"
                 showSearch
+                style={{ width: "100%" }}
                 rules={[
                   { required: true, message: "请选择客户" }
                 ]}
                 fieldProps={{
                   size: "large",
-                  optionFilterProp: "label"
+                  style: { width: "100%" },
+                  optionFilterProp: "label",
+                  onChange: (_value: unknown, option: unknown) => {
+                    const o = option as { label?: string } | undefined;
+                    setSelectedCustomerLabel(o?.label ?? "");
+                  }
                 }}
                 request={async (params: { keyWords?: string }) => {
                   const qs = new URLSearchParams();
@@ -111,7 +136,7 @@ export default function NewContractPage() {
                     .filter((c) => ["NEGOTIATING", "SIGNED"].includes(c.status))
                     .map((c) => ({
                       value: c.id,
-                      label: `${c.code} · ${c.name}`,
+                      label: c.name,
                       // 业务字段,回填到其它字段
                       contactPhone: c.contactPhone,
                       contactName: c.contactName,
@@ -119,11 +144,27 @@ export default function NewContractPage() {
                     }));
                 }}
               />
+              {selectedCustomerLabel && (
+                <div style={{ marginTop: 8 }}>
+                  <Text type="secondary" style={{ fontSize: 12 }}>已选客户：</Text>
+                  <Text copyable>{selectedCustomerLabel}</Text>
+                </div>
+              )}
             </FormGrid>
           </FormSection>
 
           <FormSection title="合同信息">
             <FormGrid columns={1}>
+              <ProFormText
+                name="contractNo"
+                label="合同编号"
+                placeholder="如:QT-HT-2026-0001"
+                rules={[
+                  { required: true, message: "请输入合同编号" },
+                  { min: 1, max: 50 }
+                ]}
+                fieldProps={{ size: "large" }}
+              />
               <ProFormText
                 name="title"
                 label="合同标题"
@@ -152,6 +193,32 @@ export default function NewContractPage() {
                 options={PAYMENT_METHOD_OPTIONS}
                 rules={[{ required: true, message: "请选择付款方式" }]}
                 fieldProps={{ size: "large" }}
+              />
+              <ProFormSelect
+                name="signerId"
+                label="签订人"
+                placeholder="搜索员工姓名/工号"
+                tooltip="默认是当前登录员工;admin 可改成任意员工,方便代录"
+                showSearch
+                initialValue={currentUserId}
+                rules={[{ required: true, message: "请选择签订人" }]}
+                fieldProps={{
+                  size: "large",
+                  optionFilterProp: "label"
+                }}
+                request={async (params: { keyWords?: string }) => {
+                  const qs = new URLSearchParams();
+                  qs.set("pageSize", "100");
+                  qs.set("status", "ACTIVE");
+                  qs.set("keyword", params.keyWords ?? "");
+                  const r = await fetch(`/api/users?${qs}`, { credentials: "include" });
+                  const j = await r.json();
+                  if (j.code !== 0) return [];
+                  return (j.data.list as ActiveUser[]).map((u) => ({
+                    value: u.id,
+                    label: `${u.name} (${u.employeeNo})`
+                  }));
+                }}
               />
             </FormGrid>
           </FormSection>

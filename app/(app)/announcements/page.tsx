@@ -105,7 +105,7 @@ export default function AnnouncementsPage() {
         rowKey="id"
         search={false}
         loading={loading}
-        pagination={{ pageSize: 20, total, onChange: () => reload() }}
+        pagination={{ defaultPageSize: 20, total, onChange: () => reload() }}
         dataSource={data}
         cardBordered={false}
         columns={columns}

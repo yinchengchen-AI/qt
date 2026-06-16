@@ -203,6 +203,7 @@ try {
     method: "POST",
     body: {
       customerId,
+      contractNo: `QT-HT-P3-${Date.now()}`,
       title: `P3 通知测试合同 ${Date.now()}`,
       serviceType: "SAFETY_CONSULT",
       signDate: new Date().toISOString(),
@@ -269,6 +270,7 @@ try {
     method: "POST",
     body: {
       customerId: adminCustIdForContract,
+      contractNo: `QT-HT-P3-ADMIN-${Date.now()}`,
       title: `P3 ADMIN 合同 ${Date.now()}`,
       serviceType: "SAFETY_CONSULT",
       signDate: new Date().toISOString(),

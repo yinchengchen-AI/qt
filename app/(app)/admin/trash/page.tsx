@@ -138,7 +138,7 @@ export default function TrashPage() {
           columns={columns}
           dataSource={data}
           size={isMobile ? "small" : "middle"}
-          pagination={{ pageSize: 20, showSizeChanger: false }}
+          pagination={{ defaultPageSize: 20, showSizeChanger: false }}
         />
       )}
     </Page>

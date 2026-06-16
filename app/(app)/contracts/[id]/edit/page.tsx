@@ -52,13 +52,13 @@ export default function EditContractPage() {
     );
   }
 
-  if (!["DRAFT", "PENDING_REVIEW"].includes(data.status)) {
+  if (!["DRAFT", "PENDING_REVIEW", "SUSPENDED"].includes(data.status)) {
     return (
       <Page compact>
         <PageHeader back={() => router.push(`/contracts/${id}`)} title="编辑合同" />
         <FormCard>
           <Text type="warning">
-            当前状态 <StatusTag status={data.status} domain="contract" /> 不可编辑;仅 草稿 / 待审批 可改。
+            当前状态 <StatusTag status={data.status} domain="contract" /> 不可编辑;仅 草稿 / 待审批 / 已暂停 可改。
           </Text>
         </FormCard>
       </Page>
@@ -70,14 +70,15 @@ export default function EditContractPage() {
       <PageHeader
         back={() => router.push(`/contracts/${id}`)}
         title="编辑合同"
-        subtitle="客户不可改;服务起止期可改,止期必须晚于起期"
+        subtitle="客户不可改;合同编号、服务起止期等可改,止期必须晚于起期"
       />
-      <FormCard headerHint={`客户：${data.customerName}（${data.customerId}）。客户一旦签约不可更换,如需换客户请新建合同。`}>
+      <FormCard headerHint="客户一旦签约不可更换,如需换客户请新建合同。">
         <ProForm
           submitter={false}
           formRef={formRef}
           layout="vertical"
           initialValues={{
+            contractNo: data.contractNo,
             title: data.title,
             serviceType: data.serviceType,
             paymentMethod: data.paymentMethod,
@@ -119,8 +120,26 @@ export default function EditContractPage() {
             return true;
           }}
         >
+          <FormSection title="客户">
+            <FormGrid columns={1}>
+              <div>
+                <Text type="secondary" style={{ fontSize: 12 }}>客户：</Text>
+                <Text copyable>{data.customerName}</Text>
+              </div>
+            </FormGrid>
+          </FormSection>
+
           <FormSection title="合同信息">
             <FormGrid columns={1}>
+              <ProFormText
+                name="contractNo"
+                label="合同编号"
+                rules={[
+                  { required: true, message: "请输入合同编号" },
+                  { min: 1, max: 50 }
+                ]}
+                fieldProps={{ size: "large" }}
+              />
               <ProFormText
                 name="title"
                 label="合同标题"
@@ -218,7 +237,7 @@ export default function EditContractPage() {
 
           <Space>
             <Text type="secondary" style={{ fontSize: 12 }}>
-              客户不可更换,合同编号不可改;如需大改建议作废当前合同后新建。
+              客户不可更换;草稿 / 待审批 / 已暂停 状态下可编辑合同编号及其它字段。
             </Text>
           </Space>
           <SubmitBar

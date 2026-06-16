@@ -190,7 +190,7 @@ export default function FollowUpOverviewPage() {
             <Table
               rowKey="id" columns={columns} dataSource={data.items}
               size={isMobile ? "small" : "middle"}
-              pagination={{ pageSize: 20, showSizeChanger: true, showTotal: (t) => `共 ${t} 条` }}
+              pagination={{ defaultPageSize: 20, showSizeChanger: true, showTotal: (t) => `共 ${t} 条` }}
               scroll={{ x: isMobile ? 700 : undefined }}
             />
           )}

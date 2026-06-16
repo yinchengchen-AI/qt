@@ -232,7 +232,7 @@ export default function PaymentDetailPage() {
         />
       )}
       <ProCard>
-        <ProTable rowKey="id" search={false} options={false} pagination={{ pageSize: isMobile ? 5 : 10, size: isMobile ? "small" : undefined }} dataSource={payment.allocations ?? []}
+        <ProTable rowKey="id" search={false} options={false} pagination={{ defaultPageSize: isMobile ? 5 : 10, size: isMobile ? "small" : undefined }} dataSource={payment.allocations ?? []}
           scroll={{ x: 'max-content' }}
           sticky={isMobile}
           columns={[

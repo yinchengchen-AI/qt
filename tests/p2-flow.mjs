@@ -116,7 +116,7 @@ try {
   const newCust = await admin.req("/api/customers", { method: "POST", body: { name: `P2客户-${stamp}`, customerType: "ENTERPRISE", province: "浙江", city: "杭州", address: "西湖区", contactPhone: "13800000001" } });
   const cid = newCust.body?.data?.id;
   await admin.req(`/api/customers/${cid}`, { method: "PATCH", body: { status: "NEGOTIATING" } });
-  const newC = await admin.req("/api/contracts", { method: "POST", body: { customerId: cid, title: "P2 消息测试合同", serviceType: "SAFETY_CONSULT", signDate: new Date().toISOString(), startDate: new Date().toISOString(), endDate: new Date(Date.now() + 90 * 86400_000).toISOString(), totalAmount: 50000, taxRate: 0.06, paymentMethod: "LUMP_SUM", attachments: [await uploadTestAttachment(admin, "盖章.pdf")] } });
+  const newC = await admin.req("/api/contracts", { method: "POST", body: { customerId: cid, contractNo: `QT-HT-P2-${stamp}`, title: "P2 消息测试合同", serviceType: "SAFETY_CONSULT", signDate: new Date().toISOString(), startDate: new Date().toISOString(), endDate: new Date(Date.now() + 90 * 86400_000).toISOString(), totalAmount: 50000, taxRate: 0.06, paymentMethod: "LUMP_SUM", attachments: [await uploadTestAttachment(admin, "盖章.pdf")] } });
   const contractId = newC.body?.data?.id;
   // 提交
   await admin.req(`/api/contracts/${contractId}/submit`, { method: "POST" });

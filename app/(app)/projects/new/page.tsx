@@ -1,4 +1,6 @@
 "use client";
+import { useSession } from "next-auth/react";
+import { useEffect } from "react";
 import {
   ProForm,
   ProFormText,
@@ -28,14 +30,30 @@ type Contract = {
   status: string;
 };
 
+type ActiveUser = {
+  id: string;
+  employeeNo: string;
+  name: string;
+};
+
 export default function NewProjectPage() {
   const router = useRouter();
   const { message } = AntdApp.useApp();
+  const { data: session } = useSession();
+  const currentUserId = (session?.user as { id?: string } | undefined)?.id;
   // ProForm 的 ProFormRef 类型未导出,用 any 承载动态表单引用
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const formRef = useRef<any>(null);
   const [contractEnd, setContractEnd] = useState<string | null>(null);
   const [contractStart, setContractStart] = useState<string | null>(null);
+
+  // 会话异步加载完成后再把当前用户写入项目负责人默认值;initialValue 是一次性应用,
+  // 第一次渲染时 session 还没回来,这里补一次 setFieldValue
+  useEffect(() => {
+    if (currentUserId && formRef.current) {
+      formRef.current.setFieldValue("managerUserId", currentUserId);
+    }
+  }, [currentUserId]);
 
   return (
     <Page compact>
@@ -128,6 +146,34 @@ export default function NewProjectPage() {
                 placeholder="详细说明本次项目要完成的工作(至少 1 项)"
                 rules={[{ required: true, message: "请填写服务范围" }]}
                 fieldProps={{ size: "large", rows: 4, maxLength: 2000, showCount: true }}
+              />
+            </FormGrid>
+            <FormGrid columns={2}>
+              <ProFormSelect
+                name="managerUserId"
+                label="项目负责人"
+                placeholder="搜索员工姓名/工号"
+                tooltip="默认是当前登录员工;admin 可改成任意员工,方便代录"
+                showSearch
+                initialValue={currentUserId}
+                rules={[{ required: true, message: "请选择项目负责人" }]}
+                fieldProps={{
+                  size: "large",
+                  optionFilterProp: "label"
+                }}
+                request={async (params: { keyWords?: string }) => {
+                  const qs = new URLSearchParams();
+                  qs.set("pageSize", "100");
+                  qs.set("status", "ACTIVE");
+                  qs.set("keyword", params.keyWords ?? "");
+                  const r = await fetch(`/api/users?${qs}`, { credentials: "include" });
+                  const j = await r.json();
+                  if (j.code !== 0) return [];
+                  return (j.data.list as ActiveUser[]).map((u) => ({
+                    value: u.id,
+                    label: `${u.name} (${u.employeeNo})`
+                  }));
+                }}
               />
             </FormGrid>
           </FormSection>

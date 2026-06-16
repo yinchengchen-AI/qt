@@ -1,8 +1,8 @@
 "use client";
-import { ProTable } from "@ant-design/pro-components";
+import { ProTable, type ActionType } from "@ant-design/pro-components";
 import { Tag, Button, Space, App as AntdApp } from "antd";
-import { useSWRConfig } from "swr";
 import Link from "next/link";
+import { useRef } from "react";
 import { Page } from "@/components/page";
 import { PageHeader } from "@/components/page-header";
 import { StatusTag } from "@/components/status-tag";
@@ -29,7 +29,7 @@ const LINK_PATH: Record<string, string> = {
 
 export default function MessagesPage() {
   const { message: msg } = AntdApp.useApp();
-  const { mutate } = useSWRConfig();
+  const actionRef = useRef<ActionType>(undefined);
 
   return (
     <Page>
@@ -44,7 +44,7 @@ export default function MessagesPage() {
               const j = await r.json();
               if (j.code === 0) {
                 msg.success(`已标记 ${j.data.updated} 条已读`);
-                mutate((k) => typeof k === "string" && k.startsWith("/api/messages"));
+                actionRef.current?.reloadAndRest?.();
               } else msg.error(j.message);
             }}
           >
@@ -52,10 +52,10 @@ export default function MessagesPage() {
           </Button>
         }
       />
-      <ProTable<Message>
+      <ProTable<Message> actionRef={actionRef}
         rowKey="id"
         search={false}
-        pagination={{ pageSize: 20, showSizeChanger: true }}
+        pagination={{ defaultPageSize: 20, showSizeChanger: true }}
         cardBordered={false}
         request={makeListRequest<Message>("/api/messages")}
         columns={[
@@ -96,7 +96,7 @@ export default function MessagesPage() {
                     onClick={async () => {
                       const res = await fetch(`/api/messages/${r.id}`, { method: "PATCH", credentials: "include" });
                       const j = await res.json();
-                      if (j.code === 0) mutate((k) => typeof k === "string" && k.startsWith("/api/messages"));
+                      if (j.code === 0) actionRef.current?.reloadAndRest?.();
                     }}
                   >
                     标记已读
@@ -109,7 +109,7 @@ export default function MessagesPage() {
                   onClick={async () => {
                     const res = await fetch(`/api/messages/${r.id}`, { method: "DELETE", credentials: "include" });
                     const j = await res.json();
-                    if (j.code === 0) mutate((k) => typeof k === "string" && k.startsWith("/api/messages"));
+                    if (j.code === 0) actionRef.current?.reloadAndRest?.();
                   }}
                 >
                   删除

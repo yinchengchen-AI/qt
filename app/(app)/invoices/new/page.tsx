@@ -166,6 +166,18 @@ export default function NewInvoicePage() {
           </FormSection>
 
           <FormSection title="发票信息">
+            <FormGrid columns={1}>
+              <ProFormText
+                name="invoiceNo"
+                label="发票号"
+                placeholder="如:01100210031112345678"
+                rules={[
+                  { required: true, message: "请填写发票号" },
+                  { min: 1, max: 50 }
+                ]}
+                fieldProps={{ size: "large" }}
+              />
+            </FormGrid>
             <FormGrid columns={2}>
               <ProFormSelect
                 name="invoiceType"

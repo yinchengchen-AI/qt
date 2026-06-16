@@ -147,7 +147,7 @@ try {
 
   const newContract = await admin.req('/api/contracts', {
     method: 'POST',
-    body: { customerId, title: 'E2E 安全咨询服务合同', serviceType: 'SAFETY_CONSULT',
+    body: { customerId, contractNo: `QT-HT-E2E-${stamp}`, title: 'E2E 安全咨询服务合同', serviceType: 'SAFETY_CONSULT',
       signDate: new Date().toISOString(),
       startDate: new Date().toISOString(),
       endDate: new Date(Date.now() + 90 * 86400_000).toISOString(),
@@ -159,7 +159,7 @@ try {
 
   const c2 = await admin.req('/api/contracts', {
     method: 'POST',
-    body: { customerId, title: 'E2E 缺附件合同', serviceType: 'SAFETY_TRAIN',
+    body: { customerId, contractNo: `QT-HT-E2E-2-${stamp}`, title: 'E2E 缺附件合同', serviceType: 'SAFETY_TRAIN',
       signDate: new Date().toISOString(), startDate: new Date().toISOString(),
       endDate: new Date(Date.now() + 60 * 86400_000).toISOString(),
       totalAmount: 50000, taxRate: 0.06, paymentMethod: 'LUMP_SUM', attachments: [] },
@@ -219,7 +219,7 @@ try {
 
   const newInv = await admin.req('/api/invoices', {
     method: 'POST',
-    body: { contractId, customerId, invoiceType: 'VAT_SPECIAL',
+    body: { contractId, customerId, invoiceNo: `INV-E2E-${stamp}`, invoiceType: 'VAT_SPECIAL',
       amount: 60000, taxRate: 0.06, applyDate: new Date().toISOString(),
       titleType: 'COMPANY', titleName: 'E2E客户测试有限公司', taxNo: '91110000600037341L',
       bankName: '工行', bankAccount: '6222021234567890', address: '杭州', phone: '13800000002' },
@@ -235,7 +235,7 @@ try {
 
   const overInv = await admin.req('/api/invoices', {
     method: 'POST',
-    body: { contractId, customerId, invoiceType: 'VAT_SPECIAL',
+    body: { contractId, customerId, invoiceNo: `INV-E2E-OVER-${stamp}`, invoiceType: 'VAT_SPECIAL',
       amount: 99999999, taxRate: 0.06, applyDate: new Date().toISOString(),
       titleType: 'COMPANY', titleName: '超限测试', taxNo: '91110000600037341L' },
   });

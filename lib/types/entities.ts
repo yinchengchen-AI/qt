@@ -36,6 +36,7 @@ export type Contract = {
   status: string;
   attachments: AttachmentSnapshot[];
   installmentPlan: InstallmentPhase[] | null;
+  signerId: string | null;
   reviewComment: string | null;
   reviewerId: string | null;
   reviewAt: string | null;

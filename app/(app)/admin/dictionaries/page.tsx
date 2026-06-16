@@ -1,9 +1,9 @@
 "use client";
-import { ProTable, type ProColumns } from "@ant-design/pro-components";
+import { ProTable, type ActionType, type ProColumns } from "@ant-design/pro-components";
 import { App as AntdApp, Button, Tag, Space, Switch, Radio, Table, Empty } from "antd";
-import React, { useState } from "react";
-import { useSWRConfig } from "swr";
+import React, { useRef, useState } from "react";
 import { Page } from "@/components/page";
+import { useResponsive } from "@/lib/use-breakpoint";
 import { PageHeader } from "@/components/page-header";
 import { DictEditDrawer } from "./_components/DictEditDrawer";
 import { CreateDictModal } from "./_components/CreateDictModal";
@@ -21,8 +21,9 @@ type Dict = {
 
 export default function DictionariesPage() {
   const { message, modal } = AntdApp.useApp();
-  const { mutate } = useSWRConfig();
   const [editing, setEditing] = useState<Dict | null>(null);
+  const actionRef = useRef<ActionType>(undefined);
+  const { isMobile } = useResponsive();
   const [mode, setMode] = useState<"table" | "tree">("table");
   const [treeData, setTreeData] = useState<{ code: string; label: string; children: unknown[] }[]>([]);
   const [treeLoading, setTreeLoading] = useState(false);
@@ -55,7 +56,7 @@ export default function DictionariesPage() {
         const j = await r.json();
         if (j.code !== 0) return message.error(j.message);
         message.success("已停用");
-        mutate((k) => typeof k === "string" && k.startsWith("/api/dictionaries"));
+        actionRef.current?.reloadAndRest?.();
       }
     });
   }
@@ -70,7 +71,7 @@ export default function DictionariesPage() {
     const j = await r.json();
     if (j.code !== 0) return message.error(j.message);
     message.success(next ? "已启用" : "已停用");
-    mutate((k) => typeof k === "string" && k.startsWith("/api/dictionaries"));
+    actionRef.current?.reloadAndRest?.();
   }
 
   const columns: ProColumns<Dict>[] = [
@@ -143,15 +144,15 @@ export default function DictionariesPage() {
           </Space>
         }
       />
-      <ProTable<Dict>
+      <ProTable<Dict> actionRef={actionRef}
         rowKey="id"
         columns={columns}
-        search={{
-          labelWidth: "auto",
-          defaultCollapsed: false
-        }}
-        toolbar={{ settings: [] }}
-        pagination={{ pageSize: 50, showSizeChanger: true }}
+        search={{ labelWidth: "auto", defaultCollapsed: isMobile, layout: isMobile ? "vertical" : undefined, collapsed: isMobile ? false : undefined }} debounceTime={400}
+        scroll={{ x: 'max-content' }}
+        cardBordered={false}
+        sticky={isMobile}
+        options={{ reload: () => actionRef.current?.reload?.(), density: !isMobile, fullScreen: !isMobile }}
+        pagination={{ defaultPageSize: 50, showSizeChanger: !isMobile, size: isMobile ? "small" : undefined }}
         request={async (params) => {
           const qs = new URLSearchParams();
           qs.set("page", String(params.current ?? 1));
@@ -169,13 +170,13 @@ export default function DictionariesPage() {
         open={!!editing}
         dict={editing}
         onClose={() => setEditing(null)}
-        onSaved={() => mutate((k) => typeof k === "string" && k.startsWith("/api/dictionaries"))}
+        onSaved={() => actionRef.current?.reloadAndRest?.()}
       />
 
       <CreateDictModal
         open={createOpen}
         onClose={() => setCreateOpen(false)}
-        onSaved={() => mutate((k) => typeof k === "string" && k.startsWith("/api/dictionaries"))}
+        onSaved={() => actionRef.current?.reloadAndRest?.()}
       />
     </Page>
   );

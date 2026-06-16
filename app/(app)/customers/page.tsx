@@ -4,7 +4,6 @@ import { Button, App as AntdApp } from "antd";
 import { DownloadOutlined } from "@ant-design/icons";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useSWRConfig } from "swr";
 import React, { useEffect, useRef } from "react";
 import { Page } from "@/components/page";
 import { PageHeader } from "@/components/page-header";
@@ -36,7 +35,6 @@ type Customer = {
 
 export default function CustomersPage() {
   const router = useRouter();
-  const { mutate } = useSWRConfig();
   const { isMobile } = useResponsive();
   const customerTypeDict = useDict("CUSTOMER_TYPE");
   const customerScaleDict = useDict("CUSTOMER_SCALE");
@@ -88,7 +86,7 @@ export default function CustomersPage() {
         search={{ labelWidth: "auto", defaultCollapsed: isMobile, layout: isMobile ? "vertical" : undefined, collapsed: isMobile ? false : undefined }} debounceTime={400}
         // 移动端横向滚动;Pad/桌面靠列宽自适应
         scroll={{ x: 'max-content' }}
-        pagination={{ pageSize: 20, showSizeChanger: !isMobile, size: isMobile ? "small" : undefined }}
+        pagination={{ defaultPageSize: 20, showSizeChanger: !isMobile, size: isMobile ? "small" : undefined }}
         cardBordered={false}
         sticky={isMobile}
         request={async (params) => { console.log("[REQ-keys]", Object.keys(params).join(","), "kw=", JSON.stringify(params.keyword), "status=", JSON.stringify(params.status), "scale=", JSON.stringify(params.scale));
@@ -121,6 +119,7 @@ export default function CustomersPage() {
             title: "规模",
             dataIndex: "scale",
             width: 80,
+            hideInTable: true,
             valueType: "select",
             valueEnum: Object.fromEntries(customerScaleDict.map((d) => [d.code, { text: d.label }])),
             render: (_, r) => r.scale ? (customerScaleDict.find((d) => d.code === r.scale)?.label ?? r.scale) : "—"
@@ -129,6 +128,7 @@ export default function CustomersPage() {
             title: "行业",
             dataIndex: "industry",
             search: false,
+            hideInTable: true,
             width: 120,
             render: (_, r) => r.industry ? (industryDict.find((d) => d.code === r.industry)?.label ?? r.industry) : "—"
           },
@@ -163,7 +163,7 @@ export default function CustomersPage() {
           }
         ]}
         options={{
-          reload: () => mutate((k) => typeof k === "string" && k.startsWith("/api/customers")),
+          reload: () => actionRef.current?.reload?.(),
           // 移动端隐藏密度/全屏等次要工具按钮,保留刷新
           density: !isMobile,
           fullScreen: !isMobile

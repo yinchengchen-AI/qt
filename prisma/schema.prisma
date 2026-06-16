@@ -49,6 +49,7 @@ model User {
   deletedAt    DateTime?   @db.Timestamptz(6)
 
   uploadedAttachments Attachment[]
+  signedContracts Contract[] @relation("ContractSigner")
 
   @@index([roleId])
   @@index([status])
@@ -153,6 +154,7 @@ model Contract {
   installmentPlan        Json?
   status                 String    @default("DRAFT") // DRAFT | PENDING_REVIEW | EFFECTIVE | EXECUTING | COMPLETED | TERMINATED | EXPIRED
   ownerUserId            String
+  signerId               String
   reviewerId             String?
   reviewAt               DateTime? @db.Timestamptz(6)
   reviewComment          String?
@@ -169,11 +171,13 @@ model Contract {
   invoices       Invoice[]
   reviewLogs     ContractReviewLog[]
   attachmentRefs Attachment[]        @relation("ContractAttachments")
+  signer         User                @relation("ContractSigner", fields: [signerId], references: [id])
 
   @@index([customerId])
   @@index([status])
   @@index([ownerUserId])
   @@index([signDate])
+  @@index([signerId])
 }
 
 model ContractReviewLog {

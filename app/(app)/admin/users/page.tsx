@@ -1,10 +1,12 @@
 "use client";
 import { ProTable, type ActionType, type ProColumns } from "@ant-design/pro-components";
-import { App as AntdApp, Button, Tag, Modal, Space } from "antd";
+import { MoreOutlined } from "@ant-design/icons";
+import { App as AntdApp, Button, Tag, Modal, Space, Dropdown } from "antd";
 import { useRouter } from "next/navigation";
 import { useRef, useState } from "react";
 import { copyToClipboard } from "@/lib/copy";
 import { Page } from "@/components/page";
+import { useResponsive } from "@/lib/use-breakpoint";
 import { PageHeader } from "@/components/page-header";
 import { DateTimeCell } from "@/components/table-cells";
 
@@ -28,6 +30,7 @@ export default function UsersPage() {
   const { message, modal } = AntdApp.useApp();
   const [resetting, setResetting] = useState<{ id: string; newPassword: string } | null>(null);
   const actionRef = useRef<ActionType>(undefined);
+  const { isMobile } = useResponsive();
 
   async function onToggleStatus(u: User) {
     const next = u.status === "ACTIVE" ? "DISABLED" : "ACTIVE";
@@ -113,50 +116,67 @@ export default function UsersPage() {
     },
     {
       title: "操作",
-      width: 280,
+      width: 180,
       fixed: "right",
-      render: (_, r) => (
-        <Space size="small" wrap>
-          <Button type="link" size="small" onClick={() => router.push(`/admin/users/${r.id}`)}>
-            详情
-          </Button>
-          <Button type="link" size="small" onClick={() => router.push(`/admin/users/${r.id}/edit`)}>
-            编辑
-          </Button>
-          <Button type="link" size="small" onClick={() => onResetPassword(r)}>
-            重置密码
-          </Button>
-          <Button type="link" size="small" onClick={() => onToggleStatus(r)}>
-            {r.status === "ACTIVE" ? "禁用" : "启用"}
-          </Button>
-          <Button type="link" size="small" danger onClick={() => onDelete(r)}>
-            删除
-          </Button>
-        </Space>
-      )
+      render: (_, r) => {
+        const moreItems = [
+          { key: "reset", label: "重置密码" },
+          {
+            key: "toggle",
+            label: r.status === "ACTIVE" ? "禁用" : "启用"
+          },
+          { type: "divider" as const },
+          { key: "delete", label: <span style={{ color: "#ff4d4f" }}>删除</span>, danger: true }
+        ];
+        return (
+          <Space size={4}>
+            <Button type="link" size="small" onClick={() => router.push(`/admin/users/${r.id}`)}>
+              详情
+            </Button>
+            <Button type="link" size="small" onClick={() => router.push(`/admin/users/${r.id}/edit`)}>
+              编辑
+            </Button>
+            <Dropdown
+              menu={{
+                items: moreItems,
+                onClick: ({ key, domEvent }) => {
+                  domEvent.stopPropagation();
+                  if (key === "reset") onResetPassword(r);
+                  else if (key === "toggle") onToggleStatus(r);
+                  else if (key === "delete") onDelete(r);
+                }
+              }}
+              trigger={["click"]}
+              placement="bottomRight"
+            >
+              <Button type="text" size="small" icon={<MoreOutlined />} aria-label="更多操作" />
+            </Dropdown>
+          </Space>
+        );
+      }
     }
   ];
 
   return (
     <Page>
       <PageHeader
-        title="用户管理"
-        subtitle="系统用户、角色与状态;支持按工号/姓名/邮箱/部门搜索"
+        title="员工管理"
+        subtitle="员工账号、角色与部门;支持按工号/姓名/邮箱/部门搜索"
         actions={
           <Button key="add" type="primary" onClick={() => router.push("/admin/users/new")}>
-            新建用户
+            新建员工
           </Button>
         }
       />
       <ProTable<User> actionRef={actionRef}
         rowKey="id"
         columns={columns}
-        search={{
-          labelWidth: "auto",
-          defaultCollapsed: false
-        }}
-        toolbar={{ settings: [] }}
-        pagination={{ pageSize: 20, showSizeChanger: true }}
+        search={{ labelWidth: "auto", defaultCollapsed: isMobile, layout: isMobile ? "vertical" : undefined, collapsed: isMobile ? false : undefined }} debounceTime={400}
+        scroll={{ x: 'max-content' }}
+        cardBordered={false}
+        sticky={isMobile}
+        options={{ reload: () => actionRef.current?.reload?.(), density: !isMobile, fullScreen: !isMobile }}
+        pagination={{ defaultPageSize: 20, showSizeChanger: !isMobile, size: isMobile ? "small" : undefined }}
         request={async (params) => {
           const qs = new URLSearchParams();
           qs.set("page", String(params.current ?? 1));

@@ -66,7 +66,7 @@ export default function ProjectsPage() {
         rowKey="id"
         search={{ labelWidth: "auto", defaultCollapsed: isMobile, layout: isMobile ? "vertical" : undefined }}
         scroll={{ x: 'max-content' }}
-        pagination={{ pageSize: 20, showSizeChanger: !isMobile, size: isMobile ? "small" : undefined }}
+        pagination={{ defaultPageSize: 20, showSizeChanger: !isMobile, size: isMobile ? "small" : undefined }}
         cardBordered={false}
         sticky={isMobile}
         request={async (params) => {

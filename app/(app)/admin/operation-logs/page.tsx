@@ -1,6 +1,8 @@
 "use client";
-import { ProTable, type ProColumns } from "@ant-design/pro-components";
+import { useRef } from "react";
+import { ProTable, type ActionType, type ProColumns } from "@ant-design/pro-components";
 import { Page } from "@/components/page";
+import { useResponsive } from "@/lib/use-breakpoint";
 import { PageHeader } from "@/components/page-header";
 import { StatusTag } from "@/components/status-tag";
 import { actionDomain, shortAction } from "@/lib/operation-log-format";
@@ -31,6 +33,8 @@ const ENTITY_OPTIONS = [
 ];
 
 export default function OperationLogsPage() {
+  const actionRef = useRef<ActionType>(undefined);
+  const { isMobile } = useResponsive();
   const columns: ProColumns<Log>[] = [
     { title: "时间", dataIndex: "at", width: 180, render: (_, r) => <DateTimeCell value={r.at} /> },
     { title: "起始时间", dataIndex: "from", valueType: "dateTime", hideInTable: true },
@@ -84,15 +88,15 @@ export default function OperationLogsPage() {
         title="操作日志"
         subtitle="按时间倒序记录所有状态机迁移与关键修改;支持按 对象 / 动作 / 操作人编号 过滤"
       />
-      <ProTable<Log>
+      <ProTable<Log> actionRef={actionRef}
         rowKey="id"
         columns={columns}
-        search={{
-          labelWidth: "auto",
-          defaultCollapsed: false
-        }}
-        toolbar={{ settings: [] }}
-        pagination={{ pageSize: 20, showSizeChanger: true }}
+        search={{ labelWidth: "auto", defaultCollapsed: isMobile, layout: isMobile ? "vertical" : undefined, collapsed: isMobile ? false : undefined }} debounceTime={400}
+        scroll={{ x: 'max-content' }}
+        cardBordered={false}
+        sticky={isMobile}
+        options={{ reload: () => actionRef.current?.reload?.(), density: !isMobile, fullScreen: !isMobile }}
+        pagination={{ defaultPageSize: 20, showSizeChanger: !isMobile, size: isMobile ? "small" : undefined }}
         request={async (params) => {
           const qs = new URLSearchParams();
           qs.set("page", String(params.current ?? 1));

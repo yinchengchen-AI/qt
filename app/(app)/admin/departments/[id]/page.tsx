@@ -117,7 +117,7 @@ export default function DepartmentDetailPage() {
         rowKey="id"
         search={false}
         loading={!membersData}
-        pagination={{ pageSize: 50, total: membersData?.total ?? 0, showSizeChanger: false }}
+        pagination={{ defaultPageSize: 50, total: membersData?.total ?? 0, showSizeChanger: false }}
         dataSource={membersData?.list ?? []}
         columns={memberColumns}
       />

@@ -103,7 +103,7 @@ export default function MyTasksPage() {
         <Table<MyTask>
           rowKey="id"
           dataSource={data.items}
-          pagination={{ pageSize: 20, size: isMobile ? "small" : "middle" }}
+          pagination={{ defaultPageSize: 20, size: isMobile ? "small" : "middle" }}
           size={isMobile ? "small" : "middle"}
           scroll={{ x: "max-content" }}
           columns={[

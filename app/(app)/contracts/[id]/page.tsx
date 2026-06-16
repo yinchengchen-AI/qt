@@ -51,6 +51,11 @@ function ProjectManagerName({ id }: { id: string }) {
   return <span>{name}</span>;
 }
 
+function SignerName({ id }: { id: string | null | undefined }) {
+  const name = useUserName(id, "—");
+  return <span>{name}</span>;
+}
+
 export default function ContractDetailPage() {
   const params = useParams();
   const id = String(params.id);
@@ -149,10 +154,12 @@ export default function ContractDetailPage() {
             { title: "起期", dataIndex: "startDate", valueType: "date", render: (_, r) => <DateTimeCell value={r.startDate as string} /> },
             { title: "止期", dataIndex: "endDate", valueType: "date", render: (_, r) => <DateTimeCell value={r.endDate as string} /> },
             { title: "合同总额", dataIndex: "totalAmount", render: (_, r) => <CurrencyCell value={r.totalAmount as string} /> },
-            { title: "税率", dataIndex: "taxRate", render: (_, r) => <PercentCell value={(Number(r.taxRate) * 100).toFixed(2)} /> },
+            // 税率是 fraction (0.06);PercentCell 内部 v*100 → "6.00%",这里不能再 *100 否则变成 600.00%
+            { title: "税率", dataIndex: "taxRate", render: (_, r) => <PercentCell value={r.taxRate as string} /> },
             { title: "税额", dataIndex: "taxAmount", render: (_, r) => <CurrencyCell value={r.taxAmount as string} /> },
             { title: "不含税金额", dataIndex: "amountExcludingTax", render: (_, r) => <CurrencyCell value={r.amountExcludingTax as string} /> },
             { title: "付款方式", dataIndex: "paymentMethod", render: (v) => PAYMENT_METHOD_MAP[v as string] ?? paymentMethod.find((d) => d.code === v)?.label ?? v },
+            { title: "签订人", dataIndex: "signerId", render: (_, r) => <SignerName id={r.signerId as string | null} /> },
             { title: "状态", dataIndex: "status", render: (_, r) => <StatusTag status={r.status as string} domain="contract" /> }
           ]} />
         </ProCard>
@@ -168,7 +175,7 @@ export default function ContractDetailPage() {
               rowKey="id"
               search={false}
               options={false}
-              pagination={{ pageSize: 10, size: isMobile ? "small" : "middle" }}
+              pagination={{ defaultPageSize: 10, size: isMobile ? "small" : "middle" }}
               dataSource={overview.projects}
               scroll={{ x: 'max-content' }}
               sticky={isMobile}
@@ -200,7 +207,7 @@ export default function ContractDetailPage() {
               rowKey="id"
               search={false}
               options={false}
-              pagination={{ pageSize: 10, size: isMobile ? "small" : "middle" }}
+              pagination={{ defaultPageSize: 10, size: isMobile ? "small" : "middle" }}
               dataSource={overview.invoices}
               scroll={{ x: 'max-content' }}
               sticky={isMobile}
@@ -226,7 +233,7 @@ export default function ContractDetailPage() {
               rowKey="id"
               search={false}
               options={false}
-              pagination={{ pageSize: 10, size: isMobile ? "small" : "middle" }}
+              pagination={{ defaultPageSize: 10, size: isMobile ? "small" : "middle" }}
               dataSource={overview.payments}
               scroll={{ x: 'max-content' }}
               sticky={isMobile}
@@ -251,7 +258,7 @@ export default function ContractDetailPage() {
               rowKey="id"
               search={false}
               options={false}
-              pagination={{ pageSize: 10, size: isMobile ? "small" : "middle" }}
+              pagination={{ defaultPageSize: 10, size: isMobile ? "small" : "middle" }}
               dataSource={overview.reviewLogs}
               scroll={{ x: 'max-content' }}
               columns={[

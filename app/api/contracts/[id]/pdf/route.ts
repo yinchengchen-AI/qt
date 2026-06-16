@@ -21,8 +21,11 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
     const { id } = await params;
     const c = await getContract(user, id);
     const overview = await getContractOverview(user, id);
-    const [owner, reviewer, attachments] = await Promise.all([
+    const [owner, signer, reviewer, attachments] = await Promise.all([
       prisma.user.findUnique({ where: { id: c.ownerUserId }, select: { name: true, employeeNo: true } }),
+      c.signerId
+        ? prisma.user.findUnique({ where: { id: c.signerId }, select: { name: true, employeeNo: true } })
+        : Promise.resolve(null),
       c.reviewerId
         ? prisma.user.findUnique({ where: { id: c.reviewerId }, select: { name: true, employeeNo: true } })
         : Promise.resolve(null),
@@ -41,12 +44,14 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
       subtitle: `${c.title} · 客户: ${c.customerName}`,
       meta: [
         { label: "合同号:", value: c.contractNo },
-        { label: "业务员:", value: owner ? `${owner.name}(${owner.employeeNo})` : "—" }
+        { label: "业务员:", value: owner ? `${owner.name}(${owner.employeeNo})` : "—" },
+        { label: "签订人:", value: c.signerId ? (signer ? `${signer.name}(${signer.employeeNo})` : "—") : "—" }
       ],
       mainRows: [
         { label: "合同标题", value: c.title },
         { label: "客户", value: c.customerName },
         { label: "服务类型", value: SERVICE_TYPE_MAP[c.serviceType] ?? c.serviceType },
+        { label: "签订人", value: signer ? `${signer.name}(${signer.employeeNo})` : "—" },
         { label: "签订日", value: fmtDate(c.signDate) },
         { label: "服务起期", value: fmtDate(c.startDate) },
         { label: "服务止期", value: fmtDate(c.endDate) },

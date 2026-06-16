@@ -153,7 +153,7 @@ export default function CustomerDetailPage() {
             rowKey="id"
             search={false}
             options={false}
-            pagination={{ pageSize: 10, size: isMobile ? "small" : "middle" }}
+            pagination={{ defaultPageSize: 10, size: isMobile ? "small" : "middle" }}
             dataSource={followUps ?? []}
             scroll={{ x: 'max-content' }}
             sticky={isMobile}
@@ -180,7 +180,7 @@ export default function CustomerDetailPage() {
             rowKey="id"
             search={false}
             options={false}
-            pagination={{ pageSize: 10, size: isMobile ? "small" : "middle" }}
+            pagination={{ defaultPageSize: 10, size: isMobile ? "small" : "middle" }}
             dataSource={overview?.contracts ?? []}
             scroll={{ x: 'max-content' }}
             sticky={isMobile}
@@ -206,7 +206,7 @@ export default function CustomerDetailPage() {
               rowKey="id"
               search={false}
               options={false}
-              pagination={{ pageSize: 10, size: isMobile ? "small" : "middle" }}
+              pagination={{ defaultPageSize: 10, size: isMobile ? "small" : "middle" }}
               dataSource={overview.projects}
               scroll={{ x: 'max-content' }}
               sticky={isMobile}
@@ -233,7 +233,7 @@ export default function CustomerDetailPage() {
               rowKey="id"
               search={false}
               options={false}
-              pagination={{ pageSize: 10, size: isMobile ? "small" : "middle" }}
+              pagination={{ defaultPageSize: 10, size: isMobile ? "small" : "middle" }}
               dataSource={overview.invoices}
               scroll={{ x: 'max-content' }}
               sticky={isMobile}
@@ -259,7 +259,7 @@ export default function CustomerDetailPage() {
               rowKey="id"
               search={false}
               options={false}
-              pagination={{ pageSize: 10, size: isMobile ? "small" : "middle" }}
+              pagination={{ defaultPageSize: 10, size: isMobile ? "small" : "middle" }}
               dataSource={overview.payments}
               scroll={{ x: 'max-content' }}
               sticky={isMobile}

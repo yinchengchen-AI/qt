@@ -121,7 +121,7 @@ export default function AssetListPage() {
         search={false}
         actionRef={actionRef}
         pagination={{
-          pageSize: 20,
+          defaultPageSize: 20,
           showSizeChanger: true,
           total: data?.total ?? 0,
           current: data?.page ?? 1,

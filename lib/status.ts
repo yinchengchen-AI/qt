@@ -31,6 +31,7 @@ const CONTRACT: Record<string, StatusMeta> = {
   PENDING_REVIEW:   { label: "待审批",   tone: "processing" },
   EFFECTIVE:        { label: "已生效",   tone: "info" },
   EXECUTING:        { label: "执行中",   tone: "processing" },
+  SUSPENDED:        { label: "已暂停",   tone: "warning" },
   COMPLETED:        { label: "已完成",   tone: "success" },
   TERMINATED:       { label: "已终止",   tone: "danger" },
   EXPIRED:          { label: "已过期",   tone: "warning" }

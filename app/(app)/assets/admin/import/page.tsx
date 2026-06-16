@@ -168,7 +168,7 @@ export default function AssetImportPage() {
               dataSource={result.rows}
               rowKey="rowIndex"
               size="small"
-              pagination={{ pageSize: 20, showSizeChanger: true }}
+              pagination={{ defaultPageSize: 20, showSizeChanger: true }}
               columns={[
                 { title: "行号", dataIndex: "rowIndex", width: 70 },
                 {
