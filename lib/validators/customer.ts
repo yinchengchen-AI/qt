@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { CUSTOMER_SCALE, CUSTOMER_TYPE } from "@/types/enums";
+import { CUSTOMER_SCALE, CUSTOMER_STATUS, CUSTOMER_TYPE } from "@/types/enums";
 import { isValidCreditCode } from "@/lib/credit-code";
 
 export const customerCreateSchema = z.object({
@@ -23,7 +23,7 @@ export const customerCreateSchema = z.object({
   ownerUserId: z.string().optional()
 });
 
-export const customerUpdateSchema = customerCreateSchema.partial();
+export const customerUpdateSchema = customerCreateSchema.partial().extend({ status: z.enum(CUSTOMER_STATUS).optional() });
 
 export const followUpCreateSchema = z.object({
   followAt: z.iso.datetime(),

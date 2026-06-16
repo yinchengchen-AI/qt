@@ -1,10 +1,7 @@
-import { z } from "zod";
 import { ok, err } from "@/lib/api";
 import { requireSession } from "@/lib/session";
 import { getCustomer, updateCustomer, changeCustomerStatus, softDeleteCustomer } from "@/server/services/customer";
 import { customerUpdateSchema } from "@/lib/validators/customer";
-
-const statusBody = z.object({ status: z.enum(["LEAD", "NEGOTIATING", "SIGNED", "LOST", "FROZEN"]) });
 
 export async function GET(_req: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
@@ -22,13 +19,14 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
     const user = await requireSession();
     const { id } = await params;
     const body = await req.json();
-    if (body && typeof body === "object" && "status" in body && Object.keys(body).length === 1) {
-      const { status } = statusBody.parse(body);
-      const data = await changeCustomerStatus(user, id, status);
-      return ok(data);
-    }
     const input = customerUpdateSchema.parse(body);
-    const data = await updateCustomer(user, id, input);
+    // status 走 changeCustomerStatus, 内部会校验 SIGNED/FROZEN 的合同约束并写 updatedById
+    if (input.status !== undefined) {
+      await changeCustomerStatus(user, id, input.status);
+    }
+    // 剩余字段走 updateCustomer; 此时 status 已单独处理, 避免被 updateCustomer 覆盖
+    const { status: _status, ...rest } = input;
+    const data = await updateCustomer(user, id, rest);
     return ok(data);
   } catch (e) {
     return err(e);

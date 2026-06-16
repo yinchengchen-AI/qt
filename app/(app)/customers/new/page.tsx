@@ -11,7 +11,6 @@ import {
 import { App as AntdApp, Form, Input } from "antd";
 import { useRouter } from "next/navigation";
 import { useDict } from "@/lib/dict-client";
-import { useStatusOptions } from "@/lib/use-status-enum";
 import { Page } from "@/components/page";
 import { PageHeader } from "@/components/page-header";
 import { FormSection, FormGrid, FormCard, SubmitBar } from "@/components/form";
@@ -28,9 +27,6 @@ export default function NewCustomerPage() {
   const industryDict = useDict("CUSTOMER_INDUSTRY");
   const sourceDict = useDict("CUSTOMER_SOURCE");
   const scaleDict = useDict("CUSTOMER_SCALE");
-  // 新建不允许 FROZEN
-  const statusOptions = useStatusOptions("customer", (c) => c !== "FROZEN");
-
   return (
     <Page compact>
       <PageHeader
@@ -133,13 +129,6 @@ export default function NewCustomerPage() {
                 fieldProps={{ size: "large" }}
               />
             </FormGrid>
-            <ProFormSelect
-              name="status"
-              label="客户状态"
-              initialValue="LEAD"
-              options={statusOptions}
-              fieldProps={{ size: "large" }}
-            />
           </FormSection>
 
         <FormSection title="位置与联系" description="级联选择省 / 市 / 区后自动填充到详细地址">

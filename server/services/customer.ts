@@ -5,6 +5,7 @@ import { type SessionUser } from "@/lib/session";
 import { nextBusinessNo } from "@/lib/sequence";
 import { requirePermission, hasPermission, RESOURCE, ACTION } from "@/lib/permissions";
 import type { CustomerCreateInput, CustomerUpdateInput, FollowUpCreateInput } from "@/lib/validators/customer";
+import { buildCustomerUpdateData } from "@/lib/customer-update";
 import type { Prisma } from "@prisma/client";
 import { audit } from "@/server/audit";
 import { rlsTransaction } from "@/lib/rls";
@@ -89,18 +90,7 @@ export async function updateCustomer(user: SessionUser, id: string, input: Custo
   }
   return prisma.customer.update({
     where: { id },
-    data: {
-      ...input,
-      unifiedSocialCreditCode: input.unifiedSocialCreditCode || null,
-      shortName: input.shortName || null,
-      industry: input.industry || null,
-      scale: input.scale || null,
-      address: input.address || null,
-      contactName: input.contactName ?? null,
-      contactTitle: input.contactTitle ?? null,
-      sourceChannel: input.sourceChannel || null,
-      updatedById: user.id
-    }
+    data: buildCustomerUpdateData(input, user.id)
   });
 }
 
