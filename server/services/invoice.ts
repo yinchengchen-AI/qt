@@ -18,40 +18,55 @@ async function resolveInvoiceAttachmentSnapshots(
   if (raw.length > 5) {
     throw new ApiError(ERROR_CODES.VALIDATION_FAILED, "附件最多 5 个", 400);
   }
-  const ids = [...new Set(raw.map((r) => r.id))];
-  const found = await tx.attachment.findMany({
-    where: { id: { in: ids }, deletedAt: null },
-    select: { id: true, originalName: true, mimeType: true, size: true, uploadedById: true, uploadedAt: true, invoiceId: true, contractId: true }
-  });
-  if (found.length !== ids.length) {
-    throw new ApiError(ERROR_CODES.VALIDATION_FAILED, "附件 id 无效或已删除", 400);
-  }
-  // 绑定到当前发票:
-  //   - 没绑任何东西(presign 时 invoiceId/contractId 都为 null -> 落 tmp):绑定到本 invoice
-  //   - 已绑本 invoice:放过
-  //   - 已绑别的合同 / 别的发票:拒绝(防越权)
-  const toBind = found.filter((a) => !a.invoiceId && !a.contractId);
-  if (toBind.length > 0) {
-    await tx.attachment.updateMany({
-      where: { id: { in: toBind.map((a) => a.id) }, invoiceId: null, contractId: null },
-      data: { invoiceId }
+  // 老系统迁移数据: id 以 legacy- 开头, 仅作为历史元数据展示, 实际对象不在 Attachment 表
+  // 直接原样保留, 不走 DB 校验 / 绑定流程
+  const LEGACY_PREFIX = "legacy-";
+  const legacyEntries = raw.filter((r) => r.id.startsWith(LEGACY_PREFIX));
+  const realEntries = raw.filter((r) => !r.id.startsWith(LEGACY_PREFIX));
+
+  const resolvedFromDb: Array<{ id: string; name: string; mimeType: string; size: number; uploadedBy: string; uploadedAt: string; url?: string }> = [];
+  if (realEntries.length > 0) {
+    const ids = [...new Set(realEntries.map((r) => r.id))];
+    const found = await tx.attachment.findMany({
+      where: { id: { in: ids }, deletedAt: null },
+      select: { id: true, originalName: true, mimeType: true, size: true, uploadedById: true, uploadedAt: true, invoiceId: true, contractId: true }
     });
+    if (found.length !== ids.length) {
+      throw new ApiError(ERROR_CODES.VALIDATION_FAILED, "附件 id 无效或已删除", 400);
+    }
+    // 绑定到当前发票:
+    //   - 没绑任何东西(presign 时 invoiceId/contractId 都为 null -> 落 tmp):绑定到本 invoice
+    //   - 已绑本 invoice:放过
+    //   - 已绑别的合同 / 别的发票:拒绝(防越权)
+    const toBind = found.filter((a) => !a.invoiceId && !a.contractId);
+    if (toBind.length > 0) {
+      await tx.attachment.updateMany({
+        where: { id: { in: toBind.map((a) => a.id) }, invoiceId: null, contractId: null },
+        data: { invoiceId }
+      });
+    }
+    // 已绑本 invoice:放过;已绑其它 invoice 或 任意 contract:拒绝
+    const others = found.filter((a) =>
+      (a.invoiceId && a.invoiceId !== invoiceId) || a.contractId
+    );
+    if (others.length > 0) {
+      throw new ApiError(ERROR_CODES.FORBIDDEN, "部分附件已绑定到其它合同/发票", 403);
+    }
+    resolvedFromDb.push(...found.map((a) => ({
+      id: a.id,
+      name: a.originalName,
+      mimeType: a.mimeType,
+      size: a.size,
+      uploadedBy: a.uploadedById,
+      uploadedAt: a.uploadedAt.toISOString()
+    })));
   }
-  // 已绑本 invoice:放过;已绑其它 invoice 或 任意 contract:拒绝
-  const others = found.filter((a) =>
-    (a.invoiceId && a.invoiceId !== invoiceId) || a.contractId
-  );
-  if (others.length > 0) {
-    throw new ApiError(ERROR_CODES.FORBIDDEN, "部分附件已绑定到其它合同/发票", 403);
-  }
-  return found.map((a) => ({
-    id: a.id,
-    name: a.originalName,
-    mimeType: a.mimeType,
-    size: a.size,
-    uploadedBy: a.uploadedById,
-    uploadedAt: a.uploadedAt.toISOString()
-  })) as unknown as Prisma.InputJsonValue;
+
+  // 保持原顺序: legacy 在它被提交的位置原样保留
+  const byId = new Map<string, Prisma.InputJsonValue>();
+  for (const e of legacyEntries) byId.set(e.id, e as unknown as Prisma.InputJsonValue);
+  for (const e of resolvedFromDb) byId.set((e as { id: string }).id, e);
+  return raw.map((r) => byId.get(r.id) as { id: string; name?: string; mimeType?: string; size?: number; uploadedBy?: string; uploadedAt?: string; url?: string }) as unknown as Prisma.InputJsonValue;
 }
 
 

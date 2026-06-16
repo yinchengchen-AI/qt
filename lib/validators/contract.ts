@@ -1,5 +1,6 @@
 import { z } from "zod";
-import { CONTRACT_PAYMENT_METHOD, SERVICE_TYPE } from "@/types/enums";
+import { CONTRACT_PAYMENT_METHOD } from "@/types/enums";
+import { attachmentUrlSchema } from "@/lib/validators/_shared";
 
 const isoDate = z.iso.datetime();
 
@@ -8,7 +9,7 @@ const attachment = z.object({
   name: z.string().min(1),
   // url optional: 新流程存 MinIO objectKey, 下载时实时签 URL
   // 旧数据 (https://placeholder.local/...) 仅在历史列表展示
-  url: z.string().url().optional(),
+  url: attachmentUrlSchema,
   mimeType: z.string(),
   size: z.number().int().nonnegative(),
   uploadedBy: z.string(),
