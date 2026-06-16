@@ -6,6 +6,7 @@ import { requirePermission, RESOURCE, ACTION } from "@/lib/permissions";
 import type { ContractCreateInput, ContractUpdateInput, ReviewActionInput } from "@/lib/validators/contract";
 import { ownerEq, parseStatusList } from "@/lib/ownership";
 import { getBillingStatus } from "@/lib/contract-billing";
+import type { BillingStatus } from "@/types/enums";
 import { Prisma } from "@prisma/client";
 import { audit } from "@/server/audit";
 import { emit, listAdminUserIds } from "@/server/events/bus";
@@ -489,6 +490,7 @@ export type ContractOverview = {
     totalAmount: number;
     invoicedAmount: number;
     paidAmount: number;
+    billingStatus: BillingStatus;
     workflowTaskCount: number;
     workflowCompleted: number;
   };
@@ -533,11 +535,13 @@ export async function getContractOverview(
     projectWorkflowStats[p.id] = { completed, total };
   }
 
-  // 总数
+  // 总数(与 server/services/statistics.ts:18-30 语义一致):
+  //   invoicedAmount = sum(Invoice.amount)  where status=ISSUED         (red-flush 负数已含, 自动净额)
+  //   paidAmount     = sum(Payment.amount)  where status IN (CONFIRMED,RECONCILED)
   let invoicedAmount = 0;
-  for (const inv of invoices) invoicedAmount += Number(inv.amount);
+  for (const inv of invoices) if (inv.status === "ISSUED") invoicedAmount += Number(inv.amount);
   let paidAmount = 0;
-  for (const p of payments) paidAmount += Number(p.amount);
+  for (const p of payments) if (p.status === "CONFIRMED" || p.status === "RECONCILED") paidAmount += Number(p.amount);
 
   return {
     projects: projects.map((p) => ({
@@ -580,6 +584,7 @@ export async function getContractOverview(
       totalAmount: Number(c.totalAmount),
       invoicedAmount,
       paidAmount,
+      billingStatus: getBillingStatus(invoicedAmount, Number(c.totalAmount)),
       workflowTaskCount: projects.reduce((s, p) => s + (projectWorkflowStats[p.id]?.total ?? 0), 0),
       workflowCompleted: projects.reduce((s, p) => s + (projectWorkflowStats[p.id]?.completed ?? 0), 0)
     }
