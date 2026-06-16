@@ -1,9 +1,8 @@
 "use client";
-import { ProTable, type ProColumns } from "@ant-design/pro-components";
+import { ProTable, type ActionType, type ProColumns } from "@ant-design/pro-components";
 import { App as AntdApp, Button, Tag, Modal, Space } from "antd";
 import { useRouter } from "next/navigation";
-import { useSWRConfig } from "swr";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { copyToClipboard } from "@/lib/copy";
 import { Page } from "@/components/page";
 import { PageHeader } from "@/components/page-header";
@@ -27,8 +26,8 @@ type User = {
 export default function UsersPage() {
   const router = useRouter();
   const { message, modal } = AntdApp.useApp();
-  const { mutate } = useSWRConfig();
   const [resetting, setResetting] = useState<{ id: string; newPassword: string } | null>(null);
+  const actionRef = useRef<ActionType>(undefined);
 
   async function onToggleStatus(u: User) {
     const next = u.status === "ACTIVE" ? "DISABLED" : "ACTIVE";
@@ -47,7 +46,7 @@ export default function UsersPage() {
         const j = await r.json();
         if (j.code !== 0) return message.error(j.message);
         message.success(`${action}成功`);
-        mutate((k) => typeof k === "string" && k.startsWith("/api/users"));
+        actionRef.current?.reloadAndRest?.();
       }
     });
   }
@@ -65,7 +64,7 @@ export default function UsersPage() {
         const j = await r.json();
         if (j.code !== 0) return message.error(j.message);
         setResetting({ id: u.id, newPassword: j.data.newPassword });
-        mutate((k) => typeof k === "string" && k.startsWith("/api/users"));
+        actionRef.current?.reloadAndRest?.();
       }
     });
   }
@@ -80,7 +79,7 @@ export default function UsersPage() {
         const j = await r.json();
         if (j.code !== 0) return message.error(j.message);
         message.success("已删除");
-        mutate((k) => typeof k === "string" && k.startsWith("/api/users"));
+        actionRef.current?.reloadAndRest?.();
       }
     });
   }
@@ -149,7 +148,7 @@ export default function UsersPage() {
           </Button>
         }
       />
-      <ProTable<User>
+      <ProTable<User> actionRef={actionRef}
         rowKey="id"
         columns={columns}
         search={{
