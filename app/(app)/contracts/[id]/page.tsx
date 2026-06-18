@@ -293,7 +293,18 @@ export default function ContractDetailPage() {
       label: "附件",
       children: (
         <ProCard>
-          <AttachmentList items={(contract.attachments ?? []).map((a) => ({ id: a.id, name: a.name, mimeType: a.mimeType, size: a.size }))} allowDelete={isOwnerOrAdmin} />
+          <AttachmentList
+              items={(contract.attachments ?? []).map((a) => ({
+                id: a.id,
+                name: a.name,
+                mimeType: a.mimeType,
+                size: a.size,
+                // 历史数据 url 可能是 /upload/xxx 相对路径, 传 legacyUrl 让附件列表显示"历史链接已失效"标签
+                // (当前 DB 已无 legacy 条目, 此处为防御性: 若以后又混进 legacy 数据, 至少不再让用户点坏按钮)
+                legacyUrl: typeof a.url === "string" ? a.url : undefined
+              }))}
+              allowDelete={isOwnerOrAdmin}
+            />
         </ProCard>
       )
     }
