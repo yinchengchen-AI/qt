@@ -32,7 +32,9 @@
     "migrate:legacy:dry": "node scripts/migrate/legacy-fineui.mjs --dry-run",
     "migrate:legacy": "node scripts/migrate/legacy-fineui.mjs",
     "migrate:legacy:verify": "node scripts/migrate/verify.mjs",
-    "migrate:legacy:fixup": "node scripts/migrate/legacy-fixup.mjs"
+    "migrate:legacy:fixup": "node scripts/migrate/legacy-fixup.mjs",
+    "migrate:legacy:attachments": "node scripts/migrate/legacy-attachments.mjs",
+    "migrate:legacy:attachments:dry": "node scripts/migrate/legacy-attachments.mjs --dry-run"
   },
   "dependencies": {
     "@ant-design/charts": "2.6.7",
