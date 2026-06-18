@@ -100,9 +100,10 @@ export default function DictionariesPage() {
         if (cancelled) { break; }
         if (counts[c] !== undefined) continue;
         try {
-          const r = await fetch(`/api/dictionaries?category=${c}&pageSize=1&includeInactive=true`, { credentials: "include" });
+          // 用 legacy 分支 (?category=X 无 pageSize/includeInactive/keyword) 兼容 REGION 等非白名单类目
+          const r = await fetch(`/api/dictionaries?category=${encodeURIComponent(c)}`, { credentials: "include" });
           const j = await r.json();
-          if (j.code === 0) setCounts((prev) => ({ ...prev, [c]: j.data.total }));
+          if (j.code === 0) setCounts((prev) => ({ ...prev, [c]: (j.data ?? []).length }));
         } catch { /* ignore */ }
       }
     })();
