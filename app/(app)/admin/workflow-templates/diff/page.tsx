@@ -121,7 +121,7 @@ export default function TemplateDiffPage() {
         type="info"
         showIcon
         style={{ marginBottom: 16 }}
-        message="模板对比说明"
+        title="模板对比说明"
         description="按 code 比对 stage 和 task;added 出现在新版本,removed 出现在旧版本,modified 字段差异列在 changes 数组里。模板级(name/description/isActive/serviceType)变化列在最上面。"
       />
 

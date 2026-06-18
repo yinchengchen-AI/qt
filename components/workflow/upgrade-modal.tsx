@@ -122,7 +122,7 @@ export function UpgradeModal({
             type="warning"
             showIcon
             icon={<ExclamationCircleOutlined />}
-            message="升级会丢失当前所有实例的状态"
+            title="升级会丢失当前所有实例的状态"
             description={
               <Space orientation="vertical" size={2}>
                 <Text>

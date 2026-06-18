@@ -62,7 +62,7 @@ export function EmptyState({
         <Alert
           type="error"
           showIcon
-          message={title ?? "加载失败"}
+          title={title ?? "加载失败"}
           description={error.message}
           action={
             error.onRetry ? (

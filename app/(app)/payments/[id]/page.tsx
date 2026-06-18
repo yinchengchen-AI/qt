@@ -219,7 +219,7 @@ export default function PaymentDetailPage() {
           type="info"
           showIcon
           style={{ marginBottom: 16 }}
-          message="分配明细已锁定"
+          title="分配明细已锁定"
           description="该回款已对账/退款/取消,分配明细不可再修改;如需调整,请走退款或冲账流程。所有修改会记入审计日志。"
         />
       ) : (
@@ -227,7 +227,7 @@ export default function PaymentDetailPage() {
           type="warning"
           showIcon
           style={{ marginBottom: 16 }}
-          message={`分配明细仅在 ${PAYMENT_STATUS_MAP.PLANNED ?? "PLANNED"} / ${PAYMENT_STATUS_MAP.CONFIRMED ?? "CONFIRMED"} 状态可调整`}
+          title={`分配明细仅在 ${PAYMENT_STATUS_MAP.PLANNED ?? "PLANNED"} / ${PAYMENT_STATUS_MAP.CONFIRMED ?? "CONFIRMED"} 状态可调整`}
           description="对账(RECONCILED)后系统将自动锁定,不再允许修改分配。可通过页面右上角「重分配」按钮调整。"
         />
       )}
@@ -266,14 +266,14 @@ export default function PaymentDetailPage() {
         okText="保存"
         cancelText="取消"
         width={760}
-        destroyOnClose
+        destroyOnHidden
         confirmLoading={false}
       >
         <Alert
           type="info"
           showIcon
           style={{ marginBottom: 16 }}
-          message={`分配合计必须等于回款金额 ¥${Number(payment.amount).toFixed(2)}`}
+          title={`分配合计必须等于回款金额 ¥${Number(payment.amount).toFixed(2)}`}
           description="可删除、修改或新增行,保存后会覆盖当前分配;修改会记入审计日志。"
         />
         <Form form={form} layout="vertical" preserve={false}>

@@ -59,7 +59,7 @@ export default function WorkflowStatsPage() {
         <Alert
           type="error"
           showIcon
-          message="无法加载工作流概览"
+          title="无法加载工作流概览"
           description="该页面对管理员可见。请确认您已登录管理员账号。"
         />
       </Page>

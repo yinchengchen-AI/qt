@@ -123,7 +123,7 @@ export default function AssetImportPage() {
             <Alert
               type="info"
               showIcon
-              message="模板说明"
+              title="模板说明"
               description={
                 <ul style={{ marginBottom: 0, paddingLeft: 18 }}>
                   <li>每个类型一张工作表(单 sheet);第一行是表头(标 * 为必填)</li>

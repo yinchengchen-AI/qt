@@ -332,7 +332,7 @@ export default function TemplateDetailPage() {
         type="info"
         showIcon
         style={{ marginBottom: 16 }}
-        message="模板修改仅影响新实例化的项目"
+        title="模板修改仅影响新实例化的项目"
         description="已存在的项目用的是实例化时的快照,不会被本次修改影响。如需旧项目也用新模板,请到项目详情页重新 init(force=true)。"
       />
 
