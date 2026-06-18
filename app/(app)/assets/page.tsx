@@ -1,5 +1,5 @@
 "use client";
-import { Card, Col, Row, Statistic, Tag, Button, Empty, List, Space, Spin } from "antd";
+import { Card, Col, Flex, Row, Statistic, Tag, Button, Empty, Space, Spin } from "antd";
 import { DatabaseOutlined, FileAddOutlined, UploadOutlined, WarningOutlined, ClockCircleOutlined, CloseCircleOutlined } from "@ant-design/icons";
 import Link from "next/link";
 import useSWR from "swr";
@@ -72,7 +72,7 @@ export default function AssetsHomePage() {
                 title={`即将到期(${stats?.expiringSoonDays ?? 60} 天内)`}
                 value={stats?.expiringSoonCount ?? 0}
                 prefix={<ClockCircleOutlined style={{ color: "#faad14" }} />}
-                valueStyle={{ color: "#faad14" }}
+                styles={{ content: { color: "#faad14" } }}
               />
             </Card>
           </Col>
@@ -82,7 +82,7 @@ export default function AssetsHomePage() {
                 title="已过期"
                 value={stats?.expiredCount ?? 0}
                 prefix={<CloseCircleOutlined style={{ color: "#f5222d" }} />}
-                valueStyle={{ color: "#f5222d" }}
+                styles={{ content: { color: "#f5222d" } }}
               />
             </Card>
           </Col>
@@ -103,34 +103,28 @@ export default function AssetsHomePage() {
           <Card title={`即将到期(${stats?.expiringSoonCount ?? 0})`} extra={<Link href="/assets/list?status=EXPIRING_SOON">查看全部</Link>}>
             <Spin spinning={loadingExp}>
               {expiring && expiring.length > 0 ? (
-                <List
-                  dataSource={expiring}
-                  renderItem={(row) => {
+                <Flex vertical gap="small">
+                  {expiring.map((row) => {
                     const dl = daysLeft(row.validTo);
                     return (
-                      <List.Item
-                        actions={[<Link key="view" href={`/assets/${row.id}`}>查看</Link>]}
-                      >
-                        <List.Item.Meta
-                          title={
-                            <Space>
-                              <Link href={`/assets/${row.id}`}>{row.name}</Link>
-                              <Tag>{ASSET_TYPE_MAP[row.type] ?? row.type}</Tag>
-                              <Tag color={dl != null && dl <= 7 ? "red" : "orange"}>
-                                {dl != null ? `${dl} 天后到期` : "已过期"}
-                              </Tag>
-                            </Space>
-                          }
-                          description={
-                            <span style={{ color: "#999" }}>
-                              {row.code} · 到期: {row.validTo ? new Date(row.validTo).toISOString().slice(0, 10) : "—"}
-                            </span>
-                          }
-                        />
-                      </List.Item>
+                      <div key={row.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 8 }}>
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <Space size={4} wrap>
+                            <Link href={`/assets/${row.id}`}>{row.name}</Link>
+                            <Tag>{ASSET_TYPE_MAP[row.type] ?? row.type}</Tag>
+                            <Tag color={dl != null && dl <= 7 ? "red" : "orange"}>
+                              {dl != null ? `${dl} 天后到期` : "已过期"}
+                            </Tag>
+                          </Space>
+                          <div style={{ color: "#999", marginTop: 4, fontSize: 12 }}>
+                            {row.code} · 到期: {row.validTo ? new Date(row.validTo).toISOString().slice(0, 10) : "—"}
+                          </div>
+                        </div>
+                        <Link href={`/assets/${row.id}`}>查看</Link>
+                      </div>
                     );
-                  }}
-                />
+                  })}
+                </Flex>
               ) : (
                 <Empty description="暂无即将到期的资产" />
               )}
