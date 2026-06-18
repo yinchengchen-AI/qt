@@ -410,6 +410,62 @@ async function main() {
     { category: "PERSONNEL_CERT_TYPE", code: "TRAINING_INSTRUCTOR",       label: "培训师资",         sort: 40 },
     { category: "PERSONNEL_CERT_TYPE", code: "SPECIAL_OPERATION",         label: "特种作业操作证",   sort: 50 },
     { category: "PERSONNEL_CERT_TYPE", code: "OTHER",                     label: "其他",             sort: 999 },
+    // === 以下 8 类状态机字典, 以 prisma/schema.prisma 注释为权威 (schema 允许的 code) ===
+    // === 同步 lib/enum-maps.ts 现有 label, 方便后续 useDict 取代 hardcode ===
+    // 客户状态机
+    { category: "CUSTOMER_STATUS", code: "LEAD",        label: "线索",     sort: 1 },
+    { category: "CUSTOMER_STATUS", code: "NEGOTIATING", label: "洽谈中",   sort: 2 },
+    { category: "CUSTOMER_STATUS", code: "SIGNED",      label: "已签约",   sort: 3 },
+    { category: "CUSTOMER_STATUS", code: "LOST",        label: "已流失",   sort: 4 },
+    { category: "CUSTOMER_STATUS", code: "FROZEN",      label: "已冻结",   sort: 5 },
+    // 合同状态机
+    { category: "CONTRACT_STATUS", code: "DRAFT",          label: "草稿",     sort: 1 },
+    { category: "CONTRACT_STATUS", code: "PENDING_REVIEW", label: "待审批",   sort: 2 },
+    { category: "CONTRACT_STATUS", code: "EFFECTIVE",      label: "已生效",   sort: 3 },
+    { category: "CONTRACT_STATUS", code: "EXECUTING",      label: "执行中",   sort: 4 },
+    { category: "CONTRACT_STATUS", code: "COMPLETED",      label: "已完成",   sort: 5 },
+    { category: "CONTRACT_STATUS", code: "TERMINATED",     label: "已终止",   sort: 6 },
+    { category: "CONTRACT_STATUS", code: "EXPIRED",        label: "已过期",   sort: 7 },
+    // 项目状态机
+    { category: "PROJECT_STATUS", code: "PLANNED",     label: "计划中",   sort: 1 },
+    { category: "PROJECT_STATUS", code: "IN_PROGRESS", label: "进行中",   sort: 2 },
+    { category: "PROJECT_STATUS", code: "SUSPENDED",   label: "已暂停",   sort: 3 },
+    { category: "PROJECT_STATUS", code: "DELIVERED",   label: "已交付",   sort: 4 },
+    { category: "PROJECT_STATUS", code: "ACCEPTED",    label: "已验收",   sort: 5 },
+    { category: "PROJECT_STATUS", code: "CLOSED",      label: "已关闭",   sort: 6 },
+    { category: "PROJECT_STATUS", code: "CANCELLED",   label: "已取消",   sort: 7 },
+    // 发票类型
+    { category: "INVOICE_TYPE", code: "VAT_SPECIAL",    label: "增值税专用发票", sort: 1 },
+    { category: "INVOICE_TYPE", code: "VAT_GENERAL",    label: "增值税普通发票", sort: 2 },
+    { category: "INVOICE_TYPE", code: "VAT_ELECTRONIC", label: "增值税电子专票", sort: 3 },
+    { category: "INVOICE_TYPE", code: "ELEC_NORMAL",    label: "电子普通发票",     sort: 4 },
+    // 开票状态机
+    { category: "INVOICE_STATUS", code: "DRAFT",           label: "草稿",       sort: 1 },
+    { category: "INVOICE_STATUS", code: "PENDING_FINANCE", label: "待财务审核", sort: 2 },
+    { category: "INVOICE_STATUS", code: "ISSUED",          label: "已开票",     sort: 3 },
+    { category: "INVOICE_STATUS", code: "REJECTED",        label: "已驳回",     sort: 4 },
+    { category: "INVOICE_STATUS", code: "VOIDED",          label: "已作废",     sort: 5 },
+    { category: "INVOICE_STATUS", code: "RED_FLUSHED",     label: "已红冲",     sort: 6 },
+    // 回款状态机
+    { category: "PAYMENT_STATUS", code: "PLANNED",    label: "计划中",   sort: 1 },
+    { category: "PAYMENT_STATUS", code: "CONFIRMED",  label: "已确认",   sort: 2 },
+    { category: "PAYMENT_STATUS", code: "RECONCILED", label: "已对账",   sort: 3 },
+    { category: "PAYMENT_STATUS", code: "REFUNDED",   label: "已退款",   sort: 4 },
+    { category: "PAYMENT_STATUS", code: "CANCELLED",  label: "已取消",   sort: 5 },
+    // 合同付款方式
+    { category: "CONTRACT_PAYMENT_METHOD", code: "LUMP_SUM",   label: "一次性", sort: 1 },
+    { category: "CONTRACT_PAYMENT_METHOD", code: "BY_PHASE",   label: "按阶段", sort: 2 },
+    { category: "CONTRACT_PAYMENT_METHOD", code: "BY_MONTH",   label: "按月",   sort: 3 },
+    { category: "CONTRACT_PAYMENT_METHOD", code: "BY_QUARTER", label: "按季",   sort: 4 },
+    // 审批动作
+    { category: "REVIEW_ACTION", code: "SUBMIT",   label: "提交审批", sort: 1 },
+    { category: "REVIEW_ACTION", code: "APPROVE",  label: "批准",     sort: 2 },
+    { category: "REVIEW_ACTION", code: "REJECT",   label: "驳回",     sort: 3 },
+    { category: "REVIEW_ACTION", code: "WITHDRAW", label: "撤回",     sort: 4 },
+    { category: "REVIEW_ACTION", code: "EXECUTE",  label: "开始执行", sort: 5 },
+    { category: "REVIEW_ACTION", code: "SUSPEND",  label: "暂停",     sort: 6 },
+    { category: "REVIEW_ACTION", code: "RESUME",   label: "恢复",     sort: 7 },
+    { category: "REVIEW_ACTION", code: "COMPLETE", label: "结清",     sort: 8 },
   ];
   for (const d of dictDefs) {
     await prisma.dictionary.upsert({
