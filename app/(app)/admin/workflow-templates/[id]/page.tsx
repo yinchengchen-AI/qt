@@ -415,6 +415,7 @@ export default function TemplateDetailPage() {
 
       <Modal
         open={editingMeta}
+        forceRender
         title="编辑模板元数据"
         onCancel={() => setEditingMeta(false)}
         onOk={() => metaForm.submit()}
@@ -435,6 +436,7 @@ export default function TemplateDetailPage() {
 
       <Modal
         open={addingToStage !== null}
+        forceRender
         title="添加任务"
         onCancel={() => setAddingToStage(null)}
         onOk={() => taskForm.submit()}
@@ -446,6 +448,7 @@ export default function TemplateDetailPage() {
 
       <Modal
         open={editingTask !== null}
+        forceRender
         title={"编辑任务: " + (editingTask?.name ?? "")}
         onCancel={() => setEditingTask(null)}
         onOk={() => taskForm.submit()}
@@ -456,6 +459,7 @@ export default function TemplateDetailPage() {
       </Modal>
       <Modal
         open={addingStage || editingStage !== null}
+        forceRender
         title={editingStage ? "编辑阶段" : "添加阶段"}
         onCancel={() => { setAddingStage(false); setEditingStage(null); }}
         onOk={() => stageForm.submit()}
@@ -485,15 +489,15 @@ export default function TemplateDetailPage() {
           </Form.Item>
         </Form>
       </Modal>
-      {duplicatingTask && (
-        <Modal
-          open
-          title={"复制任务: " + duplicatingTask.name}
-          onCancel={() => setDuplicatingTask(null)}
-          onOk={() => duplicateForm.submit()}
-          okText="复制"
-          width={520}
-        >
+      <Modal
+        open={!!duplicatingTask}
+        forceRender
+        title={duplicatingTask ? "复制任务: " + duplicatingTask.name : "复制任务"}
+        onCancel={() => setDuplicatingTask(null)}
+        onOk={() => duplicateForm.submit()}
+        okText="复制"
+        width={520}
+      >
           <Form form={duplicateForm} layout="vertical" onFinish={onDuplicateTask}>
             <Form.Item name="targetStageId" label="目标阶段" rules={[{ required: true }]}>
               <Select
@@ -511,7 +515,6 @@ export default function TemplateDetailPage() {
             </Form.Item>
           </Form>
         </Modal>
-      )}
       {migratingFrom && (
         <MigrationModal
           fromTask={migratingFrom}
