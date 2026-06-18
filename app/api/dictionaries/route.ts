@@ -23,7 +23,7 @@ export async function GET(req: Request) {
         const flat = await prisma.dictionary.findMany({
           where: { category, isActive: true },
           orderBy: [{ sort: "asc" }, { code: "asc" }],
-          select: { code: true, label: true, parentCode: true, sort: true }
+          select: { id: true, code: true, label: true, parentCode: true, sort: true, isActive: true }
         });
         return ok(buildDictTree(flat));
       }
@@ -62,14 +62,14 @@ export async function POST(req: Request) {
  *   子级递归
  *   parentCode 引用不存在的 code 会被忽略 (作为顶级)
  */
-type DictTreeNode = { code: string; label: string; children: DictTreeNode[] };
+type DictTreeNode = { id: string; code: string; label: string; parentCode: string | null; isActive: boolean; children: DictTreeNode[] };
 function buildDictTree(
-  flat: { code: string; label: string; parentCode: string | null; sort: number }[]
+  flat: { id: string; code: string; label: string; parentCode: string | null; sort: number; isActive: boolean }[]
 ): DictTreeNode[] {
   type Node = DictTreeNode & { _raw: typeof flat[number] };
   const map = new Map<string, Node>();
   for (const f of flat) {
-    map.set(f.code, { code: f.code, label: f.label, children: [], _raw: f });
+    map.set(f.code, { id: f.id, code: f.code, label: f.label, parentCode: f.parentCode, isActive: f.isActive, children: [], _raw: f });
   }
   const roots: Node[] = [];
   for (const f of flat) {
@@ -81,5 +81,5 @@ function buildDictTree(
     }
   }
   // UI 只要 code/label/children (去除内部 _raw)
-  return roots.map(({ code, label, children }) => ({ code, label, children }));
+  return roots.map(({ id, code, label, parentCode, isActive, children }) => ({ id, code, label, parentCode, isActive, children }));
 }

@@ -44,8 +44,34 @@ export default function DictionariesPage() {
     if (!selected) return;
     setLoading(true);
     try {
+      // REGION 不在 16 类白名单, listAll 会拒, 走 legacy 树形分支
+      if (selected === "REGION") {
+        const r = await fetch(`/api/dictionaries?category=REGION&tree=true`, { credentials: "include" });
+        const j = await r.json();
+        if (j.code !== 0) throw new Error(j.message);
+        // j.data 是 DictTreeNode[], 转成 DictRow 喂给 DictTreeView (用 code 作为 id)
+        const flat: DictRow[] = [];
+        const walk = (nodes: Array<{ id: string; code: string; label: string; parentCode: string | null; isActive: boolean; children?: unknown[] }>) => {
+          for (const n of nodes) {
+            flat.push({
+              id: n.id,
+              code: n.code,
+              label: n.label,
+              sort: 0,
+              isActive: n.isActive,
+              parentCode: n.parentCode,
+              createdAt: ""
+            });
+            if (n.children && (n.children as unknown[]).length > 0) walk(n.children as never);
+          }
+        };
+        walk(j.data ?? []);
+        setRows(flat);
+        setCounts((prev) => ({ ...prev, REGION: flat.length }));
+        return;
+      }
       const qs = new URLSearchParams();
-      qs.set("pageSize", "500");
+      qs.set("pageSize", "200");
       qs.set("includeInactive", includeInactive ? "true" : "false");
       qs.set("category", selected);
       if (keyword.trim()) qs.set("keyword", keyword.trim());

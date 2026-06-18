@@ -88,6 +88,16 @@ export function CreateDictDrawer({ open, onClose, onSaved, defaultCategory, defa
     }
   }
 
+  // open=false 时:不渲染 Drawer (避免内部 Portal SSR/hydration mismatch),
+  // 但渲染一个 hidden Form 元素保持 useForm connected (避免 antd 警告)
+  if (!open) {
+    return (
+      <div style={{ display: "none" }} aria-hidden="true">
+        <Form form={form} />
+      </div>
+    );
+  }
+
   return (
     <Drawer
       title="新增字典项"
@@ -97,7 +107,6 @@ export function CreateDictDrawer({ open, onClose, onSaved, defaultCategory, defa
         onClose();
       }}
       size={480}
-      forceRender
       extra={
         <Space>
           <Button onClick={onClose}>取消</Button>

@@ -54,13 +54,22 @@ export function DictEditDrawer({ open, dict, onClose, onSaved }: Props) {
     }
   }
 
+  // open=false 时:不渲染 Drawer (避免内部 Portal SSR/hydration mismatch),
+  // 但渲染一个 hidden Form 元素保持 useForm connected (避免 antd 警告)
+  if (!open) {
+    return (
+      <div style={{ display: "none" }} aria-hidden="true">
+        <Form form={form} />
+      </div>
+    );
+  }
+
   return (
     <Drawer
       title={dict ? `编辑 ${dict.code}` : "编辑"}
       open={open}
       onClose={onClose}
       size={480}
-      forceRender
       extra={
         <Space>
           <Button onClick={onClose}>取消</Button>
