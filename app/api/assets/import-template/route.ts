@@ -1,5 +1,7 @@
 // GET /api/assets/import-template?type=LICENSE  下载 xlsx 模板
+// 权限: ASSET.CREATE (ADMIN-only) — 与 /api/assets/import 保持一致, 避免登录用户都能拿到模板
 import { requireSession } from "@/lib/session";
+import { requirePermission, RESOURCE, ACTION } from "@/lib/permissions";
 import { generateImportTemplate } from "@/server/services/asset-import";
 import { ApiError, err } from "@/lib/api";
 import { ERROR_CODES } from "@/types/errors";
@@ -8,6 +10,7 @@ import { ASSET_TYPE, type AssetType } from "@/types/enums";
 export async function GET(req: Request) {
   try {
     const user = await requireSession();
+    requirePermission(user.roleCode, RESOURCE.ASSET, ACTION.CREATE);
     const url = new URL(req.url);
     const type = String(url.searchParams.get("type") ?? "") as AssetType;
     if (!ASSET_TYPE.includes(type)) {

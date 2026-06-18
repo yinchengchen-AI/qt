@@ -3,7 +3,7 @@ import { ApiError } from "@/lib/api";
 import { ERROR_CODES } from "@/types/errors";
 import { type SessionUser } from "@/lib/session";
 import { nextBusinessNo } from "@/lib/sequence";
-import { requirePermission, hasPermission, RESOURCE, ACTION } from "@/lib/permissions";
+import { requirePermission, RESOURCE, ACTION } from "@/lib/permissions";
 import type { CustomerCreateInput, CustomerUpdateInput, FollowUpCreateInput } from "@/lib/validators/customer";
 import { buildCustomerUpdateData } from "@/lib/customer-update";
 import type { Prisma } from "@prisma/client";
@@ -337,6 +337,15 @@ export type FollowUpOverviewItem = {
   result: string | null;
 };
 
+/**
+ * 跟进 360 行级隔离决策:返回该角色是否能看全部客户的跟进数据
+ * 注:不能用 CUSTOMER.EXPORT 代理——SALES/EXPERT 也有该权限(用于"导出自己客户数据"),
+ *   复用会让他们越过行级隔离。
+ */
+export function canSeeAllFollowUps(roleCode: SessionUser["roleCode"]): boolean {
+  return roleCode === "ADMIN" || roleCode === "FINANCE" || roleCode === "OPS";
+}
+
 export type FollowUpOverview = {
   items: FollowUpOverviewItem[];
   totals: { total: number; overdue: number; pending: number };
@@ -348,8 +357,7 @@ export async function getFollowUpOverview(
   user: SessionUser,
   params: { days?: number; method?: string; result?: string; limit?: number }
 ): Promise<FollowUpOverview> {
-  // 根据角色权限: 管理员看全部, 销售只看自己的客户
-  const canSeeAll = hasPermission(user.roleCode, RESOURCE.CUSTOMER, ACTION.EXPORT);
+  const canSeeAll = canSeeAllFollowUps(user.roleCode);
   const customerWhere: Record<string, unknown> = canSeeAll
     ? { deletedAt: null }
     : { deletedAt: null, ownerUserId: user.id };

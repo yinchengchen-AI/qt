@@ -34,7 +34,7 @@ import {
   IdcardOutlined,
 } from "@ant-design/icons";
 import type { RoleCode } from "@/types/enums";
-import type { Action, Resource } from "@/lib/permissions";
+import { ACTION, RESOURCE, type Action, type Resource } from "@/lib/permissions";
 import { useResponsive } from "@/lib/use-breakpoint";
 import { ROLE_LABEL } from "@/lib/status";
 
@@ -45,30 +45,60 @@ type MenuItem = {
   path: string;
   name: string;
   icon?: React.ReactNode;
+  /** 访问该菜单项所需的资源/动作;不配置则默认对所有角色可见 */
+  permission?: { resource: Resource; action: Action };
   children?: Omit<MenuItem, "children">[];
 };
 
+/** 判断登录用户是否拥有某项 resource+action */
+function hasMenuPermission(
+  permissions: { resource: Resource; actions: Action[] }[],
+  required: { resource: Resource; action: Action } | undefined
+): boolean {
+  if (!required) return true;
+  return permissions.some(
+    (p) => p.resource === required.resource && p.actions.includes(required.action)
+  );
+}
+
+/** 根据用户权限过滤菜单:无 permission 默认放行,父组仅在至少一个子项可见时保留 */
+function filterMenu(
+  items: MenuItem[],
+  permissions: { resource: Resource; actions: Action[] }[]
+): MenuItem[] {
+  return items.reduce<MenuItem[]>((acc, item) => {
+    if (item.children && item.children.length > 0) {
+      const children = item.children.filter((c) => hasMenuPermission(permissions, c.permission));
+      if (children.length === 0) return acc;
+      acc.push({ ...item, children });
+    } else if (hasMenuPermission(permissions, item.permission)) {
+      acc.push(item);
+    }
+    return acc;
+  }, []);
+}
+
 const MENU: MenuItem[] = [
-  { path: "/dashboard", name: "工作台", icon: <DashboardOutlined /> },
+  { path: "/dashboard", name: "工作台", icon: <DashboardOutlined /> },  // 无 permission: 所有角色可见
   {
     path: "/customers",
     name: "业务",
     icon: <AppstoreOutlined />,
     children: [
-      { path: "/customers", name: "客户管理" },
-      { path: "/contracts", name: "合同管理" },
-      { path: "/projects", name: "项目管理" }
+      { path: "/customers", name: "客户管理", permission: { resource: RESOURCE.CUSTOMER, action: ACTION.READ } },
+      { path: "/contracts", name: "合同管理", permission: { resource: RESOURCE.CONTRACT, action: ACTION.READ } },
+      { path: "/projects", name: "项目管理", permission: { resource: RESOURCE.PROJECT, action: ACTION.READ } }
     ]
   },
-  { path: "/assets", name: "企业资产", icon: <DatabaseOutlined /> },
-  { path: "/workflow", name: "我的工作流", icon: <PlayCircleOutlined /> },
+  { path: "/assets", name: "企业资产", icon: <DatabaseOutlined />, permission: { resource: RESOURCE.ASSET, action: ACTION.READ } },
+  { path: "/workflow", name: "我的工作流", icon: <PlayCircleOutlined />, permission: { resource: RESOURCE.PROJECT, action: ACTION.READ } },
   {
     path: "/invoices",
     name: "财务",
     icon: <AccountBookOutlined />,
     children: [
-      { path: "/invoices", name: "开票管理" },
-      { path: "/payments", name: "回款管理" }
+      { path: "/invoices", name: "开票管理", permission: { resource: RESOURCE.INVOICE, action: ACTION.READ } },
+      { path: "/payments", name: "回款管理", permission: { resource: RESOURCE.PAYMENT, action: ACTION.READ } }
     ]
   },
   {
@@ -76,11 +106,12 @@ const MENU: MenuItem[] = [
     name: "统计分析",
     icon: <AreaChartOutlined />,
     children: [
-      { path: "/statistics/overview", name: "总览" },
-      { path: "/statistics/aging", name: "账龄分析" },
-      { path: "/statistics/performance", name: "业务员业绩" },
-      { path: "/statistics/workflow", name: "工作流概览" },
-      { path: "/workflow/follow-ups", name: "跟进 360" }
+      { path: "/statistics/overview", name: "总览", permission: { resource: RESOURCE.STATISTICS, action: ACTION.READ } },
+      { path: "/statistics/aging", name: "账龄分析", permission: { resource: RESOURCE.STATISTICS, action: ACTION.READ } },
+      { path: "/statistics/performance", name: "业务员业绩", permission: { resource: RESOURCE.STATISTICS, action: ACTION.READ } },
+      // 后端硬卡 ADMIN 角色, 这里用 OPERATION_LOG.READ(仅 ADMIN)做菜单隐藏
+      { path: "/statistics/workflow", name: "工作流概览", permission: { resource: RESOURCE.OPERATION_LOG, action: ACTION.READ } },
+      { path: "/workflow/follow-ups", name: "跟进 360", permission: { resource: RESOURCE.CUSTOMER, action: ACTION.READ } }
     ]
   },
   {
@@ -88,8 +119,8 @@ const MENU: MenuItem[] = [
     name: "消息与公告",
     icon: <BellOutlined />,
     children: [
-      { path: "/messages", name: "消息中心" },
-      { path: "/announcements", name: "公告" }
+      { path: "/messages", name: "消息中心", permission: { resource: RESOURCE.MESSAGE, action: ACTION.READ } },
+      { path: "/announcements", name: "公告", permission: { resource: RESOURCE.ANNOUNCEMENT, action: ACTION.READ } }
     ]
   },
   {
@@ -97,9 +128,9 @@ const MENU: MenuItem[] = [
     name: "员工管理",
     icon: <IdcardOutlined />,
     children: [
-      { path: "/admin/users", name: "员工列表" },
-      { path: "/admin/roles", name: "角色权限" },
-      { path: "/admin/departments", name: "部门管理" }
+      { path: "/admin/users", name: "员工列表", permission: { resource: RESOURCE.USER, action: ACTION.CREATE } },
+      { path: "/admin/roles", name: "角色权限", permission: { resource: RESOURCE.ROLE, action: ACTION.CREATE } },
+      { path: "/admin/departments", name: "部门管理", permission: { resource: RESOURCE.DEPARTMENT, action: ACTION.CREATE } }
     ]
   },
   {
@@ -107,10 +138,11 @@ const MENU: MenuItem[] = [
     name: "系统",
     icon: <SettingOutlined />,
     children: [
-      { path: "/admin/dictionaries", name: "数据字典" },
-      { path: "/admin/operation-logs", name: "操作日志" },
-      { path: "/admin/workflow-templates", name: "工作流模板" },
-      { path: "/admin/trash", name: "回收站" }
+      { path: "/admin/dictionaries", name: "数据字典", permission: { resource: RESOURCE.DICTIONARY, action: ACTION.CREATE } },
+      { path: "/admin/operation-logs", name: "操作日志", permission: { resource: RESOURCE.OPERATION_LOG, action: ACTION.READ } },
+      { path: "/admin/workflow-templates", name: "工作流模板", permission: { resource: RESOURCE.WORKFLOW_TEMPLATE, action: ACTION.CREATE } },
+      // /admin/trash 走 trash 服务, 仅 ADMIN 可看全部; 用 ROLE.CREATE 代理(仅 ADMIN)
+      { path: "/admin/trash", name: "回收站", permission: { resource: RESOURCE.ROLE, action: ACTION.CREATE } }
     ]
   }
 ];
@@ -179,6 +211,9 @@ export function DashboardShell({ user, children }: Props) {
     () => findSelectedKey(pathname),
     [pathname]
   );
+
+  // 根据当前用户的权限矩阵过滤菜单项,无权限的项(包括父组下全无可见子项的组)不渲染
+  const visibleMenu = useMemo(() => filterMenu(MENU, user.permissions), [user.permissions]);
 
   // 移动端在 body 上挂 .qt-touch 标记,样式 hook 用来收紧菜单交互与按钮尺寸
   useEffect(() => {
@@ -325,7 +360,7 @@ export function DashboardShell({ user, children }: Props) {
         selectedKeys={[selectedKey]}
         openKeys={openKeys}
         onOpenChange={handleOpenChange}
-        items={toAntdMenu(MENU)}
+        items={toAntdMenu(visibleMenu)}
         style={{ borderInlineEnd: 0, paddingTop: 8 }}
         onClick={(e) => {
           if (typeof e.key === "string" && e.key.startsWith("/")) router.push(e.key);
@@ -342,7 +377,7 @@ export function DashboardShell({ user, children }: Props) {
       selectedKeys={[selectedKey]}
       openKeys={openKeys}
       onOpenChange={handleOpenChange}
-      items={toAntdMenu(MENU)}
+      items={toAntdMenu(visibleMenu)}
       style={{ borderInlineEnd: 0 }}
       onClick={(e) => {
         if (typeof e.key === "string" && e.key.startsWith("/")) {

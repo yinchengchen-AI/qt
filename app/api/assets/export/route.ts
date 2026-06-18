@@ -1,6 +1,8 @@
 // GET /api/assets/export?type=...&status=...&q=...  下载 xlsx
+// 权限: ASSET.EXPORT (ADMIN + FINANCE), 不能再借 listAssets 的 READ 校验通过
 import { err } from "@/lib/api";
 import { requireSession } from "@/lib/session";
+import { requirePermission, RESOURCE, ACTION } from "@/lib/permissions";
 import { listAssets, ASSET_EXPORT_COLUMNS } from "@/server/services/asset";
 import { exportToXlsx } from "@/lib/excel";
 import { assetListQuerySchema } from "@/lib/validators/asset";
@@ -9,6 +11,7 @@ import { ASSET_TYPE_MAP, ASSET_STATUS_MAP } from "@/lib/enum-maps";
 export async function GET(req: Request) {
   try {
     const user = await requireSession();
+    requirePermission(user.roleCode, RESOURCE.ASSET, ACTION.EXPORT);
     const url = new URL(req.url);
     const params = assetListQuerySchema.parse({
       ...Object.fromEntries(url.searchParams),

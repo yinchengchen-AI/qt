@@ -44,7 +44,8 @@ const R_EXPORT: Action[] = ["READ", "EXPORT"];
 export const ROLE_PERMISSIONS: Record<RoleCode, Permission[]> = {
   ADMIN: Object.values(RESOURCE).map((resource) =>
     resource === RESOURCE.STATISTICS || resource === RESOURCE.CUSTOMER || resource === RESOURCE.CONTRACT ||
-    resource === RESOURCE.PROJECT || resource === RESOURCE.INVOICE || resource === RESOURCE.PAYMENT
+    resource === RESOURCE.PROJECT || resource === RESOURCE.INVOICE || resource === RESOURCE.PAYMENT ||
+    resource === RESOURCE.ASSET
       ? { resource, actions: [...CRUD, ACTION.EXPORT] }
       : { resource, actions: CRUD }
   ),
@@ -74,7 +75,7 @@ export const ROLE_PERMISSIONS: Record<RoleCode, Permission[]> = {
     { resource: RESOURCE.STATISTICS, actions: R_EXPORT },
     { resource: RESOURCE.MESSAGE, actions: CRUD },
     { resource: RESOURCE.ANNOUNCEMENT, actions: R },
-    { resource: RESOURCE.ASSET, actions: R }
+    { resource: RESOURCE.ASSET, actions: R_EXPORT }
   ],
   OPS: [
     { resource: RESOURCE.DEPARTMENT, actions: CRUD },
