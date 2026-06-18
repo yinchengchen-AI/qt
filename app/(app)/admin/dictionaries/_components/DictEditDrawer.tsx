@@ -1,19 +1,12 @@
 "use client";
-import { App as AntdApp, Button, Drawer, Form, Input, InputNumber, Switch, Tag } from "antd";
-import { useEffect } from "react";
-
-type Dict = {
-  id: string;
-  category: string;
-  code: string;
-  label: string;
-  sort: number;
-  isActive: boolean;
-};
+import { App as AntdApp, Alert, Button, Drawer, Form, Input, InputNumber, Space, Switch, Tag } from "antd";
+import { useEffect, useState } from "react";
+import { DICT_META } from "@/lib/dict-domain";
+import type { DictRow } from "./DictTableView";
 
 type Props = {
   open: boolean;
-  dict: Dict | null;
+  dict: DictRow | null;
   onClose: () => void;
   onSaved: () => void;
 };
@@ -21,6 +14,7 @@ type Props = {
 export function DictEditDrawer({ open, dict, onClose, onSaved }: Props) {
   const { message } = AntdApp.useApp();
   const [form] = Form.useForm();
+  const [submitting, setSubmitting] = useState(false);
 
   useEffect(() => {
     if (dict) {
@@ -32,10 +26,13 @@ export function DictEditDrawer({ open, dict, onClose, onSaved }: Props) {
     }
   }, [dict, form]);
 
+  const readonlyByCategory = dict ? (DICT_META[dict.code]?.readonly ?? false) : false;
+
   async function onSubmit() {
     try {
       const v = await form.validateFields();
       if (!dict) return;
+      setSubmitting(true);
       const r = await fetch(`/api/dictionaries/${dict.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
@@ -52,6 +49,8 @@ export function DictEditDrawer({ open, dict, onClose, onSaved }: Props) {
       onClose();
     } catch {
       /* ignore */
+    } finally {
+      setSubmitting(false);
     }
   }
 
@@ -60,19 +59,34 @@ export function DictEditDrawer({ open, dict, onClose, onSaved }: Props) {
       title={dict ? `编辑 ${dict.code}` : "编辑"}
       open={open}
       onClose={onClose}
-      size={420}
+      size={480}
+      forceRender
       extra={
-        <Button type="primary" onClick={onSubmit}>
-          保存
-        </Button>
+        <Space>
+          <Button onClick={onClose}>取消</Button>
+          <Button type="primary" onClick={onSubmit} loading={submitting} disabled={readonlyByCategory}>
+            保存
+          </Button>
+        </Space>
       }
     >
       {dict ? (
         <>
-          <Form layout="vertical" form={form}>
-            <Form.Item label="分类">
-              <Tag color="blue">{dict.category}</Tag>
-              <Tag>{dict.code}</Tag>
+          {readonlyByCategory ? (
+            <Alert
+              type="warning"
+              showIcon
+              style={{ marginBottom: 16 }}
+              title="系统字典 · 不可在 UI 中编辑"
+              description="该类目由同步脚本管理,仅查看。"
+            />
+          ) : null}
+          <Form layout="vertical" form={form} disabled={readonlyByCategory}>
+            <Form.Item label="分类 & 代码">
+              <Space size={4} wrap>
+                <Tag color="blue">{dict.parentCode ? `${dict.parentCode}  ·  ` : ""}{dict.code.startsWith("REGION") ? "REGION" : ""}</Tag>
+                <Tag>{dict.code}</Tag>
+              </Space>
             </Form.Item>
             <Form.Item
               name="label"
