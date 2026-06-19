@@ -1,5 +1,5 @@
 "use client";
-import { ProTable, type ActionType } from "@ant-design/pro-components";
+import { ProTable, type ActionType, type ProFormInstance } from "@ant-design/pro-components";
 import { Button, App as AntdApp } from "antd";
 import { DownloadOutlined } from "@ant-design/icons";
 import Link from "next/link";
@@ -44,6 +44,8 @@ export default function CustomersPage() {
   // 用 ref 拿当前表格的查询参数(关键字/状态/等级),导出时一并带上
   const searchRef = useRef<Record<string, unknown>>({});
   const actionRef = useRef<ActionType>(undefined);
+  // formRef 用于在 onChange 中触发 form.submit(),以同步 formSearch(参见 pro-table typing.d.ts 说明)
+  const formRef = useRef<ProFormInstance>(undefined);
   const searchDebounceRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   useEffect(() => () => {
     if (searchDebounceRef.current) clearTimeout(searchDebounceRef.current);
@@ -81,7 +83,7 @@ export default function CustomersPage() {
           </>
         }
       />
-      <ProTable<Customer> actionRef={actionRef}
+      <ProTable<Customer> actionRef={actionRef} formRef={formRef}
         rowKey="id"
         search={{ labelWidth: "auto", defaultCollapsed: isMobile, layout: isMobile ? "vertical" : undefined, collapsed: isMobile ? false : undefined }} debounceTime={400}
         // 移动端横向滚动;Pad/桌面靠列宽自适应
@@ -100,7 +102,7 @@ export default function CustomersPage() {
         }}
         columns={[
           // 搜索专属列:仅在 ProTable 搜索表单里出现,数据来自 params.keyword
-          { title: "关键词", dataIndex: "keyword", hideInTable: true, fieldProps: { placeholder: "客户名 / 简称 / 编号", onChange: (_e: React.ChangeEvent<HTMLInputElement>) => { if (searchDebounceRef.current) clearTimeout(searchDebounceRef.current); searchDebounceRef.current = setTimeout(() => actionRef.current?.reload(), 400); } } },
+          { title: "关键词", dataIndex: "keyword", hideInTable: true, fieldProps: { placeholder: "客户名 / 简称 / 编号", onChange: () => { if (searchDebounceRef.current) clearTimeout(searchDebounceRef.current); searchDebounceRef.current = setTimeout(() => formRef.current?.submit?.(), 400); } } },
           { title: "客户编号", dataIndex: "code", search: false, width: 180, fixed: !isMobile ? "left" : undefined },
           {
             title: "客户名称",
