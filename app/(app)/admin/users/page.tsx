@@ -1,11 +1,10 @@
 "use client";
 import { ProTable, type ActionType, type ProColumns, type ProFormInstance } from "@ant-design/pro-components";
 import { MoreOutlined } from "@ant-design/icons";
-import { App as AntdApp, Button, Tag, Modal, Space, Dropdown } from "antd";
+import { App as AntdApp, Button, Tag, Modal, Space, Dropdown, Form, Input } from "antd";
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
 import useSWR from "swr";
-import { copyToClipboard } from "@/lib/copy";
 import { Page } from "@/components/page";
 import { useResponsive } from "@/lib/use-breakpoint";
 import { PageHeader } from "@/components/page-header";
@@ -51,7 +50,9 @@ function flattenDepts(tree: Dept[]): { id: string; label: string }[] {
 export default function UsersPage() {
   const router = useRouter();
   const { message, modal } = AntdApp.useApp();
-  const [resetting, setResetting] = useState<{ id: string; newPassword: string } | null>(null);
+  const [resetting, setResetting] = useState<{ id: string; name: string } | null>(null);
+  const [resetForm] = Form.useForm<{ password: string; confirm: string }>();
+  const [resetSubmitting, setResetSubmitting] = useState(false);
   const actionRef = useRef<ActionType>(undefined);
   // formRef 用于在 onChange 中触发 form.submit(),以同步 formSearch(参见 pro-table typing.d.ts 说明)
   const formRef = useRef<ProFormInstance>(undefined);
@@ -121,21 +122,7 @@ export default function UsersPage() {
   }
 
   function onResetPassword(u: User) {
-    modal.confirm({
-      title: `重置 ${u.name} 的密码?`,
-      content: "重置后会生成新的随机密码,需要把新密码告知用户。",
-      okType: "danger",
-      onOk: async () => {
-        const r = await fetch(`/api/users/${u.id}/reset-password`, {
-          method: "POST",
-          credentials: "include"
-        });
-        const j = await r.json();
-        if (j.code !== 0) return message.error(j.message);
-        setResetting({ id: u.id, newPassword: j.data.newPassword });
-        actionRef.current?.reloadAndRest?.();
-      }
-    });
+    setResetting({ id: u.id, name: u.name });
   }
 
   function onDelete(u: User) {
@@ -311,40 +298,88 @@ export default function UsersPage() {
 
       <Modal
         open={!!resetting}
-        title="新密码已生成"
-        onCancel={() => setResetting(null)}
+        title={resetting ? `重置 ${resetting.name} 的密码` : "重置密码"}
+        okText="确认重置"
+        cancelText="取消"
+        okButtonProps={{ danger: true, loading: resetSubmitting }}
+        destroyOnClose
+        maskClosable={false}
+        onCancel={() => {
+          if (resetSubmitting) return;
+          setResetting(null);
+        }}
         onOk={async () => {
-          if (resetting?.newPassword) {
-            const ok = await copyToClipboard(resetting.newPassword);
-            if (ok) {
-              message.success("已复制到剪贴板");
-              setResetting(null);
-            } else {
-              // 复制失败: 不关 modal, 让用户手动选 + Ctrl+C 兜底
-              message.error("自动复制失败,请用鼠标选中下方密码框后按 Ctrl+C");
+          try {
+            const values = await resetForm.validateFields();
+            setResetSubmitting(true);
+            const r = await fetch(`/api/users/${resetting!.id}/reset-password`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              credentials: "include",
+              body: JSON.stringify({ password: values.password })
+            });
+            const j = await r.json();
+            if (j.code !== 0) {
+              message.error(j.message);
+              return;
             }
-          } else {
+            message.success(`已重置 ${resetting!.name} 的密码`);
             setResetting(null);
+            actionRef.current?.reloadAndRest?.();
+          } catch (e) {
+            // antd validateFields 失败时会 reject { errorFields },这里交给 Form 自己显示红字
+            if (e && typeof e === "object" && "errorFields" in e) return;
+            const msg = e instanceof Error ? e.message : "重置失败";
+            message.error(msg);
+          } finally {
+            setResetSubmitting(false);
           }
         }}
-        okText="复制"
-        cancelText="关闭"
       >
-        <p style={{ marginBottom: 8 }}>请把以下新密码告知用户（关闭后无法再次查看）：</p>
-        <div
-          style={{
-            padding: "12px 16px",
-            background: "#fafafa",
-            border: "1px solid #d9d9d9",
-            borderRadius: 6,
-            fontFamily: "ui-monospace, SFMono-Regular, Menlo, Consolas, monospace",
-            fontSize: 18,
-            letterSpacing: "0.05em",
-            userSelect: "all"
-          }}
+        <p style={{ marginBottom: 12, color: "rgba(0,0,0,0.65)" }}>
+          请输入新的登录密码。设置后旧密码立即失效,已登录会话会要求重新登录。
+        </p>
+        <Form
+          form={resetForm}
+          layout="vertical"
+          preserve={false}
+          requiredMark={false}
         >
-          {resetting?.newPassword}
-        </div>
+          <Form.Item
+            name="password"
+            label="新密码"
+            rules={[
+              { required: true, message: "请输入新密码" },
+              { min: 8, message: "密码至少 8 个字符" },
+              { max: 72, message: "密码不能超过 72 个字符" }
+            ]}
+          >
+            <Input.Password
+              autoFocus
+              placeholder="8 ~ 72 个字符,建议使用密码管理器生成"
+              size="large"
+              maxLength={72}
+            />
+          </Form.Item>
+          <Form.Item
+            name="confirm"
+            label="确认新密码"
+            dependencies={["password"]}
+            rules={[
+              { required: true, message: "请再次输入新密码" },
+              ({ getFieldValue }) => ({
+                validator(_, value) {
+                  if (!value || getFieldValue("password") === value) {
+                    return Promise.resolve();
+                  }
+                  return Promise.reject(new Error("两次输入的密码不一致"));
+                }
+              })
+            ]}
+          >
+            <Input.Password placeholder="再输入一次" size="large" />
+          </Form.Item>
+        </Form>
       </Modal>
     </Page>
   );

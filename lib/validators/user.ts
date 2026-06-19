@@ -34,5 +34,14 @@ export const userToggleStatusSchema = z.object({
   status: userStatus
 });
 
+// 管理员手动重置密码:8~72 字符(72 是 bcrypt 的硬上限,超出会被静默截断)
+export const userResetPasswordSchema = z.object({
+  password: z
+    .string()
+    .min(8, "密码至少 8 个字符")
+    .max(72, "密码不能超过 72 个字符")
+});
+
 export type UserCreateInput = z.infer<typeof userCreateSchema>;
 export type UserUpdateInput = z.infer<typeof userUpdateSchema>;
+export type UserResetPasswordInput = z.infer<typeof userResetPasswordSchema>;

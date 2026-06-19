@@ -238,13 +238,13 @@ export async function softDeleteUser(actor: SessionUser, id: string) {
   return { ok: true };
 }
 
-export async function resetPassword(actor: SessionUser, id: string): Promise<{ newPassword: string }> {
+export async function resetPassword(actor: SessionUser, id: string, password: string): Promise<void> {
   requirePermission(actor.roleCode, RESOURCE.USER, ACTION.UPDATE);
   const existing = await prisma.user.findFirst({ where: { id, deletedAt: null } });
   if (!existing) throw new ApiError(ERROR_CODES.NOT_FOUND, "用户不存在", 404);
-  const newPassword = randomPassword(10);
-  const passwordHash = await bcrypt.hash(newPassword, PASSWORD_SALT_ROUNDS);
+  const passwordHash = await bcrypt.hash(password, PASSWORD_SALT_ROUNDS);
   await prisma.user.update({ where: { id }, data: { passwordHash } });
+  invalidateAuthCache(id);
   await audit(prisma, {
     actorId: actor.id,
     action: "USER_RESET_PASSWORD",
@@ -252,7 +252,6 @@ export async function resetPassword(actor: SessionUser, id: string): Promise<{ n
     entityId: id,
     before: { employeeNo: existing.employeeNo }
   });
-  return { newPassword };
 }
 
 export async function toggleStatus(actor: SessionUser, id: string, status: "ACTIVE" | "DISABLED") {

@@ -594,7 +594,7 @@ PLANNED ─confirm─▶ CONFIRMED ─reconcile─▶ RECONCILED
 - 列表:工号、姓名、邮箱、电话、角色、部门、状态(ACTIVE / DISABLED)、最后登录时间
 - **新建用户**:工号(全大写,唯一)、姓名、邮箱、密码(由创建者设定,**无默认密码**;≥ 8 字符,建议密码管理器生成的随机串)、角色、部门
 - **状态切换**:`ACTIVE ↔ DISABLED`,禁用后该用户 **30 秒内** 无法登录 / 自动失效
-- **重置密码**:管理员可一键重置为目标密码(留空时自动生成 20 字符强密码),操作等同 `pnpm reset-password --employeeNo <id>`
+- **重置密码**:管理员在弹窗里手动输入新密码(8 ~ 72 字符)后确认,旧密码立即失效;命令行救火方式仍是 `pnpm reset-password --employeeNo <id> --password <newPwd>`(不传 `--password` 时脚本会生成 20 字符强密码)
 - **角色调整**:改角色后,前端菜单 30s 内重新计算,服务端 30s TTL 缓存同步失效
 
 ### 12.2 角色管理
