@@ -5,6 +5,7 @@
 //   - 用户手动改过(标题偏离 lastAutoFilledRef)→ 不再覆盖
 //   - 编辑页启动时,如既有标题 = computeAutoTitle(customerName, serviceTypeLabel, year),初始化 lastAutoFilledRef,
 //     这样改 serviceType/signDate 时会顺带重算;反之既有标题是手工写的则不重算
+//   - 自动标题只拼年份 + 服务类型,不拼客户名(客户名在「客户」列/字段独立展示,避免重复)
 import { useCallback, useMemo, useRef } from "react";
 import { computeAutoTitle } from "@/lib/contract-title";
 

@@ -186,7 +186,7 @@ export default function NewContractPage() {
               <ProFormText
                 name="title"
                 label="合同标题"
-                placeholder="如:杭州阿里巴巴 2026 年安全咨询服务合同"
+                placeholder="如:2026 年管理咨询合同"
                 rules={[
                   { required: true, message: "请输入合同标题" },
                   { min: 2, max: 200 }
