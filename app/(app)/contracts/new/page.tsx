@@ -14,6 +14,7 @@ import { App as AntdApp, Space, Tag, Typography } from "antd";
 import { useRouter } from "next/navigation";
 import { useDict, groupDictByLegacy } from "@/lib/dict-client";
 import { useContractTitleAutofill } from "@/lib/use-contract-title-autofill";
+import { toIsoDateTime } from "@/lib/format";
 import { proCustomRequest } from "@/lib/upload-client";
 import { PreviewableProFormUploadButton as UploadButton } from "@/components/file/pro-form-upload-button";
 import { Page } from "@/components/page";
@@ -82,9 +83,9 @@ export default function NewContractPage() {
           onFinish={async (values) => {
             const payload = {
               ...values,
-              signDate: values.signDate?.toISOString?.() ?? values.signDate,
-              startDate: values.startDate?.toISOString?.() ?? values.startDate,
-              endDate: values.endDate?.toISOString?.() ?? values.endDate,
+              signDate: toIsoDateTime(values.signDate),
+              startDate: toIsoDateTime(values.startDate),
+              endDate: toIsoDateTime(values.endDate),
               // attachments: 来自 ProFormUploadButton 的 customRequest 上传结果
               // 元素形状:{ uid, name, status, response: { id, name, mimeType, size, uploadedBy, uploadedAt } }
               attachments: (values.attachments ?? [])

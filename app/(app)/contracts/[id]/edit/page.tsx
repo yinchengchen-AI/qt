@@ -14,6 +14,7 @@ import { useParams, useRouter } from "next/navigation";
 import useSWR from "swr";
 import { useDict, groupDictByLegacy } from "@/lib/dict-client";
 import { useContractTitleAutofill } from "@/lib/use-contract-title-autofill";
+import { toIsoDateTime } from "@/lib/format";
 import { Page } from "@/components/page";
 import { PageHeader } from "@/components/page-header";
 import { FormSection, FormGrid, FormCard, SubmitBar } from "@/components/form";
@@ -111,9 +112,9 @@ export default function EditContractPage() {
             const merged = [...existing, ...newlyUploaded];
             const payload = {
               ...values,
-              signDate: values.signDate?.toISOString?.(),
-              startDate: values.startDate?.toISOString?.(),
-              endDate: values.endDate?.toISOString?.(),
+              signDate: toIsoDateTime(values.signDate),
+              startDate: toIsoDateTime(values.startDate),
+              endDate: toIsoDateTime(values.endDate),
               attachments: merged
             };
             delete (payload as Record<string, unknown>).attachments_uploads;

@@ -66,3 +66,30 @@ export function formatPercent(
   const pct = opts.isPercent ? v : v * 100;
   return pct.toFixed(digits) + "%";
 }
+
+
+/**
+ * Normalize a value from a form field (string | Date | dayjs | moment | undefined)
+ * to a strict ISO-8601 datetime string (Z suffix) that satisfies `z.iso.datetime()`.
+ *
+ * Returns undefined for null/empty/invalid inputs so callers can pass the result
+ * directly into a Zod optional() / .default() chain.
+ */
+export function toIsoDateTime(value: unknown): string | undefined {
+  if (value === null || value === undefined || value === "") return undefined;
+  if (value instanceof Date) {
+    return Number.isNaN(value.getTime()) ? undefined : value.toISOString();
+  }
+  if (typeof value === "string") {
+    // "YYYY-MM-DD" or already-ISO with offset/Z; new Date() handles all of them
+    const d = new Date(value);
+    return Number.isNaN(d.getTime()) ? undefined : d.toISOString();
+  }
+  // dayjs / moment: prefer toDate() when available
+  const toDate = (value as { toDate?: unknown }).toDate;
+  if (typeof toDate === "function") {
+    const d = (toDate as () => unknown).call(value);
+    if (d instanceof Date && !Number.isNaN(d.getTime())) return d.toISOString();
+  }
+  return undefined;
+}
