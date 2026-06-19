@@ -1,9 +1,10 @@
 "use client";
-import { ProTable, type ActionType, type ProColumns } from "@ant-design/pro-components";
+import { ProTable, type ActionType, type ProColumns, type ProFormInstance } from "@ant-design/pro-components";
 import { MoreOutlined } from "@ant-design/icons";
 import { App as AntdApp, Button, Tag, Modal, Space, Dropdown } from "antd";
 import { useRouter } from "next/navigation";
-import { useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import useSWR from "swr";
 import { copyToClipboard } from "@/lib/copy";
 import { Page } from "@/components/page";
 import { useResponsive } from "@/lib/use-breakpoint";
@@ -25,12 +26,77 @@ type User = {
   createdAt: string;
 };
 
+type Dept = {
+  id: string;
+  code: string;
+  name: string;
+  parentId: string | null;
+  children?: Dept[];
+};
+
+// 把部门树展平成"上级 / 下级"路径形式,供 ProTable valueEnum 用
+function flattenDepts(tree: Dept[]): { id: string; label: string }[] {
+  const out: { id: string; label: string }[] = [];
+  function walk(nodes: Dept[], path: string[]) {
+    for (const n of nodes) {
+      const next = [...path, n.name];
+      out.push({ id: n.id, label: next.join(" / ") });
+      if (n.children?.length) walk(n.children, next);
+    }
+  }
+  walk(tree, []);
+  return out;
+}
+
 export default function UsersPage() {
   const router = useRouter();
   const { message, modal } = AntdApp.useApp();
   const [resetting, setResetting] = useState<{ id: string; newPassword: string } | null>(null);
   const actionRef = useRef<ActionType>(undefined);
+  // formRef 用于在 onChange 中触发 form.submit(),以同步 formSearch(参见 pro-table typing.d.ts 说明)
+  const formRef = useRef<ProFormInstance>(undefined);
+  const searchDebounceRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const { isMobile } = useResponsive();
+  useEffect(() => () => {
+    if (searchDebounceRef.current) clearTimeout(searchDebounceRef.current);
+  }, []);
+  // 输入变化 -> debounce -> form.submit():
+  // form.submit() 会触发 onFinish,更新内部 formSearch,然后自动重新请求数据。
+  // 仅 actionRef.reload() 不会更新 formSearch,关键字不会进 request(参见 pro-table typing.d.ts)。
+  const handleSearchValuesChange = () => {
+    if (searchDebounceRef.current) clearTimeout(searchDebounceRef.current);
+    searchDebounceRef.current = setTimeout(() => {
+      formRef.current?.submit?.();
+    }, 400);
+  };
+
+  // 部门列表(树)用于搜索表单的"部门"下拉
+  const { data: deptResp } = useSWR<{ tree: Dept[] }>(
+    "/api/departments?pageSize=500&tree=true&includeInactive=true",
+    async (url: string) => {
+      const r = await fetch(url, { credentials: "include" });
+      const j = await r.json();
+      if (j.code !== 0) throw new Error(j.message);
+      return j.data ?? { tree: [] };
+    }
+  );
+  const departmentOptions = useMemo(
+    () => flattenDepts(deptResp?.tree ?? []),
+    [deptResp]
+  );
+  const departmentValueEnum = useMemo(
+    () =>
+      Object.fromEntries(
+        departmentOptions.map((d) => [d.id, { text: d.label }] as const)
+      ),
+    [departmentOptions]
+  );
+
+  // 状态枚举(搜索表单下拉 + 与 Tag 颜色对应)
+  const statusValueEnum: Record<string, { text: string; status: string }> = {
+    ACTIVE: { text: "启用", status: "Success" },
+    DISABLED: { text: "禁用", status: "Default" }
+  };
 
   async function onToggleStatus(u: User) {
     const next = u.status === "ACTIVE" ? "DISABLED" : "ACTIVE";
@@ -87,21 +153,71 @@ export default function UsersPage() {
     });
   }
 
+  // 列定义:
+  //   - 显式 search: false 的列: 角色 / 部门 / 状态(Tag) / 最近登录 / 操作 → 不进搜索表单
+  //   - hideInTable 的列: 关键词 / 状态(搜索用) / 部门(搜索用) → 只在搜索表单出现
+  //   - 这样 ProTable 搜索表单的字段名 = dataIndex = keyword / status / departmentId,
+  //     与后端 userListQuerySchema / listUsers 的 where 拼装完全对齐
   const columns: ProColumns<User>[] = [
-    { title: "工号", dataIndex: "employeeNo", width: 100 },
-    { title: "姓名", dataIndex: "name", width: 100 },
-    { title: "邮箱", dataIndex: "email", width: 200, ellipsis: true },
+    // ----- 搜索专列(不进表格) -----
+    {
+      title: "关键词",
+      dataIndex: "keyword",
+      hideInTable: true,
+      fieldProps: {
+        placeholder: "工号 / 姓名 / 邮箱",
+        onChange: handleSearchValuesChange
+      }
+    },
+    {
+      title: "状态",
+      dataIndex: "status",
+      hideInTable: true,
+      valueType: "select",
+      valueEnum: statusValueEnum,
+      fieldProps: {
+        allowClear: true,
+        placeholder: "全部",
+        onChange: handleSearchValuesChange
+      }
+    },
+    {
+      title: "部门",
+      dataIndex: "departmentId",
+      hideInTable: true,
+      valueType: "select",
+      valueEnum: departmentValueEnum,
+      fieldProps: {
+        allowClear: true,
+        placeholder: "全部",
+        showSearch: true,
+        optionFilterProp: "label",
+        onChange: handleSearchValuesChange
+      }
+    },
+    // ----- 表格列 -----
+    { title: "工号", dataIndex: "employeeNo", width: 100, search: false },
+    { title: "姓名", dataIndex: "name", width: 100, search: false },
+    { title: "邮箱", dataIndex: "email", width: 200, ellipsis: true, search: false },
     {
       title: "角色",
       dataIndex: ["role", "name"],
       width: 100,
+      search: false,
       render: (_, r) => <Tag color="blue">{r.role?.name ?? r.roleId}</Tag>
     },
-    { title: "部门", dataIndex: ["department", "name"], width: 140, render: (_, r) => r.department?.name ?? "-" },
+    {
+      title: "部门",
+      dataIndex: ["department", "name"],
+      width: 140,
+      search: false,
+      render: (_, r) => r.department?.name ?? "-"
+    },
     {
       title: "状态",
       dataIndex: "status",
       width: 100,
+      search: false,
       render: (_, r) => (
         <Tag color={r.status === "ACTIVE" ? "green" : "default"}>
           {r.status === "ACTIVE" ? "启用" : "禁用"}
@@ -112,12 +228,14 @@ export default function UsersPage() {
       title: "最近登录",
       dataIndex: "lastLoginAt",
       width: 180,
+      search: false,
       render: (_, r) => (r.lastLoginAt ? <DateTimeCell value={r.lastLoginAt} /> : "从未登录")
     },
     {
       title: "操作",
       width: 180,
       fixed: "right",
+      search: false,
       render: (_, r) => {
         const moreItems = [
           { key: "reset", label: "重置密码" },
@@ -161,14 +279,14 @@ export default function UsersPage() {
     <Page>
       <PageHeader
         title="员工管理"
-        subtitle="员工账号、角色与部门;支持按工号/姓名/邮箱/部门搜索"
+        subtitle="员工账号、角色与部门;支持按工号/姓名/邮箱/部门/状态搜索"
         actions={
           <Button key="add" type="primary" onClick={() => router.push("/admin/users/new")}>
             新建员工
           </Button>
         }
       />
-      <ProTable<User> actionRef={actionRef}
+      <ProTable<User> actionRef={actionRef} formRef={formRef}
         rowKey="id"
         columns={columns}
         search={{ labelWidth: "auto", defaultCollapsed: isMobile, layout: isMobile ? "vertical" : undefined, collapsed: isMobile ? false : undefined }} debounceTime={400}
