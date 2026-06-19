@@ -171,18 +171,6 @@ export default function NewContractPage() {
                 ]}
                 fieldProps={{ size: "large" }}
               />
-              <ProFormText
-                name="title"
-                label="合同标题"
-                placeholder="如:杭州阿里巴巴 2026 年安全咨询服务合同"
-                rules={[
-                  { required: true, message: "请输入合同标题" },
-                  { min: 2, max: 200 }
-                ]}
-                fieldProps={{ size: "large" }}
-              />
-            </FormGrid>
-            <FormGrid columns={2}>
               <ProFormSelect
                 name="serviceType"
                 label="服务类型"
@@ -195,6 +183,16 @@ export default function NewContractPage() {
                   onChange: () => tryAutoFill()
                 }}
               />
+              <ProFormText
+                name="title"
+                label="合同标题"
+                placeholder="如:杭州阿里巴巴 2026 年安全咨询服务合同"
+                rules={[
+                  { required: true, message: "请输入合同标题" },
+                  { min: 2, max: 200 }
+                ]}
+                fieldProps={{ size: "large" }}
+              />
               <ProFormSelect
                 name="paymentMethod"
                 label="付款方式"
@@ -203,6 +201,8 @@ export default function NewContractPage() {
                 rules={[{ required: true, message: "请选择付款方式" }]}
                 fieldProps={{ size: "large" }}
               />
+            </FormGrid>
+            <FormGrid columns={1}>
               <ProFormSelect
                 name="signerId"
                 label="签订人"

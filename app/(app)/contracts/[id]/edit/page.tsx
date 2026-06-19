@@ -154,17 +154,6 @@ export default function EditContractPage() {
                 ]}
                 fieldProps={{ size: "large" }}
               />
-              <ProFormText
-                name="title"
-                label="合同标题"
-                rules={[
-                  { required: true, message: "请输入合同标题" },
-                  { min: 2, max: 200 }
-                ]}
-                fieldProps={{ size: "large" }}
-              />
-            </FormGrid>
-            <FormGrid columns={2}>
               <ProFormSelect
                 name="serviceType"
                 label="服务类型"
@@ -175,6 +164,15 @@ export default function EditContractPage() {
                   size: "large",
                   onChange: () => tryAutoFill()
                 }}
+              />
+              <ProFormText
+                name="title"
+                label="合同标题"
+                rules={[
+                  { required: true, message: "请输入合同标题" },
+                  { min: 2, max: 200 }
+                ]}
+                fieldProps={{ size: "large" }}
               />
               <ProFormSelect
                 name="paymentMethod"
