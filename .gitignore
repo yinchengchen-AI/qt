@@ -70,7 +70,7 @@ docs/*部署记录*.md
 pnpm-workspace.yaml
 
 # legacy migration archive — 只 ignore 大文件 (SQL dump / CSV 兜底), 保留 README + 报告
-ops/legacy/*.sql
+ops/legacy/**/*.sql
 ops/legacy/csv/
 ops/legacy/*-inspect.json
 
@@ -81,3 +81,7 @@ docs/superpowers/.cache/
 # 但保留 ops/legacy/ 下的 README 和 reports/ (重要的文档/报告)
 !ops/legacy/README.md
 !ops/legacy/reports/
+
+# Next.js 16 build 副作用文件 — dev/types -> types 路径会随 prod build 自动重写,
+# 按官方文档 next-env.d.ts 不应被手动编辑,统一 ignore 让 build 自由更新它。
+next-env.d.ts
