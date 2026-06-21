@@ -1,6 +1,6 @@
 "use client";
 import { ProCard, ProDescriptions, ProTable } from "@ant-design/pro-components";
-import { Button, Card, Col, Empty, Row, Space, Statistic, Tabs, Tag } from "antd";
+import { App as AntdApp, Button, Card, Col, Empty, Row, Space, Statistic, Tabs, Tag } from "antd";
 import { useParams, useRouter } from "next/navigation";
 import type { Contract as ContractEntity } from "@/lib/types/entities";
 import type { BillingStatus } from "@/types/enums";
@@ -12,7 +12,7 @@ import { PageHeader } from "@/components/page-header";
 import { DetailPageSkeleton } from "@/components/detail-page-skeleton";
 import { StatusTag } from "@/components/status-tag";
 import { useActionCall } from "@/lib/use-action-call";
-import { FilePdfOutlined } from "@ant-design/icons";
+import { DeleteOutlined, FilePdfOutlined } from "@ant-design/icons";
 import { openPrintWindow } from "@/lib/print-client";
 import { CurrencyCell, DateTimeCell, PercentCell } from "@/components/table-cells";
 import { AttachmentList } from "@/components/file/attachment-list";
@@ -67,6 +67,29 @@ export default function ContractDetailPage() {
   const { data: session } = useSession();
   const paymentMethod = useDict("PAYMENT_METHOD");
   const { run } = useActionCall({ baseUrl: `/api/contracts/${id}`, reload: () => mutate() });
+  const { message: msg, modal } = AntdApp.useApp();
+
+// admin 删除草稿/待审 合同（后端会再做 admin + 状态 + 子数据 校验）
+const handleDelete = () => {
+  modal.confirm({
+    title: "确认删除该合同？",
+    content: "删除后可在回收站恢复，状态为 DRAFT / PENDING_REVIEW 且无项目 / 发票 / 回款 / 附件 时可操作。",
+    okButtonProps: { danger: true },
+    okText: "删除",
+    cancelText: "取消",
+    onOk: async () => {
+      try {
+        const res = await fetch(`/api/contracts/${id}`, { method: "DELETE", credentials: "include" });
+        const j = await res.json();
+        if (j.code !== 0) { msg.error(j.message); return; }
+        msg.success("合同已删除");
+        router.push("/contracts");
+      } catch (e) {
+        msg.error((e as Error).message);
+      }
+    }
+  });
+};
   const [activeTab, setActiveTab] = useState("info");
 
   if (error) {
@@ -333,6 +356,11 @@ export default function ContractDetailPage() {
                 {a === "submit" ? "提交审批" : a === "approve" ? "批准" : a === "reject" ? "驳回" : a === "withdraw" ? "撤回" : a === "execute" ? "开始执行" : a === "complete" ? "结清" : a === "suspend" ? "暂停" : a === "resume" ? "恢复" : a === "terminate" ? "终止" : a}
               </Button>
             ))}
+            {isOwnerOrAdmin && (
+              <Button danger icon={<DeleteOutlined />} onClick={handleDelete}>
+                删除
+              </Button>
+            )}
           </Space>
         }
       />

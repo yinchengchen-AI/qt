@@ -590,3 +590,57 @@ export async function getContractOverview(
     }
   };
 }
+
+
+/**
+ * 软删除合同（仅 admin 可调用）。
+ * 约束：
+ *   - 状态必须是 DRAFT / PENDING_REVIEW（其他状态可能已有项目/开票/回款联动，需走 terminate/complete 走完生命周期）
+ *   - 不能存在未删除的子项目 / 发票 / 回款 / 附件
+ *   - 事务内写 deletedAt + audit log
+ */
+export async function softDeleteContract(user: SessionUser, id: string) {
+  // 权限矩阵只给 ADMIN 配了 CONTRACT.DELETE，这里再显式断言一次，避免后续误改权限表
+  requirePermission(user.roleCode, RESOURCE.CONTRACT, ACTION.DELETE);
+  if (user.roleCode !== "ADMIN") {
+    throw new ApiError(ERROR_CODES.FORBIDDEN, "仅管理员可删除合同", 403);
+  }
+  return prisma.$transaction(async (tx) => {
+    const existing = await tx.contract.findFirst({ where: { id, deletedAt: null } });
+    if (!existing) throw new ApiError(ERROR_CODES.NOT_FOUND, "合同不存在", 404);
+    if (!["DRAFT", "PENDING_REVIEW"].includes(existing.status)) {
+      throw new ApiError(
+        ERROR_CODES.ENTITY_IMMUTABLE,
+        `当前状态 ${existing.status} 不可删除（须 DRAFT / PENDING_REVIEW）`,
+        403
+      );
+    }
+    const [projectCount, invoiceCount, paymentCount, attachmentCount] = await Promise.all([
+      tx.project.count({ where: { contractId: id, deletedAt: null } }),
+      tx.invoice.count({ where: { contractId: id, deletedAt: null } }),
+      tx.payment.count({ where: { contractId: id, deletedAt: null } }),
+      tx.attachment.count({ where: { contractId: id, deletedAt: null } })
+    ]);
+    if (projectCount + invoiceCount + paymentCount + attachmentCount > 0) {
+      throw new ApiError(
+        ERROR_CODES.ENTITY_IMMUTABLE,
+        `合同存在子数据（项目 ${projectCount} / 发票 ${invoiceCount} / 回款 ${paymentCount} / 附件 ${attachmentCount}），无法删除`,
+        403
+      );
+    }
+    const before = { status: existing.status, contractNo: existing.contractNo };
+    const r = await tx.contract.update({
+      where: { id },
+      data: { deletedAt: new Date(), updatedById: user.id }
+    });
+    await audit(tx, {
+      actorId: user.id,
+      action: "CONTRACT_SOFT_DELETE",
+      entity: "Contract",
+      entityId: id,
+      before,
+      after: { deleted: true }
+    });
+    return r;
+  });
+}
