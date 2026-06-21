@@ -155,7 +155,9 @@ export default function CustomersPage() {
             title: "所在地区",
             dataIndex: "province",
             search: false,
-            width: 160,
+            // 4 级拼接 (省 / 市 / 区 / 镇街) 最长 ~28 个汉字, 160 在移动端会折断; 桌面 240 给 4 级留够位
+            width: 240,
+            ellipsis: true,
             render: (_, r) => [r.province, r.city, r.district, r.town].filter(Boolean).join(" / ") || "—"
           },
           {
