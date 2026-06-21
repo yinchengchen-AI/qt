@@ -24,8 +24,18 @@ const LINK_PATH: Record<string, string> = {
   invoice: "/invoices",
   payment: "/payments",
   project: "/projects",
-  customer: "/customers"
+  customer: "/customers",
+  asset: "/assets"
 };
+
+// 防御性 URL 拼装:link 为 null / id 缺失 / 未知 kind 都视为无跳转目标,
+// 避免出现 ${undefined}/... 这种坏 URL
+function buildLinkHref(link: { kind: string; id?: string | null } | null): string | null {
+  if (!link || !link.id) return null;
+  const base = LINK_PATH[link.kind];
+  if (!base) return null;
+  return `${base}/${link.id}`;
+}
 
 export default function MessagesPage() {
   const { message: msg } = AntdApp.useApp();
@@ -84,11 +94,15 @@ export default function MessagesPage() {
             width: 220,
             render: (_, r) => (
               <Space>
-                {r.link && (
-                  <Link href={`${LINK_PATH[r.link.kind] ?? "/"}/${r.link.id}`}>
-                    <Button type="link" size="small">查看</Button>
-                  </Link>
-                )}
+                {(() => {
+                  const href = buildLinkHref(r.link);
+                  if (!href) return null;
+                  return (
+                    <Link href={href}>
+                      <Button type="link" size="small">查看</Button>
+                    </Link>
+                  );
+                })()}
                 {!r.readAt && (
                   <Button
                     type="link"
