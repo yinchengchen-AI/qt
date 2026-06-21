@@ -20,7 +20,12 @@ echo "==> prisma generate (sync client to current schema; postinstall only runs 
 npx --no-install prisma generate
 
 echo "==> pnpm build"
-pnpm build
+# 3.5GB RAM 的小内存机器上, 默认 V8 堆 + 多 worker 构建会 OOM Killed.
+# 显式收紧堆大小并降到单 worker, 稳定可复现.
+NODE_OPTIONS=--max-old-space-size=2048 \
+  NEXT_TELEMETRY_DISABLED=1 \
+  NEXT_BUILD_WORKERS=1 \
+  pnpm build
 # 生产日常更新不再 seed: roles/dicts/depts/workflow templates 已在首次部署时落地,
 # 重复跑 pnpm seed 会 (1) 浪费时间 (9 份 workflow template × 5 阶段 × N 任务 = 几百次 DB 写),
 # (2) 即使 idempotent, 也有微弱的角色权限/部门字段被 update 覆盖风险。
