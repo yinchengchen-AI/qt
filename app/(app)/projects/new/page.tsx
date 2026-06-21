@@ -15,6 +15,7 @@ import { useRef, useState } from "react";
 import { Page } from "@/components/page";
 import { PageHeader } from "@/components/page-header";
 import { FormSection, FormGrid, FormCard, SubmitBar } from "@/components/form";
+import { toIsoDateTime } from "@/lib/format";
 
 const { Text } = Typography;
 
@@ -70,8 +71,8 @@ export default function NewProjectPage() {
           onFinish={async (values) => {
             const payload = {
               ...values,
-              startDate: values.startDate?.toISOString?.(),
-              endDate: values.endDate?.toISOString?.()
+              startDate: toIsoDateTime(values.startDate),
+              endDate: toIsoDateTime(values.endDate)
             };
             const res = await fetch("/api/projects", {
               method: "POST",
