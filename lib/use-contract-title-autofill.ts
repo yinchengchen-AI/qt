@@ -93,7 +93,8 @@ export function useContractTitleAutofill(opts: ContractTitleAutofillOptions) {
     (overrides?: { customerName?: string; year?: number | null }) => {
       const form = formRef.current;
       if (!form) return;
-      const values = (form.getFieldsValue?.() ?? {}) as AutofillFormValues;
+      // form 在前面已 null-check; getFieldsValue / setFieldValue 在 ProForm 实例上必有, 不用可选链.
+      const values = form.getFieldsValue() as AutofillFormValues;
       const next = computeNextAutoTitle({
         formValues: values,
         currentCustomerName: customerName,
@@ -102,7 +103,7 @@ export function useContractTitleAutofill(opts: ContractTitleAutofillOptions) {
         serviceTypeLabelByCode
       });
       if (next === null) return;
-      form.setFieldValue?.("title", next);
+      form.setFieldValue("title", next);
       lastAutoFilledRef.current = next;
     },
     [formRef, serviceTypeLabelByCode, customerName]
