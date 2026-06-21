@@ -1,0 +1,195 @@
+{
+  "generatedAt": "2026-06-21T16:11:10.711Z",
+  "mode": "APPLY",
+  "today": "2026-06-22T00:00:00.000Z",
+  "actions": [
+    {
+      "action": "restore_contracts",
+      "target": "Contract.status",
+      "count": 34,
+      "sample": [
+        {
+          "id": "cmqbz014f003758cyj3a75bgu",
+          "contractNo": "QT-HT-2026-0002",
+          "endDate": "2026-10-11T06:24:26.779Z",
+          "currentStatus": "EXPIRED",
+          "restoreTo": "EFFECTIVE",
+          "hasLog": true
+        },
+        {
+          "id": "cmqbz014k003858cy5m1r9jnz",
+          "contractNo": "QT-HT-2026-0003",
+          "endDate": "2027-01-19T06:24:26.779Z",
+          "currentStatus": "EXPIRED",
+          "restoreTo": "EXECUTING",
+          "hasLog": true
+        },
+        {
+          "id": "cmqbz014p003958cywi2wasid",
+          "contractNo": "QT-HT-2026-0004",
+          "endDate": "2026-12-30T06:24:26.779Z",
+          "currentStatus": "EXPIRED",
+          "restoreTo": "EFFECTIVE",
+          "hasLog": true
+        }
+      ]
+    },
+    {
+      "action": "delete_contract_review_log",
+      "target": "ContractReviewLog",
+      "count": 64,
+      "sample": [
+        {
+          "id": "cmqnyukmh00036kcy3921foc7",
+          "contractId": "cmqnyukld00016kcyhqe093uv",
+          "action": "AUTO_EXECUTE",
+          "at": "2026-06-21T15:53:26.249Z"
+        },
+        {
+          "id": "cmqnyukoz000b6kcy4l5is2oa",
+          "contractId": "cmqnyukog00086kcyunadng7p",
+          "action": "AUTO_EXECUTE",
+          "at": "2026-06-21T15:53:26.339Z"
+        },
+        {
+          "id": "cmqnyukq3000h6kcyqybj29pw",
+          "contractId": "cmqnyukpd000e6kcy1kc6swmt",
+          "action": "AUTO_COMPLETE",
+          "at": "2026-06-21T15:53:26.379Z"
+        }
+      ]
+    },
+    {
+      "action": "delete_operation_log",
+      "target": "OperationLog",
+      "count": 64,
+      "sample": [
+        {
+          "id": "cmqnyv6om0004r7cylriv9st4",
+          "action": "CONTRACT_AUTO_EXECUTE",
+          "entity": "Contract",
+          "entityId": "cmqnyv6ik0001r7cyak7anwap",
+          "at": "2026-06-21T15:53:54.838Z"
+        },
+        {
+          "id": "cmqnyukmp00046kcy8pfpomwm",
+          "action": "CONTRACT_AUTO_EXECUTE",
+          "entity": "Contract",
+          "entityId": "cmqnyukld00016kcyhqe093uv",
+          "at": "2026-06-21T15:53:26.257Z"
+        },
+        {
+          "id": "cmqnyukp1000c6kcycdmp76hh",
+          "action": "CONTRACT_AUTO_EXECUTE",
+          "entity": "Contract",
+          "entityId": "cmqnyukog00086kcyunadng7p",
+          "at": "2026-06-21T15:53:26.341Z"
+        }
+      ]
+    },
+    {
+      "action": "delete_new_type_messages",
+      "target": "Message (new types)",
+      "count": 43,
+      "sample": [
+        {
+          "id": "cmqnz61ip0005zscyapvt580b",
+          "type": "CONTRACT_AUTO_EXPIRED",
+          "receiverUserId": "cmqbz00q9000458cypc0koz8b",
+          "createdAt": "2026-06-21T16:02:21.361Z"
+        },
+        {
+          "id": "cmqnz61j80008zscykd4yf1r5",
+          "type": "CONTRACT_AUTO_EXPIRED",
+          "receiverUserId": "cmqbz00q9000458cypc0koz8b",
+          "createdAt": "2026-06-21T16:02:21.380Z"
+        },
+        {
+          "id": "cmqnz61jq000bzscyd5p9u88k",
+          "type": "CONTRACT_AUTO_EXPIRED",
+          "receiverUserId": "cmqbz00q9000458cypc0koz8b",
+          "createdAt": "2026-06-21T16:02:21.398Z"
+        }
+      ]
+    },
+    {
+      "action": "delete_old_type_messages_in_test_window",
+      "target": "Message (old types in test window)",
+      "count": 3,
+      "sample": [
+        {
+          "id": "cmqnz61g20000zscydpybnjpa",
+          "type": "CUSTOMER_INACTIVE",
+          "receiverUserId": "cmqbz00q9000458cypc0koz8b",
+          "createdAt": "2026-06-21T16:02:21.266Z"
+        },
+        {
+          "id": "cmqnz61gh0001zscy8qfawmxs",
+          "type": "INVOICE_OVERDUE_PAYMENT",
+          "receiverUserId": "cmqbz00qp000558cyg3x7f9cs",
+          "createdAt": "2026-06-21T16:02:21.281Z"
+        },
+        {
+          "id": "cmqnz61gx0002zscy4vmnz528",
+          "type": "INVOICE_OVERDUE_PAYMENT",
+          "receiverUserId": "cmqbz00q9000458cypc0koz8b",
+          "createdAt": "2026-06-21T16:02:21.297Z"
+        }
+      ]
+    }
+  ],
+  "planResult": {
+    "restorePlanSample": [
+      {
+        "id": "cmqbz014f003758cyj3a75bgu",
+        "contractNo": "QT-HT-2026-0002",
+        "endDate": "2026-10-11T06:24:26.779Z",
+        "currentStatus": "EXPIRED",
+        "restoreTo": "EFFECTIVE",
+        "hasLog": true
+      },
+      {
+        "id": "cmqbz014k003858cy5m1r9jnz",
+        "contractNo": "QT-HT-2026-0003",
+        "endDate": "2027-01-19T06:24:26.779Z",
+        "currentStatus": "EXPIRED",
+        "restoreTo": "EXECUTING",
+        "hasLog": true
+      },
+      {
+        "id": "cmqbz014p003958cywi2wasid",
+        "contractNo": "QT-HT-2026-0004",
+        "endDate": "2026-12-30T06:24:26.779Z",
+        "currentStatus": "EXPIRED",
+        "restoreTo": "EFFECTIVE",
+        "hasLog": true
+      },
+      {
+        "id": "cmqbz014y003b58cyd0qpbwv9",
+        "contractNo": "QT-HT-2026-0006",
+        "endDate": "2027-02-28T06:24:26.779Z",
+        "currentStatus": "EXPIRED",
+        "restoreTo": "EFFECTIVE",
+        "hasLog": true
+      },
+      {
+        "id": "cmqnyyw8o000zpncyhsahy4py",
+        "contractNo": "TEST-AUTOCT-1782057407469-hvoysv-DIRECT-EMPTY",
+        "endDate": "2026-12-31T00:00:00.000Z",
+        "currentStatus": "EXPIRED",
+        "restoreTo": "EFFECTIVE",
+        "hasLog": true
+      }
+    ],
+    "restorePlanTotal": 34,
+    "reviewLogsTotal": 64,
+    "opLogsTotal": 64,
+    "newTypeMsgsTotal": 43,
+    "oldTypeMsgsTotal": 3,
+    "window": {
+      "from": "2026-06-21T15:53:26.257Z",
+      "to": "2026-06-21T16:02:21.971Z",
+      "count": 64
+    }
+  }
+}
