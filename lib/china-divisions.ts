@@ -3542,3 +3542,13 @@ export const DIVISIONS: DivisionNode[] = [
     ]
   }
 ];
+
+/**
+ * 浙江省子树 (省 → 市 → 区 → 镇/街). 业务只覆盖浙江省客户时, 用它做级联数据源, 避免
+ * 误选外省. 老数据若存了外省地址, 编辑时级联会找不到节点, 此时清空 location 字段即可.
+ * 此处追加由 generate-divisions.cjs 维护, 重新生成会保留.
+ */
+export const ZHEJIANG_DIVISIONS: DivisionNode[] = (() => {
+  const zj = DIVISIONS.find((n) => n.label === "浙江省");
+  return zj ? [zj] : [];
+})();

@@ -94,17 +94,37 @@ describe("渲染 4 处全部拼接 district (省 / 市 / 区)", () => {
 });
 
 describe("表单 4 级: onChange 写 district, 编辑预填走 4 级", () => {
-  it("新建页 onChange 写 district: labels[2]", () => {
+  it("新建页 onChange 写 district / town, 并把级联名 join 到 address 自动填充", () => {
     const src = read("app/(app)/customers/new/page.tsx");
     expect(src).toMatch(/district:\s*labels\[2\]\s*\|\|\s*""/);
     expect(src).toMatch(/town:\s*labels\[3\]\s*\|\|\s*""/);
-    expect(src).not.toMatch(/address:\s*labels\.filter\(Boolean\)\.join/);
+    // address 自动填充级联名 (用户可继续追加门牌号 / 楼层)
+    expect(src).toMatch(/address:\s*labels\.filter\(Boolean\)\.join\(""\)/);
   });
 
-  it("编辑页 onChange 写 district: labels[2]", () => {
+  it("新建页用 ZHEJIANG_DIVISIONS 限制级联选项到浙江省", () => {
+    const src = read("app/(app)/customers/new/page.tsx");
+    expect(src).toMatch(/import\s*\{[^}]*ZHEJIANG_DIVISIONS[^}]*\}\s*from\s*"@\/lib\/china-divisions"/);
+    expect(src).toMatch(/<LocationCascader[\s\S]*?options=\{ZHEJIANG_DIVISIONS\}/);
+  });
+
+  it("编辑页 onChange 写 district / town, address 自动填充", () => {
     const src = read("app/(app)/customers/[id]/edit/page.tsx");
     expect(src).toMatch(/district:\s*labels\[2\]\s*\|\|\s*""/);
     expect(src).toMatch(/town:\s*labels\[3\]\s*\|\|\s*""/);
+    expect(src).toMatch(/address:\s*labels\.filter\(Boolean\)\.join\(""\)/);
+  });
+
+  it("编辑页用 ZHEJIANG_DIVISIONS 限制级联选项, useEffect 也从浙江子树预填", () => {
+    const src = read("app/(app)/customers/[id]/edit/page.tsx");
+    expect(src).toMatch(/import\s*\{[^}]*ZHEJIANG_DIVISIONS[^}]*\}\s*from\s*"@\/lib\/china-divisions"/);
+    expect(src).toMatch(/<LocationCascader[\s\S]*?options=\{ZHEJIANG_DIVISIONS\}/);
+    // useEffect 改用 ZHEJIANG_DIVISIONS, 不再用全量 DIVISIONS
+    const effect = src.match(
+      /useEffect\(\(\)\s*=>\s*\{[\s\S]*?setCascadeValue\(codes\);\s*\},?\s*\[data\]\);/
+    );
+    expect(effect, "应能定位预填 useEffect").toBeTruthy();
+    expect(effect![0]).toMatch(/ZHEJIANG_DIVISIONS/);
   });
 
   it("编辑页 useEffect 预填走 4 级 (province/city/district/town)", () => {
@@ -129,5 +149,22 @@ describe("表单 4 级: onChange 写 district, 编辑预填走 4 级", () => {
     const iv = src.match(/initialValues=\{\{[\s\S]*?\}\}/);
     expect(iv, "应能定位 initialValues").toBeTruthy();
     expect(iv![0]).toMatch(/district:\s*data\.district/);
+  });
+});
+
+describe("ZHEJIANG_DIVISIONS / LocationCascader.options 浙江省限制", () => {
+  it("lib/china-divisions.ts 导出 ZHEJIANG_DIVISIONS (浙江省子树)", () => {
+    const src = read("lib/china-divisions.ts");
+    expect(src).toMatch(/export\s+const\s+ZHEJIANG_DIVISIONS:/);
+    // 找到的应是 label === "浙江省" 的节点
+    expect(src).toMatch(/DIVISIONS\.find\(\s*\(?n\)?\s*=>\s*n\.label\s*===\s*"\u6d59\u6c5f\u7701"/);
+  });
+
+  it("LocationCascader 接收 options prop (默认仍是全量 DIVISIONS)", () => {
+    const src = read("components/form/LocationCascader.tsx");
+    expect(src).toMatch(/options\?:\s+DivisionNode\[\];/);
+    expect(src).toMatch(/options\s*=\s*DIVISIONS/);
+    // 渲染时把 options 传给 antd Cascader
+    expect(src).toMatch(/<Cascader<DivisionNode>[\s\S]*?options=\{options\}/);
   });
 });

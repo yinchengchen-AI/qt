@@ -8,13 +8,19 @@ type Props = {
   onChange?: (labels: string[], selectedOptions: DivisionNode[]) => void;
   placeholder?: string;
   size?: "large" | "middle" | "small";
+  /**
+   * 自定义数据源. 默认全量 DIVISIONS (全国省/市/区/镇街).
+   * 客户管理只用浙江省时, 传 ZHEJIANG_DIVISIONS 即可限制选项.
+   */
+  options?: DivisionNode[];
 };
 
 export function LocationCascader({
   value,
   onChange,
   placeholder = "选择省 / 市 / 区 / 镇街",
-  size = "large"
+  size = "large",
+  options = DIVISIONS
 }: Props) {
   const handleChange = (_value: unknown, selectedOptions: unknown) => {
     if (!onChange || !selectedOptions) return;
@@ -27,7 +33,7 @@ export function LocationCascader({
     <Cascader<DivisionNode>
       value={value}
       onChange={handleChange}
-      options={DIVISIONS}
+      options={options}
       placeholder={placeholder}
       size={size}
       style={{ width: "100%" }}

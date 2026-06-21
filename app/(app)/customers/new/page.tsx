@@ -15,6 +15,7 @@ import { Page } from "@/components/page";
 import { PageHeader } from "@/components/page-header";
 import { FormSection, FormGrid, FormCard, SubmitBar } from "@/components/form";
 import { LocationCascader } from "@/components/form/LocationCascader";
+import { ZHEJIANG_DIVISIONS } from "@/lib/china-divisions";
 import { isValidCreditCode } from "@/lib/credit-code";
 
 export default function NewCustomerPage() {
@@ -137,15 +138,16 @@ export default function NewCustomerPage() {
                 所在地 <span style={{ color: "#ff4d4f" }}>*</span>
               </div>
               <LocationCascader
+                options={ZHEJIANG_DIVISIONS}
                 onChange={(labels) => {
                   formRef.current?.setFieldsValue({
                     province: labels[0] || "",
                     city: labels[1] || "",
                     district: labels[2] || "",
                     town: labels[3] || "",
-                    // address 只放"门牌号 / 楼层"等用户后续填的内容, 级联 4 级名不再 join 进去
-                    // 列表 / 详情 / 导出走 province/city/district/town 单独渲染.
-                    address: ""
+                    // address 自动填充级联 4 级名 (省/市/区/镇街), 用户可继续追加门牌号 / 楼层.
+                    // 列表 / 详情 / 导出走 province/city/district/town 单独渲染, address 冗余但不冲突.
+                    address: labels.filter(Boolean).join("")
                   });
                 }}
               />

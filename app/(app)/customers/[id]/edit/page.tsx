@@ -17,7 +17,7 @@ import { Page } from "@/components/page";
 import { PageHeader } from "@/components/page-header";
 import { FormSection, FormGrid, FormCard, SubmitBar } from "@/components/form";
 import { LocationCascader } from "@/components/form/LocationCascader";
-import { DIVISIONS, type DivisionNode } from "@/lib/china-divisions";
+import { ZHEJIANG_DIVISIONS, type DivisionNode } from "@/lib/china-divisions";
 import { FormPageSkeleton } from "@/components/form-page-skeleton";
 import { isValidCreditCode } from "@/lib/credit-code";
 
@@ -58,10 +58,11 @@ export default function EditCustomerPage() {
   useEffect(() => {
     if (!data) return;
     // 4 级预填 (省/市/区/镇街). 老数据可能只填了 2 级, 此时 district/town 段跳过, codes 只到 city.
-    // 找不到当前层 (历史脏数据 province 实际是区名 等) -> 静默退出, 级联器保持空白,
-    // 用户重新选择后即可修复. 不主动清空, 避免误删可恢复的 code.
+    // 找不到当前层 (历史脏数据 / 外省地址等) -> 静默退出, 级联器保持空白,
+    // 用户从 ZHEJIANG 树里重新选择即可. 不主动清空, 避免误删可恢复的 code.
+    // 业务只覆盖浙江省客户, 因此预填也只从浙江省子树查, 外省数据自然找不到节点.
     const codes: string[] = [];
-    let current: DivisionNode[] | undefined = DIVISIONS;
+    let current: DivisionNode[] | undefined = ZHEJIANG_DIVISIONS;
     for (const label of [data.province, data.city, data.district, data.town]) {
       if (!label) break;
       const node: DivisionNode | undefined = current?.find((n) => n.label === label);
@@ -211,13 +212,15 @@ export default function EditCustomerPage() {
               </div>
               <LocationCascader
                 value={cascadeValue}
+                options={ZHEJIANG_DIVISIONS}
                 onChange={(labels) => {
                   formRef.current?.setFieldsValue({
                     province: labels[0] || "",
                     city: labels[1] || "",
                     district: labels[2] || "",
                     town: labels[3] || "",
-                    address: ""
+                    // address 自动填充级联 4 级名, 用户可继续追加门牌号 / 楼层.
+                    address: labels.filter(Boolean).join("")
                   });
                 }}
               />
