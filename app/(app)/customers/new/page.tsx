@@ -132,26 +132,36 @@ export default function NewCustomerPage() {
             </FormGrid>
           </FormSection>
 
-        <FormSection title="位置与联系" description="级联选择省 / 市 / 区后自动填充到详细地址">
-            <div style={{ marginBottom: 16 }}>
-              <div style={{ marginBottom: 8, fontWeight: 500, fontSize: 13, color: "rgba(0,0,0,0.88)" }}>
-                所在地 <span style={{ color: "#ff4d4f" }}>*</span>
+        <FormSection title="位置与联系" description="级联选择省 / 市 / 区 / 镇街, 自动填充到下方详细地址">
+            <FormGrid columns={2}>
+              <div>
+                <div style={{ marginBottom: 8, fontWeight: 500, fontSize: 13, color: "rgba(0,0,0,0.88)" }}>
+                  所在地 <span style={{ color: "#ff4d4f" }}>*</span>
+                </div>
+                <LocationCascader
+                  options={ZHEJIANG_DIVISIONS}
+                  onChange={(labels) => {
+                    formRef.current?.setFieldsValue({
+                      province: labels[0] || "",
+                      city: labels[1] || "",
+                      district: labels[2] || "",
+                      town: labels[3] || "",
+                      // address 自动填充级联 4 级名 (省/市/区/镇街), 用户可继续追加门牌号 / 楼层.
+                      // 列表 / 详情 / 导出走 province/city/district/town 单独渲染, address 冗余但不冲突.
+                      address: labels.filter(Boolean).join("")
+                    });
+                  }}
+                />
               </div>
-              <LocationCascader
-                options={ZHEJIANG_DIVISIONS}
-                onChange={(labels) => {
-                  formRef.current?.setFieldsValue({
-                    province: labels[0] || "",
-                    city: labels[1] || "",
-                    district: labels[2] || "",
-                    town: labels[3] || "",
-                    // address 自动填充级联 4 级名 (省/市/区/镇街), 用户可继续追加门牌号 / 楼层.
-                    // 列表 / 详情 / 导出走 province/city/district/town 单独渲染, address 冗余但不冲突.
-                    address: labels.filter(Boolean).join("")
-                  });
-                }}
+              <ProFormText
+                name="town"
+                label="所在镇街"
+                placeholder="级联选完后自动填充"
+                tooltip="由所在地级联器第 4 级自动填充, 仅展示不可手改"
+                disabled
+                fieldProps={{ size: "large", maxLength: 50 }}
               />
-            </div>
+            </FormGrid>
             <Form.Item name="province" rules={[{ required: true, message: "请选择所在地" }]} noStyle>
               <Input type="hidden" />
             </Form.Item>
@@ -159,9 +169,6 @@ export default function NewCustomerPage() {
               <Input type="hidden" />
             </Form.Item>
             <Form.Item name="district" noStyle>
-              <Input type="hidden" />
-            </Form.Item>
-            <Form.Item name="town" noStyle>
               <Input type="hidden" />
             </Form.Item>
             <ProFormTextArea

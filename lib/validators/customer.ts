@@ -17,6 +17,8 @@ export const customerCreateSchema = z.object({
   city: z.string().min(1, "请输入城市").max(40),
   // 区级 (district) 可选 — 老数据 (迁移前) 经常空着, 4 级只填前 3 级时也允许为空
   district: z.string().max(40).optional(),
+  // 镇街 (town) 与 district 同语义 — 4 级级联最末级, 客户表单里跟着 cascader 自动填充, 表层只读展示
+  town: z.string().max(50).optional(),
   address: z.string().max(200).optional(),
   contactName: z.string().max(50).optional(),
   contactTitle: z.string().max(50).optional(),

@@ -42,6 +42,11 @@ describe("validator / service 放行 district", () => {
     expect(src).toMatch(/district:\s*z\.string\(\)\.max\(40\)\.optional\(\)/);
   });
 
+  it("customerCreateSchema 接受 town (所在镇街) 可选字段", () => {
+    const src = read("lib/validators/customer.ts");
+    expect(src).toMatch(/town:\s*z\.string\(\)\.max\(50\)\.optional\(\)/);
+  });
+
   it("buildCustomerUpdateData 把 district 当作 nullable 字符串", () => {
     const src = read("lib/customer-update.ts");
     const block = src.match(/STRINGABLE_NULLABLE[\s\S]*?\];/);
@@ -59,6 +64,22 @@ describe("validator / service 放行 district", () => {
     expect(createBlock, "应能定位 createCustomer 函数").toBeTruthy();
     expect(createBlock![0]).toMatch(/district:\s*input\.district\s*\|\|\s*null/);
   });
+
+  it("createCustomer 也把 town 转 null (4 级级联最末级, 与 district 同语义)", () => {
+    const src = read("server/services/customer.ts");
+    const createBlock = src.match(
+      /export\s+async\s+function\s+createCustomer[\s\S]*?(?=\nexport\s+async\s+function|\n\n)/
+    );
+    expect(createBlock, "应能定位 createCustomer 函数").toBeTruthy();
+    expect(createBlock![0]).toMatch(/town:\s*input\.town\s*\|\|\s*null/);
+  });
+
+  it("buildCustomerUpdateData 把 town 列入 STRINGABLE_NULLABLE, 写库时归一为 null", () => {
+    const src = read("lib/customer-update.ts");
+    const block = src.match(/STRINGABLE_NULLABLE[\s\S]*?\];/);
+    expect(block, "应能定位 STRINGABLE_NULLABLE 数组").toBeTruthy();
+    expect(block![0]).toMatch(/"town"/);
+  });
 });
 
 describe("类型: Customer 含 district", () => {
@@ -71,9 +92,10 @@ describe("类型: Customer 含 district", () => {
 });
 
 describe("渲染 4 处全部拼接 district (省 / 市 / 区)", () => {
-  it("列表页拼接 district", () => {
+  it("列表页拼接 district + town (4 级位置)", () => {
     const src = read("app/(app)/customers/page.tsx");
-    expect(src).toMatch(/\[r\.province,\s*r\.city,\s*r\.district\]\.filter\(Boolean\)\.join/);
+    // 4 级 [省/市/区/镇街] 一并 join, 老数据缺镇街时 filter 掉
+    expect(src).toMatch(/\[r\.province,\s*r\.city,\s*r\.district,\s*r\.town\]\.filter\(Boolean\)\.join/);
   });
 
   it("详情页加 所在区 描述项", () => {
@@ -144,11 +166,49 @@ describe("表单 4 级: onChange 写 district, 编辑预填走 4 级", () => {
     expect(editSrc).toMatch(/<Form\.Item\s+name="district"\s+noStyle>/);
   });
 
+  it("两页都用可见的 ProFormText 表面化 town, 且 disabled (不可手改, 由级联自动填)", () => {
+    const newSrc = read("app/(app)/customers/new/page.tsx");
+    const editSrc = read("app/(app)/customers/[id]/edit/page.tsx");
+    // 可见控件, 名字 town, label 所在镇街
+    expect(newSrc).toMatch(/<ProFormText[\s\S]*?name="town"[\s\S]*?label="\u6240\u5728\u9547\u8857"/);
+    expect(editSrc).toMatch(/<ProFormText[\s\S]*?name="town"[\s\S]*?label="\u6240\u5728\u9547\u8857"/);
+    // disabled 防手改 — 镇街的来源是级联器第 4 级
+    expect(newSrc).toMatch(/<ProFormText[\s\S]*?name="town"[\s\S]*?disabled/);
+    expect(editSrc).toMatch(/<ProFormText[\s\S]*?name="town"[\s\S]*?disabled/);
+    // 不再用 hidden Form.Item 包 town (old schema)
+    expect(newSrc).not.toMatch(/<Form\.Item\s+name="town"\s+noStyle>/);
+    expect(editSrc).not.toMatch(/<Form\.Item\s+name="town"\s+noStyle>/);
+  });
+
+  it("两页把所在地 + 所在镇街 同行排版 (FormGrid columns=2), 收紧间距", () => {
+    const newSrc = read("app/(app)/customers/new/page.tsx");
+    const editSrc = read("app/(app)/customers/[id]/edit/page.tsx");
+    // 截取 "位置与联系" section 内的全部 FormGrid, 断言至少一个同时含 LocationCascader + name="town"
+    const pickLocationGrid = (src: string) => {
+      const sec = src.match(/<FormSection title="\u4f4d\u7f6e\u4e0e\u8054\u7cfb"[\s\S]*?(?=<FormSection[\s>]|SubmitBar|\n\s*<\/FormCard)/);
+      if (!sec) return null;
+      // 这个 section 内可能有多个 FormGrid, 找一个同时含 cascader 和 town 的
+      const grids = sec[0].match(/<FormGrid columns=\{2\}>[\s\S]*?<\/FormGrid>/g) ?? [];
+      return grids.find((g) => /<LocationCascader/.test(g) && /name="town"/.test(g)) ?? null;
+    };
+    expect(pickLocationGrid(newSrc), "new 页位置 section 内应有一个 FormGrid 同时装下 cascader 和 town").toBeTruthy();
+    expect(pickLocationGrid(editSrc), "edit 页位置 section 内应有一个 FormGrid 同时装下 cascader 和 town").toBeTruthy();
+    // 之前单独一行的所在地 div 已被 FormGrid 替代 — 不再有大 marginBottom
+    expect(newSrc).not.toMatch(/\{ marginBottom: 16 \}[\s\S]*?<LocationCascader/);
+  });
+
   it("编辑页 initialValues 含 district", () => {
     const src = read("app/(app)/customers/[id]/edit/page.tsx");
     const iv = src.match(/initialValues=\{\{[\s\S]*?\}\}/);
     expect(iv, "应能定位 initialValues").toBeTruthy();
     expect(iv![0]).toMatch(/district:\s*data\.district/);
+  });
+
+  it("编辑页 initialValues 也含 town (回填镇街)", () => {
+    const src = read("app/(app)/customers/[id]/edit/page.tsx");
+    const iv = src.match(/initialValues=\{\{[\s\S]*?\}\}/);
+    expect(iv, "应能定位 initialValues").toBeTruthy();
+    expect(iv![0]).toMatch(/town:\s*data\.town/);
   });
 });
 
