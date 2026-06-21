@@ -16,7 +16,7 @@ import { PrismaPg } from "@prisma/adapter-pg";
 import { config } from "dotenv";
 import { writeFileSync, mkdirSync } from "node:fs";
 import path from "node:path";
-import { DIVISIONS, type DivisionNode } from "../../lib/china-divisions";
+import { DIVISIONS, ZHEJIANG_DIVISIONS, type DivisionNode } from "../../lib/china-divisions";
 
 config();
 
@@ -42,9 +42,15 @@ function findNode(labels: string[]): DivisionNode | null {
   return node;
 }
 
-/** 在整个树里按 label 找一个节点, 返回其祖先链 (省/市/区/街) */
+// 在浙江省子树里按 label 找一个节点, 返回其祖先链 (省/市/区/街).
+// 之前走全 DIVISIONS (全国 4 级) 一次 O(M), 实际本脚本只处理浙江省客户,
+// 改走 ZHEJIANG_DIVISIONS 把搜索空间砍到浙江的 1 个省节点, 兜底也只搜浙江.
+// 同 label 跨多客户重复查询 → memo 一次性 DFS 缓存.
+const _pathCache = new Map<string, string[] | null>();
 function findPathByLabel(label: string): string[] | null {
   if (!label) return null;
+  const cached = _pathCache.get(label);
+  if (cached !== undefined) return cached;
   const walk = (nodes: DivisionNode[], path: string[]): string[] | null => {
     for (const n of nodes) {
       if (n.label === label) return [...path, n.label];
@@ -55,7 +61,9 @@ function findPathByLabel(label: string): string[] | null {
     }
     return null;
   };
-  return walk(DIVISIONS, []);
+  const r = walk(ZHEJIANG_DIVISIONS, []);
+  _pathCache.set(label, r);
+  return r;
 }
 
 async function main() {
