@@ -140,7 +140,7 @@ export default function NewCustomerPage() {
                 </div>
                 <LocationCascader
                   options={ZHEJIANG_DIVISIONS}
-                  onChange={(labels) => {
+                  onChange={(_value, labels) => {
                     formRef.current?.setFieldsValue({
                       province: labels[0] || "",
                       city: labels[1] || "",

@@ -214,7 +214,10 @@ export default function EditCustomerPage() {
                 <LocationCascader
                   value={cascadeValue}
                   options={ZHEJIANG_DIVISIONS}
-                  onChange={(labels) => {
+                  onChange={(value, labels) => {
+                    // 受控同步: 把 Cascader 内部 value 路径回写, 不然父组件重渲染时 Cascader
+                    // 选中显示会被 value prop 拉回初始 codes, 表现为"选完不显示"
+                    setCascadeValue(value);
                     formRef.current?.setFieldsValue({
                       province: labels[0] || "",
                       city: labels[1] || "",

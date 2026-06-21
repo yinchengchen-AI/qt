@@ -149,6 +149,15 @@ describe("表单 4 级: onChange 写 district, 编辑预填走 4 级", () => {
     expect(src).toMatch(/address:\s*labels\.filter\(Boolean\)\.join\(""\)/);
   });
 
+  it("编辑页 onChange 把 value 路径 setCascadeValue, 同步 Cascader 受控显示", () => {
+    const src = read("app/(app)/customers/[id]/edit/page.tsx");
+    // 受控用法的 onChange 必须回写 cascadeValue, 不然 React 重渲染时 Cascader 选中显示
+    // 会被 value prop 拉回初始 codes, 表现为"选完不显示"
+    // 形参接 (value, labels) + 体内调 setCascadeValue(value)
+    expect(src).toMatch(/onChange=\{\(value,\s*labels\)\s*=>\s*\{/);
+    expect(src).toMatch(/setCascadeValue\(value\)/);
+  });
+
   it("编辑页用 ZHEJIANG_DIVISIONS 限制级联选项, useEffect 也从浙江子树预填", () => {
     const src = read("app/(app)/customers/[id]/edit/page.tsx");
     expect(src).toMatch(/import\s*\{[^}]*ZHEJIANG_DIVISIONS[^}]*\}\s*from\s*"@\/lib\/china-divisions"/);
@@ -236,5 +245,12 @@ describe("ZHEJIANG_DIVISIONS / LocationCascader.options 浙江省限制", () => 
     expect(src).toMatch(/options\s*=\s*DIVISIONS/);
     // 渲染时把 options 传给 antd Cascader
     expect(src).toMatch(/<Cascader<DivisionNode>[\s\S]*?options=\{options\}/);
+  });
+
+  it("LocationCascader onChange 透传 Cascader 的 value 路径 (受控同步必需)", () => {
+    const src = read("components/form/LocationCascader.tsx");
+    // 透传: 内部 Cascader.onChange 触发时, 必须把 antd 给的 newValue 作为 onChange 第一参数
+    expect(src).toMatch(/onChange\?\s*:\s*\(?\s*value:\s*string\[\][\s\S]*?labels:[\s\S]*?selectedOptions/);
+    expect(src).toMatch(/onChange=\{\(newValue,[\s\S]*?onChange\(newValue as string\[\][\s\S]*?labels/);
   });
 });
