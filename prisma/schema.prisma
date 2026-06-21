@@ -138,7 +138,11 @@ model FollowUp {
 // =====================================================
 model Contract {
   id                     String    @id @default(cuid())
-  contractNo             String    @unique
+  contractNo             String
+  // contractNo 唯一性: 软删合同不阻塞同号新建. 索引在
+  // prisma/migrations/20260621_contract_no_partial_unique/migration.sql 维护
+  // (CREATE UNIQUE INDEX ... WHERE "deletedAt" IS NULL). Prisma schema 不直接
+  // 表达部分唯一索引, 改 schema 时不要加回 @unique.
   customerId             String
   customer               Customer  @relation(fields: [customerId], references: [id])
   customerName           String

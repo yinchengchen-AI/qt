@@ -210,14 +210,17 @@ export async function createContract(user: SessionUser, input: ContractCreateInp
   if (new Date(input.endDate) < new Date(input.startDate)) {
     throw new ApiError(ERROR_CODES.VALIDATION_FAILED, "结束日期不能早于开始日期", 400);
   }
-  // 合同编号唯一性预校验:DB 也有 @unique,但提前抛错返回更明确的 422 信息
+  // 合同编号唯一性:DB 上是部分唯一索引 WHERE "deletedAt" IS NULL, 软删合同不阻塞同号新建.
+  // 活动行唯一性在这里显式预校验, 提前抛 422; 事务内 create 仍可能因并发竞态触发 P2002, 在下面 catch 兜底.
   const existingNo = await prisma.contract.findFirst({ where: { contractNo: input.contractNo, deletedAt: null } });
   if (existingNo) {
     throw new ApiError(ERROR_CODES.VALIDATION_FAILED, `合同编号 ${input.contractNo} 已被使用`, 422);
   }
   return prisma.$transaction(async (tx) => {
     const { taxAmount, amountExcludingTax } = calcTotals(input.totalAmount, input.taxRate);
-    const created = await tx.contract.create({
+    let created;
+    try {
+      created = await tx.contract.create({
       data: {
         contractNo: input.contractNo,
         customerId: input.customerId,
@@ -240,7 +243,14 @@ export async function createContract(user: SessionUser, input: ContractCreateInp
         createdById: user.id,
         updatedById: user.id
       }
-    });
+      });
+    } catch (e) {
+      // 并发场景: 预校验和 create 之间被另一笔创建抢了同号, 把它转成 422 而不是漏 500
+      if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === "P2002") {
+        throw new ApiError(ERROR_CODES.VALIDATION_FAILED, `合同编号 ${input.contractNo} 已被使用`, 422);
+      }
+      throw e;
+    }
     // 解析附件并绑定(tmp -> contractId),把真实记录写回 JSON 快照
     if ((input.attachments ?? []).length > 0) {
       const attachments = await resolveAttachmentSnapshots(input.attachments ?? [], created.id, tx);
@@ -280,22 +290,30 @@ export async function updateContract(user: SessionUser, id: string, input: Contr
     const attachments = input.attachments
       ? await resolveAttachmentSnapshots(input.attachments, id, tx)
       : undefined;
-    return tx.contract.update({
+    try {
+      return await tx.contract.update({
       where: { id },
-      data: {
-        ...input,
-        signDate: input.signDate ? new Date(input.signDate) : undefined,
-        startDate: input.startDate ? new Date(input.startDate) : undefined,
-        endDate: input.endDate ? new Date(input.endDate) : undefined,
-        totalAmount: input.totalAmount,
-        taxRate: input.taxRate,
-        taxAmount,
-        amountExcludingTax,
-        installmentPlan: input.installmentPlan as Prisma.InputJsonValue,
-        attachments,
-        updatedById: user.id
+        data: {
+          ...input,
+          signDate: input.signDate ? new Date(input.signDate) : undefined,
+          startDate: input.startDate ? new Date(input.startDate) : undefined,
+          endDate: input.endDate ? new Date(input.endDate) : undefined,
+          totalAmount: input.totalAmount,
+          taxRate: input.taxRate,
+          taxAmount,
+          amountExcludingTax,
+          installmentPlan: input.installmentPlan as Prisma.InputJsonValue,
+          attachments,
+          updatedById: user.id
+        }
+      });
+    } catch (e) {
+      // 同 createContract: 并发把 contractNo 抢走时把 P2002 转 422
+      if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === "P2002") {
+        throw new ApiError(ERROR_CODES.VALIDATION_FAILED, `合同编号 ${input.contractNo ?? ""} 已被使用`, 422);
       }
-    });
+      throw e;
+    }
   });
 }
 
