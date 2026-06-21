@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { runWithRequestContext } from "@/lib/request-context";
 import { ok, err } from "@/lib/api";
 import { requireSession } from "@/lib/session";
 import { updateTask, deleteTask } from "@/server/services/workflow-template";
@@ -16,29 +17,39 @@ const patchSchema = z.object({
   isRecurring: z.boolean().optional(),
   recurrenceUnit: z.enum(WORKFLOW_RECURRENCE_UNIT).nullable().optional(),
   recurrenceInterval: z.number().int().positive().nullable().optional(),
-  estimateDays: z.number().int().positive().nullable().optional()
+  estimateDays: z.number().int().positive().nullable().optional(),
 });
 
-export async function PATCH(req: Request, { params }: { params: Promise<{ id: string; taskId: string }> }) {
-  try {
-    const user = await requireSession();
-    const { taskId } = await params;
-    const body = await req.json();
-    const input = patchSchema.parse(body);
-    const data = await updateTask(user, taskId, input);
-    return ok(data);
-  } catch (e) {
-    return err(e);
-  }
+export async function PATCH(
+  req: Request,
+  { params }: { params: Promise<{ id: string; taskId: string }> },
+) {
+  return runWithRequestContext(req, async () => {
+    try {
+      const user = await requireSession();
+      const { taskId } = await params;
+      const body = await req.json();
+      const input = patchSchema.parse(body);
+      const data = await updateTask(user, taskId, input);
+      return ok(data);
+    } catch (e) {
+      return err(e);
+    }
+  });
 }
 
-export async function DELETE(_req: Request, { params }: { params: Promise<{ id: string; taskId: string }> }) {
-  try {
-    const user = await requireSession();
-    const { taskId } = await params;
-    const data = await deleteTask(user, taskId);
-    return ok(data);
-  } catch (e) {
-    return err(e);
-  }
+export async function DELETE(
+  req: Request,
+  { params }: { params: Promise<{ id: string; taskId: string }> },
+) {
+  return runWithRequestContext(req, async () => {
+    try {
+      const user = await requireSession();
+      const { taskId } = await params;
+      const data = await deleteTask(user, taskId);
+      return ok(data);
+    } catch (e) {
+      return err(e);
+    }
+  });
 }

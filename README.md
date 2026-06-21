@@ -151,6 +151,14 @@ npm run seed                # 此时会找到 ADMIN, 写入 9 份工作流模板
 
 ## 最近更新
 
+### v0.2.0(2026-06-22)操作日志审计字段补全 + 前端优化
+
+- **feat(audit)**：`OperationLog` 补 6 字段 `userAgent / requestId / method / path / status(SUCCESS|FAILURE) / errorMessage` + 配套索引 + `userAgent` 500 字符 CHECK 约束；迁移 `20260622_operation_log_audit_fields`
+- **feat(audit)**：新增 `lib/request-context.ts` 用 `AsyncLocalStorage` 透传 IP / UA / requestId / method / path；111 个 API 路由统一接入 `runWithRequestContext`；`server/audit.ts` 自动从 ctx 取值（调用方零改动）
+- **feat(api)**：列表 `GET /api/operation-logs` 增 `userAgent / requestId / method / path / status / errorMessage` 字段与 `ip(contains) / status` 过滤；新增详情接口 `GET /api/operation-logs/[id]` 含 entity 名称 best-effort 反查
+- **feat(ui)**：`app/(app)/admin/operation-logs` 重写——状态 / IP 列、6 档快速时间区间（今天 / 7d / 30d / 本月 / 本年 / 全部）、系统用户紫色徽标、动作中文标签、CSV 导出（带 BOM），行点击打开抽屉
+- **feat(ui)**：新增 `components/admin/operation-log-drawer.tsx`——元数据 Descriptions + 字段级 before/after diff（新增/删除/修改/未变 4 种 kind 颜色编码，>6 变更时折叠未变字段）；`lib/operation-log-format.ts` 增 `entityLabel / entityHref / shortActionLabel`
+
 ### v0.2.0(2026-06-22)合同状态机自动转换落地
 
 - **feat(contract)**：三个 `tryAuto*` 钩子 + 合同过期定时任务

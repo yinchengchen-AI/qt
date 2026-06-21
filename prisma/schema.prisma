@@ -499,11 +499,21 @@ model OperationLog {
   action   String
   diff     Json?
   ip       String?
-  at       DateTime @default(now()) @db.Timestamptz(6)
+  // 审计扩展字段:UA / 请求 ID / HTTP method/path / 状态 / 失败原因
+  // 字段定义与迁移 prisma/migrations/20260622_operation_log_audit_fields 同步
+  userAgent    String?
+  requestId    String?
+  method       String?
+  path         String?
+  status       String   @default("SUCCESS") // SUCCESS | FAILURE
+  errorMessage String?
+  at           DateTime @default(now()) @db.Timestamptz(6)
 
   @@index([actorId])
   @@index([entity, entityId])
   @@index([at])
+  @@index([requestId])
+  @@index([status])
 }
 
 model Dictionary {

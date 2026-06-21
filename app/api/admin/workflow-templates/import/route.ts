@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { runWithRequestContext } from "@/lib/request-context";
 import { ok, err } from "@/lib/api";
 import { requireSession } from "@/lib/session";
 import { importTemplate } from "@/server/services/workflow-template";
@@ -16,7 +17,7 @@ const stageTaskSchema = z.object({
   isRecurring: z.boolean().optional(),
   recurrenceUnit: z.string().nullable().optional(),
   recurrenceInterval: z.number().int().positive().nullable().optional(),
-  estimateDays: z.number().int().positive().nullable().optional()
+  estimateDays: z.number().int().positive().nullable().optional(),
 });
 
 const stageSchema = z.object({
@@ -26,7 +27,7 @@ const stageSchema = z.object({
   sort: z.number().int().min(0),
   description: z.string().max(2000).nullable().optional(),
   isRequired: z.boolean().optional(),
-  tasks: z.array(stageTaskSchema)
+  tasks: z.array(stageTaskSchema),
 });
 
 const bodySchema = z.object({
@@ -36,19 +37,21 @@ const bodySchema = z.object({
     name: z.string().min(1).max(100),
     description: z.string().max(2000).nullable().optional(),
     isActive: z.boolean().optional(),
-    stages: z.array(stageSchema).min(1)
+    stages: z.array(stageSchema).min(1),
   }),
-  newActive: z.boolean().optional()
+  newActive: z.boolean().optional(),
 });
 
 export async function POST(req: Request) {
-  try {
-    const user = await requireSession();
-    const body = await req.json();
-    const input = bodySchema.parse(body);
-    const data = await importTemplate(user, input);
-    return ok(data);
-  } catch (e) {
-    return err(e);
-  }
+  return runWithRequestContext(req, async () => {
+    try {
+      const user = await requireSession();
+      const body = await req.json();
+      const input = bodySchema.parse(body);
+      const data = await importTemplate(user, input);
+      return ok(data);
+    } catch (e) {
+      return err(e);
+    }
+  });
 }

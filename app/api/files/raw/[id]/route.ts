@@ -9,7 +9,10 @@ import { ApiError, err } from "@/lib/api";
 import { ERROR_CODES } from "@/types/errors";
 import { requireSession } from "@/lib/session";
 import { isMinioEnabled } from "@/lib/env";
-import { canReadAttachment, getAttachmentForRead } from "@/server/storage/presign";
+import {
+  canReadAttachment,
+  getAttachmentForRead,
+} from "@/server/storage/presign";
 import { GetObjectCommand } from "@aws-sdk/client-s3";
 import { ensureBucketAndCors, getS3Client } from "@/server/storage/minio";
 import { Readable } from "node:stream";
@@ -19,7 +22,10 @@ export const maxDuration = 60;
 
 const paramsSchema = z.object({ id: z.string().min(1).max(64) });
 
-export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> }) {
+export async function GET(
+  _req: Request,
+  ctx: { params: Promise<{ id: string }> },
+) {
   try {
     if (!isMinioEnabled()) {
       throw new ApiError(ERROR_CODES.INTERNAL_ERROR, "MinIO 未配置", 503);
@@ -38,7 +44,7 @@ export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> 
     await ensureBucketAndCors();
     const client = getS3Client();
     const obj = await client.send(
-      new GetObjectCommand({ Bucket: att.bucket, Key: att.objectKey })
+      new GetObjectCommand({ Bucket: att.bucket, Key: att.objectKey }),
     );
     if (!obj.Body) {
       throw new ApiError(ERROR_CODES.NOT_FOUND, "对象在 MinIO 中为空", 404);
@@ -49,7 +55,9 @@ export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> 
     const webStream = Readable.toWeb(nodeStream) as unknown as ReadableStream;
 
     // RFC 5987 文件名编码(content-disposition 中文/特殊字符安全)
-    const encoded = encodeURIComponent(att.originalName).replace(/['()]/g, escape).replace(/\*/g, "%2A");
+    const encoded = encodeURIComponent(att.originalName)
+      .replace(/['()]/g, escape)
+      .replace(/\*/g, "%2A");
     return new Response(webStream, {
       status: 200,
       headers: {
@@ -57,8 +65,8 @@ export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> 
         "content-length": String(obj.ContentLength ?? ""),
         "content-disposition": `attachment; filename*=UTF-8''${encoded}`,
         // 缓存:附件 ID 固定 + 对象 key 不变,允许浏览器短缓存
-        "cache-control": "private, max-age=60"
-      }
+        "cache-control": "private, max-age=60",
+      },
     });
   } catch (e) {
     return err(e);
