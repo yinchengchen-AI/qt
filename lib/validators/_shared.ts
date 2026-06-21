@@ -17,3 +17,27 @@ export const attachmentUrlSchema = z
     "url 必须是绝对 URL(http/https)或以 / 开头的相对路径"
   )
   .optional();
+
+/**
+ * 增值税适用税率(国内常见档位):
+ *   0% / 1% / 3% / 6% / 9% / 13%
+ * 0% 用于免税/不征税;1%/3% 多见于小规模纳税人;6%/9%/13% 是现行一般纳税人主档。
+ * 之前是 z.number().min(0).max(1) 自由输入, 实操里出现过 0.05 这种"看起来对、算出来错"的脏值,
+ * 改 enum 收紧, UI 也同步换成 ProFormSelect。
+ */
+export const TAX_RATE_OPTIONS = [0, 0.01, 0.03, 0.06, 0.09, 0.13] as const;
+
+export const TAX_RATE_LABELS = TAX_RATE_OPTIONS.map(
+  (r) => `${Math.round(r * 100)}%`
+);
+
+export function isStandardTaxRate(v: number): boolean {
+  return (TAX_RATE_OPTIONS as readonly number[]).includes(v);
+}
+
+export const taxRateSchema = z
+  .number()
+  .refine(isStandardTaxRate, {
+    message: `税率必须为 ${TAX_RATE_LABELS.join(" / ")} 之一`
+  });
+

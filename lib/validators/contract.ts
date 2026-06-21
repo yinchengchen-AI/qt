@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { CONTRACT_PAYMENT_METHOD } from "@/types/enums";
-import { attachmentUrlSchema } from "@/lib/validators/_shared";
+import { attachmentUrlSchema, taxRateSchema } from "@/lib/validators/_shared";
 
 const isoDate = z.iso.datetime();
 
@@ -27,7 +27,7 @@ export const contractCreateSchema = z.object({
   startDate: isoDate,
   endDate: isoDate,
   totalAmount: z.number().positive("合同总额必须大于 0"),
-  taxRate: z.number().min(0).max(1).default(0.06),
+  taxRate: taxRateSchema.default(0.06),
   paymentMethod: z.enum(CONTRACT_PAYMENT_METHOD),
   // 签订人:前端表单默认选当前登录员工,允许 admin 改成任意员工;
   // 不传时 service 层回退为当前 user.id,避免历史调用方漏字段

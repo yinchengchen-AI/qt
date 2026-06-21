@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { attachmentUrlSchema } from "@/lib/validators/_shared";
+import { attachmentUrlSchema, taxRateSchema } from "@/lib/validators/_shared";
 
 const isoDate = z.iso.datetime();
 
@@ -20,7 +20,7 @@ export const invoiceCreateSchema = z.object({
   invoiceNo: z.string().min(1, "请填写发票号").max(50, "发票号不超过 50 字"),
   invoiceType: z.enum(["VAT_SPECIAL", "VAT_GENERAL", "VAT_ELECTRONIC", "ELEC_NORMAL"]),
   amount: z.number().positive("金额必须大于 0"),
-  taxRate: z.number().min(0).max(1).default(0.06),
+  taxRate: taxRateSchema.default(0.06),
   applyDate: isoDate,
   expectedIssueDate: isoDate.optional(),
   titleType: z.enum(["COMPANY", "PERSONAL"]),

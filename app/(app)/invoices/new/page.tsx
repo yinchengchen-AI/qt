@@ -14,6 +14,7 @@ import { PageHeader } from "@/components/page-header";
 import { FormSection, FormGrid, FormCard, SubmitBar } from "@/components/form";
 import { proCustomRequest } from "@/lib/upload-client";
 import { PreviewableProFormUploadButton as UploadButton } from "@/components/file/pro-form-upload-button";
+import { TAX_RATE_OPTIONS, TAX_RATE_LABELS } from "@/lib/validators/_shared";
 
 const { Text } = Typography;
 
@@ -205,13 +206,13 @@ export default function NewInvoicePage() {
                 rules={[{ required: true, message: "请输入含税金额" }]}
                 fieldProps={{ size: "large", precision: 2, prefix: "¥" }}
               />
-              <ProFormDigit
+              <ProFormSelect
                 name="taxRate"
                 label="税率"
-                min={0}
-                max={1}
                 initialValue={0.06}
-                fieldProps={{ size: "large", precision: 4, step: 0.01 }}
+                options={TAX_RATE_OPTIONS.map((v, i) => ({ value: v, label: TAX_RATE_LABELS[i] }))}
+                rules={[{ required: true, message: "请选择税率" }]}
+                fieldProps={{ size: "large" }}
               />
             </FormGrid>
             <FormGrid columns={2}>

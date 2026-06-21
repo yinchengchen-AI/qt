@@ -18,6 +18,7 @@ import { extractOptionLabel } from "@/lib/extract-option-label";
 import { toIsoDateTime } from "@/lib/format";
 import { proCustomRequest } from "@/lib/upload-client";
 import { PreviewableProFormUploadButton as UploadButton } from "@/components/file/pro-form-upload-button";
+import { TAX_RATE_OPTIONS, TAX_RATE_LABELS } from "@/lib/validators/_shared";
 import { Page } from "@/components/page";
 import { PageHeader } from "@/components/page-header";
 import { FormSection, FormGrid, FormCard, SubmitBar } from "@/components/form";
@@ -292,14 +293,13 @@ export default function NewContractPage() {
                 rules={[{ required: true, message: "请输入合同总额" }]}
                 fieldProps={{ size: "large", precision: 2, prefix: "¥" }}
               />
-              <ProFormDigit
+              <ProFormSelect
                 name="taxRate"
                 label="税率"
-                placeholder="0.06 表示 6%"
-                min={0}
-                max={1}
                 initialValue={0.06}
-                fieldProps={{ size: "large", precision: 4, step: 0.01 }}
+                options={TAX_RATE_OPTIONS.map((v, i) => ({ value: v, label: TAX_RATE_LABELS[i] }))}
+                rules={[{ required: true, message: "请选择税率" }]}
+                fieldProps={{ size: "large" }}
               />
             </FormGrid>
           </FormSection>

@@ -121,7 +121,7 @@ export async function createInvoice(user: SessionUser, input: InvoiceCreateInput
         422
       );
     }
-    // R-08：累计开票不能超合同总额
+    // R-08：累计开票不能超合同总额 (P2-1: 与 R-11/R-12 一致, 加 0.01 元容差)
     const issued = await tx.invoice.aggregate({
       where: { contractId: contract.id, status: "ISSUED", deletedAt: null },
       _sum: { amount: true }
@@ -129,7 +129,8 @@ export async function createInvoice(user: SessionUser, input: InvoiceCreateInput
     // 用 Prisma.Decimal 比较，避免 JS number 浮点失真
     const issuedAmt = new Prisma.Decimal(issued._sum.amount?.toString() ?? "0");
     const contractTotal = new Prisma.Decimal(contract.totalAmount.toString());
-    if (issuedAmt.plus(input.amount).greaterThan(contractTotal)) {
+    const TOL = new Prisma.Decimal("0.01");
+    if (issuedAmt.plus(input.amount.toString()).greaterThan(contractTotal.plus(TOL))) {
       throw new ApiError(
         ERROR_CODES.INVOICE_OVER_LIMIT,
         `已开票 ¥${issuedAmt.toFixed(2)}，本次 ¥${input.amount.toFixed(2)}，将超过合同总额 ¥${contract.totalAmount}`,
@@ -190,12 +191,34 @@ export async function updateInvoice(user: SessionUser, id: string, input: Invoic
   if (inv.status !== "DRAFT") throw new ApiError(ERROR_CODES.ENTITY_IMMUTABLE, "仅 DRAFT 可修改", 403);
   let taxAmount = inv.taxAmount;
   let amountExcludingTax = inv.amountExcludingTax;
-  if (input.amount !== undefined || input.taxRate !== undefined) {
-    const r = calcTotals(input.amount ?? Number(inv.amount), input.taxRate ?? Number(inv.taxRate));
+  const newAmount = input.amount;
+  if (newAmount !== undefined || input.taxRate !== undefined) {
+    const r = calcTotals(newAmount ?? Number(inv.amount), input.taxRate ?? Number(inv.taxRate));
     taxAmount = new Prisma.Decimal(r.taxAmount);
     amountExcludingTax = new Prisma.Decimal(r.amountExcludingTax);
   }
   return prisma.$transaction(async (tx) => {
+    // P1-1: 改 amount 时重新跑 R-08, 防止"DRAFT 100 → 改 1000000 → 提交 → 财务开票"绕过合同总额
+    if (newAmount !== undefined) {
+      const contract = await tx.contract.findUniqueOrThrow({
+        where: { id: inv.contractId },
+        select: { totalAmount: true }
+      });
+      const issued = await tx.invoice.aggregate({
+        where: { contractId: inv.contractId, status: "ISSUED", deletedAt: null },
+        _sum: { amount: true }
+      });
+      const issuedAmt = new Prisma.Decimal(issued._sum.amount?.toString() ?? "0");
+      const contractTotal = new Prisma.Decimal(contract.totalAmount.toString());
+      const TOL = new Prisma.Decimal("0.01");
+      if (issuedAmt.plus(newAmount.toString()).greaterThan(contractTotal.plus(TOL))) {
+        throw new ApiError(
+          ERROR_CODES.INVOICE_OVER_LIMIT,
+          `已开票 ¥${issuedAmt.toFixed(2)}，本次 ¥${newAmount.toFixed(2)}，将超过合同总额 ¥${contract.totalAmount}`,
+          422
+        );
+      }
+    }
     const attachments = input.attachments
       ? await resolveInvoiceAttachmentSnapshots(input.attachments, id, tx)
       : undefined;
@@ -205,7 +228,7 @@ export async function updateInvoice(user: SessionUser, id: string, input: Invoic
         ...input,
         applyDate: input.applyDate ? new Date(input.applyDate) : undefined,
         expectedIssueDate: input.expectedIssueDate ? new Date(input.expectedIssueDate) : undefined,
-        amount: input.amount,
+        amount: newAmount,
         taxRate: input.taxRate,
         taxAmount,
         amountExcludingTax,
@@ -286,15 +309,48 @@ export async function invoiceAction(user: SessionUser, id: string, input: Invoic
       if (today.getTime() - new Date(issueDate).getTime() > 24 * 60 * 60 * 1000) {
         throw new ApiError(ERROR_CODES.ENTITY_IMMUTABLE, "已超过当日，不可作废；请走红冲", 403);
       }
+      // P1-3: 作废需填 reason (合规要求), 并把已确认/对账的回款自动翻 REFUNDED
+      const reason = (input.reason ?? "").trim();
+      if (!reason) throw new ApiError(ERROR_CODES.VALIDATION_FAILED, "作废发票需填写原因", 400);
       // 取消 PLANNED Payment
       await tx.payment.updateMany({ where: { invoiceId: id, status: "PLANNED" }, data: { status: "CANCELLED" } });
-      const updated = await tx.invoice.update({ where: { id }, data: { status: "VOIDED" } });
-      await audit(tx, { actorId: user.id, action: "INVOICE_VOID", entity: "Invoice", entityId: id, before: { status: inv.status }, after: { status: "VOIDED" } });
+      // 自动退款: CONFIRMED / RECONCILED → REFUNDED (复用 P1-2 的翻转逻辑, 不再创建负数补偿记录)
+      const confirmed = await tx.payment.findMany({
+        where: { invoiceId: id, status: { in: ["CONFIRMED", "RECONCILED"] }, deletedAt: null }
+      });
+      for (const cp of confirmed) {
+        const cpBefore = { status: cp.status, amount: Number(cp.amount) };
+        const cpRemark = `发票作废触发退款：${reason}${cp.remark ? ` | 原备注：${cp.remark}` : ""}`;
+        await tx.payment.update({ where: { id: cp.id }, data: { status: "REFUNDED", remark: cpRemark, updatedById: user.id } });
+        await audit(tx, {
+          actorId: user.id,
+          action: "PAYMENT_REFUND",
+          entity: "Payment",
+          entityId: cp.id,
+          before: cpBefore,
+          after: { status: "REFUNDED", reason, triggeredBy: "INVOICE_VOID", invoiceId: id }
+        });
+      }
+      const updated = await tx.invoice.update({
+        where: { id },
+        data: { status: "VOIDED", reviewComment: reason, financeUserId: user.id, reviewedAt: new Date() }
+      });
+      await audit(tx, {
+        actorId: user.id,
+        action: "INVOICE_VOID",
+        entity: "Invoice",
+        entityId: id,
+        before: { status: inv.status },
+        after: { status: "VOIDED", reason, refundedPaymentCount: confirmed.length }
+      });
       return updated;
     }
     if (input.action === "red-flush") {
       if (user.roleCode !== "FINANCE" && user.roleCode !== "ADMIN") throw new ApiError(ERROR_CODES.FORBIDDEN, "仅财务可红冲", 403);
       if (inv.status !== "ISSUED") throw new ApiError(ERROR_CODES.ENTITY_IMMUTABLE, "仅 ISSUED 可红冲", 403);
+      // P1-3: 红冲需填 reason
+      const reason = (input.reason ?? "").trim();
+      if (!reason) throw new ApiError(ERROR_CODES.VALIDATION_FAILED, "红冲发票需填写原因", 400);
       // 生成负数记录
       const negative = await tx.invoice.create({
         data: {
@@ -320,7 +376,7 @@ export async function invoiceAction(user: SessionUser, id: string, input: Invoic
           applicantUserId: user.id,
           financeUserId: user.id,
           reviewedAt: new Date(),
-          remark: `红冲：${input.reason ?? ""}`,
+          remark: `红冲：${reason}`,
           linkedInvoiceId: inv.id,
           createdById: user.id,
           updatedById: user.id
@@ -328,9 +384,43 @@ export async function invoiceAction(user: SessionUser, id: string, input: Invoic
       });
       // 取消原 PLANNED Payment
       await tx.payment.updateMany({ where: { invoiceId: inv.id, status: "PLANNED" }, data: { status: "CANCELLED" } });
-      const updated = await tx.invoice.update({ where: { id: inv.id }, data: { status: "RED_FLUSHED" } });
+      // P1-3: 自动退款已 CONFIRMED/RECONCILED 的回款
+      const confirmed = await tx.payment.findMany({
+        where: { invoiceId: inv.id, status: { in: ["CONFIRMED", "RECONCILED"] }, deletedAt: null }
+      });
+      for (const cp of confirmed) {
+        const cpBefore = { status: cp.status, amount: Number(cp.amount) };
+        const cpRemark = `发票红冲触发退款：${reason}${cp.remark ? ` | 原备注：${cp.remark}` : ""}`;
+        await tx.payment.update({ where: { id: cp.id }, data: { status: "REFUNDED", remark: cpRemark, updatedById: user.id } });
+        await audit(tx, {
+          actorId: user.id,
+          action: "PAYMENT_REFUND",
+          entity: "Payment",
+          entityId: cp.id,
+          before: cpBefore,
+          after: { status: "REFUNDED", reason, triggeredBy: "INVOICE_RED_FLUSH", invoiceId: inv.id }
+        });
+      }
+      // P2-3: 互指 linkedInvoiceId (设计文档 DESIGN-v3 §5.3 明确要求), 让原票能反查负数记录
+      const updated = await tx.invoice.update({
+        where: { id: inv.id },
+        data: {
+          status: "RED_FLUSHED",
+          reviewComment: reason,
+          financeUserId: user.id,
+          reviewedAt: new Date(),
+          linkedInvoiceId: negative.id
+        }
+      });
       await tx.invoiceAuditLog.create({ data: { invoiceId: inv.id, actorId: user.id, action: "RED_FLUSH", comment: `→ ${negative.id}` } });
-      await audit(tx, { actorId: user.id, action: "INVOICE_RED_FLUSH", entity: "Invoice", entityId: inv.id, before: { status: "ISSUED" }, after: { status: "RED_FLUSHED", negativeId: negative.id } });
+      await audit(tx, {
+        actorId: user.id,
+        action: "INVOICE_RED_FLUSH",
+        entity: "Invoice",
+        entityId: inv.id,
+        before: { status: "ISSUED" },
+        after: { status: "RED_FLUSHED", negativeId: negative.id, reason, refundedPaymentCount: confirmed.length }
+      });
       return { original: updated, redFlush: negative };
     }
     throw new ApiError(ERROR_CODES.VALIDATION_FAILED, "未知动作", 400);
