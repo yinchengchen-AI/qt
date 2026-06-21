@@ -110,27 +110,34 @@ export async function paymentAction(user: SessionUser, id: string, input: Paymen
       if (p.status !== "PLANNED") throw new ApiError(ERROR_CODES.ENTITY_IMMUTABLE, "仅 PLANNED 可确认", 403);
       const ref = input.bankRefNo ?? p.bankRefNo;
       if (!ref) throw new ApiError(ERROR_CODES.VALIDATION_FAILED, "请填写银行流水号", 400);
-      // R-10
-      const dup = await tx.payment.findFirst({ where: { bankRefNo: ref, NOT: { id: p.id } } });
+      // R-10 (P1-4: 与 schema 注释"PLANNED 允许重复"一致, 仅在已生效的记录里去重)
+      const dup = await tx.payment.findFirst({
+        where: { bankRefNo: ref, status: { in: ["CONFIRMED", "RECONCILED"] }, NOT: { id: p.id } }
+      });
       if (dup) throw new ApiError(ERROR_CODES.PAYMENT_DUPLICATE_REF, `流水号 ${ref} 已存在`, 409);
-      // R-11（若挂发票）
+      // R-11（若挂发票）: Decimal 累加 + 0.01 容差
+      const TOL = new Prisma.Decimal("0.01");
       if (p.invoiceId) {
         const inv = await tx.invoice.findUniqueOrThrow({ where: { id: p.invoiceId } });
         const sum = await tx.payment.aggregate({
           where: { invoiceId: p.invoiceId, status: { in: ["CONFIRMED", "RECONCILED"] }, NOT: { id: p.id } },
           _sum: { amount: true }
         });
-        if (Number(sum._sum.amount ?? 0) + Number(p.amount) > Number(inv.amount) + 0.01) {
+        const sumAmt = new Prisma.Decimal(sum._sum.amount?.toString() ?? "0");
+        const invAmt = new Prisma.Decimal(inv.amount.toString());
+        if (sumAmt.plus(p.amount.toString()).greaterThan(invAmt.plus(TOL))) {
           throw new ApiError(ERROR_CODES.PAYMENT_OVER_INVOICE, "该发票累计回款将超过发票金额", 422);
         }
       }
-      // R-12
+      // R-12: 合同累计, 同样 Decimal + 0.01 容差
       const sumC = await tx.payment.aggregate({
         where: { contractId: p.contractId, status: { in: ["CONFIRMED", "RECONCILED"] }, NOT: { id: p.id } },
         _sum: { amount: true }
       });
       const contract = await tx.contract.findUniqueOrThrow({ where: { id: p.contractId } });
-      if (Number(sumC._sum.amount ?? 0) + Number(p.amount) > Number(contract.totalAmount) + 0.01) {
+      const sumCAmt = new Prisma.Decimal(sumC._sum.amount?.toString() ?? "0");
+      const contractAmt = new Prisma.Decimal(contract.totalAmount.toString());
+      if (sumCAmt.plus(p.amount.toString()).greaterThan(contractAmt.plus(TOL))) {
         throw new ApiError(ERROR_CODES.PAYMENT_OVER_CONTRACT, "该合同累计回款将超过合同总额", 422);
       }
       const before = { status: p.status, bankRefNo: p.bankRefNo };
@@ -160,27 +167,25 @@ export async function paymentAction(user: SessionUser, id: string, input: Paymen
     if (input.action === "refund") {
       if (user.roleCode !== "FINANCE" && user.roleCode !== "ADMIN") throw new ApiError(ERROR_CODES.FORBIDDEN, "仅财务可退款", 403);
       if (!["CONFIRMED", "RECONCILED"].includes(p.status)) throw new ApiError(ERROR_CODES.ENTITY_IMMUTABLE, "当前状态不可退款", 403);
-      // 创建负数退款记录
-      const refund = await tx.payment.create({
-        data: {
-          paymentNo: `${p.paymentNo}-R${Date.now().toString().slice(-4)}`,
-          customerId: p.customerId,
-          contractId: p.contractId,
-          invoiceId: p.invoiceId,
-          amount: -Number(p.amount),
-          receivedAt: new Date(),
-          method: p.method,
-          status: "REFUNDED",
-          recorderUserId: user.id,
-          reconcileUserId: user.id,
-          reconciledAt: new Date(),
-          remark: `退款：${input.reason ?? ""}`,
-          createdById: user.id,
-          updatedById: user.id
-        }
+      const reason = (input.reason ?? "").trim();
+      if (!reason) throw new ApiError(ERROR_CODES.VALIDATION_FAILED, "退款需填写原因", 400);
+      // P1-2: 把原 payment 翻为 REFUNDED, 累计和 (R-11/R-12) 自动从 CONFIRMED/RECONCILED 池里掉出来;
+      // 不再创建负数补偿记录 (避免双记风险)
+      const newRemark = `退款：${reason}${p.remark ? ` | 原备注：${p.remark}` : ""}`;
+      const before = { status: p.status, amount: Number(p.amount) };
+      const updated = await tx.payment.update({
+        where: { id },
+        data: { status: "REFUNDED", remark: newRemark, updatedById: user.id }
       });
-      await audit(tx, { actorId: user.id, action: "PAYMENT_REFUND", entity: "Payment", entityId: id, before: { status: p.status }, after: { status: "REFUNDED" } });
-      return refund;
+      await audit(tx, {
+        actorId: user.id,
+        action: "PAYMENT_REFUND",
+        entity: "Payment",
+        entityId: id,
+        before,
+        after: { status: "REFUNDED", reason }
+      });
+      return updated;
     }
 
     if (input.action === "cancel") {
@@ -205,6 +210,41 @@ export async function paymentAction(user: SessionUser, id: string, input: Paymen
       }
       if (!input.allocations || input.allocations.length === 0) {
         throw new ApiError(ERROR_CODES.VALIDATION_FAILED, "请提供分配明细", 400);
+      }
+      // P1-5: 每条 invoiceId/projectId 必须存在且归属本回款所在合同, 防止跨合同抹账
+      for (const a of input.allocations) {
+        if (a.invoiceId) {
+          const inv = await tx.invoice.findUnique({
+            where: { id: a.invoiceId },
+            select: { contractId: true, deletedAt: true }
+          });
+          if (!inv || inv.deletedAt) {
+            throw new ApiError(ERROR_CODES.NOT_FOUND, `发票 ${a.invoiceId} 不存在`, 404);
+          }
+          if (inv.contractId !== p.contractId) {
+            throw new ApiError(
+              ERROR_CODES.VALIDATION_FAILED,
+              `发票 ${a.invoiceId} 不属于本回款所在合同`,
+              400
+            );
+          }
+        }
+        if (a.projectId) {
+          const proj = await tx.project.findUnique({
+            where: { id: a.projectId },
+            select: { contractId: true, deletedAt: true }
+          });
+          if (!proj || proj.deletedAt) {
+            throw new ApiError(ERROR_CODES.NOT_FOUND, `项目 ${a.projectId} 不存在`, 404);
+          }
+          if (proj.contractId !== p.contractId) {
+            throw new ApiError(
+              ERROR_CODES.VALIDATION_FAILED,
+              `项目 ${a.projectId} 不属于本回款所在合同`,
+              400
+            );
+          }
+        }
       }
       const totalAlloc = input.allocations.reduce((s, a) => s + a.amount, 0);
       const totalAllocDec = new Prisma.Decimal(totalAlloc.toString());

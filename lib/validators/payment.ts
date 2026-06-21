@@ -20,7 +20,8 @@ export const paymentActionSchema = z.object({
   allocations: z.array(z.object({
     invoiceId: z.string().nullable().optional(),
     projectId: z.string().nullable().optional(),
-    amount: z.number()
+    // P1-5: 单条分配金额必须 > 0, 0 或负数无业务意义且会被 service 端合计校验绕过
+    amount: z.number().positive("分配金额必须大于 0")
   })).optional()
 });
 
