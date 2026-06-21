@@ -19,12 +19,17 @@ DATABASE_URL="$MIGRATION_DATABASE_URL" npm run prisma:deploy
 echo "==> prisma generate (sync client to current schema; postinstall only runs patch-package)"
 npx --no-install prisma generate
 
-echo "==> pnpm build"
 # 3.5GB RAM 的小内存机器上, 默认 V8 堆 + 多 worker 构建会 OOM Killed.
-# 显式收紧堆大小并降到单 worker, 稳定可复现.
-NODE_OPTIONS=--max-old-space-size=2048 \
+# 显式收紧堆大小并把 worker 数收敛到 1, 稳定可复现.
+# 大内存机器 (>=8GB) 可以用 BUILD_WORKERS=$(nproc) 走多 worker 加速构建.
+# 调度 telemetry: 关闭 Next.js 上报, 与构建内存无关, 借本脚本一并设上, 保持幂等.
+BUILD_WORKERS="${BUILD_WORKERS:-1}"
+NODE_MAX_OLD_SPACE="${NODE_MAX_OLD_SPACE:-2048}"
+
+echo "==> pnpm build (BUILD_WORKERS=$BUILD_WORKERS, NODE_MAX_OLD_SPACE=${NODE_MAX_OLD_SPACE}MB)"
+NODE_OPTIONS="--max-old-space-size=${NODE_MAX_OLD_SPACE}" \
   NEXT_TELEMETRY_DISABLED=1 \
-  NEXT_BUILD_WORKERS=1 \
+  NEXT_BUILD_WORKERS="$BUILD_WORKERS" \
   pnpm build
 # 生产日常更新不再 seed: roles/dicts/depts/workflow templates 已在首次部署时落地,
 # 重复跑 pnpm seed 会 (1) 浪费时间 (9 份 workflow template × 5 阶段 × N 任务 = 几百次 DB 写),
