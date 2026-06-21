@@ -34,7 +34,9 @@
     "migrate:legacy:verify": "node scripts/migrate/verify.mjs",
     "migrate:legacy:fixup": "node scripts/migrate/legacy-fixup.mjs",
     "migrate:legacy:attachments": "node scripts/migrate/legacy-attachments.mjs",
-    "migrate:legacy:attachments:dry": "node scripts/migrate/legacy-attachments.mjs --dry-run"
+    "migrate:legacy:attachments:dry": "node scripts/migrate/legacy-attachments.mjs --dry-run",
+    "migrate:customer-district": "tsx scripts/migrate/customer-district-backfill.ts",
+    "migrate:customer-district:dry": "tsx scripts/migrate/customer-district-backfill.ts --dry-run"
   },
   "dependencies": {
     "@ant-design/charts": "2.6.7",

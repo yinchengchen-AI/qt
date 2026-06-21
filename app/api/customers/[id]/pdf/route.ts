@@ -58,7 +58,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
         { label: "客户来源", value: label("CUSTOMER_SOURCE", c.sourceChannel) || "—" },
         { label: "联系人 / 职务", value: [c.contactName, c.contactTitle].filter(Boolean).join(" · ") || "—" },
         { label: "联系电话", value: c.contactPhone ?? "—" },
-        { label: "所在地区", value: [c.province, c.city].filter(Boolean).join(" / ") || "—" },
+        { label: "所在地区", value: [c.province, c.city, c.district].filter(Boolean).join(" / ") || "—" },
         { label: "详细地址", value: c.address ?? "—" },
         { label: "创建时间", value: fmtDateTime(c.createdAt) }
       ],

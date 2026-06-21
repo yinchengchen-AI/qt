@@ -70,6 +70,7 @@ model Customer {
   scale                   String? // LARGE | MEDIUM | SMALL | MICRO
   province                String
   city                    String
+  district                String?
   address                 String?
   town                    String?
 

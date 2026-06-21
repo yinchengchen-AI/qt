@@ -11,6 +11,7 @@ const STRINGABLE_NULLABLE: ReadonlyArray<keyof CustomerUpdateInput> = [
   "industry",
   "scale",
   "address",
+  "district",
   "contactName",
   "contactTitle",
   "sourceChannel"

@@ -141,8 +141,11 @@ export default function NewCustomerPage() {
                   formRef.current?.setFieldsValue({
                     province: labels[0] || "",
                     city: labels[1] || "",
+                    district: labels[2] || "",
                     town: labels[3] || "",
-                    address: labels.filter(Boolean).join("")
+                    // address 只放"门牌号 / 楼层"等用户后续填的内容, 级联 4 级名不再 join 进去
+                    // 列表 / 详情 / 导出走 province/city/district/town 单独渲染.
+                    address: ""
                   });
                 }}
               />
@@ -151,6 +154,9 @@ export default function NewCustomerPage() {
               <Input type="hidden" />
             </Form.Item>
             <Form.Item name="city" rules={[{ required: true, message: "请选择所在地" }]} noStyle>
+              <Input type="hidden" />
+            </Form.Item>
+            <Form.Item name="district" noStyle>
               <Input type="hidden" />
             </Form.Item>
             <Form.Item name="town" noStyle>

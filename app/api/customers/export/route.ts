@@ -59,9 +59,9 @@ export async function GET(req: Request) {
           return [x.contactName, x.contactTitle].filter(Boolean).join(" · ") || "";
         }},
         { header: "联系电话", key: "contactPhone", width: 16 },
-        { header: "所在地区", key: "province", width: 24, formatter: (_v, r) => {
-          const x = r as { province?: string; city?: string };
-          return [x.province, x.city].filter(Boolean).join(" / ");
+        { header: "所在地区", key: "province", width: 28, formatter: (_v, r) => {
+          const x = r as { province?: string; city?: string; district?: string | null };
+          return [x.province, x.city, x.district].filter(Boolean).join(" / ");
         }},
         { header: "详细地址", key: "address", width: 30 },
         { header: "创建时间", key: "createdAt", width: 20, formatter: (v) => v ? new Date(v as string).toLocaleString("zh-CN") : "" }

@@ -34,6 +34,7 @@ type CustomerData = {
   contactPhone?: string;
   province?: string;
   city?: string;
+  district?: string | null;
   address?: string | null;
 };
 
@@ -56,13 +57,18 @@ export default function EditCustomerPage() {
 
   useEffect(() => {
     if (!data) return;
+    // 4 级预填 (省/市/区/镇街). 老数据可能只填了 2 级, 此时 district/town 段跳过, codes 只到 city.
+    // 找不到当前层 (历史脏数据 province 实际是区名 等) -> 静默退出, 级联器保持空白,
+    // 用户重新选择后即可修复. 不主动清空, 避免误删可恢复的 code.
     const codes: string[] = [];
     let current: DivisionNode[] | undefined = DIVISIONS;
-    for (const label of [data.province, data.city]) {
+    for (const label of [data.province, data.city, data.district, data.town]) {
+      if (!label) break;
       const node: DivisionNode | undefined = current?.find((n) => n.label === label);
       if (!node) break;
       codes.push(node.value);
       current = node.children;
+      if (!current) break;
     }
     setCascadeValue(codes);
   }, [data]);
@@ -100,6 +106,7 @@ export default function EditCustomerPage() {
           contactPhone: data.contactPhone,
           province: data.province,
           city: data.city,
+          district: data.district,
           address: data.address
         }}
         onFinish={async (values) => {
@@ -208,8 +215,9 @@ export default function EditCustomerPage() {
                   formRef.current?.setFieldsValue({
                     province: labels[0] || "",
                     city: labels[1] || "",
+                    district: labels[2] || "",
                     town: labels[3] || "",
-                    address: labels.filter(Boolean).join("")
+                    address: ""
                   });
                 }}
               />
@@ -218,6 +226,9 @@ export default function EditCustomerPage() {
               <Input type="hidden" />
             </Form.Item>
             <Form.Item name="city" rules={[{ required: true, message: "请选择所在地" }]} noStyle>
+              <Input type="hidden" />
+            </Form.Item>
+            <Form.Item name="district" noStyle>
               <Input type="hidden" />
             </Form.Item>
             <Form.Item name="town" noStyle>

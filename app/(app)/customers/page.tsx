@@ -29,6 +29,7 @@ type Customer = {
   contactPhone: string;
   province: string;
   city: string;
+  district: string | null;
   createdAt: string;
 };
 
@@ -154,7 +155,7 @@ export default function CustomersPage() {
             dataIndex: "province",
             search: false,
             width: 160,
-            render: (_, r) => `${r.province} / ${r.city}`
+            render: (_, r) => [r.province, r.city, r.district].filter(Boolean).join(" / ") || "—"
           },
           {
             title: "创建时间",

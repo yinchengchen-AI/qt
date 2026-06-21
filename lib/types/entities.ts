@@ -158,6 +158,7 @@ export type Customer = {
   contactPhone: string;
   province: string;
   city: string;
+  district: string | null;
   address: string | null;
   town: string | null;
   ownerUserId: string;

@@ -15,6 +15,8 @@ export const customerCreateSchema = z.object({
   scale: z.enum(CUSTOMER_SCALE).optional(),
   province: z.string().min(1, "请输入省份").max(20),
   city: z.string().min(1, "请输入城市").max(40),
+  // 区级 (district) 可选 — 老数据 (迁移前) 经常空着, 4 级只填前 3 级时也允许为空
+  district: z.string().max(40).optional(),
   address: z.string().max(200).optional(),
   contactName: z.string().max(50).optional(),
   contactTitle: z.string().max(50).optional(),

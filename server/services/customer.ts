@@ -68,6 +68,7 @@ export async function createCustomer(user: SessionUser, input: CustomerCreateInp
       industry: input.industry || null,
       scale: input.scale || null,
       address: input.address || null,
+      district: input.district || null,
       contactName: input.contactName || null,
       contactTitle: input.contactTitle || null,
       sourceChannel: input.sourceChannel || null,
