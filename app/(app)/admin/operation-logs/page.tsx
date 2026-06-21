@@ -214,6 +214,7 @@ export default function OperationLogsPage() {
         title: "时间",
         dataIndex: "at",
         width: 170,
+        hideInSearch: true,
         render: (_, r) => <DateTimeCell value={r.at} />,
       },
       {
@@ -311,12 +312,6 @@ export default function OperationLogsPage() {
         render: (_, r) => <Tag style={{ margin: 0 }}>{r.entityLabel}</Tag>,
       },
       {
-        title: "对象 ID",
-        dataIndex: "entityId",
-        width: 200,
-        ellipsis: true,
-      },
-      {
         title: "IP",
         dataIndex: "ip",
         width: 130,
@@ -379,16 +374,18 @@ export default function OperationLogsPage() {
         },
       },
       {
-        title: "起始时间",
-        dataIndex: "from",
-        valueType: "dateTime",
+        title: "时间范围",
+        dataIndex: "atRange",
+        valueType: "dateTimeRange",
         hideInTable: true,
-      },
-      {
-        title: "截止时间",
-        dataIndex: "to",
-        valueType: "dateTime",
-        hideInTable: true,
+        search: {
+          transform: (value) => {
+            if (Array.isArray(value)) {
+              return { from: value[0] ?? undefined, to: value[1] ?? undefined };
+            }
+            return {};
+          },
+        },
       },
     ],
     [],
@@ -412,8 +409,7 @@ export default function OperationLogsPage() {
                     setQuickRange(r);
                     const f = quickRangeToFilter(r);
                     formRef.current?.setFieldsValue({
-                      from: f.from,
-                      to: f.to,
+                      atRange: [f.from, f.to],
                     });
                     actionRef.current?.reload?.();
                   }}
@@ -433,12 +429,13 @@ export default function OperationLogsPage() {
                   if (values.entity) qs.set("entity", String(values.entity));
                   if (values.action) qs.set("action", String(values.action));
                   if (values.actorId) qs.set("actorId", String(values.actorId));
-                  if (values.entityId)
-                    qs.set("entityId", String(values.entityId));
                   if (values.ip) qs.set("ip", String(values.ip));
                   if (values.status) qs.set("status", String(values.status));
-                  if (values.from) qs.set("from", String(values.from));
-                  if (values.to) qs.set("to", String(values.to));
+                  const range = Array.isArray(values.atRange)
+                    ? values.atRange
+                    : [];
+                  if (range[0]) qs.set("from", String(range[0]));
+                  if (range[1]) qs.set("to", String(range[1]));
                   await exportLogsToCsv(qs, (m) => msgApi.error(m));
                   msgApi.success("已导出当前过滤集");
                 } catch (e) {
@@ -487,11 +484,13 @@ export default function OperationLogsPage() {
           if (params.entity) qs.set("entity", String(params.entity));
           if (params.action) qs.set("action", String(params.action));
           if (params.actorId) qs.set("actorId", String(params.actorId));
-          if (params.entityId) qs.set("entityId", String(params.entityId));
           if (params.ip) qs.set("ip", String(params.ip));
           if (params.status) qs.set("status", String(params.status));
-          if (params.from) qs.set("from", String(params.from));
-          if (params.to) qs.set("to", String(params.to));
+          const range = Array.isArray(params.atRange)
+            ? params.atRange
+            : [];
+          if (range[0]) qs.set("from", String(range[0]));
+          if (range[1]) qs.set("to", String(range[1]));
           const res = await fetch(`/api/operation-logs?${qs}`, {
             credentials: "include",
           });
