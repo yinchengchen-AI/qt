@@ -5,6 +5,9 @@ import { Prisma as PrismaNS } from "@prisma/client";
 import { dispatchExternalChannels } from "./dispatcher";
 
 export type DomainEventType =
+  | "CONTRACT_AUTO_EXECUTED"
+  | "CONTRACT_AUTO_COMPLETED"
+  | "CONTRACT_AUTO_EXPIRED"
   | "CONTRACT_PENDING_REVIEW"
   | "CONTRACT_EXPIRING"
   | "CONTRACT_APPROVED"
@@ -134,6 +137,27 @@ function buildMessage(uid: string, ev: DomainEvent): ResolvedMessage {
         content: `资产编号: ${p.assetCode ?? "-"}\n到期日: ${formatDate(p.validTo)}`,
         link: { kind: "asset", id: p.assetId }
       };
+    case "CONTRACT_AUTO_EXECUTED":
+      return {
+        receiverUserId: uid,
+        title: `合同 ${p.contractNo} 已自动进入执行`,
+        content: `关联项目「${p.projectName ?? "-"}」已开工`,
+        link: { kind: "contract", id: p.contractId }
+      };
+    case "CONTRACT_AUTO_COMPLETED":
+      return {
+        receiverUserId: uid,
+        title: `合同 ${p.contractNo} 已自动结清`,
+        content: `合同下所有项目已收尾`,
+        link: { kind: "contract", id: p.contractId }
+      };
+    case "CONTRACT_AUTO_EXPIRED":
+      return {
+        receiverUserId: uid,
+        title: `合同 ${p.contractNo} 已自动到期`,
+        content: `合同到期日：${formatDate(p.endDate)}`,
+        link: { kind: "contract", id: p.contractId }
+      };
     default:
       return { receiverUserId: uid, title: "通知", content: JSON.stringify(p) };
   }
@@ -146,10 +170,10 @@ function formatDate(d: unknown): string {
   return date.toISOString().slice(0, 10);
 }
 
-/** 找出全部 ADMIN 的 userId；用于"通用通知"接收人 */
+/** 找出全部 *真人* ADMIN 的 userId;排除 isSystem 占位；用于"通用通知"接收人 */
 export async function listAdminUserIds(prisma: TxOrClient): Promise<string[]> {
   const users = await prisma.user.findMany({
-    where: { deletedAt: null, status: "ACTIVE", role: { code: "ADMIN" } },
+    where: { deletedAt: null, status: "ACTIVE", isSystem: false, role: { code: "ADMIN" } },
     select: { id: true }
   });
   return users.map((u) => u.id);

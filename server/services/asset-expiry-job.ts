@@ -46,7 +46,7 @@ export async function runAssetExpiryJob(now: Date, admins?: { id: string }[]): P
     scanned += candidates.length;
     const adminList = admins
       ?? (await prisma.user.findMany({
-        where: { role: { code: "ADMIN" }, deletedAt: null, status: "ACTIVE" },
+        where: { role: { code: "ADMIN" }, deletedAt: null, status: "ACTIVE", isSystem: false },
         select: { id: true }
       }));
     for (const a of candidates) {

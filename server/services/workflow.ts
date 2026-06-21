@@ -428,7 +428,7 @@ export async function reviewTask(
     if (action === "submit") {
       const receivers = new Set<string>([ins.project.managerUserId]);
       const admins = await tx.user.findMany({
-        where: { role: { code: "ADMIN" }, deletedAt: null, status: "ACTIVE" },
+        where: { role: { code: "ADMIN" }, deletedAt: null, status: "ACTIVE", isSystem: false },
         select: { id: true }
       });
       for (const a of admins) receivers.add(a.id);

@@ -51,7 +51,8 @@ async function loadActiveUser(uid: string): Promise<CachedUser | null> {
   const hit = userCache.get(uid);
   if (hit && hit.expiresAt > now) return hit.value;
   const u = await prisma.user.findFirst({
-    where: { id: uid, deletedAt: null, status: "ACTIVE" },
+    // isSystem=false 排除定时任务 / 自动转换用的占位 user,避免被当作真人加载
+    where: { id: uid, deletedAt: null, status: "ACTIVE", isSystem: false },
     select: { id: true, employeeNo: true, role: { select: { code: true } } }
   });
   const value: CachedUser | null = u
@@ -115,7 +116,8 @@ export const authOptions: AuthOptions = {
       async authorize(creds) {
         if (!creds?.employeeNo || !creds?.password) return null;
         const user = await prisma.user.findFirst({
-          where: { employeeNo: creds.employeeNo, deletedAt: null, status: "ACTIVE" },
+          // isSystem=false 排除定时任务占位 user; 它的 passwordHash 也是不合法 bcrypt
+          where: { employeeNo: creds.employeeNo, deletedAt: null, status: "ACTIVE", isSystem: false },
           include: { role: true }
         });
         if (!user) return null;

@@ -4,6 +4,7 @@ import { ERROR_CODES } from "@/types/errors";
 import { type SessionUser } from "@/lib/session";
 import { nextBusinessNo } from "@/lib/sequence";
 import { instantiateProjectWorkflow } from "./workflow";
+import { tryAutoExecuteContract, tryAutoCompleteContract } from "./contract";
 import { audit } from "@/server/audit";
 import { requirePermission, RESOURCE, ACTION } from "@/lib/permissions";
 import type { ProjectCreateInput, ProjectUpdateInput, ProjectActionInput } from "@/lib/validators/project";
@@ -240,6 +241,13 @@ export async function projectAction(user: SessionUser, id: string, input: Projec
     const before = { status: p.status };
     const updated = await tx.project.update({ where: { id }, data: { status: t.to, updatedById: user.id } });
     await audit(tx, { actorId: user.id, action: `PROJECT_${input.action.toUpperCase()}`, entity: "Project", entityId: id, before, after: { status: t.to } });
+    // 合同状态机自动转换: start 触发 EFFECTIVE->EXECUTING; close/cancel 触发自动结清.
+    // 静默可重入: tryAuto* 内部状态不匹配会 no-op, 不抛错拖垮主事务.
+    if (input.action === "start") {
+      await tryAutoExecuteContract(tx, p.contractId, { projectId: id, projectName: p.name });
+    } else if (input.action === "close" || input.action === "cancel") {
+      await tryAutoCompleteContract(tx, p.contractId);
+    }
     return updated;
   });
 }

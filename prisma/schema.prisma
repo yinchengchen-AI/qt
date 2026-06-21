@@ -42,6 +42,7 @@ model User {
   departmentId String?
   department   Department? @relation("UserDepartment", fields: [departmentId], references: [id])
   status       String      @default("ACTIVE") // ACTIVE | DISABLED
+  isSystem     Boolean     @default(false)
   lastLoginAt  DateTime?   @db.Timestamptz(6)
   wechatWorkId String?
   createdAt    DateTime    @default(now()) @db.Timestamptz(6)
@@ -49,7 +50,7 @@ model User {
   deletedAt    DateTime?   @db.Timestamptz(6)
 
   uploadedAttachments Attachment[]
-  signedContracts Contract[] @relation("ContractSigner")
+  signedContracts     Contract[]   @relation("ContractSigner")
 
   @@index([roleId])
   @@index([status])

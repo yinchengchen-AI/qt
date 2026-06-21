@@ -4,6 +4,7 @@ import { prisma } from "@/lib/prisma";
 import { emit } from "@/server/events/bus";
 import { generateAllRecurringInstances } from "@/server/services/workflow";
 import { runAssetExpiryJob } from "@/server/services/asset-expiry-job";
+import { runContractExpiryJob } from "@/server/services/contract";
 
 /**
  * 单个 job 一次执行的统计。
@@ -21,7 +22,7 @@ export type JobResult = {
 
 export async function runAllJobs(now = new Date()): Promise<JobResult[]> {
   const admins = await prisma.user.findMany({
-    where: { role: { code: "ADMIN" }, deletedAt: null, status: "ACTIVE" },
+    where: { role: { code: "ADMIN" }, deletedAt: null, status: "ACTIVE", isSystem: false },
     select: { id: true }
   });
   return Promise.all([
@@ -30,7 +31,8 @@ export async function runAllJobs(now = new Date()): Promise<JobResult[]> {
     projectDueJob(now, admins),
     customerInactiveJob(now),
     recurringTasksJob(now),
-    runAssetExpiryJob(now, admins)
+    runAssetExpiryJob(now, admins),
+    runContractExpiryJob(now)
   ]);
 }
 
@@ -68,7 +70,7 @@ export async function contractExpiringJob(now: Date, admins?: { id: string }[]):
         }
       });
       if (exists) continue;
-      const adminList = admins ?? await prisma.user.findMany({ where: { role: { code: "ADMIN" }, deletedAt: null, status: "ACTIVE" }, select: { id: true } });
+      const adminList = admins ?? await prisma.user.findMany({ where: { role: { code: "ADMIN" }, deletedAt: null, status: "ACTIVE", isSystem: false }, select: { id: true } });
       await emit(prisma, {
         type: "CONTRACT_EXPIRING",
         payload: { contractId: c.id, contractNo: c.contractNo, endDate: c.endDate, daysLeft: days },
@@ -106,7 +108,7 @@ export async function invoiceOverdueJob(now: Date, admins?: { id: string }[]): P
     const remaining = Number(inv.amount) - paid;
     if (remaining <= 0.01) continue;
     const daysOverdue = Math.floor((now.getTime() - new Date(inv.actualIssueDate!).getTime()) / 86400_000);
-    const adminList = admins ?? await prisma.user.findMany({ where: { role: { code: "ADMIN" }, deletedAt: null, status: "ACTIVE" }, select: { id: true } });
+    const adminList = admins ?? await prisma.user.findMany({ where: { role: { code: "ADMIN" }, deletedAt: null, status: "ACTIVE", isSystem: false }, select: { id: true } });
     // 找财务
     const finance = await prisma.user.findMany({ where: { role: { code: "FINANCE" }, deletedAt: null, status: "ACTIVE" }, select: { id: true } });
     const todayStart = new Date(now);
@@ -150,7 +152,7 @@ export async function projectDueJob(now: Date, admins?: { id: string }[]): Promi
       where: { type: "PROJECT_DUE", receiverUserId: p.managerUserId, createdAt: { gte: todayStart }, link: { path: ["id"], equals: p.id } }
     });
     if (exists) continue;
-    const adminList = admins ?? await prisma.user.findMany({ where: { role: { code: "ADMIN" }, deletedAt: null, status: "ACTIVE" }, select: { id: true } });
+    const adminList = admins ?? await prisma.user.findMany({ where: { role: { code: "ADMIN" }, deletedAt: null, status: "ACTIVE", isSystem: false }, select: { id: true } });
     await emit(prisma, {
       type: "PROJECT_DUE",
       payload: { projectId: p.id, projectNo: p.projectNo, contractNo: p.contract.contractNo, daysLeft: 7 },
