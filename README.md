@@ -151,6 +151,20 @@ npm run seed                # 此时会找到 ADMIN, 写入 9 份工作流模板
 
 ## 最近更新
 
+### v0.2.0(2026-06-22)合同状态机自动转换落地
+
+- **feat(contract)**：三个 `tryAuto*` 钩子 + 合同过期定时任务
+  - `tryAutoExecuteContract` / `tryAutoCompleteContract` 在 `projectAction` 同事务内调用，保证状态切换与项目动作原子提交
+  - `tryAutoExpireContract` + `runContractExpiryJob` 每日 01:00 扫过期合同（`runAllJobs` 已接入）
+  - 三类新消息：`CONTRACT_AUTO_EXECUTED` / `CONTRACT_AUTO_COMPLETED` / `CONTRACT_AUTO_EXPIRED`（合同 owner + 全部 ADMIN）
+- **feat(schema)**：`User.isSystem Boolean @default(false)` + 迁移 `20260621_user_is_system` 创建 `system` 占位用户（不可登录）。自动转换的 actorId / reviewerId 统一写 `system`
+- **fix(auth)**：`lib/auth.ts` 登录 / 加载用户、`server/events/bus.ts:listAdminUserIds`、`server/services/{asset-expiry-job,workflow}.ts` 通知接收人、`server/jobs/runner.ts` admin 列表 8 处补 `isSystem=false` 过滤，避免占位用户被当作真人
+- **fix(contract)**：`softDeleteContract` 包成 Serializable + P2034 重试环（3 次），防 `count/update` 竞态
+- **test**：`tests/api/contract-auto-transition.test.ts` 10 用例（`tryAutoExecute` / `tryAutoComplete` / `tryAutoExpire` / `runContractExpiryJob` 全覆盖），全部通过
+- **chore(migrate)**：`scripts/migrate/cleanup-auto-transition-test.mjs` 一键回滚 E2E 验证副作用（合同状态复原 + 审计 / 消息清理），含 `--dry-run` / `--apply` 两种模式
+
+质量：`tsc --noEmit` 0 错，`vitest run tests/api/contract-auto-transition.test.ts` 10/10。
+
 ### v0.2.0(2026-06-13)工作流引擎读路径收敛 + 修 reviewTask 死代码
 
 - **refactor(workflow)**:抽 `lib/workflow-view.ts` 共享 helper(纯函数,无 prisma 依赖)。`computePhaseView(instances, { isPhaseBlocking?, isPartial? })` 集中了 `getProjectWorkflow` / `getProjectKanban` 共用的 phase 聚合 + 状态计算 + lockReason 文案:
@@ -353,6 +367,18 @@ docker-compose.minio.yml
 - **Invoice** 6 态：DRAFT → PENDING_FINANCE → ISSUED → VOIDED / REJECTED / RED_FLUSHED
 - **Payment** 5 态：PLANNED → CONFIRMED → RECONCILED / REFUNDED / CANCELLED
 
+#### Contract 自动转换（system actor）
+
+三个 hook 静默可重入（状态不匹配 → no-op），写入者统一为 `system` 占位用户（`User.isSystem=true`，不可登录）：
+
+- `tryAutoExecuteContract(tx, contractId, trigger)` — 项目 `start` 时 `EFFECTIVE → EXECUTING`，在 `projectAction` 同事务内调用保证原子
+- `tryAutoCompleteContract(tx, contractId)` — 合同下所有项目 ∈ {CLOSED, CANCELLED} 且至少 1 个项目时 `EFFECTIVE/EXECUTING/SUSPENDED → COMPLETED`
+- `tryAutoExpireContract(contractId, now)` + `runContractExpiryJob(now)` — 每日 01:00 扫 `endDate < now` 的 `EFFECTIVE/EXECUTING` 合同逐笔 Serializable + P2034 重试置 `EXPIRED`
+
+自动转换写 `OperationLog` (`action=CONTRACT_AUTO_*`, `actorId='system'`) + `ContractReviewLog` (`action=AUTO_*`, `reviewerId='system'`) + `Message` (`type=CONTRACT_AUTO_*`)，合同详情页时间线可见。
+
+安全约束：`isSystem=false` 过滤在 `lib/auth.ts` 登录 / 加载用户、`server/events/bus.ts:listAdminUserIds`、`server/services/{asset-expiry-job,workflow}.ts` 通知接收人、`server/jobs/runner.ts` admin 列表 8 处统一加齐，占位用户无合法密码无法登录。详见 `lib/system.ts`。
+
 ### 跨模块校验规则（§6 全部 16 条）
 
 | 规则 | 验证方式 | 结果 |
@@ -451,6 +477,9 @@ node tests/e2e-flow.mjs
 | CONTRACT_EXPIRING | 定时任务（endDate - 30/7/1） | owner + admin | ✅ |
 | PROJECT_DUE | 定时任务（endDate - 7） | manager + owner + admin | ✅ |
 | CUSTOMER_INACTIVE | 定时任务（90 天无跟进） | owner | ✅ |
+| CONTRACT_AUTO_EXECUTED | 项目 start 触发 EFFECTIVE→EXECUTING | owner + 全部 ADMIN | ✅ |
+| CONTRACT_AUTO_COMPLETED | 合同下所有项目收尾 | owner + 全部 ADMIN | ✅ |
+| CONTRACT_AUTO_EXPIRED | 定时任务（endDate < now） | owner + 全部 ADMIN | ✅ |
 
 ### 定时任务入口
 
@@ -464,6 +493,8 @@ curl -X POST -b cookie.txt http://localhost:3000/api/jobs/invoice-overdue
 curl -X POST -b cookie.txt http://localhost:3000/api/jobs/project-due
 curl -X POST -b cookie.txt http://localhost:3000/api/jobs/customer-inactive
 ```
+
+> 合同过期扫描（`runContractExpiryJob`）随 `run-all` 一起跑，没有单跑端点。
 
 生产环境建议 Vercel Cron 每小时触发一次 `/api/jobs/run-all`：
 ```json
