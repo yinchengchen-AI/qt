@@ -5,6 +5,7 @@ import { emit } from "@/server/events/bus";
 import { generateAllRecurringInstances } from "@/server/services/workflow";
 import { runAssetExpiryJob } from "@/server/services/asset-expiry-job";
 import { runContractExpiryJob } from "@/server/services/contract";
+export { runContractExpiryJob };
 
 /**
  * 单个 job 一次执行的统计。

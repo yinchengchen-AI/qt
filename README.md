@@ -492,9 +492,8 @@ curl -X POST -b cookie.txt http://localhost:3000/api/jobs/contract-expiring
 curl -X POST -b cookie.txt http://localhost:3000/api/jobs/invoice-overdue
 curl -X POST -b cookie.txt http://localhost:3000/api/jobs/project-due
 curl -X POST -b cookie.txt http://localhost:3000/api/jobs/customer-inactive
+curl -X POST -b cookie.txt http://localhost:3000/api/jobs/contract-expiry
 ```
-
-> 合同过期扫描（`runContractExpiryJob`）随 `run-all` 一起跑，没有单跑端点。
 
 生产环境建议 Vercel Cron 每小时触发一次 `/api/jobs/run-all`：
 ```json
