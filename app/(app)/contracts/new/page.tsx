@@ -14,6 +14,7 @@ import { App as AntdApp, Space, Tag, Typography } from "antd";
 import { useRouter } from "next/navigation";
 import { useDict, groupDictByLegacy } from "@/lib/dict-client";
 import { useContractTitleAutofill } from "@/lib/use-contract-title-autofill";
+import { extractOptionLabel } from "@/lib/extract-option-label";
 import { toIsoDateTime } from "@/lib/format";
 import { proCustomRequest } from "@/lib/upload-client";
 import { PreviewableProFormUploadButton as UploadButton } from "@/components/file/pro-form-upload-button";
@@ -58,6 +59,10 @@ export default function NewContractPage() {
   const serviceType = useDict("SERVICE_TYPE");
   const serviceTypeOptions = useMemo(() => groupDictByLegacy(serviceType), [serviceType]);
   const [selectedCustomerLabel, setSelectedCustomerLabel] = useState("");
+  // ProFormSelect 在 showSearch + optionFilterProp="label" 时会把 onChange 收到的 option.label
+  // 改写成 React element(用来高亮匹配的子串),所以拿不到原始字符串。
+  // 在 request 里同步把 value -> name 存进来,onChange 用 value 反查。
+  const [customerNameById, setCustomerNameById] = useState<Map<string, string>>(() => new Map());
   const { tryAutoFill } = useContractTitleAutofill({ formRef, serviceType, customerName: selectedCustomerLabel });
 
   // 会话异步加载完成后再把当前用户写入签订人默认值;initialValue 是一次性应用,
@@ -124,8 +129,9 @@ export default function NewContractPage() {
                   style: { width: "100%" },
                   optionFilterProp: "label",
                   onChange: (_value: unknown, option: unknown) => {
-                    const o = option as { label?: unknown } | undefined;
-                    const label = typeof o?.label === "string" ? o.label : "";
+                    // ProFormSelect 搜索后会把 option.label 改写成 React element(用来高亮匹配子串),
+                    // 原始字符串只能靠 value 在同步保存的 map 里反查,见 lib/extract-option-label.ts
+                    const label = extractOptionLabel(_value, option, customerNameById);
                     setSelectedCustomerLabel(label);
                     // 客户/服务类型/签订日变化时尝试自动填充合同标题(空标题或仍是上次自动填充值才覆盖)
                     tryAutoFill({ customerName: label });
@@ -138,16 +144,23 @@ export default function NewContractPage() {
                   const r = await fetch(`/api/customers?${qs}`, { credentials: "include" });
                   const j = await r.json();
                   if (j.code !== 0) return [];
-                  return (j.data.list as Customer[])
-                    .filter((c) => ["NEGOTIATING", "SIGNED"].includes(c.status))
-                    .map((c) => ({
-                      value: c.id,
-                      label: c.name,
-                      // 业务字段,回填到其它字段
-                      contactPhone: c.contactPhone,
-                      contactName: c.contactName,
-                      contactTitle: c.contactTitle,
-                    }));
+                  const list = (j.data.list as Customer[]).filter((c) => ["NEGOTIATING", "SIGNED"].includes(c.status));
+                  // 同步保存 id -> name 映射,供 onChange 在 ProFormSelect 把 label 改写成 React element 时反查
+                  setCustomerNameById((prev) => {
+                    const m = new Map(prev);
+                    for (const c of list) m.set(c.id, c.name);
+                    return m;
+                  });
+                  return list.map((c) => ({
+                    value: c.id,
+                    label: c.name,
+                    // name 字段作为字符串备份:ProFormSelect 高亮时改写 label 但不会动 name
+                    name: c.name,
+                    // 业务字段,回填到其它字段
+                    contactPhone: c.contactPhone,
+                    contactName: c.contactName,
+                    contactTitle: c.contactTitle,
+                  }));
                 }}
               />
               {selectedCustomerLabel && (
