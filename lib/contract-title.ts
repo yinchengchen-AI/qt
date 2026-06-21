@@ -9,8 +9,8 @@ export function computeAutoTitle(
   serviceTypeLabel: string | null | undefined,
   year?: number | null
 ): string {
-  const c = (customerName ?? "").trim();
-  const s = (serviceTypeLabel ?? "").trim();
+  const c = String(customerName ?? "").trim();
+  const s = String(serviceTypeLabel ?? "").trim();
   if (!c || !s) return "";
   const y = year ?? new Date().getFullYear();
   return `${c}${y}年${s}合同`;

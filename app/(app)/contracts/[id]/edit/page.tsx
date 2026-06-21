@@ -47,7 +47,10 @@ export default function EditContractPage() {
   const { tryAutoFill, syncFromInitial } = useContractTitleAutofill({
     formRef,
     serviceType,
-    customerName: (data as { customerName?: string } | undefined)?.customerName ?? ""
+    customerName: (() => {
+              const raw = (data as { customerName?: unknown } | undefined)?.customerName;
+              return typeof raw === "string" ? raw : "";
+            })()
   });
 
   if (isLoading || !data) {

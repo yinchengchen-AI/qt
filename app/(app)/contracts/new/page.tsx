@@ -124,8 +124,8 @@ export default function NewContractPage() {
                   style: { width: "100%" },
                   optionFilterProp: "label",
                   onChange: (_value: unknown, option: unknown) => {
-                    const o = option as { label?: string } | undefined;
-                    const label = o?.label ?? "";
+                    const o = option as { label?: unknown } | undefined;
+                    const label = typeof o?.label === "string" ? o.label : "";
                     setSelectedCustomerLabel(label);
                     // 客户/服务类型/签订日变化时尝试自动填充合同标题(空标题或仍是上次自动填充值才覆盖)
                     tryAutoFill({ customerName: label });
