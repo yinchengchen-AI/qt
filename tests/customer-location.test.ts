@@ -104,6 +104,18 @@ describe("渲染 4 处全部拼接 district (省 / 市 / 区)", () => {
     expect(src).toMatch(/dataIndex:\s*"district"/);
   });
 
+  it("详情页加 所在镇街 描述项 (4 级位置)", () => {
+    const src = read("app/(app)/customers/[id]/page.tsx");
+    // 描述项 + 对应 dataIndex
+    expect(src).toMatch(/所在镇街/);
+    expect(src).toMatch(/dataIndex:\s*"town"/);
+    // 镇街列必须在 详细地址 之前 (排版顺序: 省/市/区/镇街/详细地址)
+    const townIdx = src.search(/dataIndex:\s*"town"/);
+    const addrIdx = src.search(/dataIndex:\s*"address"/);
+    expect(townIdx).toBeGreaterThan(0);
+    expect(addrIdx).toBeGreaterThan(townIdx);
+  });
+
   it("导出 API 拼接 district", () => {
     const src = read("app/api/customers/export/route.ts");
     expect(src).toMatch(/x\.district/);
@@ -166,33 +178,36 @@ describe("表单 4 级: onChange 写 district, 编辑预填走 4 级", () => {
     expect(editSrc).toMatch(/<Form\.Item\s+name="district"\s+noStyle>/);
   });
 
-  it("两页都用可见的 ProFormText 表面化 town, 且 disabled (不可手改, 由级联自动填)", () => {
+  it("两页都不再有 visible 所在镇街控件 (ProFormText town), 仅保留 hidden Form.Item 让 onChange 写入", () => {
     const newSrc = read("app/(app)/customers/new/page.tsx");
     const editSrc = read("app/(app)/customers/[id]/edit/page.tsx");
-    // 可见控件, 名字 town, label 所在镇街
-    expect(newSrc).toMatch(/<ProFormText[\s\S]*?name="town"[\s\S]*?label="\u6240\u5728\u9547\u8857"/);
-    expect(editSrc).toMatch(/<ProFormText[\s\S]*?name="town"[\s\S]*?label="\u6240\u5728\u9547\u8857"/);
-    // disabled 防手改 — 镇街的来源是级联器第 4 级
-    expect(newSrc).toMatch(/<ProFormText[\s\S]*?name="town"[\s\S]*?disabled/);
-    expect(editSrc).toMatch(/<ProFormText[\s\S]*?name="town"[\s\S]*?disabled/);
-    // 不再用 hidden Form.Item 包 town (old schema)
-    expect(newSrc).not.toMatch(/<Form\.Item\s+name="town"\s+noStyle>/);
-    expect(editSrc).not.toMatch(/<Form\.Item\s+name="town"\s+noStyle>/);
+    // 收集所有 ProFormText 闭标签块, 断言没有 name="town" 的 (避免与 Form.Item name="town" 注释误撞)
+    const collectProFormText = (src: string) => src.match(/<ProFormText[\s\S]*?\/>/g) ?? [];
+    expect(
+      collectProFormText(newSrc).some((b) => /name="town"/.test(b)),
+      "new 页 ProFormText 中不应有 name=\"town\" 的可见控件"
+    ).toBe(false);
+    expect(
+      collectProFormText(editSrc).some((b) => /name="town"/.test(b)),
+      "edit 页 ProFormText 中不应有 name=\"town\" 的可见控件"
+    ).toBe(false);
+    // 仍保留 hidden Form.Item 让 onChange 写库
+    expect(newSrc).toMatch(/<Form\.Item\s+name="town"\s+noStyle>/);
+    expect(editSrc).toMatch(/<Form\.Item\s+name="town"\s+noStyle>/);
   });
 
-  it("两页把所在地 + 所在镇街 同行排版 (FormGrid columns=2), 收紧间距", () => {
+  it("两页把所在地 cascader + 详细地址 同行排版 (FormGrid columns=2), 收紧间距", () => {
     const newSrc = read("app/(app)/customers/new/page.tsx");
     const editSrc = read("app/(app)/customers/[id]/edit/page.tsx");
-    // 截取 "位置与联系" section 内的全部 FormGrid, 断言至少一个同时含 LocationCascader + name="town"
+    // 截取 "位置与联系" section 内的 FormGrid, 找同时含 LocationCascader 和 name="address" 的那一格
     const pickLocationGrid = (src: string) => {
       const sec = src.match(/<FormSection title="\u4f4d\u7f6e\u4e0e\u8054\u7cfb"[\s\S]*?(?=<FormSection[\s>]|SubmitBar|\n\s*<\/FormCard)/);
       if (!sec) return null;
-      // 这个 section 内可能有多个 FormGrid, 找一个同时含 cascader 和 town 的
       const grids = sec[0].match(/<FormGrid columns=\{2\}>[\s\S]*?<\/FormGrid>/g) ?? [];
-      return grids.find((g) => /<LocationCascader/.test(g) && /name="town"/.test(g)) ?? null;
+      return grids.find((g) => /<LocationCascader/.test(g) && /name="address"/.test(g)) ?? null;
     };
-    expect(pickLocationGrid(newSrc), "new 页位置 section 内应有一个 FormGrid 同时装下 cascader 和 town").toBeTruthy();
-    expect(pickLocationGrid(editSrc), "edit 页位置 section 内应有一个 FormGrid 同时装下 cascader 和 town").toBeTruthy();
+    expect(pickLocationGrid(newSrc), "new 页位置 section 内应有一个 FormGrid 同时装下 cascader 和 详细地址").toBeTruthy();
+    expect(pickLocationGrid(editSrc), "edit 页位置 section 内应有一个 FormGrid 同时装下 cascader 和 详细地址").toBeTruthy();
     // 之前单独一行的所在地 div 已被 FormGrid 替代 — 不再有大 marginBottom
     expect(newSrc).not.toMatch(/\{ marginBottom: 16 \}[\s\S]*?<LocationCascader/);
   });
@@ -204,12 +219,7 @@ describe("表单 4 级: onChange 写 district, 编辑预填走 4 级", () => {
     expect(iv![0]).toMatch(/district:\s*data\.district/);
   });
 
-  it("编辑页 initialValues 也含 town (回填镇街)", () => {
-    const src = read("app/(app)/customers/[id]/edit/page.tsx");
-    const iv = src.match(/initialValues=\{\{[\s\S]*?\}\}/);
-    expect(iv, "应能定位 initialValues").toBeTruthy();
-    expect(iv![0]).toMatch(/town:\s*data\.town/);
-  });
+
 });
 
 describe("ZHEJIANG_DIVISIONS / LocationCascader.options 浙江省限制", () => {

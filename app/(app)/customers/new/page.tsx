@@ -132,7 +132,7 @@ export default function NewCustomerPage() {
             </FormGrid>
           </FormSection>
 
-        <FormSection title="位置与联系" description="级联选择省 / 市 / 区 / 镇街, 自动填充到下方详细地址">
+        <FormSection title="位置与联系" description="级联选择省 / 市 / 区 / 镇街, 自动填充到详细地址">
             <FormGrid columns={2}>
               <div>
                 <div style={{ marginBottom: 8, fontWeight: 500, fontSize: 13, color: "rgba(0,0,0,0.88)" }}>
@@ -145,21 +145,19 @@ export default function NewCustomerPage() {
                       province: labels[0] || "",
                       city: labels[1] || "",
                       district: labels[2] || "",
+                      // town 仍写入 (看板 / 镇街分布统计依赖), 表层不展示
                       town: labels[3] || "",
                       // address 自动填充级联 4 级名 (省/市/区/镇街), 用户可继续追加门牌号 / 楼层.
-                      // 列表 / 详情 / 导出走 province/city/district/town 单独渲染, address 冗余但不冲突.
                       address: labels.filter(Boolean).join("")
                     });
                   }}
                 />
               </div>
-              <ProFormText
-                name="town"
-                label="所在镇街"
-                placeholder="级联选完后自动填充"
-                tooltip="由所在地级联器第 4 级自动填充, 仅展示不可手改"
-                disabled
-                fieldProps={{ size: "large", maxLength: 50 }}
+              <ProFormTextArea
+                name="address"
+                label="详细地址"
+                placeholder="级联选择后自动填充;可继续补充门牌号 / 楼层等信息"
+                fieldProps={{ size: "large", maxLength: 200, showCount: true, autoSize: { minRows: 1, maxRows: 3 } }}
               />
             </FormGrid>
             <Form.Item name="province" rules={[{ required: true, message: "请选择所在地" }]} noStyle>
@@ -171,12 +169,9 @@ export default function NewCustomerPage() {
             <Form.Item name="district" noStyle>
               <Input type="hidden" />
             </Form.Item>
-            <ProFormTextArea
-              name="address"
-              label="详细地址"
-              placeholder="级联选择后自动填充;可继续补充门牌号 / 楼层等信息"
-              fieldProps={{ size: "large", maxLength: 200, showCount: true, autoSize: { minRows: 1, maxRows: 3 } }}
-            />
+            <Form.Item name="town" noStyle>
+              <Input type="hidden" />
+            </Form.Item>
             <FormGrid columns={2}>
               <ProFormText
                 name="contactName"

@@ -21,7 +21,7 @@ type Customer = {
   unifiedSocialCreditCode: string | null; customerType: string; industry: string | null; sourceChannel: string | null;
   scale: string | null; status: string;
   contactName: string | null; contactTitle: string | null; contactPhone: string;
-  province: string; city: string; district: string | null; address: string | null;
+  province: string; city: string; district: string | null; town: string | null; address: string | null;
   createdAt: string;
 };
 
@@ -138,6 +138,7 @@ export default function CustomerDetailPage() {
             { title: "所在省", dataIndex: "province" },
             { title: "所在市", dataIndex: "city" },
             { title: "所在区", dataIndex: "district", render: (v) => v || "—" },
+            { title: "所在镇街", dataIndex: "town", render: (v) => v || "—" },
             { title: "详细地址", dataIndex: "address", render: (v) => v || "—", valueType: "textarea" },
             { title: "状态", dataIndex: "status", render: (_, r) => <StatusTag status={r.status as string} domain="customer" /> },
             { title: "创建时间", dataIndex: "createdAt", valueType: "dateTime", render: (_, r) => <DateTimeCell value={r.createdAt as string} /> }
