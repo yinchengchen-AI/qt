@@ -16,6 +16,7 @@ import {
   theme,
   type MenuProps
 } from "antd";
+import { buildMessageLinkHref } from "@/lib/message-link";
 import {
   LogoutOutlined,
   BellOutlined,
@@ -635,18 +636,10 @@ export function DashboardShell({ user, children }: Props) {
                     await fetch(`/api/messages/${m.id}`, { method: "PATCH", credentials: "include" });
                     setUnread((u) => Math.max(0, u - 1));
                   }
-                  if (m.link && m.link.id) {
-                    const map: Record<string, string> = {
-                      contract: "/contracts",
-                      invoice: "/invoices",
-                      payment: "/payments",
-                      project: "/projects",
-                      customer: "/customers",
-                      asset: "/assets"
-                    };
-                    const base = map[m.link.kind];
-                    if (base) {
-                      router.push(`${base}/${m.link.id}`);
+                  if (m.link) {
+                    const href = buildMessageLinkHref(m.link);
+                    if (href) {
+                      router.push(href);
                       setDrawerOpen(false);
                     }
                   }

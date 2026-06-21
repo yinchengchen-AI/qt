@@ -19,23 +19,8 @@ type Message = {
   createdAt: string;
 };
 
-const LINK_PATH: Record<string, string> = {
-  contract: "/contracts",
-  invoice: "/invoices",
-  payment: "/payments",
-  project: "/projects",
-  customer: "/customers",
-  asset: "/assets"
-};
-
-// 防御性 URL 拼装:link 为 null / id 缺失 / 未知 kind 都视为无跳转目标,
-// 避免出现 ${undefined}/... 这种坏 URL
-function buildLinkHref(link: { kind: string; id?: string | null } | null): string | null {
-  if (!link || !link.id) return null;
-  const base = LINK_PATH[link.kind];
-  if (!base) return null;
-  return `${base}/${link.id}`;
-}
+// 跳转路径与防御性 URL 拼装抽到 lib/message-link.ts, 与 dashboard-shell 复用.
+import { buildMessageLinkHref as buildLinkHref } from "@/lib/message-link";
 
 export default function MessagesPage() {
   const { message: msg } = AntdApp.useApp();
