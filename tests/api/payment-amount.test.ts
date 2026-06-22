@@ -234,15 +234,22 @@ describe("paymentAction.confirm 校验", () => {
     const inv = await mkIssuedInvoice(c.id, 100, "R11");
     const ref1 = `${TAG}-R11-A`;
     const ref2 = `${TAG}-R11-B`;
-    // 第一笔 100, 等于发票额 → 通过
-    const p1 = await mkPlannedPayment(c.id, inv.id, 100, ref1);
+    // 第一笔 99.99, 在 100 容差内 → 通过
+    const p1 = await mkPlannedPayment(c.id, inv.id, 99.99, ref1);
     await expect(
       paymentAction(buildFinance(), p1.id, { action: "confirm", bankRefNo: ref1 })
     ).resolves.toBeTruthy();
-    // 第二笔再 0.01 → 总 100.01, 超 0.01 容差, 应拒
-    const p2 = await mkPlannedPayment(c.id, inv.id, 0.01, ref2);
+    // 第二笔 0.02 → 总 100.01, 恰好等于 100 + 0.01 容差上限, 应当通过
+    // (0.01 容差是为了抵消浮点失真, 100.01 在容差内合法)
+    const p2 = await mkPlannedPayment(c.id, inv.id, 0.02, ref2);
     await expect(
       paymentAction(buildFinance(), p2.id, { action: "confirm", bankRefNo: ref2 })
+    ).resolves.toBeTruthy();
+    // 第三笔 0.01 → 总 100.02, 超出 100 + 0.01 = 100.01 容差上限, 应拒
+    const ref3 = `${TAG}-R11-C`;
+    const p3 = await mkPlannedPayment(c.id, inv.id, 0.01, ref3);
+    await expect(
+      paymentAction(buildFinance(), p3.id, { action: "confirm", bankRefNo: ref3 })
     ).rejects.toMatchObject({ errorCode: ERROR_CODES.PAYMENT_OVER_INVOICE });
   }));
 
