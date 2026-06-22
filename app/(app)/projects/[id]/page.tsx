@@ -16,7 +16,6 @@ import { openPrintWindow } from "@/lib/print-client";
 import { CurrencyCell, DateTimeCell } from "@/components/table-cells";
 import { useUserName } from "@/lib/user-lookup";
 import { WorkflowSection } from "@/components/workflow/workflow-section";
-import { UpgradeModal } from "@/components/workflow/upgrade-modal";
 import { ProjectHistory } from "@/components/workflow/project-history";
 import { AppstoreOutlined, DownloadOutlined, ThunderboltOutlined } from "@ant-design/icons";
 
@@ -42,7 +41,6 @@ export default function ProjectDetailPage() {
   const { run } = useActionCall({ baseUrl: `/api/projects/${id}`, reload: () => mutate() });
   const { data: session } = useSession();
   const { message: msg, modal } = AntdApp.useApp();
-  const [upgradeOpen, setUpgradeOpen] = useState(false);
 
   // admin 删除项目 (后端会再做 admin + 状态 + 级联校验)
   // 仅 PLANNED (没开工) / CANCELLED (已终止) 允许; 其它状态 (IN_PROGRESS / SUSPENDED /
@@ -102,8 +100,8 @@ export default function ProjectDetailPage() {
       .then((r) => r.json())
       .then((j) => {
         if (j?.code === 0) {
-          const tasks = (j.data?.stages ?? []).flatMap((s: { tasks?: { requiresDeliverable: boolean; status: string }[] }) => s.tasks ?? []);
-          pendingCount = tasks.filter((t: { requiresDeliverable: boolean; status: string }) => t.requiresDeliverable && t.status !== "COMPLETED" && t.status !== "SKIPPED").length;
+          const tasks = (j.data?.stages ?? []).flatMap((s: { tasks?: { status: string }[] }) => s.tasks ?? []);
+          pendingCount = tasks.filter((t: { status: string }) => t.status !== "COMPLETED" && t.status !== "SKIPPED").length;
         }
         const content = pendingCount > 0
           ? `当前仍有 ${pendingCount} 项必交付任务未完成,确认取消项目?任务将保留为未完成状态作为历史。`
@@ -206,13 +204,6 @@ export default function ProjectDetailPage() {
                 >
                   导出 JSON
                 </Button>
-                <Button
-                  icon={<ThunderboltOutlined />}
-                  onClick={() => setUpgradeOpen(true)}
-                  disabled={!canEditWorkflow}
-                >
-                  升级到最新模板
-                </Button>
               </Space>
             }
           />
@@ -227,7 +218,6 @@ export default function ProjectDetailPage() {
           </ProCard>
         </Col>
       </Row>
-      <UpgradeModal projectId={id} open={upgradeOpen} onClose={() => setUpgradeOpen(false)} onUpgraded={() => mutate()} />
     </Page>
   );
 }
