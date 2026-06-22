@@ -114,10 +114,10 @@ export async function createInvoice(user: SessionUser, input: InvoiceCreateInput
       where: { id: input.contractId, deletedAt: null, ...ownerEq(user) }
     });
     if (!contract) throw new ApiError(ERROR_CODES.NOT_FOUND, "合同不存在", 404);
-    if (contract.status !== "EFFECTIVE" && contract.status !== "EXECUTING") {
+    if (contract.status !== "ACTIVE") {
       throw new ApiError(
         ERROR_CODES.CONTRACT_STATUS_INVALID,
-        `合同 ${contract.contractNo} 当前状态 ${contract.status}，不可开票（须 EFFECTIVE / EXECUTING）`,
+        `合同 ${contract.contractNo} 当前状态 ${contract.status}，不可开票（须 ACTIVE）`,
         422
       );
     }
@@ -166,20 +166,16 @@ export async function createInvoice(user: SessionUser, input: InvoiceCreateInput
         address: input.address ?? null,
         phone: input.phone ?? null,
         remark: input.remark ?? null,
-      // @ts-expect-error PR-2: field deleted from schema — attachment Ref type mismatch, pre-existing issue
-        attachmentRefs: [] as unknown as Prisma.InputJsonValue,
+        // attachmentRefs 是 Attachment[] 关系, 暂不在 create 时显式绑定 (后续按 attachment.invoiceId 反向连)
         status: "DRAFT",
         applicantUserId: user.id,
         createdById: user.id,
         updatedById: user.id
       }
     });
-    // 解析附件并绑定(tmp -> invoiceId),把真实记录写回 JSON 快照
-    if ((input.attachments ?? []).length > 0) {
-      const attachments = await resolveInvoiceAttachmentSnapshots(input.attachments ?? [], invoice.id, tx);
-        // @ts-expect-error PR-2: field deleted from schema — attachment Ref type mismatch, pre-existing issue
-      await tx.invoice.update({ where: { id: invoice.id }, data: { attachmentRefs: attachments } });
-    }
+    // 解析附件: 内部已把临时附件 updateMany 绑到 invoiceId (Attachment.invoiceId 关系)
+    // attachmentRefs 是反向关系, 不用再写; createInvoice 直接返回
+    await resolveInvoiceAttachmentSnapshots(input.attachments ?? [], invoice.id, tx);
     return tx.invoice.findUnique({ where: { id: invoice.id } });
   });
 }
@@ -266,17 +262,18 @@ export async function invoiceAction(user: SessionUser, id: string, input: Invoic
       }
       // 预创建 PLANNED Payment
       const before = { status: inv.status, invoiceNo: inv.invoiceNo };
-      const updated = await tx.invoice.update({
-        where: { id },
-        data: {
-          status: "ISSUED",
-          invoiceNo,
-          actualIssueDate: input.actualIssueDate ? new Date(input.actualIssueDate) : new Date(),
-          financeUserId: user.id,
-          reviewedAt: new Date(),
-          reviewComment: input.reason ?? null
-        }
-      });
+      // invoiceNo 变更: 仅当显式传入不同的发票号时才更新, 避免 Prisma 7.8
+      // 把同号 update 当成"先 delete 再 insert"触发 unique 约束冲突
+      const data: Record<string, unknown> = {
+        status: "ISSUED",
+        actualIssueDate: input.actualIssueDate ? new Date(input.actualIssueDate) : new Date(),
+        financeUserId: user.id,
+        reviewComment: input.reason ?? null
+      };
+      if (input.invoiceNo && input.invoiceNo !== inv.invoiceNo) {
+        data.invoiceNo = input.invoiceNo;
+      }
+      const updated = await tx.invoice.update({ where: { id }, data });
       await audit(tx, { actorId: user.id, action: "INVOICE_ISSUE", entity: "Invoice", entityId: id, before, after: { status: "ISSUED", invoiceNo } });
       await tx.payment.create({
         data: {
@@ -299,7 +296,7 @@ export async function invoiceAction(user: SessionUser, id: string, input: Invoic
     if (input.action === "reject") {
       if (user.roleCode !== "FINANCE" && user.roleCode !== "ADMIN") throw new ApiError(ERROR_CODES.FORBIDDEN, "仅财务可驳回", 403);
       if (inv.status !== "PENDING_FINANCE") throw new ApiError(ERROR_CODES.ENTITY_IMMUTABLE, "仅 PENDING_FINANCE 可驳回", 403);
-      const updated = await tx.invoice.update({ where: { id }, data: { status: "REJECTED", reviewedAt: new Date(), financeUserId: user.id, reviewComment: input.reason ?? null } });
+      const updated = await tx.invoice.update({ where: { id }, data: { status: "REJECTED",  financeUserId: user.id, reviewComment: input.reason ?? null } });
       await audit(tx, { actorId: user.id, action: "INVOICE_REJECT", entity: "Invoice", entityId: id, before: { status: inv.status }, after: { status: "REJECTED" } });
       return updated;
     }
@@ -335,7 +332,7 @@ export async function invoiceAction(user: SessionUser, id: string, input: Invoic
       }
       const updated = await tx.invoice.update({
         where: { id },
-        data: { status: "VOIDED", reviewComment: reason, financeUserId: user.id, reviewedAt: new Date() }
+        data: { status: "VOIDED", reviewComment: reason, financeUserId: user.id }
       });
       await audit(tx, {
         actorId: user.id,
@@ -377,7 +374,7 @@ export async function invoiceAction(user: SessionUser, id: string, input: Invoic
           status: "ISSUED",
           applicantUserId: user.id,
           financeUserId: user.id,
-          reviewedAt: new Date(),
+          
           remark: `红冲：${reason}`,
           linkedInvoiceId: inv.id,
           createdById: user.id,
@@ -410,7 +407,7 @@ export async function invoiceAction(user: SessionUser, id: string, input: Invoic
           status: "RED_FLUSHED",
           reviewComment: reason,
           financeUserId: user.id,
-          reviewedAt: new Date(),
+          
           linkedInvoiceId: negative.id
         }
       });

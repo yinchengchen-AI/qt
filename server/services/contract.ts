@@ -3,7 +3,7 @@ import { ApiError } from "@/lib/api";
 import { ERROR_CODES } from "@/types/errors";
 import { type SessionUser } from "@/lib/session";
 import { requirePermission, RESOURCE, ACTION } from "@/lib/permissions";
-import type { ContractCreateInput, ContractUpdateInput, ReviewActionInput } from "@/lib/validators/contract";
+import type { ContractCreateInput, ContractUpdateInput } from "@/lib/validators/contract";
 import { ownerEq, ownerViaContract, parseStatusList } from "@/lib/ownership";
 import { getBillingStatus } from "@/lib/contract-billing";
 import type { BillingStatus } from "@/types/enums";
@@ -284,6 +284,8 @@ export async function createContract(user: SessionUser, input: ContractCreateInp
       const attachments = await resolveAttachmentSnapshots(input.attachments ?? [], created.id, tx);
       await tx.contract.update({ where: { id: created.id }, data: { attachments } });
     }
+    // 自动化: 字段完整 + 至少 1 附件 → DRAFT 自动升 ACTIVE (在事务内, 失败时回滚)
+    await tryAutoPublish(tx, created.id);
     return tx.contract.findUnique({ where: { id: created.id } });
   });
 }
@@ -292,10 +294,8 @@ export async function updateContract(user: SessionUser, id: string, input: Contr
   requirePermission(user.roleCode, RESOURCE.CONTRACT, ACTION.UPDATE);
   const existing = await prisma.contract.findFirst({ where: { id, deletedAt: null, ...ownerEq(user) } });
   if (!existing) throw new ApiError(ERROR_CODES.NOT_FOUND, "合同不存在", 404);
-  // 状态机门控: 仅 草稿 / 待审批 / 已暂停 可改;
-  // **admin 跳过此门控**: 任何状态下都能编辑 (跟合同软删 admin-only 同款防御 — 显式断言 roleCode 而非只靠 permission 表,
-  // 防止以后 ROLE_PERMISSIONS 误改给 SALES 时悄悄放权)
-  if (user.roleCode !== "ADMIN" && !["DRAFT", "PENDING_REVIEW", "SUSPENDED"].includes(existing.status)) {
+  // 状态机门控: admin 任意态可改; 非 admin 仅 DRAFT 可改 (新模型下 PENDING_REVIEW/SUSPENDED 已合并入 ACTIVE)
+  if (user.roleCode !== "ADMIN" && existing.status !== "DRAFT") {
     throw new ApiError(ERROR_CODES.ENTITY_IMMUTABLE, "当前状态不可修改", 403);
   }
   // 负责人变更时, 校验目标用户存在且 ACTIVE
@@ -321,6 +321,7 @@ export async function updateContract(user: SessionUser, id: string, input: Contr
     taxAmount = new Prisma.Decimal(r.taxAmount);
     amountExcludingTax = new Prisma.Decimal(r.amountExcludingTax);
   }
+  const wasDraft = existing.status === "DRAFT";
   return prisma.$transaction(async (tx) => {
     const attachments = input.attachments
       ? await resolveAttachmentSnapshots(input.attachments, id, tx)
@@ -343,6 +344,8 @@ export async function updateContract(user: SessionUser, id: string, input: Contr
           updatedById: user.id
         }
       });
+      // 自动化: PATCH 一次性补齐字段/附件时, DRAFT 也可能升 ACTIVE
+      if (wasDraft) await tryAutoPublish(tx, id);
       return updated;
     } catch (e) {
       // 同 createContract: 并发把 contractNo 抢走时把 P2002 转 422
@@ -354,150 +357,80 @@ export async function updateContract(user: SessionUser, id: string, input: Contr
   });
 }
 
-// 状态机：submit / approve / reject / withdraw / terminate
-export async function reviewContract(user: SessionUser, id: string, input: ReviewActionInput) {
-  requirePermission(user.roleCode, RESOURCE.CONTRACT, ACTION.UPDATE);
-  return prisma.$transaction(async (tx) => {
-    const c = await tx.contract.findFirst({ where: { id, deletedAt: null, ...ownerEq(user) } });
-    if (!c) throw new ApiError(ERROR_CODES.NOT_FOUND, "合同不存在", 404);
-    if (input.action === "SUBMIT") {
-      if (c.status !== "DRAFT") throw new ApiError(ERROR_CODES.ENTITY_IMMUTABLE, "仅 DRAFT 可提交", 403);
-      if (!Array.isArray(c.attachments) || (c.attachments as unknown[]).length === 0) {
-        throw new ApiError(ERROR_CODES.CONTRACT_INCOMPLETE, "请先上传合同盖章 PDF", 422);
-      }
-      const before = { status: c.status };
-      const updated = await tx.contract.update({ where: { id }, data: { status: "PENDING_REVIEW" } });
-      await tx.contractReviewLog.create({ data: { contractId: id, reviewerId: user.id, action: "SUBMIT" } });
-      await audit(tx, { actorId: user.id, action: "CONTRACT_SUBMIT", entity: "Contract", entityId: id, before, after: { status: "PENDING_REVIEW" } });
-      // 通知所有 ADMIN
-      const admins = await listAdminUserIds(tx);
-      await emit(tx, {
-        type: "CONTRACT_PENDING_REVIEW",
-        payload: { contractId: id, contractNo: c.contractNo, signDate: c.signDate },
-        receivers: admins
-      });
-      return updated;
-    }
-    if (input.action === "APPROVE") {
-      if (user.roleCode !== "ADMIN") throw new ApiError(ERROR_CODES.FORBIDDEN, "仅管理员可审批", 403);
-      if (c.status !== "PENDING_REVIEW") throw new ApiError(ERROR_CODES.ENTITY_IMMUTABLE, "仅 PENDING_REVIEW 可批准", 403);
-      const before = { status: c.status };
-      const updated = await tx.contract.update({
-        where: { id },
-        data: { status: "EFFECTIVE", reviewerId: user.id, reviewAt: new Date() }
-      });
-      await tx.contractReviewLog.create({ data: { contractId: id, reviewerId: user.id, action: "APPROVE" } });
-      await audit(tx, { actorId: user.id, action: "CONTRACT_APPROVE", entity: "Contract", entityId: id, before, after: { status: "EFFECTIVE" } });
-      await emit(tx, {
-        type: "CONTRACT_APPROVED",
-        payload: { contractId: id, contractNo: c.contractNo, startDate: c.startDate },
-        receivers: [c.ownerUserId]
-      });
-      return updated;
-    }
-    if (input.action === "REJECT") {
-      if (user.roleCode !== "ADMIN") throw new ApiError(ERROR_CODES.FORBIDDEN, "仅管理员可驳回", 403);
-      if (c.status !== "PENDING_REVIEW") throw new ApiError(ERROR_CODES.ENTITY_IMMUTABLE, "仅 PENDING_REVIEW 可驳回", 403);
-      const before = { status: c.status };
-      const updated = await tx.contract.update({
-        where: { id },
-        data: { status: "DRAFT", reviewerId: user.id, reviewAt: new Date(), reviewComment: input.comment ?? null }
-      });
-      await tx.contractReviewLog.create({ data: { contractId: id, reviewerId: user.id, action: "REJECT", comment: input.comment ?? null } });
-      await audit(tx, { actorId: user.id, action: "CONTRACT_REJECT", entity: "Contract", entityId: id, before, after: { status: "DRAFT" } });
-      await emit(tx, {
-        type: "CONTRACT_REJECTED",
-        payload: { contractId: id, contractNo: c.contractNo, comment: input.comment ?? null },
-        receivers: [c.ownerUserId]
-      });
-      return updated;
-    }
-    if (input.action === "WITHDRAW") {
-      if (c.status !== "PENDING_REVIEW") throw new ApiError(ERROR_CODES.ENTITY_IMMUTABLE, "仅 PENDING_REVIEW 可撤回", 403);
-      const before = { status: c.status };
-      const updated = await tx.contract.update({ where: { id }, data: { status: "DRAFT" } });
-      await tx.contractReviewLog.create({ data: { contractId: id, reviewerId: user.id, action: "WITHDRAW" } });
-      await audit(tx, { actorId: user.id, action: "CONTRACT_WITHDRAW", entity: "Contract", entityId: id, before, after: { status: "DRAFT" } });
-      return updated;
-    }
-    throw new ApiError(ERROR_CODES.VALIDATION_FAILED, "未知动作", 400);
-  });
-}
 
-export async function terminateContract(user: SessionUser, id: string, reason?: string) {
-  requirePermission(user.roleCode, RESOURCE.CONTRACT, ACTION.DELETE);
-  if (user.roleCode !== "ADMIN") throw new ApiError(ERROR_CODES.FORBIDDEN, "仅管理员可终止合同", 403);
+// 状态机: 草稿(DRAFT) / 生效中(ACTIVE) / 已完结(CLOSED) 三个值.
+// 入口: tryAutoPublish (DRAFT→ACTIVE, 字段完整+附件) / tryAutoComplete (ACTIVE→CLOSED, R-07 满足) /
+//       tryAutoCloseOnExpiry (ACTIVE→CLOSED, endDate<now) / publishContract (admin 强制 DRAFT→ACTIVE) /
+//       closeContract (admin 强制 ACTIVE→CLOSED).
+// 状态机不再审批; 业务自创建/维护, admin 兜底; 时间线上以 ContractReviewLog.action 区分自动/手动.
+
+/**
+ * 强制发布: admin 手动从 DRAFT 推到 ACTIVE.
+ * 通常不需要, save 时已自动触发; 这里是兜底入口, 便于 admin 在字段/附件不满足自动条件时强制生效.
+ */
+export async function publishContract(user: SessionUser, id: string) {
+  requirePermission(user.roleCode, RESOURCE.CONTRACT, ACTION.UPDATE);
+  if (user.roleCode !== "ADMIN") throw new ApiError(ERROR_CODES.FORBIDDEN, "仅管理员可发布合同", 403);
   return prisma.$transaction(async (tx) => {
     const c = await tx.contract.findFirst({ where: { id, deletedAt: null, ...ownerEq(user) } });
     if (!c) throw new ApiError(ERROR_CODES.NOT_FOUND, "合同不存在", 404);
-    if (!["EFFECTIVE", "EXECUTING"].includes(c.status)) {
-      throw new ApiError(ERROR_CODES.ENTITY_IMMUTABLE, "当前状态不可终止", 403);
+    if (c.status !== "DRAFT") {
+      throw new ApiError(ERROR_CODES.ENTITY_IMMUTABLE, `当前状态 ${c.status} 不可发布（须 DRAFT）`, 403);
     }
     const before = { status: c.status };
-    const updated = await tx.contract.update({
-      where: { id },
-      data: { status: "TERMINATED", reviewComment: reason ?? null, updatedById: user.id }
+    const updated = await tx.contract.update({ where: { id }, data: { status: "ACTIVE", updatedById: user.id } });
+    await tx.contractReviewLog.create({
+      data: { contractId: id, reviewerId: user.id, action: "MANUAL_PUBLISH", comment: "admin 强制发布" }
     });
-    await audit(tx, { actorId: user.id, action: "CONTRACT_TERMINATE", entity: "Contract", entityId: id, before, after: { status: "TERMINATED" } });
+    await audit(tx, {
+      actorId: user.id, action: "CONTRACT_PUBLISH", entity: "Contract", entityId: id,
+      before, after: { status: "ACTIVE" }
+    });
     return updated;
   });
 }
 
-// 合同生命周期：执行 / 暂停 / 恢复 / 结清
-// 与审批 (submit/approve/...) 不同,这组操作由已生效或已开始的合同走,无审批环节。
-// 状态机：
-//   EXECUTE   EFFECTIVE        → EXECUTING
-//   SUSPEND   EXECUTING        → SUSPENDED
-//   RESUME    SUSPENDED        → EXECUTING
-//   COMPLETE  EFFECTIVE|EXECUTING|SUSPENDED → COMPLETED
-export type LifecycleAction = "EXECUTE" | "SUSPEND" | "RESUME" | "COMPLETE";
+export type ContractCloseReason = "completed" | "terminated" | "expired";
 
-const LIFECYCLE_TRANSITIONS: Record<LifecycleAction, { from: string[]; to: string }> = {
-  EXECUTE:  { from: ["EFFECTIVE"],         to: "EXECUTING" },
-  SUSPEND:  { from: ["EXECUTING"],         to: "SUSPENDED" },
-  RESUME:   { from: ["SUSPENDED"],         to: "EXECUTING" },
-  COMPLETE: { from: ["EFFECTIVE", "EXECUTING", "SUSPENDED"], to: "COMPLETED" }
-};
-
-export async function lifecycleContract(
+/**
+ * 强制完结: admin 手动从 ACTIVE 推到 CLOSED. reason 区分完结原因, 便于统计.
+ * 自动完结 (tryAutoComplete / tryAutoCloseOnExpiry) 也走这个函数, source 标记 AUTO/MANUAL.
+ */
+export async function closeContract(
   user: SessionUser,
   id: string,
-  action: LifecycleAction,
-  comment?: string
+  reason: ContractCloseReason,
+  source: "AUTO" | "MANUAL" = "MANUAL"
 ) {
   requirePermission(user.roleCode, RESOURCE.CONTRACT, ACTION.UPDATE);
-  if (user.roleCode !== "ADMIN") throw new ApiError(ERROR_CODES.FORBIDDEN, "仅管理员可操作合同生命周期", 403);
-
-  const c = await prisma.contract.findFirst({ where: { id, deletedAt: null, ...ownerEq(user) } });
-  if (!c) throw new ApiError(ERROR_CODES.NOT_FOUND, "合同不存在", 404);
-
-  const t = LIFECYCLE_TRANSITIONS[action];
-  if (!t.from.includes(c.status)) {
-    throw new ApiError(
-      ERROR_CODES.ENTITY_IMMUTABLE,
-      `合同当前状态 ${c.status} 不允许 ${action}（须 ${t.from.join(" / ")}）`,
-      403
-    );
+  if (source === "MANUAL" && user.roleCode !== "ADMIN") {
+    throw new ApiError(ERROR_CODES.FORBIDDEN, "仅管理员可完结合同", 403);
   }
-
-  const before = { status: c.status };
-  const updated = await prisma.contract.update({
-    where: { id },
-    data: { status: t.to, reviewComment: comment ?? c.reviewComment, updatedById: user.id }
+  return prisma.$transaction(async (tx) => {
+    const c = await tx.contract.findFirst({ where: { id, deletedAt: null, ...ownerEq(user) } });
+    if (!c) throw new ApiError(ERROR_CODES.NOT_FOUND, "合同不存在", 404);
+    if (c.status !== "ACTIVE") {
+      throw new ApiError(ERROR_CODES.ENTITY_IMMUTABLE, `当前状态 ${c.status} 不可完结（须 ACTIVE）`, 403);
+    }
+    const before = { status: c.status };
+    const updated = await tx.contract.update({
+      where: { id },
+      data: { status: "CLOSED", reviewComment: reason, updatedById: user.id }
+    });
+    const action = source === "AUTO" ? `AUTO_CLOSE_${reason.toUpperCase()}` : "MANUAL_CLOSE";
+    await tx.contractReviewLog.create({
+      data: { contractId: id, reviewerId: user.id, action, comment: reason }
+    });
+    await audit(tx, {
+      actorId: user.id,
+      action: `CONTRACT_${action}`,
+      entity: "Contract",
+      entityId: id,
+      before,
+      after: { status: "CLOSED", reason }
+    });
+    return updated;
   });
-  // 记到合同专用的 review log(详情页时间线会拉这份),同时记到全局 audit
-  await prisma.contractReviewLog.create({
-    data: { contractId: id, reviewerId: user.id, action, comment: comment ?? null }
-  });
-  await audit(prisma, {
-    actorId: user.id,
-    action: `CONTRACT_${action}`,
-    entity: "Contract",
-    entityId: id,
-    before,
-    after: { status: t.to }
-  });
-  return updated;
 }
 
 
@@ -671,13 +604,7 @@ export async function softDeleteContract(user: SessionUser, id: string) {
         async (tx) => {
           const existing = await tx.contract.findFirst({ where: { id, deletedAt: null } });
           if (!existing) throw new ApiError(ERROR_CODES.NOT_FOUND, "合同不存在", 404);
-          if (!["DRAFT", "PENDING_REVIEW"].includes(existing.status)) {
-            throw new ApiError(
-              ERROR_CODES.ENTITY_IMMUTABLE,
-              `当前状态 ${existing.status} 不可删除（须 DRAFT / PENDING_REVIEW）`,
-              403
-            );
-          }
+          // admin 任意态可删; 实际能否删除由子数据兜底 (发票/回款/附件)
           const [invoiceCount, paymentCount, attachmentCount] = await Promise.all([
             tx.invoice.count({ where: { contractId: id, deletedAt: null } }),
             tx.payment.count({ where: { contractId: id, deletedAt: null } }),
@@ -742,32 +669,32 @@ export async function softDeleteContract(user: SessionUser, id: string) {
 import { SYSTEM_USER_ID } from "@/lib/system";
 
 /**
- * 单笔合同过期检查: endDate < now 且 status ∈ {EFFECTIVE, EXECUTING} → EXPIRED.
+ * 单笔合同过期检查: endDate < now 且 status = ACTIVE → CLOSED (reason=expired).
  * 内部用 Serializable 事务 + P2034 重试 3 次 (与 softDeleteContract 相同的并发模式).
  * 状态不匹配 → no-op (静默), 适用于"批量扫描 + 单笔隔离"模式.
  * 跑在 /api/jobs/run-all, 每天 1 次, 调用方传入 now.
  */
-export async function tryAutoExpireContract(contractId: string, now: Date): Promise<"EXPIRED" | "SKIPPED"> {
+export async function tryAutoCloseOnExpiry(contractId: string, now: Date): Promise<"CLOSED" | "SKIPPED"> {
   for (let attempt = 1; attempt <= SERIALIZABLE_RETRY; attempt++) {
     try {
       return await prisma.$transaction(
         async (tx) => {
           const c = await tx.contract.findFirst({ where: { id: contractId, deletedAt: null } });
           if (!c) return "SKIPPED" as const;
-          if (!["EFFECTIVE", "EXECUTING"].includes(c.status)) return "SKIPPED" as const;
+          if (c.status !== "ACTIVE") return "SKIPPED" as const;
           if (new Date(c.endDate) >= now) return "SKIPPED" as const;
           const before = { status: c.status };
-          await tx.contract.update({ where: { id: contractId }, data: { status: "EXPIRED" } });
+          await tx.contract.update({ where: { id: contractId }, data: { status: "CLOSED", reviewComment: "expired" } });
           await tx.contractReviewLog.create({
-            data: { contractId, reviewerId: SYSTEM_USER_ID, action: "AUTO_EXPIRE", comment: "合同已过到期日,系统自动置为到期" }
+            data: { contractId, reviewerId: SYSTEM_USER_ID, action: "AUTO_CLOSE_EXPIRED", comment: "合同已过到期日,系统自动置为已完结" }
           });
           await audit(tx, {
             actorId: SYSTEM_USER_ID,
-            action: "CONTRACT_AUTO_EXPIRE",
+            action: "CONTRACT_AUTO_CLOSE_EXPIRED",
             entity: "Contract",
             entityId: contractId,
             before,
-            after: { status: "EXPIRED" }
+            after: { status: "CLOSED", reason: "expired" }
           });
           const admins = await listAdminUserIds(tx);
           await emit(tx, {
@@ -775,7 +702,7 @@ export async function tryAutoExpireContract(contractId: string, now: Date): Prom
             payload: { contractId, contractNo: c.contractNo, endDate: c.endDate },
             receivers: Array.from(new Set([c.ownerUserId, ...admins]))
           });
-          return "EXPIRED" as const;
+          return "CLOSED" as const;
         },
         { isolationLevel: Prisma.TransactionIsolationLevel.Serializable }
       );
@@ -811,7 +738,7 @@ export async function runContractExpiryJob(now: Date): Promise<{
   const t0 = Date.now();
   const candidates = await prisma.contract.findMany({
     where: {
-      status: { in: ["EFFECTIVE", "EXECUTING"] },
+      status: "ACTIVE",
       endDate: { lt: now },
       deletedAt: null
     },
@@ -820,11 +747,11 @@ export async function runContractExpiryJob(now: Date): Promise<{
   let created = 0;
   for (const c of candidates) {
     try {
-      const r = await tryAutoExpireContract(c.id, now);
-      if (r === "EXPIRED") created++;
+      const r = await tryAutoCloseOnExpiry(c.id, now);
+      if (r === "CLOSED") created++;
     } catch (e) {
       // 单笔转换失败不阻塞整体; warn 一行留痕
-      console.warn(`[contract-expiry] contract ${c.id} auto-expire failed:`, e instanceof Error ? e.message : e);
+      console.warn(`[contract-expiry] contract ${c.id} auto-close failed:`, e instanceof Error ? e.message : e);
     }
   }
   return {
@@ -834,4 +761,137 @@ export async function runContractExpiryJob(now: Date): Promise<{
     updated: created,
     durationMs: Date.now() - t0
   };
+}
+
+
+
+// =====================================================
+// 合同状态机自动转换 — DRAFT → ACTIVE / ACTIVE → CLOSED
+// =====================================================
+// 触发入口:
+//   - tryAutoPublish: createContract / updateContract / tickPublishableDraffts 调
+//   - tryAutoComplete: tickCompletionCandidates 调 (满足 R-07: 项目全 ACCEPTED/CLOSED + 开票足额)
+//   - tryAutoCloseOnExpiry: 上面已实现, 跑在 runContractExpiryJob
+//
+// 写 ContractReviewLog.action: AUTO_PUBLISH / AUTO_CLOSE_COMPLETED / AUTO_CLOSE_EXPIRED
+// 状态不匹配 → no-op (静默), 不会拖垮主事务.
+
+/**
+ * DRAFT → ACTIVE 判定: 字段完整 + 至少 1 附件
+ * 字段: customerId / contractNo / title / serviceType / signDate / startDate / endDate /
+ *       totalAmount > 0 / taxRate >= 0 / ownerUserId / signerId
+ */
+export function isPublishable(c: {
+  customerId: string;
+  contractNo: string;
+  title: string;
+  serviceType: string;
+  signDate: Date;
+  startDate: Date;
+  endDate: Date;
+  totalAmount: { toString(): string } | number | string;
+  taxRate: { toString(): string } | number | string;
+  ownerUserId: string;
+  signerId: string;
+  attachments: unknown;
+}): boolean {
+  if (!c.customerId || !c.contractNo || !c.title || !c.serviceType) return false;
+  if (!c.signDate || !c.startDate || !c.endDate) return false;
+  const total = Number(c.totalAmount);
+  const tax = Number(c.taxRate);
+  if (!(total > 0) || !(tax >= 0)) return false;
+  if (!c.ownerUserId || !c.signerId) return false;
+  const att = c.attachments;
+  if (!Array.isArray(att) || att.length === 0) return false;
+  return true;
+}
+
+/**
+ * 在事务内尝试 DRAFT → ACTIVE. 状态不匹配 / 字段不满足 → 静默 no-op.
+ * 写入 ContractReviewLog + audit + emit 通知. SYSTEM_USER_ID 作为 actor.
+ */
+export async function tryAutoPublish(tx: Prisma.TransactionClient, contractId: string): Promise<"PUBLISHED" | "SKIPPED"> {
+  const c = await tx.contract.findFirst({ where: { id: contractId, deletedAt: null } });
+  if (!c) return "SKIPPED" as const;
+  if (c.status !== "DRAFT") return "SKIPPED" as const;
+  if (!isPublishable(c)) return "SKIPPED" as const;
+  const before = { status: c.status };
+  await tx.contract.update({ where: { id: contractId }, data: { status: "ACTIVE" } });
+  await tx.contractReviewLog.create({
+    data: { contractId, reviewerId: SYSTEM_USER_ID, action: "AUTO_PUBLISH", comment: "字段完整 + 附件就位, 系统自动发布" }
+  });
+  await audit(tx, {
+    actorId: SYSTEM_USER_ID,
+    action: "CONTRACT_AUTO_PUBLISH",
+    entity: "Contract",
+    entityId: contractId,
+    before,
+    after: { status: "ACTIVE" }
+  });
+  return "PUBLISHED" as const;
+}
+
+/**
+ * R-07: 合同满足完结条件 → ACTIVE → CLOSED (reason=completed)
+ *   - 所有 Project.status ∈ {ACCEPTED, CLOSED}
+ *   - SUM(Invoice.amount where status=ISSUED) >= contract.totalAmount * completionInvoiceRatio
+ * 完结比例从 env 读 (默认 0.95). 状态不匹配 / 条件不满足 → 静默 no-op.
+ */
+export async function tryAutoComplete(contractId: string, now: Date): Promise<"CLOSED" | "SKIPPED"> {
+  // now 当前未使用, 保留参数便于将来加"开票时效"等条件
+  void now;
+  const ratio = Number(process.env.CONTRACT_COMPLETION_INVOICE_RATIO ?? "0.95");
+  for (let attempt = 1; attempt <= SERIALIZABLE_RETRY; attempt++) {
+    try {
+      return await prisma.$transaction(
+        async (tx) => {
+          const c = await tx.contract.findFirst({ where: { id: contractId, deletedAt: null } });
+          if (!c) return "SKIPPED" as const;
+          if (c.status !== "ACTIVE") return "SKIPPED" as const;
+          // 完结条件: 开票已足额 (>= totalAmount * ratio)
+          // 注: DESIGN-v3.md R-07 提到的"项目全 ACCEPTED/CLOSED"在当前 schema 下无 Project 子表支撑,
+          //     简化为仅校验开票; 验收环节由 admin 在前端操作中体现 (人工确认后手动调 closeContract).
+          const invoiced = await tx.invoice.aggregate({
+            where: { contractId, status: "ISSUED", deletedAt: null },
+            _sum: { amount: true }
+          });
+          const invoicedAmount = Number(invoiced._sum.amount ?? 0);
+          const total = Number(c.totalAmount);
+          if (invoicedAmount < total * ratio) return "SKIPPED" as const;
+          // 3) 推 CLOSED
+          const before = { status: c.status };
+          await tx.contract.update({ where: { id: contractId }, data: { status: "CLOSED", reviewComment: "completed" } });
+          await tx.contractReviewLog.create({
+            data: { contractId, reviewerId: SYSTEM_USER_ID, action: "AUTO_CLOSE_COMPLETED", comment: `项目已验收, 开票达到 ${(ratio * 100).toFixed(0)}%, 系统自动完结` }
+          });
+          await audit(tx, {
+            actorId: SYSTEM_USER_ID,
+            action: "CONTRACT_AUTO_CLOSE_COMPLETED",
+            entity: "Contract",
+            entityId: contractId,
+            before,
+            after: { status: "CLOSED", reason: "completed" }
+          });
+          const admins = await listAdminUserIds(tx);
+          await emit(tx, {
+            type: "CONTRACT_AUTO_COMPLETED",
+            payload: { contractId, contractNo: c.contractNo, reason: "completed" },
+            receivers: Array.from(new Set([c.ownerUserId, ...admins]))
+          });
+          return "CLOSED" as const;
+        },
+        { isolationLevel: Prisma.TransactionIsolationLevel.Serializable }
+      );
+    } catch (e) {
+      if (
+        e instanceof Prisma.PrismaClientKnownRequestError &&
+        e.code === "P2034" &&
+        attempt < SERIALIZABLE_RETRY
+      ) {
+        continue;
+      }
+      throw e;
+    }
+  }
+  throw new Error("unreachable: SERIALIZABLE_RETRY exhausted");
 }

@@ -5,6 +5,7 @@ import { emit } from "@/server/events/bus";
 
 import { runAssetExpiryJob } from "@/server/services/asset-expiry-job";
 import { runContractExpiryJob } from "@/server/services/contract";
+import { tickPublishableDraffts, tickCompletionCandidates } from "@/server/jobs/contract-automation";
 export { runContractExpiryJob };
 
 /**
@@ -31,7 +32,9 @@ export async function runAllJobs(now = new Date()): Promise<JobResult[]> {
     invoiceOverdueJob(now, admins),
     customerInactiveJob(now),
     runAssetExpiryJob(now, admins),
-    runContractExpiryJob(now)
+    runContractExpiryJob(now),
+    tickPublishableDraffts(),
+    tickCompletionCandidates(now)
   ]);
 }
 
@@ -50,7 +53,7 @@ export async function contractExpiringJob(now: Date, admins?: { id: string }[]):
     target.setDate(target.getDate() + days);
     const candidates = await prisma.contract.findMany({
       where: {
-        status: { in: ["EFFECTIVE", "EXECUTING"] },
+        status: "ACTIVE",
         endDate: { gte: target, lt: dayEnd }
       },
       select: { id: true, contractNo: true, endDate: true, ownerUserId: true }

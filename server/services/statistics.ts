@@ -18,7 +18,7 @@ function dateWhere(range: DateRange, _field: "actualIssueDate" | "receivedAt" | 
 export async function getOverview(user: SessionUser, range: DateRange) {
   requirePermission(user.roleCode, RESOURCE.STATISTICS, ACTION.READ);
   const where = { deletedAt: null, ...ownerEq(user) };
-  const signWhere = { ...where, status: { in: ["EFFECTIVE", "EXECUTING", "COMPLETED"] }, signDate: dateWhere(range) };
+  const signWhere = { ...where, status: { in: ["ACTIVE", "CLOSED"] }, signDate: dateWhere(range) };
   const [contractAgg, invoiceAgg, paymentAgg] = await Promise.all([
     prisma.contract.aggregate({ where: signWhere, _sum: { totalAmount: true }, _count: { _all: true } }),
     prisma.invoice.aggregate({
@@ -70,7 +70,7 @@ export async function getTimeSeries(user: SessionUser, range: DateRange) {
     prisma.contract.findMany({
       where: {
         deletedAt: null,
-        status: { in: ["EFFECTIVE", "EXECUTING", "COMPLETED"] },
+        status: { in: ["ACTIVE", "CLOSED"] },
         signDate: { gte: from, lte: to },
         ...ownerEq(user)
       },
@@ -185,7 +185,7 @@ export async function getTopCustomers(user: SessionUser, metric: "contract" | "p
     }),
     prisma.contract.groupBy({
       by: ["customerId"],
-      where: { deletedAt: null, status: { in: ["EFFECTIVE", "EXECUTING", "COMPLETED"] } },
+      where: { deletedAt: null, status: { in: ["ACTIVE", "CLOSED"] } },
       _sum: { totalAmount: true },
       _count: { _all: true }
     }),
@@ -241,7 +241,7 @@ type PerformanceRow = {
 async function aggregatePerformance(owners: { id: string; name: string; employeeNo: string }[], range?: DateRange): Promise<PerformanceRow[]> {
   const signWhere = {
     deletedAt: null,
-    status: { in: ["EFFECTIVE", "EXECUTING", "COMPLETED"] },
+    status: { in: ["ACTIVE", "CLOSED"] },
     ...(range ? { signDate: dateWhere(range) } : {})
   };
   const invoiceWhere = {
