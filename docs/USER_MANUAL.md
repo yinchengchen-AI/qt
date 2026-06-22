@@ -40,7 +40,7 @@
 | 模块 | 关键对象 | 状态数量 | 关键节点 |
 |---|---|---|---|
 | 客户 | 客户主数据 + 联系人 + 跟进记录 | 5 | LEAD → NEGOTIATING → SIGNED |
-| 合同 | 合同主数据 + 附件 + 审批记录 | 7 | DRAFT → PENDING_REVIEW → EFFECTIVE → EXECUTING → COMPLETED |
+| 合同 | 合同主数据 + 附件 + 自动化记录 | 3 | DRAFT → ACTIVE → CLOSED |
 | 项目 | 项目主数据 + 里程碑 + 进度日志 | 7 | PLANNED → IN_PROGRESS → DELIVERED → ACCEPTED → CLOSED |
 | 开票 | 发票主数据 + 附件 + 审核记录 | 6 | DRAFT → PENDING_FINANCE → ISSUED |
 | 回款 | 回款主数据 + 核销记录 | 5 | PLANNED → CONFIRMED → RECONCILED |
@@ -166,7 +166,7 @@
 | `FROZEN` 已冻结 | 内部暂停合作 | 重大风险 / 投诉期 |
 
 > **状态变更约束**(重要):
-> - `→ SIGNED` **必须** 至少有一份 `EFFECTIVE` 的合同
+> - `→ SIGNED` **必须** 至少有一份 `ACTIVE` 的合同
 > - `→ FROZEN` **必须** 无活跃合同;否则拒绝并提示 `CUSTOMER_HAS_ACTIVE_CONTRACT`
 > - 新建客户时不允许直接选 `FROZEN`
 > - 软删除的客户在列表里默认隐藏;管理员可在筛选中开启「含已删除」
@@ -222,49 +222,46 @@
 
 **路径**:`合同管理 / 合同列表`
 
-### 6.1 合同状态机(7 态)
+### 6.1 合同状态机(3 态 + 自动化)
 
 ```
-            ┌──────────────┐
-            │   DRAFT 草稿 │
-            └──────┬───────┘
-                   │ submit
-                   ▼
-        ┌──────────────────────┐
-        │ PENDING_REVIEW 待审核│
-        └──────┬───────┬───────┘
-       approve│       │reject / withdraw
-               ▼       ▼
-       ┌──────────┐  ┌──────────────┐
-       │ EFFECTIVE│  │ (回 DRAFT)   │
-       │   生效   │  └──────────────┘
-       └────┬─────┘
-            │ start
-            ▼
-       ┌──────────┐
-       │ EXECUTING│
-       │  执行中  │
-       └────┬─────┘
-            │ complete / terminate / expire
-            ▼
-  ┌──────────┬────────────┬──────────┐
-  │COMPLETED │ TERMINATED │ EXPIRED  │
-  │  已完成  │  已终止    │  已到期  │
-  └──────────┴────────────┴──────────┘
+        ┌──────────────┐
+        │  DRAFT 草稿  │
+        └──────┬───────┘
+               │ [auto] 字段完整 + 至少 1 附件
+               │ [admin] 强制发布
+               ▼
+        ┌──────────────┐
+        │ ACTIVE 生效中│
+        └──────┬───────┘
+               │ [auto] 开票足额 (≥ 总额 × 95%)
+               │ [auto] endDate < now
+               │ [admin] 强制完结 (选 reason)
+               ▼
+        ┌──────────────┐
+        │ CLOSED 已完结│
+        └──────────────┘
 ```
 
-| 状态 | 含义 | 可操作 |
+| 状态 | 含义 | 可操作 (admin 视角) |
 |---|---|---|
-| `DRAFT` 草稿 | 自由编辑 | 提交 / 编辑 / 软删 |
-| `PENDING_REVIEW` 待审核 | 锁字段,等审批 | 审批(管理员)/ 撤回(发起人) |
-| `EFFECTIVE` 生效 | 已签 | 启动 → EXECUTING / 终止 |
-| `EXECUTING` 执行中 | 已在服务交付 | 完成 / 终止 / 期满转 EXPIRED |
-| `COMPLETED` / `TERMINATED` / `EXPIRED` | 终态 | 只读 |
+| `DRAFT` 草稿 | 字段/附件未就位 | 强制发布 / 编辑 / 删除 |
+| `ACTIVE` 生效中 | 业务正常推进,开票/回款 | 强制完结(选 reason) / 编辑 / 删除 |
+| `CLOSED` 已完结 | 终态 | 编辑(修正字段) / 删除(子数据兜底) |
+
+**自动化细节**:
+- `DRAFT → ACTIVE`:`createContract` / `updateContract` 保存时自动判定 `isPublishable(c)`,条件满足即升 ACTIVE。每小时 cron `tickPublishableDraffts` 兜底。
+- `ACTIVE → CLOSED (completed)`:每日 `tickCompletionCandidates` 扫开票足额合同,自动完结。
+- `ACTIVE → CLOSED (expired)`:每日 `runContractExpiryJob` 扫 `endDate<now` 的合同,自动完结。
+- `ACTIVE → CLOSED (terminated)` / `completed`:admin 强制完结弹窗选 reason。
+- 业务自创建/维护合同,日常无需手动点状态按钮。
+
+**时间线**:详情页"自动化记录"区会拉 `ContractReviewLog`,把 `AUTO_PUBLISH` / `AUTO_CLOSE_COMPLETED` / `AUTO_CLOSE_EXPIRED` / `MANUAL_PUBLISH` / `MANUAL_CLOSE` 条目突出显示。
 
 ### 6.2 关键校验(系统自动)
 
 - **R-03**:合同关联的客户必须在 `NEGOTIATING` 或 `SIGNED` 状态
-- **R-04**:`→ EFFECTIVE` 必须上传至少 1 个 **PDF / Word / Excel / 图片** 附件,否则拒绝 `ENTITY_IMMUTABLE`
+- **R-04**:`→ ACTIVE` 必须字段完整(`signDate/startDate/endDate/totalAmount/taxRate/ownerUserId/signerId`) + 至少 1 个 **PDF / Word / Excel / 图片** 附件,否则保持 `DRAFT`
 - **R-09**(在发票模块):开票抬头 / 税号 必须与合同 / 客户档案一致
 - **R-08**:同一合同累计开票 ≤ 合同总额(具体见开票章节)
 - **客户必须 SIGNED** 才能新建关联发票 / 回款
@@ -300,28 +297,13 @@
 - 上传完成的文件在卡片中显示为可点击链接,点击 **预览 / 下载**(重新签发 5min GET URL)
 - **删除**只软删 `Attachment` 表记录,MinIO 对象保留(后续由 GC job 回收)
 
-### 6.5 提交审批
+### 6.5 状态自动流转
 
-- `DRAFT → PENDING_REVIEW`:点击详情页「提交审批」按钮
-- 进入待审核后 **字段只读**,任何修改需先 **撤回** 到 `DRAFT`
-- 触发 **领域事件** `CONTRACT_PENDING_REVIEW`,系统自动给 **全部管理员** 发站内信
+新模型下,合同状态机 **不再有审批环节**。业务自创建/维护,admin 兜底;自动化处理 `DRAFT → ACTIVE` 和 `ACTIVE → CLOSED`。
 
-### 6.6 审批 / 撤回
+详见 [§6.1](#61-合同状态机3-态--自动化) 状态机图和触发条件表。
 
-**仅管理员可见「审批 / 驳回」** 入口。
-
-- **审批通过**:`PENDING_REVIEW → EFFECTIVE`,需先确认 **有附件**,否则拒绝
-- **驳回**:`PENDING_REVIEW → DRAFT`,填写驳回意见,系统给 **发起人** 发站内信 `CONTRACT_REJECTED`
-- **撤回**:`PENDING_REVIEW → DRAFT`(发起人本人),留痕
-
-所有审批动作写入 `ContractReviewLog`,不可删除。
-
-### 6.7 启动 / 终止 / 完成
-
-- **启动**:`EFFECTIVE → EXECUTING`,管理员或 SALES 触发
-- **完成**:`EXECUTING → COMPLETED`,要求关联的 **所有项目必须 ACCEPTED 或 CLOSED**
-- **终止**:`EFFECTIVE / EXECUTING → TERMINATED`,必填终止原因
-- **到期自动**:`EXECUTING` 跨过 `endDate` 且未手工结案时,定时任务每日巡检转 `EXPIRED`
+`ContractReviewLog` 仍然记录所有状态迁移(AUTO_PUBLISH / AUTO_CLOSE_COMPLETED / AUTO_CLOSE_EXPIRED / MANUAL_PUBLISH / MANUAL_CLOSE),详情页时间线可见,作为审计追溯。
 
 ---
 
@@ -344,7 +326,7 @@ PLANNED ─start─▶ IN_PROGRESS ─deliver─▶ DELIVERED ─accept─▶ AC
 |---|---|
 | `PLANNED` 计划中 | 合同已生效,项目尚未启动 |
 | `IN_PROGRESS` 进行中 | 已启动,正在执行 |
-| `SUSPENDED` 挂起 | 暂停(等客户反馈 / 付款等) |
+| `(已合并入 ACTIVE)` | 暂停(等客户反馈 / 付款等) |
 | `DELIVERED` 已交付 | 服务已交付,待客户验收 |
 | `ACCEPTED` 已验收 | 客户已签收 |
 | `CLOSED` 已关闭 | 流程结束,可开票 / 回款 |
@@ -352,7 +334,7 @@ PLANNED ─start─▶ IN_PROGRESS ─deliver─▶ DELIVERED ─accept─▶ AC
 
 ### 7.2 关键校验
 
-- **R-05**:项目必须挂在一份 `EFFECTIVE` / `EXECUTING` 合同下
+- **R-05**:项目必须挂在一份 `ACTIVE` / `ACTIVE` 合同下
 - **R-06**:**项目结束日期 ≤ 合同结束日期**,否则拒绝 `PROJECT_DATE_OUT_OF_RANGE`
 - **合同状态变更时**:关联项目的状态会被联动校验(合同 COMPLETED → 所有项目必须 CLOSED)
 
@@ -360,7 +342,7 @@ PLANNED ─start─▶ IN_PROGRESS ─deliver─▶ DELIVERED ─accept─▶ AC
 
 | 字段 | 必填 | 说明 |
 |---|---|---|
-| 合同 * | ✓ | 选 `EFFECTIVE` / `EXECUTING` 合同 |
+| 合同 * | ✓ | 选 `ACTIVE` / `ACTIVE` 合同 |
 | 项目名称 * | ✓ | 同一合同下唯一 |
 | 服务范围 * | ✓ | 长文本 |
 | 项目经理 * | ✓ | 选本系统用户 |
@@ -379,7 +361,7 @@ PLANNED ─start─▶ IN_PROGRESS ─deliver─▶ DELIVERED ─accept─▶ AC
 
 | 动作 | 触发方 | 校验 |
 |---|---|---|
-| 启动 | 项目经理 / SALES | 合同必须 EFFECTIVE/EXECUTING |
+| 启动 | 项目经理 / SALES | 合同必须 ACTIVE |
 | 挂起 / 恢复 | 项目经理 | IN_PROGRESS ↔ SUSPENDED |
 | 交付 | 项目经理 | IN_PROGRESS → DELIVERED,必填交付说明 |
 | 验收 | 项目经理 / 客户对接人 | DELIVERED → ACCEPTED,日期 + 意见 |
@@ -427,7 +409,7 @@ DRAFT ─submit─▶ PENDING_FINANCE ─issue─▶ ISSUED
 
 | 字段 | 必填 | 说明 |
 |---|---|---|
-| 合同 * | ✓ | 仅 `EFFECTIVE` / `EXECUTING` 合同 |
+| 合同 * | ✓ | 仅 `ACTIVE` / `ACTIVE` 合同 |
 | 客户 * | ✓ | 自动取合同客户 |
 | 发票类型 * | ✓ | 增值税专用 / 增值税普通 / 增值税电子 / 电子普通 |
 | 金额(含税) * | ✓ | 不超过合同剩余可开票额 |
@@ -486,7 +468,7 @@ PLANNED ─confirm─▶ CONFIRMED ─reconcile─▶ RECONCILED
 | 字段 | 必填 | 说明 |
 |---|---|---|
 | 客户 * | ✓ | 自动取合同客户 |
-| 合同 * | ✓ | 选 `EFFECTIVE` / `EXECUTING` 合同 |
+| 合同 * | ✓ | 选 `ACTIVE` / `ACTIVE` 合同 |
 | 发票 | — | 若已开票可挂接 |
 | 金额 * | ✓ | ≤ 合同剩余未回款额 |
 | 到账日期 * | ✓ | 默认今天 |
@@ -674,7 +656,7 @@ PLANNED ─confirm─▶ CONFIRMED ─reconcile─▶ RECONCILED
 
 ### Q2. 提交合同审批被拒,提示「请上传附件」?
 
-合同 `→ EFFECTIVE` **必须** 至少 1 个附件(参见 [R-04](#62-关键校验系统自动)):
+合同 `→ ACTIVE` **必须** 至少 1 个附件(参见 [R-04](#62-关键校验系统自动)):
 - 回到合同详情 → 编辑附件 → 上传合同扫描件 → 再走「提交审批」
 - 附件格式:PDF / Word / Excel / 图片;**单文件 ≤ 20MB**,**单合同 ≤ 5 个附件**
 
@@ -694,7 +676,7 @@ PLANNED ─confirm─▶ CONFIRMED ─reconcile─▶ RECONCILED
 ### Q5. 客户状态想改 `FROZEN` 提示「有活跃合同」?
 
 参见 [R-13](#51-客户状态):
-- 必须先把该客户的 **所有合同** 走到 `COMPLETED / TERMINATED / EXPIRED` 终态
+- 必须先把该客户的 **所有合同** 走到 `CLOSED` 终态
 - 才能把客户改为 `FROZEN`
 
 ### Q6. 看不到同事创建的客户?
@@ -718,7 +700,6 @@ PLANNED ─confirm─▶ CONFIRMED ─reconcile─▶ RECONCILED
 
 ### Q9. 审批中合同能不能改字段?
 
-- `PENDING_REVIEW` 状态 **字段只读**
 - 发起人可点「撤回」回到 `DRAFT` 重新编辑
 - 撤回会留痕,管理员能看到撤回历史
 

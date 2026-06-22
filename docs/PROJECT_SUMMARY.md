@@ -107,13 +107,14 @@ DB 层兜底：PG RLS policy  // 即使 service 漏写，DB 也会拦截
 #### 合同状态机范例
 
 ```ts
-// DRAFT → PENDING_REVIEW → EFFECTIVE → EXECUTING → COMPLETED
-//   ↑              │                │
-//   └──withdraw────┘                │ terminate → TERMINATED
-//                                   │ expire → EXPIRED
+// DRAFT ─[auto: 字段完整 + 附件]─▶ ACTIVE ─[auto: 开票足额 / endDate<now]─▶ CLOSED
+//   │                                     │
+//   │ admin 强制发布                       │ admin 强制完结 (reason: completed/terminated/expired)
+//   ▼                                     ▼
+// [ACTIVE]                              [CLOSED]
 ```
 
-- **状态迁移集中在 service**：所有 `/api/contracts/:id/{submit,approve,reject,withdraw,terminate}` 路由都只调 service 单一入口
+- **状态迁移集中在 service**：所有 `/api/contracts/:id/{publish,close}` 路由都只调 service 单一入口;自动迁移由 `tryAutoPublish` / `tryAutoComplete` / `tryAutoCloseOnExpiry` 在 `createContract` / `updateContract` / 定时任务里触发
 - **事务内做转换**：`prisma.$transaction(async (tx) => { ... })`，状态读取、规则校验、状态写入、`emit()` 消息都在同一事务内
 - **不可逆状态**：`RECONCILED` / `COMPLETED` / `ISSUED` 走 ENTITY_IMMUTABLE 错误码保护
 

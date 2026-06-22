@@ -141,7 +141,7 @@ enum CustomerStatus { LEAD NEGOTIATING SIGNED LOST FROZEN }
 enum FollowMethod { VISIT CALL WECHAT EMAIL OTHER }
 enum FollowResult { INTENT NO_INTENT PENDING SIGNED }
 enum ServiceType { SAFETY_CONSULT SAFETY_TRAIN HAZARD_ANA EMERGENCY_PLAN EVALUATION OTHER }
-enum ContractStatus { DRAFT PENDING_REVIEW EFFECTIVE EXECUTING COMPLETED TERMINATED EXPIRED }
+enum ContractStatus { DRAFT ACTIVE CLOSED }
 enum PaymentMethod { LUMP_SUM BY_PHASE BY_MONTH BY_QUARTER }
 enum ReviewAction { SUBMIT APPROVE REJECT WITHDRAW }
 enum ProjectStatus { PLANNED IN_PROGRESS SUSPENDED DELIVERED ACCEPTED CLOSED CANCELLED }
@@ -250,16 +250,23 @@ enum MessageType { CONTRACT_PENDING_REVIEW CONTRACT_EXPIRING INVOICE_OVERDUE_PAY
 
 ## 5. 状态机
 
-### 5.1 `Contract.status`
+### 5.1 `Contract.status`（v3 简化版：3 个值 + 自动化）
 ```
-DRAFT ─submit─▶ PENDING_REVIEW ─approve(admin)─▶ EFFECTIVE ─auto(项目全 ACCEPTED)─▶ EXECUTING ─▶ COMPLETED
-   ▲                  │                              │                                  │
-   │              reject│                              │ terminate(admin)                 │ expire(endDate<today & ≠COMPLETED)
-   └──────withdraw─────┘                              ▼                                  ▼
-                                                  TERMINATED                            EXPIRED
+DRAFT ──[auto: 字段完整 + 至少 1 附件]──▶ ACTIVE ──[auto: 开票足额]──▶ CLOSED
+   │                                       │                          ▲
+   │ admin 强制发布                         │ admin 强制完结            │
+   ▼                                       │                          │
+[ACTIVE]                                    │ ──[auto: endDate<now]────┘
+                                            │     reason=expired
+                                            │
+                                       reason 区分:
+                                       completed / terminated / expired
 ```
-- **→ EFFECTIVE**：附件含盖章 PDF；`signDate/startDate/endDate/totalAmount/taxRate/ownerUserId` 完整；`endDate ≥ startDate`；`totalAmount > 0`。
-- **→ COMPLETED**：所有 `Project ∈ {ACCEPTED, CLOSED}`，且 `SUM(Invoice.amount where ISSUED) ≥ totalAmount × completionInvoiceRatio`。
+- **→ ACTIVE（auto）**：保存/编辑时若 `signDate/startDate/endDate/totalAmount/taxRate/ownerUserId/signerId` 完整且 `attachments.length ≥ 1`，自动从 DRAFT 升 ACTIVE；`isPublishable(c)` 集中判定。
+- **→ CLOSED（auto complete）**：`SUM(Invoice.amount where status=ISSUED) ≥ totalAmount × completionInvoiceRatio`（默认 ratio=0.95，env `CONTRACT_COMPLETION_INVOICE_RATIO` 可调），`tryAutoComplete` 每晚扫一次。
+- **→ CLOSED（auto expire）**：`endDate < now()`，daily cron `runContractExpiryJob` 推 CLOSED 并写 `reviewComment="expired"`。
+- **admin 兜底入口**：`POST /api/contracts/[id]/publish`（DRAFT→ACTIVE）、`POST /api/contracts/[id]/close`（ACTIVE→CLOSED, body `{reason: "completed"|"terminated"|"expired"}`）。
+- **时间线**：所有自动/手动迁移写 `ContractReviewLog.action`（AUTO_PUBLISH / AUTO_CLOSE_COMPLETED / AUTO_CLOSE_EXPIRED / MANUAL_PUBLISH / MANUAL_CLOSE），详情页时间线可见。
 
 ### 5.2 `Project.status`
 ```
@@ -300,12 +307,12 @@ PLANNED ─confirm(finance)─▶ CONFIRMED ─reconcile(finance)─▶ RECONCIL
 | 编号 | 触发 | 规则 | 错误码 |
 |---|---|---|---|
 | R-01 | 客户 `unifiedSocialCreditCode` | 18 位 + GB 32100-2015 加权校验（Zod 自定义 `.refine`） | `CUSTOMER_CREDIT_CODE_INVALID` |
-| R-02 | 客户 `→ SIGNED` | 至少一份 `EFFECTIVE/EXECUTING/COMPLETED` 合同 | `CUSTOMER_STATUS_INVALID` |
+| R-02 | 客户 `→ SIGNED` | 至少一份 `ACTIVE/CLOSED` 合同 | `CUSTOMER_STATUS_INVALID` |
 | R-03 | 新建合同 | 客户 `status ∈ {NEGOTIATING, SIGNED}` | `CONTRACT_CUSTOMER_STATUS` |
-| R-04 | 合同 `→ EFFECTIVE` | 至少 1 个附件 + 关键字段非空 | `CONTRACT_INCOMPLETE` |
-| R-05 | 新建项目 | 所属合同 `status = EFFECTIVE` | `PROJECT_CONTRACT_NOT_EFFECTIVE` |
+| R-04 | 合同 `→ ACTIVE` | 字段完整 + 至少 1 附件（`isPublishable`） | `CONTRACT_INCOMPLETE` |
+| R-05 | 新建项目 | 所属合同 `status = ACTIVE` | `PROJECT_CONTRACT_NOT_EFFECTIVE` |
 | R-06 | 项目 `endDate` | `≤ contract.endDate` | `PROJECT_DATE_OUT_OF_RANGE` |
-| R-07 | 合同 `→ COMPLETED` | 项目全 `ACCEPTED/CLOSED` 且开票额 ≥ 阈值 | `CONTRACT_NOT_COMPLETABLE` |
+| R-07 | 合同 `→ CLOSED` (auto completed) | `SUM(Invoice.ISSUED) ≥ totalAmount × completionInvoiceRatio` | `CONTRACT_NOT_COMPLETABLE` |
 | R-08 | 开票 `submit/issue` | `SUM(已开票 ISSUED) + 当前 ≤ contract.totalAmount` | `INVOICE_OVER_LIMIT` |
 | R-09 | 开票 `→ ISSUED` | 抬头/税号/电子发票号 20 位合规 | `INVOICE_INFO_INVALID` |
 | R-10 | 回款 `→ CONFIRMED` | `bankRefNo` 全局唯一 | `PAYMENT_DUPLICATE_REF` |
@@ -313,7 +320,7 @@ PLANNED ─confirm(finance)─▶ CONFIRMED ─reconcile(finance)─▶ RECONCIL
 | R-12 | 回款 `→ CONFIRMED` | 合同级累计回款 ≤ 合同总额 | `PAYMENT_OVER_CONTRACT` |
 | R-13 | 客户 `→ FROZEN` | 无未完成合同、无未 RECONCILED 回款 | `CUSTOMER_HAS_ACTIVE_CONTRACT` |
 | R-14 | 删除 | 终态记录禁止物理删除 | `ENTITY_IMMUTABLE` |
-| R-15 | 用户 `DISABLED` | 名下 EXECUTING 合同需先转移 owner | `USER_HAS_ACTIVE_OWNERSHIP` |
+| R-15 | 用户 `DISABLED` | 名下 ACTIVE 合同需先转移 owner | `USER_HAS_ACTIVE_OWNERSHIP` |
 | R-16 | 状态机迁移 | 强制走 Service；事务内 `Serializable` + 行锁 | – |
 
 > **错误码约定**：`{ENTITY}_{REASON}` 大写下划线；前端 ProForm `onFinish` 失败时按 `errorCode` 映射到 `errorCodeMessageMap` 文案 + 字段级错误从 `details.fieldErrors` 注入 ProForm `error`。
@@ -341,7 +348,7 @@ PLANNED ─confirm(finance)─▶ CONFIRMED ─reconcile(finance)─▶ RECONCIL
 
 | 指标 | 公式 | 时间维度 |
 |---|---|---|
-| 合同额 | `SUM(Contract.totalAmount where status ∈ {EFFECTIVE,EXECUTING,COMPLETED})` | 月/季/年/任意区间 |
+| 合同额 | `SUM(Contract.totalAmount where status ∈ {ACTIVE,CLOSED})` | 月/季/年/任意区间 |
 | 已开票额 | `SUM(Invoice.amount where status=ISSUED and actualIssueDate ∈ 区间)` | 同上 |
 | 已回款额 | `SUM(Payment.amount where status ∈ {CONFIRMED,RECONCILED} and receivedAt ∈ 区间)` | 同上 |
 | 未回款额 | 已开票额 − 已回款额 | 截止时点 |
@@ -467,9 +474,9 @@ PLANNED ─confirm(finance)─▶ CONFIRMED ─reconcile(finance)─▶ RECONCIL
 
 > Vitest 4.1.8 覆盖 Service/规则；Playwright 1.60.0 覆盖 E2E 审批/开票/回款关键链路。
 
-1. **客户**：信用代码错误 → 400 `CUSTOMER_CREDIT_CODE_INVALID`；客户下无 EFFECTIVE 合同尝试 `→ SIGNED` 失败。
-2. **合同**：缺附件时 `→ EFFECTIVE` 失败；同客户下「同标题+同签订日」重复合同被拒；编号 `QT-HT-2025-0001` 并发生成无重复。
-3. **项目**：合同非 EFFECTIVE 时禁止新建项目；项目 `endDate > contract.endDate` 被拒；`ACCEPTED` 之后才能让合同进入 COMPLETED。
+1. **客户**：信用代码错误 → 400 `CUSTOMER_CREDIT_CODE_INVALID`；客户下无 ACTIVE/CLOSED 合同尝试 `→ SIGNED` 失败。
+2. **合同**：缺附件/字段不完整时 `→ ACTIVE` 自动跳过（保持 DRAFT）失败；同客户下「同标题+同签订日」重复合同被拒；编号 `QT-HT-2025-0001` 并发生成无重复。
+3. **项目**：合同非 ACTIVE 时禁止新建项目；项目 `endDate > contract.endDate` 被拒；`ACCEPTED` 之后才能让合同进入 CLOSED。
 4. **开票**：已开票 90 万时再开 20 万 → 422 `INVOICE_OVER_LIMIT`；红冲后负数记录正确生成且原记录变 `RED_FLUSHED`，PLANNED Payment 自动 `CANCELLED`。
 5. **回款**：`bankRefNo` 重复 → 409 `PAYMENT_DUPLICATE_REF`；同一发票累计回款超过发票金额 → 422；`RECONCILED` 记录尝试修改 → 403 `ENTITY_IMMUTABLE`；预收款无 invoiceId 时可入账并通过 `allocate` 拆分配。
 6. **权限**：SALES 访问他人 `customerId` 详情 → 404；FINANCE 尝试改客户金额相关字段 → 403；OPS 在开票列表看不到任何记录；SALES 收件箱收不到非自己的 `MESSAGE`。
