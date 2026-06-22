@@ -3,7 +3,7 @@
 // 关键链接:
 //   - PERFORMANCE:customer + contract 双向 picker,选合同后自动回填服务类型/金额/日期
 //   - CASE:项目名称手工录入 + 合同 picker 回填客户/服务类型
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import {
   ProForm,
   ProFormText,
@@ -18,17 +18,6 @@ import { FormGrid } from "@/components/form";
 import { useDict, groupDictByLegacy } from "@/lib/dict-client";
 import { PreviewableProFormUploadButton as UploadButton } from "@/components/file/pro-form-upload-button";
 import { proCustomRequest } from "@/lib/upload-client";
-
-// 通用工具:fetch + 设置多个 form 字段
-async function fetchJSON<T = unknown>(url: string): Promise<T | null> {
-  try {
-    const r = await fetch(url, { credentials: "include" });
-    const j = await r.json();
-    return j.code === 0 ? (j.data as T) : null;
-  } catch {
-    return null;
-  }
-}
 
 export function LicenseFields() {
   return (

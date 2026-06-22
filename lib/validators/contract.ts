@@ -57,9 +57,12 @@ export const contractCreateSchema = z.object({
   attachments: z.array(attachment).default([])
 });
 
-export const contractUpdateSchema = contractCreateSchema.partial().extend({
-  attachments: z.array(attachment).optional()
-});
+export const contractUpdateSchema = contractCreateSchema
+  .omit({ customerId: true, signerId: true })
+  .partial()
+  .extend({
+    attachments: z.array(attachment).optional()
+  });
 
 export const reviewActionSchema = z.object({
   action: z.enum(["SUBMIT", "APPROVE", "REJECT", "WITHDRAW"]),

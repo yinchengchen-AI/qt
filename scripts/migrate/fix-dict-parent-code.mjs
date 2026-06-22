@@ -15,7 +15,7 @@ const [areas] = await my.query("SELECT * FROM areas ORDER BY ID");
 const byId = new Map(areas.map(a => [a.ID, a]));
 
 // 每个 area 的真正 code = 走父链到顶级
-function trueCode(area, byId) {
+function trueCode(area) {
   // 顶级: R{ID}
   if (area.ParentID == null) return `R${area.ID}`;
   // 子级: R{父 ID}.{自己 ID}  (跟原 areaToCode 编码一致,父 ID 拼在前面)
@@ -33,7 +33,7 @@ function trueParentCode(area, byId) {
 let updated = 0;
 let unchanged = 0;
 for (const a of areas) {
-  const newCode = trueCode(a, byId);
+  const newCode = trueCode(a);
   const newParent = trueParentCode(a, byId);
   const old = await pg.dictionary.findUnique({
     where: { category_code: { category: "REGION", code: newCode } }

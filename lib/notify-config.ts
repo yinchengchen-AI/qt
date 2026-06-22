@@ -36,6 +36,7 @@ export const NOTIFY_CONFIG = {
     PAYMENT_RECEIVED: ["inbox"] as NotifyChannel[],
     PROJECT_DUE: ["inbox"] as NotifyChannel[],
     CUSTOMER_INACTIVE: ["inbox"] as NotifyChannel[],
+    CUSTOMER_STATUS_SUGGEST: ["inbox"] as NotifyChannel[],
     WORKFLOW_TASK_ASSIGNED: ["inbox", "email", "wechatWork"] as NotifyChannel[],
     WORKFLOW_REVIEW_REQUESTED: ["inbox", "email", "wechatWork"] as NotifyChannel[],
   } as Record<string, NotifyChannel[]>

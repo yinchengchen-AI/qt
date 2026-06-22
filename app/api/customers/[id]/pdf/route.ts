@@ -30,8 +30,8 @@ export async function GET(
       const user = await requireSession();
       requirePermission(user.roleCode, RESOURCE.CUSTOMER, ACTION.EXPORT);
       const { id } = await params;
-      const [c, dictItems, followUps, overview] = await Promise.all([
-        getCustomer(user, id),
+      const c = await getCustomer(user, id);
+      const [dictItems, followUps, overview, owner] = await Promise.all([
         prisma.dictionary.findMany({
           where: {
             category: { in: [...ALLOWED_DICTIONARY_CATEGORIES] },
@@ -41,11 +41,11 @@ export async function GET(
         }),
         listFollowUps(user, id),
         getCustomerOverview(user, id),
+        prisma.user.findUnique({
+          where: { id: c.ownerUserId },
+          select: { name: true, employeeNo: true },
+        }),
       ]);
-      const owner = await prisma.user.findUnique({
-        where: { id: c.ownerUserId },
-        select: { name: true, employeeNo: true },
-      });
 
       const dict: Record<string, string> = { ...CUSTOMER_STATUS_MAP };
       for (const i of dictItems) dict[`${i.category}::${i.code}`] = i.label;

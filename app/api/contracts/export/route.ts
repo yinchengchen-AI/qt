@@ -5,7 +5,6 @@ import { err } from "@/lib/api";
 import { requireSession } from "@/lib/session";
 import { requirePermission, RESOURCE, ACTION } from "@/lib/permissions";
 import { listContracts } from "@/server/services/contract";
-import { getBillingStatus } from "@/lib/contract-billing";
 import { exportToXlsx, exportMaxRows } from "@/lib/excel";
 import { prisma } from "@/lib/prisma";
 import {
@@ -34,15 +33,8 @@ export async function GET(req: Request) {
         pageSize: exportMaxRows(),
         ...params,
       });
-      // listContracts 已返回 invoicedAmount / paidAmount; 按 totalAmount 补一份开票状态
-      // totalAmount 是 Prisma.Decimal, Number() 接受 any(Decimal 有 valueOf), 无需 cast
-      const enriched = list.map((c) => ({
-        ...c,
-        billingStatus: getBillingStatus(
-          c.invoicedAmount,
-          Number(c.totalAmount),
-        ),
-      }));
+      // listContracts 已返回 invoicedAmount / paidAmount / billingStatus,直接复用
+      const enriched = list;
       // 批量把签订人 id 解析成姓名(employeeNo), 避免导出 N+1
       const signerIds = [
         ...new Set(

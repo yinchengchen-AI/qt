@@ -7,10 +7,6 @@
 //   4) refund 缺 reason → VALIDATION_FAILED
 //   5) refund 填 reason → 原 payment 翻 REFUNDED, 不创建负数补偿 (P1-2)
 //   6) refund 后 R-12 累计下降, 后续可继续 confirm (P1-2 回归)
-//   7) allocate 合计 ≠ 支付金额 → VALIDATION_FAILED
-//   8) allocate 跨合同 invoiceId → VALIDATION_FAILED (P1-5)
-
-//  10) allocate 同合同 invoiceId + 合计一致 → 成功
 //
 // DB 不可达时整组 skip. 全部数据用 unique TAG 前缀, 跑完自己清理.
 
@@ -30,7 +26,6 @@ const createdPaymentIds: string[] = [];
 let adminUser: { id: string; employeeNo: string; name: string; email: string; roleCode: "ADMIN" } | null = null;
 let financeUser: { id: string; employeeNo: string; name: string; email: string; roleCode: "FINANCE" } | null = null;
 let testCustomerId: string | null = null;
-let otherContractId: string | null = null;
 
 beforeAll(async () => {
   try {
@@ -65,32 +60,6 @@ beforeAll(async () => {
     }
   });
   testCustomerId = cust.id;
-  // 另起一个合同 + 项目, 用于 P1-5 跨合同校验
-  const otherContract = await prisma.contract.create({
-    data: {
-      contractNo: `${TAG}-OTHER`,
-      customerId: testCustomerId,
-      customerName: `${TAG}-客户`,
-      title: `${TAG}-title-other`,
-      serviceType: "OTHER",
-      signDate: new Date("2026-01-01T00:00:00Z"),
-      startDate: new Date("2026-01-01T00:00:00Z"),
-      endDate: new Date("2026-12-31T00:00:00Z"),
-      totalAmount: "200.00",
-      taxRate: "0.06",
-      taxAmount: "0",
-      amountExcludingTax: "0",
-      paymentMethod: "LUMP_SUM",
-      status: "ACTIVE",
-      ownerUserId: adminUser.id,
-      signerId: adminUser.id,
-      attachments: [] as unknown as Parameters<typeof prisma.contract.create>[0]["data"]["attachments"],
-      createdById: adminUser.id,
-      updatedById: adminUser.id
-    }
-  });
-  createdContractNos.push(otherContract.contractNo);
-  otherContractId = otherContract.id;
 });
 
 afterAll(async () => {
@@ -189,6 +158,11 @@ async function mkIssuedInvoice(contractId: string, amount: number, suffix: strin
   await invoiceAction(buildFinance(), inv.id, { action: "submit" });
   const invoiceNo20 = digits20(`${TAG}I${suffix}`);
   await invoiceAction(buildFinance(), inv.id, { action: "issue", invoiceNo: invoiceNo20, actualIssueDate: new Date().toISOString() });
+  // issue 会自动创建一笔 PLANNED 回款, 收集 id 便于 afterAll 清理
+  const planned = await prisma.payment.findFirst({
+    where: { invoiceId: inv.id, status: "PLANNED", deletedAt: null }
+  });
+  if (planned) createdPaymentIds.push(planned.id);
   return inv;
 }
 

@@ -231,6 +231,7 @@ model Invoice {
   applicantUserId    String
   financeUserId      String?
   reviewComment      String?
+  attachments        Json      @default("[]")
   linkedInvoiceId    String?   @unique
   linkedInvoice      Invoice?  @relation("InvoiceRedFlush", fields: [linkedInvoiceId], references: [id])
   redFlushInverse    Invoice?  @relation("InvoiceRedFlush")
@@ -305,7 +306,7 @@ model Payment {
 model Message {
   id             String    @id @default(cuid())
   receiverUserId String
-  type           String // CONTRACT_PENDING_REVIEW | CONTRACT_EXPIRING | INVOICE_OVERDUE_PAYMENT | PAYMENT_RECEIVED | PROJECT_DUE | CUSTOMER_INACTIVE
+  type           String // CONTRACT_PENDING_REVIEW | CONTRACT_EXPIRING | CONTRACT_APPROVED | CONTRACT_REJECTED | INVOICE_OVERDUE_PAYMENT | PAYMENT_RECEIVED | PROJECT_DUE | CUSTOMER_INACTIVE | CUSTOMER_STATUS_SUGGEST
   title          String
   content        String
   link           Json?

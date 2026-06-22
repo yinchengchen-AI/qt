@@ -2,7 +2,6 @@ import { PrismaClient } from "@prisma/client";
 import { PrismaPg } from "@prisma/adapter-pg";
 import mysql from "mysql2/promise";
 import { config } from "dotenv";
-import { writeFileSync } from "node:fs";
 config();
 
 const adapter = new PrismaPg(process.env.DATABASE_URL);

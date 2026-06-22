@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
 import ExcelJS from "exceljs";
+import { RESOURCE, ACTION } from "@/lib/permissions";
 
 describe("import parser (smoke)", () => {
   // 直接用 ExcelJS 写一个最小 xlsx,再过 parseImportFile
@@ -44,7 +45,7 @@ describe("import parser (smoke)", () => {
     // mock user (admin)
     const user = {
       id: "u1", employeeNo: "admin", name: "Admin", email: "a@a", roleCode: "ADMIN" as const,
-      permissions: [{ resource: "ASSET" as any, actions: ["CREATE", "READ", "UPDATE", "DELETE"] as any }]
+      permissions: [{ resource: RESOURCE.ASSET, actions: [ACTION.CREATE, ACTION.READ, ACTION.UPDATE, ACTION.DELETE] }]
     };
     const result = await parseImportFile(user, "LICENSE", buffer);
     expect(result.type).toBe("LICENSE");

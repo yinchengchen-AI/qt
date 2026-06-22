@@ -80,11 +80,43 @@ export async function createPayment(user: SessionUser, input: PaymentCreateInput
       where: { id: input.contractId, deletedAt: null, ...ownerEq(user) }
     });
     if (!contract) throw new ApiError(ERROR_CODES.NOT_FOUND, "合同不存在", 404);
+    if (contract.status !== "ACTIVE") {
+      throw new ApiError(ERROR_CODES.VALIDATION_FAILED, `合同 ${contract.contractNo} 当前状态 ${contract.status}，不可登记回款（须 ACTIVE）`, 422);
+    }
+    let inv: Awaited<ReturnType<typeof tx.invoice.findFirst>> = null;
     if (input.invoiceId) {
-      const inv = await tx.invoice.findFirst({ where: { id: input.invoiceId, deletedAt: null } });
-      if (!inv || inv.contractId !== input.contractId) throw new ApiError(ERROR_CODES.NOT_FOUND, "发票不属于该合同", 404);
+      inv = await tx.invoice.findFirst({ where: { id: input.invoiceId, deletedAt: null } });
+      if (!inv || inv.contractId !== input.contractId) {
+        throw new ApiError(ERROR_CODES.NOT_FOUND, "发票不属于该合同", 404);
+      }
+      if (inv.status !== "ISSUED") {
+        throw new ApiError(ERROR_CODES.VALIDATION_FAILED, "仅已开票（ISSUED）状态的发票可关联回款", 422);
+      }
     }
     const paymentNo = await nextBusinessNo("PAYMENT");
+    // 登记阶段即做金额前置校验, 避免"登记通过、确认时才报超额"
+    const TOL = new Prisma.Decimal("0.01");
+    const inputAmt = new Prisma.Decimal(input.amount.toString());
+    if (input.invoiceId && inv) {
+      const sum = await tx.payment.aggregate({
+        where: { invoiceId: inv.id, status: { in: ["CONFIRMED", "RECONCILED"] }, deletedAt: null },
+        _sum: { amount: true }
+      });
+      const sumAmt = new Prisma.Decimal(sum._sum.amount?.toString() ?? "0");
+      const invAmt = new Prisma.Decimal(inv.amount.toString());
+      if (sumAmt.plus(inputAmt).greaterThan(invAmt.plus(TOL))) {
+        throw new ApiError(ERROR_CODES.PAYMENT_OVER_INVOICE, "该发票累计回款将超过发票金额", 422);
+      }
+    }
+    const sumC = await tx.payment.aggregate({
+      where: { contractId: contract.id, status: { in: ["CONFIRMED", "RECONCILED"] }, deletedAt: null },
+      _sum: { amount: true }
+    });
+    const sumCAmt = new Prisma.Decimal(sumC._sum.amount?.toString() ?? "0");
+    const contractAmt = new Prisma.Decimal(contract.totalAmount.toString());
+    if (sumCAmt.plus(inputAmt).greaterThan(contractAmt.plus(TOL))) {
+      throw new ApiError(ERROR_CODES.PAYMENT_OVER_CONTRACT, "该合同累计回款将超过合同总额", 422);
+    }
     return tx.payment.create({
       data: {
         paymentNo,

@@ -14,6 +14,7 @@ import {
   customerInactiveJob,
   runContractExpiryJob,
 } from "@/server/jobs/runner";
+import { tickCustomerStatusSuggestions } from "@/server/jobs/customer-status-suggest";
 
 const jobEnum = z.enum([
   "run-all",
@@ -21,6 +22,7 @@ const jobEnum = z.enum([
   "invoice-overdue",
   "customer-inactive",
   "contract-expiry",
+  "customer-status-suggest",
 ]);
 
 export async function POST(
@@ -49,7 +51,9 @@ export async function POST(
               ? [await invoiceOverdueJob(now)]
               : parsed === "contract-expiry"
                 ? [await runContractExpiryJob(now)]
-                : [await customerInactiveJob(now)];
+                : parsed === "customer-status-suggest"
+                  ? [await tickCustomerStatusSuggestions(now)]
+                  : [await customerInactiveJob(now)];
       return ok({ at: now.toISOString(), results });
     } catch (e) {
       return err(e);

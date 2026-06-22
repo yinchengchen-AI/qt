@@ -6,6 +6,7 @@ import { emit } from "@/server/events/bus";
 import { runAssetExpiryJob } from "@/server/services/asset-expiry-job";
 import { runContractExpiryJob } from "@/server/services/contract";
 import { tickPublishableDraffts, tickCompletionCandidates } from "@/server/jobs/contract-automation";
+import { tickCustomerStatusSuggestions } from "@/server/jobs/customer-status-suggest";
 export { runContractExpiryJob };
 
 /**
@@ -34,7 +35,8 @@ export async function runAllJobs(now = new Date()): Promise<JobResult[]> {
     runAssetExpiryJob(now, admins),
     runContractExpiryJob(now),
     tickPublishableDraffts(),
-    tickCompletionCandidates(now)
+    tickCompletionCandidates(now),
+    tickCustomerStatusSuggestions(now)
   ]);
 }
 
@@ -130,13 +132,14 @@ export async function invoiceOverdueJob(now: Date, admins?: { id: string }[]): P
 }
 
 // CUSTOMER_INACTIVE: 90 天无 FollowUp
+// 终态客户(LOST/FROZEN)不再提醒跟进, 与 tickCustomerStatusSuggestions 候选集口径一致
 export async function customerInactiveJob(now: Date): Promise<JobResult> {
   const t0 = Date.now();
   const cutoff = new Date(now);
   cutoff.setDate(cutoff.getDate() - 90);
-  // 找出 ownerUserId 拥有的所有客户最近跟进时间
+  // 找出 ownerUserId 拥有的所有非终态客户最近跟进时间
   const customers = await prisma.customer.findMany({
-    where: { deletedAt: null, status: { not: "FROZEN" } },
+    where: { deletedAt: null, status: { notIn: ["LOST", "FROZEN"] } },
     include: { followUps: { orderBy: { followAt: "desc" }, take: 1 } }
   });
   let created = 0;

@@ -1,6 +1,6 @@
 "use client";
 import { ProCard, ProDescriptions } from "@ant-design/pro-components";
-import { Button, Space, Modal, Input } from "antd";
+import { Button, Space, Modal, Input, App as AntdApp } from "antd";
 import { useParams, useRouter } from "next/navigation";
 import type { AttachmentSnapshot, Invoice as InvoiceEntity } from "@/lib/types/entities";
 import useSWR from "swr";
@@ -24,6 +24,7 @@ export default function InvoiceDetailPage() {
   const id = String(params.id);
   const router = useRouter();
   const { data: session } = useSession();
+  const { message } = AntdApp.useApp();
   const { data, isLoading, mutate } = useSWR<InvoiceEntity>(`/api/invoices/${id}`);
   const invoice = data;
   const [reason, setReason] = useState("");
@@ -49,7 +50,7 @@ export default function InvoiceDetailPage() {
     title: "开票(财务)",
     content: <div><div>发票号(电子发票 20 位数字):</div><Input value={invoiceNo} onChange={(e) => setInvoiceNo(e.target.value)} placeholder="如 01100210031112345678" /></div>,
     onOk: async () => {
-      if (!invoiceNo) { Modal.destroyAll(); return; }
+      if (!invoiceNo) { message.warning("请输入发票号"); return; }
       await run("issue", { invoiceNo, actualIssueDate: new Date().toISOString() });
       setInvoiceNo("");
     }
@@ -79,7 +80,7 @@ export default function InvoiceDetailPage() {
         actions={
           <Space wrap>
             <Button key="pdf" icon={<FilePdfOutlined />} onClick={() => openPrintWindow(`/api/invoices/${id}/pdf`)}>导出 PDF</Button>
-            {status === "DRAFT" && <Button type="primary" onClick={() => run("submit")}>提交</Button>}
+            {status === "DRAFT" && isFinance && <Button type="primary" onClick={() => run("submit")}>提交</Button>}
             {status === "PENDING_FINANCE" && isFinance && (
               <>
                 <Button danger onClick={askReject}>驳回</Button>

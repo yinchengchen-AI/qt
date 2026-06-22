@@ -110,9 +110,7 @@ export default function NewPaymentPage() {
                   const j = await r.json();
                   if (j.code !== 0) return [];
                   return (j.data.list as Contract[])
-                    .filter((c) =>
-                      ["ACTIVE", "CLOSED"].includes(c.status)
-                    )
+                    .filter((c) => c.status === "ACTIVE")
                     .map((c) => ({
                       value: c.id,
                       label: `${c.contractNo} · ${c.title}`,

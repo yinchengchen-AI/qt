@@ -10,7 +10,6 @@ import { PageHeader } from "@/components/page-header";
 import { StatGrid, type StatItem } from "@/components/stat-grid";
 import { EmptyState } from "@/components/empty-state";
 import { formatCurrency } from "@/lib/format";
-import { formatStatus } from "@/lib/status";
 import { useResponsive } from "@/lib/use-breakpoint";
 
 type Series = { month: string; contractAmount: number; invoiceAmount: number; paymentAmount: number }[];

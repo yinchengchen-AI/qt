@@ -128,107 +128,79 @@ describe("渲染 4 处全部拼接 district (省 / 市 / 区)", () => {
 });
 
 describe("表单 4 级: onChange 写 district, 编辑预填走 4 级", () => {
-  it("新建页 onChange 写 district / town, 并把级联名 join 到 address 自动填充", () => {
-    const src = read("app/(app)/customers/new/page.tsx");
+  // 新建/编辑页已抽成 CustomerForm 组件, 表单行为集中在组件内
+  const formSrc = () => read("components/customers/customer-form.tsx");
+
+  it("CustomerForm onChange 写 district / town, 并把级联名 join 到 address 自动填充", () => {
+    const src = formSrc();
     expect(src).toMatch(/district:\s*labels\[2\]\s*\|\|\s*""/);
     expect(src).toMatch(/town:\s*labels\[3\]\s*\|\|\s*""/);
     // address 自动填充级联名 (用户可继续追加门牌号 / 楼层)
     expect(src).toMatch(/address:\s*labels\.filter\(Boolean\)\.join\(""\)/);
   });
 
-  it("新建页用 ZHEJIANG_DIVISIONS 限制级联选项到浙江省", () => {
-    const src = read("app/(app)/customers/new/page.tsx");
+  it("CustomerForm 用 ZHEJIANG_DIVISIONS 限制级联选项到浙江省", () => {
+    const src = formSrc();
     expect(src).toMatch(/import\s*\{[^}]*ZHEJIANG_DIVISIONS[^}]*\}\s*from\s*"@\/lib\/china-divisions"/);
     expect(src).toMatch(/<LocationCascader[\s\S]*?options=\{ZHEJIANG_DIVISIONS\}/);
   });
 
-  it("编辑页 onChange 写 district / town, address 自动填充", () => {
-    const src = read("app/(app)/customers/[id]/edit/page.tsx");
-    expect(src).toMatch(/district:\s*labels\[2\]\s*\|\|\s*""/);
-    expect(src).toMatch(/town:\s*labels\[3\]\s*\|\|\s*""/);
-    expect(src).toMatch(/address:\s*labels\.filter\(Boolean\)\.join\(""\)/);
-  });
-
-  it("编辑页 onChange 把 value 路径 setCascadeValue, 同步 Cascader 受控显示", () => {
-    const src = read("app/(app)/customers/[id]/edit/page.tsx");
+  it("CustomerForm onChange 把 value 路径 setCascadeValue, 同步 Cascader 受控显示", () => {
+    const src = formSrc();
     // 受控用法的 onChange 必须回写 cascadeValue, 不然 React 重渲染时 Cascader 选中显示
     // 会被 value prop 拉回初始 codes, 表现为"选完不显示"
-    // 形参接 (value, labels) + 体内调 setCascadeValue(value)
-    expect(src).toMatch(/onChange=\{\(value,\s*labels\)\s*=>\s*\{/);
-    expect(src).toMatch(/setCascadeValue\(value\)/);
-  });
-
-  it("编辑页用 ZHEJIANG_DIVISIONS 限制级联选项, useEffect 也从浙江子树预填", () => {
-    const src = read("app/(app)/customers/[id]/edit/page.tsx");
-    expect(src).toMatch(/import\s*\{[^}]*ZHEJIANG_DIVISIONS[^}]*\}\s*from\s*"@\/lib\/china-divisions"/);
-    expect(src).toMatch(/<LocationCascader[\s\S]*?options=\{ZHEJIANG_DIVISIONS\}/);
-    // useEffect 改用 ZHEJIANG_DIVISIONS, 不再用全量 DIVISIONS
-    const effect = src.match(
-      /useEffect\(\(\)\s*=>\s*\{[\s\S]*?setCascadeValue\(codes\);\s*\},?\s*\[data\]\);/
+    expect(src).toMatch(/onChange=\{handleCascadeChange\}/);
+    const handler = src.match(
+      /const handleCascadeChange = \(value: string\[\], labels: string\[\]\) => \{[\s\S]*?\};/
     );
-    expect(effect, "应能定位预填 useEffect").toBeTruthy();
-    expect(effect![0]).toMatch(/ZHEJIANG_DIVISIONS/);
+    expect(handler, "应能定位 handleCascadeChange 函数").toBeTruthy();
+    expect(handler![0]).toMatch(/setCascadeValue\(value\)/);
   });
 
-  it("编辑页 useEffect 预填走 4 级 (province/city/district/town)", () => {
-    const src = read("app/(app)/customers/[id]/edit/page.tsx");
+  it("CustomerForm useEffect 从浙江子树预填, 并走 4 级 (province/city/district/town)", () => {
+    const src = formSrc();
     const effect = src.match(
-      /useEffect\(\(\)\s*=>\s*\{[\s\S]*?for\s*\(\s*const\s+label\s+of\s+\[data\.[^\]]+\][\s\S]*?setCascadeValue\(codes\);\s*\},?\s*\[data\]\);/
+      /useEffect\(\(\)\s*=>\s*\{[\s\S]*?for\s*\(\s*const\s+label\s+of\s+\[initialValues\.[^\]]+\][\s\S]*?setCascadeValue\(codes\);\s*\},?\s*\[initialValues\]\);/
     );
     expect(effect, "应能定位 4 级预填 useEffect").toBeTruthy();
-    expect(effect![0]).toMatch(/data\.district/);
-    expect(effect![0]).toMatch(/data\.town/);
+    expect(effect![0]).toMatch(/ZHEJIANG_DIVISIONS/);
+    expect(effect![0]).toMatch(/initialValues\.district/);
+    expect(effect![0]).toMatch(/initialValues\.town/);
   });
 
-  it("两页都加 district 的 Form.Item (noStyle hidden)", () => {
-    const newSrc = read("app/(app)/customers/new/page.tsx");
-    const editSrc = read("app/(app)/customers/[id]/edit/page.tsx");
-    expect(newSrc).toMatch(/<Form\.Item\s+name="district"\s+noStyle>/);
-    expect(editSrc).toMatch(/<Form\.Item\s+name="district"\s+noStyle>/);
-  });
-
-  it("两页都不再有 visible 所在镇街控件 (ProFormText town), 仅保留 hidden Form.Item 让 onChange 写入", () => {
-    const newSrc = read("app/(app)/customers/new/page.tsx");
-    const editSrc = read("app/(app)/customers/[id]/edit/page.tsx");
-    // 收集所有 ProFormText 闭标签块, 断言没有 name="town" 的 (避免与 Form.Item name="town" 注释误撞)
-    const collectProFormText = (src: string) => src.match(/<ProFormText[\s\S]*?\/>/g) ?? [];
+  it("CustomerForm 有 district / town 的 hidden Form.Item", () => {
+    const src = formSrc();
+    expect(src).toMatch(/<Form\.Item\s+name="district"\s+noStyle>/);
+    expect(src).toMatch(/<Form\.Item\s+name="town"\s+noStyle>/);
+    // 收集所有 ProFormText 闭标签块, 断言没有 name="town" 的可见控件
+    const proFormTexts = src.match(/<ProFormText[\s\S]*?\/>/g) ?? [];
     expect(
-      collectProFormText(newSrc).some((b) => /name="town"/.test(b)),
-      "new 页 ProFormText 中不应有 name=\"town\" 的可见控件"
+      proFormTexts.some((b) => /name="town"/.test(b)),
+      "CustomerForm ProFormText 中不应有 name=\"town\" 的可见控件"
     ).toBe(false);
-    expect(
-      collectProFormText(editSrc).some((b) => /name="town"/.test(b)),
-      "edit 页 ProFormText 中不应有 name=\"town\" 的可见控件"
-    ).toBe(false);
-    // 仍保留 hidden Form.Item 让 onChange 写库
-    expect(newSrc).toMatch(/<Form\.Item\s+name="town"\s+noStyle>/);
-    expect(editSrc).toMatch(/<Form\.Item\s+name="town"\s+noStyle>/);
   });
 
-  it("两页把所在地 cascader + 详细地址 同行排版 (FormGrid columns=2), 收紧间距", () => {
-    const newSrc = read("app/(app)/customers/new/page.tsx");
-    const editSrc = read("app/(app)/customers/[id]/edit/page.tsx");
+  it("CustomerForm 把所在地 cascader + 详细地址 同行排版 (FormGrid columns=2)", () => {
+    const src = formSrc();
     // 截取 "位置与联系" section 内的 FormGrid, 找同时含 LocationCascader 和 name="address" 的那一格
-    const pickLocationGrid = (src: string) => {
-      const sec = src.match(/<FormSection title="\u4f4d\u7f6e\u4e0e\u8054\u7cfb"[\s\S]*?(?=<FormSection[\s>]|SubmitBar|\n\s*<\/FormCard)/);
-      if (!sec) return null;
-      const grids = sec[0].match(/<FormGrid columns=\{2\}>[\s\S]*?<\/FormGrid>/g) ?? [];
-      return grids.find((g) => /<LocationCascader/.test(g) && /name="address"/.test(g)) ?? null;
-    };
-    expect(pickLocationGrid(newSrc), "new 页位置 section 内应有一个 FormGrid 同时装下 cascader 和 详细地址").toBeTruthy();
-    expect(pickLocationGrid(editSrc), "edit 页位置 section 内应有一个 FormGrid 同时装下 cascader 和 详细地址").toBeTruthy();
-    // 之前单独一行的所在地 div 已被 FormGrid 替代 — 不再有大 marginBottom
-    expect(newSrc).not.toMatch(/\{ marginBottom: 16 \}[\s\S]*?<LocationCascader/);
+    const sec = src.match(/<FormSection title="\u4f4d\u7f6e\u4e0e\u8054\u7cfb"[\s\S]*?(?=<FormSection[\s>]|SubmitBar|\n\s*<\/FormCard)/);
+    expect(sec, "应能定位位置与联系 section").toBeTruthy();
+    const grids = sec![0].match(/<FormGrid columns=\{2\}>[\s\S]*?<\/FormGrid>/g) ?? [];
+    const locationGrid = grids.find((g) => /<LocationCascader/.test(g) && /name="address"/.test(g));
+    expect(locationGrid, "位置 section 内应有一个 FormGrid 同时装下 cascader 和 详细地址").toBeTruthy();
   });
 
-  it("编辑页 initialValues 含 district", () => {
+  it("编辑页把 initialValues 透传给 CustomerForm", () => {
     const src = read("app/(app)/customers/[id]/edit/page.tsx");
-    const iv = src.match(/initialValues=\{\{[\s\S]*?\}\}/);
-    expect(iv, "应能定位 initialValues").toBeTruthy();
-    expect(iv![0]).toMatch(/district:\s*data\.district/);
+    expect(src).toMatch(/initialValues=\{data\}/);
   });
 
-
+  it("新建/编辑页都使用 CustomerForm 组件", () => {
+    const newSrc = read("app/(app)/customers/new/page.tsx");
+    const editSrc = read("app/(app)/customers/[id]/edit/page.tsx");
+    expect(newSrc).toMatch(/<CustomerForm[\s\S]*?mode="create"/);
+    expect(editSrc).toMatch(/<CustomerForm[\s\S]*?mode="edit"/);
+  });
 });
 
 describe("ZHEJIANG_DIVISIONS / LocationCascader.options 浙江省限制", () => {

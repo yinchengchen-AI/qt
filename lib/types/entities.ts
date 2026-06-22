@@ -1,4 +1,4 @@
-﻿// 详情页的实体类型。字段名跟 list 路由 / detail 路由的 Prisma select 保持一致。
+// 详情页的实体类型。字段名跟 list 路由 / detail 路由的 Prisma select 保持一致。
 // 这里只覆盖 ProDescriptions 实际访问的字段；其他字段以 Record<string, unknown> 兜底。
 
 export type AttachmentSnapshot = {
@@ -94,7 +94,6 @@ export type Invoice = {
   bankName: string | null;
   bankAccount: string | null;
   address: string | null;
-  town: string | null;
   phone: string | null;
   remark: string | null;
   status: string;
@@ -134,7 +133,6 @@ export type Payment = {
   recorderUserId: string;
   reconcileUserId: string | null;
   reconciledAt: string | null;
-  attachments: AttachmentSnapshot[];
   invoice: Invoice | null;
   // 关联合同"上下文"(后端 getPayment / listPayments 已带出); 详情页"关联合同"展示合同号/标题/客户/服务类型/金额
   // 列表场景合同号/标题/服务类型用于"合同"列渲染; 不含 deliverables — 交付物仅在合同管理侧展示

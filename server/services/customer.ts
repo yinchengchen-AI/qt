@@ -6,7 +6,8 @@ import { nextBusinessNo } from "@/lib/sequence";
 import { requirePermission, RESOURCE, ACTION } from "@/lib/permissions";
 import type { CustomerCreateInput, CustomerUpdateInput, FollowUpCreateInput } from "@/lib/validators/customer";
 import { buildCustomerUpdateData } from "@/lib/customer-update";
-import type { Prisma } from "@prisma/client";
+import { assertCanTransition } from "@/server/services/customer-status";
+import { Prisma } from "@prisma/client";
 import { audit } from "@/server/audit";
 import { rlsTransaction } from "@/lib/rls";
 import { ownerEq, ownerViaContract, parseStatusList } from "@/lib/ownership";
@@ -31,7 +32,8 @@ export async function listCustomers(
           OR: [
             { name: { contains: keyword, mode: "insensitive" } },
             { shortName: { contains: keyword, mode: "insensitive" } },
-            { code: { contains: keyword, mode: "insensitive" } }
+            { code: { contains: keyword, mode: "insensitive" } },
+            { contactPhone: { contains: keyword, mode: "insensitive" } }
           ]
         }
       : {})
@@ -83,48 +85,103 @@ export async function createCustomer(user: SessionUser, input: CustomerCreateInp
 
 export async function updateCustomer(user: SessionUser, id: string, input: CustomerUpdateInput) {
   requirePermission(user.roleCode, RESOURCE.CUSTOMER, ACTION.UPDATE);
-  const existing = await prisma.customer.findFirst({ where: { id, deletedAt: null, ...ownerEq(user) } });
-  if (!existing) throw new ApiError(ERROR_CODES.NOT_FOUND, "客户不存在", 404);
-  if (
-    input.ownerUserId &&
-    input.ownerUserId !== existing.ownerUserId &&
-    user.roleCode !== "ADMIN"
-  ) {
-    throw new ApiError(ERROR_CODES.FORBIDDEN, "仅管理员可转移客户负责人", 403);
-  }
-  return prisma.customer.update({
-    where: { id },
-    data: buildCustomerUpdateData(input, user.id)
+  return prisma.$transaction(async (tx) => {
+    const existing = await tx.customer.findFirst({ where: { id, deletedAt: null, ...ownerEq(user) } });
+    if (!existing) throw new ApiError(ERROR_CODES.NOT_FOUND, "客户不存在", 404);
+    if (
+      input.ownerUserId &&
+      input.ownerUserId !== existing.ownerUserId &&
+      user.roleCode !== "ADMIN"
+    ) {
+      throw new ApiError(ERROR_CODES.FORBIDDEN, "仅管理员可转移客户负责人", 403);
+    }
+    return tx.customer.update({
+      where: { id },
+      data: buildCustomerUpdateData(input, user.id)
+    });
   });
 }
 
-// R-02：客户 → SIGNED 必须存在至少一份 EFFECTIVE/EXECUTING/COMPLETED 合同
-export async function changeCustomerStatus(user: SessionUser, id: string, status: string) {
+// 客户状态机迁移入口
+// 顺序: 行锁 + assertCanTransition + R-02 / R-13 业务校验 + 写库 + audit
+// 事务隔离级别: Serializable (R-16); 行锁: SELECT ... FOR UPDATE 防止并发 PATCH 丢更新
+export async function changeCustomerStatus(
+  user: SessionUser,
+  id: string,
+  status: string,
+  reason?: string
+) {
   requirePermission(user.roleCode, RESOURCE.CUSTOMER, ACTION.UPDATE);
-  return prisma.$transaction(async (tx) => {
-    const existing = await tx.customer.findFirst({
-      where: { id, deletedAt: null, ...ownerEq(user) }
-    });
-    if (!existing) throw new ApiError(ERROR_CODES.NOT_FOUND, "客户不存在", 404);
-    if (status === "SIGNED") {
-      const cnt = await tx.contract.count({
-        where: { customerId: id, status: { in: ["EFFECTIVE", "EXECUTING", "COMPLETED"] } }
-      });
-      if (cnt === 0) {
-        throw new ApiError(ERROR_CODES.CUSTOMER_STATUS_INVALID, "客户需至少一份生效中的合同", 422);
+  return prisma.$transaction(
+    async (tx) => {
+      // 行锁: 把目标行锁住, 防止两个并发 PATCH 抢同一行导致丢更新
+      // Prisma 不直接暴露 FOR UPDATE, 用 $queryRaw 配合 Prisma.sql 模板保证参数化
+      // SALES 角色只在有权限的行上加锁, 避免锁到无权访问的数据
+      const ownerClause = user.roleCode === "SALES"
+        ? Prisma.sql` AND "ownerUserId" = ${user.id}`
+        : Prisma.sql``;
+      const locked = await tx.$queryRaw<Array<{ id: string }>>(
+        Prisma.sql`SELECT id FROM "Customer" WHERE id = ${id}${ownerClause} FOR UPDATE`
+      );
+      if (locked.length === 0) {
+        throw new ApiError(ERROR_CODES.NOT_FOUND, "客户不存在", 404);
       }
-    }
-    // R-13：FROZEN 检查
-    if (status === "FROZEN") {
-      const activeContract = await tx.contract.count({
-        where: { customerId: id, status: { in: ["EFFECTIVE", "EXECUTING"] } }
+      const existing = await tx.customer.findFirst({
+        where: { id, deletedAt: null, ...ownerEq(user) },
+        select: { id: true, status: true, name: true, ownerUserId: true }
       });
-      if (activeContract > 0) {
-        throw new ApiError(ERROR_CODES.CUSTOMER_HAS_ACTIVE_CONTRACT, "客户存在进行中合同，无法冻结", 422);
+      if (!existing) throw new ApiError(ERROR_CODES.NOT_FOUND, "客户不存在", 404);
+      // 1) 迁移合法性 (from -> to 是否在迁移表内)
+      assertCanTransition(existing.status, status);
+      // 1.5) 终态变更必填 reason: LOST / FROZEN 涉及"为什么"信息, 不允许无原因写入
+      //  给报表统计和审计追溯用; 前端 Popover/编辑页会在用户点击这两个目标时弹出原因输入
+      if ((status === "LOST" || status === "FROZEN") && !reason) {
+        throw new ApiError(
+          ERROR_CODES.CUSTOMER_STATUS_REASON_REQUIRED,
+          `客户状态变更为 ${status} 需要填写原因`,
+          422
+        );
       }
-    }
-    return tx.customer.update({ where: { id }, data: { status, updatedById: user.id } });
-  });
+      // 2) R-02: SIGNED 需至少 1 份生效中(ACTIVE)合同
+      if (status === "SIGNED") {
+        const cnt = await tx.contract.count({
+          where: { customerId: id, status: "ACTIVE" }
+        });
+        if (cnt === 0) {
+          throw new ApiError(ERROR_CODES.CUSTOMER_STATUS_INVALID, "客户需至少一份生效中的合同", 422);
+        }
+      }
+      // 3) R-13: FROZEN 检查 — 先看活跃合同, 再看未对账回款 (顺序对应错误码提示)
+      if (status === "FROZEN") {
+        const activeContract = await tx.contract.count({
+          where: { customerId: id, status: { in: ["ACTIVE"] } }
+        });
+        if (activeContract > 0) {
+          throw new ApiError(ERROR_CODES.CUSTOMER_HAS_ACTIVE_CONTRACT, "客户存在进行中合同，无法冻结", 422);
+        }
+        // 补齐设计文档: 冻结前需无 PLANNED/CONFIRMED 回款
+        const activePayment = await tx.payment.count({
+          where: { customerId: id, status: { in: ["PLANNED", "CONFIRMED"] }, deletedAt: null }
+        });
+        if (activePayment > 0) {
+          throw new ApiError(ERROR_CODES.CUSTOMER_FROZEN_ACTIVE_PAYMENT, "客户存在未对账回款，无法冻结", 422);
+        }
+      }
+      // 4) 写库
+      const updated = await tx.customer.update({ where: { id }, data: { status, updatedById: user.id } });
+      // 5) 审计
+      await audit(tx, {
+        actorId: user.id,
+        action: "CUSTOMER_STATUS_CHANGE",
+        entity: "Customer",
+        entityId: id,
+        before: { status: existing.status },
+        after: { status, ...(reason ? { reason } : {}) }
+      });
+      return updated;
+    },
+    { isolationLevel: Prisma.TransactionIsolationLevel.Serializable, timeout: 10_000 }
+  );
 }
 
 export async function addFollowUp(user: SessionUser, customerId: string, input: FollowUpCreateInput) {
@@ -165,8 +222,8 @@ export async function softDeleteCustomer(user: SessionUser, id: string) {
   return prisma.$transaction(async (tx) => {
     const existing = await tx.customer.findFirst({ where: { id, deletedAt: null, ...ownerEq(user) } });
     if (!existing) throw new ApiError(ERROR_CODES.NOT_FOUND, "客户不存在", 404);
-    // R-14：若有 ACTIVE 合同（含 EFFECTIVE/EXECUTING）禁止删除
-    const active = await tx.contract.count({ where: { customerId: id, status: { in: ["EFFECTIVE", "EXECUTING"] }, deletedAt: null } });
+    // R-14: 若有 ACTIVE 合同 (含历史 CLOSED 不在禁删范围) 禁止删除
+    const active = await tx.contract.count({ where: { customerId: id, status: { in: ["ACTIVE"] }, deletedAt: null } });
     if (active > 0) throw new ApiError(ERROR_CODES.ENTITY_IMMUTABLE, "客户存在进行中合同，不可删除", 403);
     const before = { status: existing.status };
     const r = await tx.customer.update({ where: { id }, data: { deletedAt: new Date(), updatedById: user.id } });

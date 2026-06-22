@@ -26,16 +26,13 @@ import {
   STATE_TO_CONTRACT_STATUS,
   STATE_TO_PROJECT_STATUS,
   ENABLED_TO_USER_STATUS,
-  LEGACY_DEFAULT_PASSWORD,
   IMPORTER_EMPLOYEE_NO
 } from "./lib/mappings.mjs";
 
 import {
   calcInvoiceTax,
   toDate,
-  diffMs,
   urlToAttachmentJson,
-  isKeepableContractNo,
   dedupContractNos,
   dedupCustomerNames,
   areaToCode,

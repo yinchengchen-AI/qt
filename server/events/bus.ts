@@ -16,6 +16,7 @@ export type DomainEventType =
   | "PAYMENT_RECEIVED"
   | "PROJECT_DUE"
   | "CUSTOMER_INACTIVE"
+  | "CUSTOMER_STATUS_SUGGEST"
   | "WORKFLOW_TASK_ASSIGNED"
   | "WORKFLOW_REVIEW_REQUESTED"
   | "ASSET_EXPIRING";
@@ -115,6 +116,13 @@ function buildMessage(uid: string, ev: DomainEvent): ResolvedMessage {
         title: `客户 ${p.customerName} 已 ${p.daysInactive} 天未跟进`,
         content: `请尽快联系客户。`,
         link: { kind: "customer", id: p.customerId }
+      };
+    case "CUSTOMER_STATUS_SUGGEST":
+      return {
+        receiverUserId: uid,
+        title: `建议将客户 ${p.customerName} 状态变更为 ${p.suggestedStatusLabel ?? p.suggestedStatus}`,
+        content: `原因: ${p.reason ?? "-"}\n点击查看详情并确认。`,
+        link: { kind: "customer", id: p.customerId, suggest: p.suggestedStatus }
       };
     case "WORKFLOW_TASK_ASSIGNED":
       return {

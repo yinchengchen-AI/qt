@@ -26,7 +26,10 @@ export const env = createEnv({
     MINIO_SECRET_KEY: z.string().min(1).optional(),
     MINIO_BUCKET: z.string().min(1).optional(),
     // 用于在通知/审计里拼出原始 URL;可省略(默认走 MINIO_ENDPOINT:PORT)
-    MINIO_PUBLIC_BASE_URL: z.string().url().optional()
+    MINIO_PUBLIC_BASE_URL: z.string().url().optional(),
+    // 合同自动完结阈值:开票金额 / 合同总额 >= 该比例时 ACTIVE → CLOSED
+    // 必须在 (0, 1] 之间,防止 0 或非法值导致批量误关闭
+    CONTRACT_COMPLETION_INVOICE_RATIO: z.coerce.number().min(0.01).max(1).default(0.95)
   },
   client: {},
   runtimeEnv: {
@@ -43,7 +46,8 @@ export const env = createEnv({
     MINIO_ACCESS_KEY: process.env.MINIO_ACCESS_KEY,
     MINIO_SECRET_KEY: process.env.MINIO_SECRET_KEY,
     MINIO_BUCKET: process.env.MINIO_BUCKET,
-    MINIO_PUBLIC_BASE_URL: process.env.MINIO_PUBLIC_BASE_URL
+    MINIO_PUBLIC_BASE_URL: process.env.MINIO_PUBLIC_BASE_URL,
+    CONTRACT_COMPLETION_INVOICE_RATIO: process.env.CONTRACT_COMPLETION_INVOICE_RATIO
   },
   emptyStringAsUndefined: true
 });

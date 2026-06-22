@@ -35,12 +35,14 @@ export async function PATCH(
       const { id } = await params;
       const body = await req.json();
       const input = customerUpdateSchema.parse(body);
-      // status 走 changeCustomerStatus, 内部会校验 SIGNED/FROZEN 的合同约束并写 updatedById
-      if (input.status !== undefined) {
-        await changeCustomerStatus(user, id, input.status);
+      // 先加载现有客户, 状态未变化时不要把 status 传给 changeCustomerStatus
+      // (状态机把同状态写入视为非法, 避免 noop 绕过审计)
+      const existing = await getCustomer(user, id);
+      if (input.status !== undefined && input.status !== existing.status) {
+        await changeCustomerStatus(user, id, input.status, input.reason);
       }
       // 剩余字段走 updateCustomer; 此时 status 已单独处理, 避免被 updateCustomer 覆盖
-      const { status: _status, ...rest } = input;
+      const { status: _status, reason: _reason, ...rest } = input;
       const data = await updateCustomer(user, id, rest);
       return ok(data);
     } catch (e) {

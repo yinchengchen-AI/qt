@@ -98,12 +98,6 @@ export async function GET(
             label: "财务审核人",
             value: finance ? `${finance.name} (${finance.employeeNo})` : "—",
           },
-          {
-            label: "审核时间",
-            value: (inv as any).reviewedAt
-              ? new Date((inv as any).reviewedAt).toLocaleString("zh-CN")
-              : "—",
-          },
           { label: "审核意见", value: inv.reviewComment ?? "—" },
           {
             label: "抬头类型",

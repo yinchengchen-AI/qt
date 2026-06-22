@@ -1,6 +1,6 @@
 "use client";
 import { ProCard, ProDescriptions, ProTable } from "@ant-design/pro-components";
-import { Alert, App as AntdApp, Button, Card, Col, Divider, Empty, Radio, Row, Space, Statistic, Tabs, Tag, Typography } from "antd";
+import { Alert, App as AntdApp, Button, Card, Col, Empty, Radio, Row, Space, Statistic, Tabs, Tag } from "antd";
 import { CloudUploadOutlined, DeleteOutlined, FilePdfOutlined } from "@ant-design/icons";
 import { useParams, useRouter } from "next/navigation";
 import type { Contract as ContractEntity } from "@/lib/types/entities";
@@ -23,8 +23,6 @@ import { useUserName } from "@/lib/user-lookup";
 import { PAYMENT_METHOD_MAP, SERVICE_TYPE_MAP, REVIEW_ACTION_MAP, BILLING_STATUS_MAP } from "@/lib/enum-maps";
 import { useResponsive } from "@/lib/use-breakpoint";
 import { useT } from "@/lib/i18n";
-
-const { Text } = Typography;
 
 const REVIEW_ACTION_TONE: Record<string, string> = {
   // 旧
@@ -292,8 +290,11 @@ const handleDelete = () => {
       onOk: handleClose
     });
   };
-  const isOwnerOrAdmin = (session?.user as { roleCode?: string })?.roleCode === "ADMIN";
-  const allowed = isOwnerOrAdmin ? can : [];
+  const me = (session?.user as { id?: string } | undefined)?.id;
+  const isAdmin = (session?.user as { roleCode?: string })?.roleCode === "ADMIN";
+  const canManageAttachments =
+    isAdmin || (!!me && (contract.ownerUserId === me || contract.signerId === me));
+  const allowed = isAdmin ? can : [];
 
   const tabItems = [
     {
@@ -450,17 +451,18 @@ const handleDelete = () => {
       children: (
         <ProCard>
           <AttachmentList
-              items={(contract.attachments ?? []).map((a) => ({
-                id: a.id,
-                name: a.name,
-                mimeType: a.mimeType,
-                size: a.size,
-                // 历史数据 url 可能是 /upload/xxx 相对路径, 传 legacyUrl 让附件列表显示"历史链接已失效"标签
-                // (当前 DB 已无 legacy 条目, 此处为防御性: 若以后又混进 legacy 数据, 至少不再让用户点坏按钮)
-                legacyUrl: typeof a.url === "string" ? a.url : undefined
-              }))}
-              allowDelete={isOwnerOrAdmin}
-            />
+            items={(contract.attachments ?? []).map((a) => ({
+              id: a.id,
+              name: a.name,
+              mimeType: a.mimeType,
+              size: a.size,
+              // 历史数据 url 可能是 /upload/xxx 相对路径, 传 legacyUrl 让附件列表显示"历史链接已失效"标签
+              // (当前 DB 已无 legacy 条目, 此处为防御性: 若以后又混进 legacy 数据, 至少不再让用户点坏按钮)
+              legacyUrl: typeof a.url === "string" ? a.url : undefined
+            }))}
+            allowDelete={canManageAttachments}
+            onDeleted={() => mutate()}
+          />
         </ProCard>
       )
     }
@@ -476,7 +478,7 @@ const handleDelete = () => {
         actions={
           <Space wrap>
             <Button key="pdf" icon={<FilePdfOutlined />} onClick={() => openPrintWindow(`/api/contracts/${id}/pdf`)}>导出 PDF</Button>
-            {(isOwnerOrAdmin || contract.status === "DRAFT") && (
+            {(isAdmin || contract.status === "DRAFT") && (
               <Button onClick={() => router.push(`/contracts/${id}/edit`)}>编辑</Button>
             )}
             {allowed.map((a) => (
@@ -488,7 +490,7 @@ const handleDelete = () => {
                 {a === "publish" ? "发布" : a === "close" ? "完结" : a}
               </Button>
             ))}
-            {isOwnerOrAdmin && (
+            {isAdmin && (
               <Button danger icon={<DeleteOutlined />} onClick={handleDelete}>
                 删除
               </Button>

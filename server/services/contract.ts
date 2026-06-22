@@ -10,6 +10,8 @@ import type { BillingStatus } from "@/types/enums";
 import { Prisma } from "@prisma/client";
 import { audit } from "@/server/audit";
 import { emit, listAdminUserIds } from "@/server/events/bus";
+import { SYSTEM_USER_ID } from "@/lib/system";
+import { env } from "@/lib/env";
 
 // 把前端传的 attachment 快照(id+name+...)用 DB 真实记录重写一遍,防 spoofing
 // 同时在事务内把 presign 时落 tmp/ 的附件绑到新合同 contractId
@@ -33,7 +35,7 @@ async function resolveAttachmentSnapshots(
     const ids = [...new Set(realEntries.map((r) => r.id))];
     const found = await tx.attachment.findMany({
       where: { id: { in: ids }, deletedAt: null },
-      select: { id: true, originalName: true, mimeType: true, size: true, uploadedById: true, uploadedAt: true, contractId: true, invoiceId: true }
+      select: { id: true, originalName: true, mimeType: true, size: true, uploadedById: true, uploadedAt: true, contractId: true, invoiceId: true, assetId: true }
     });
     if (found.length !== ids.length) {
       throw new ApiError(ERROR_CODES.VALIDATION_FAILED, "附件 id 无效或已删除", 400);
@@ -49,12 +51,12 @@ async function resolveAttachmentSnapshots(
         data: { contractId }
       });
     }
-    // 已绑本 contract:放过;已绑其它 contract 或 任意 invoice:拒绝
+    // 已绑本 contract:放过;已绑其它 contract / 任意 invoice / 任意 asset:拒绝
     const others = found.filter((a) =>
-      (a.contractId && a.contractId !== contractId) || a.invoiceId
+      (a.contractId && a.contractId !== contractId) || a.invoiceId || a.assetId
     );
     if (others.length > 0) {
-      throw new ApiError(ERROR_CODES.FORBIDDEN, "部分附件已绑定到其它合同/发票", 403);
+      throw new ApiError(ERROR_CODES.FORBIDDEN, "部分附件已绑定到其它合同/发票/资产", 403);
     }
     resolvedFromDb.push(...found.map((a) => ({
       id: a.id,
@@ -83,6 +85,17 @@ function calcTotals(totalAmount: number, taxRate: number) {
 
 function round2(v: number) {
   return Math.round(v * 100) / 100;
+}
+
+// 校验起止日期:结束日期必须严格晚于开始日期
+function assertDateOrder(start?: string | Date | null, end?: string | Date | null, label = "服务"): void {
+  if (!start || !end) return;
+  const s = new Date(start);
+  const e = new Date(end);
+  if (Number.isNaN(s.getTime()) || Number.isNaN(e.getTime())) return;
+  if (e.getTime() <= s.getTime()) {
+    throw new ApiError(ERROR_CODES.VALIDATION_FAILED, `${label}止期必须晚于起期`, 400);
+  }
 }
 
 export async function listContracts(
@@ -233,9 +246,7 @@ export async function createContract(user: SessionUser, input: ContractCreateInp
   // 显式传入时同样要目标用户 ACTIVE, 防止前端传错 id 静默落到一个停用员工头上.
   const ownerUserId = input.ownerUserId ?? customer.ownerUserId;
   await assertActiveUser(ownerUserId, "负责人");
-  if (new Date(input.endDate) < new Date(input.startDate)) {
-    throw new ApiError(ERROR_CODES.VALIDATION_FAILED, "结束日期不能早于开始日期", 400);
-  }
+  assertDateOrder(input.startDate, input.endDate);
   // 合同编号唯一性:DB 上是部分唯一索引 WHERE "deletedAt" IS NULL, 软删合同不阻塞同号新建.
   // 活动行唯一性在这里显式预校验, 提前抛 422; 事务内 create 仍可能因并发竞态触发 P2002, 在下面 catch 兜底.
   const existingNo = await prisma.contract.findFirst({ where: { contractNo: input.contractNo, deletedAt: null } });
@@ -298,10 +309,19 @@ export async function updateContract(user: SessionUser, id: string, input: Contr
   if (user.roleCode !== "ADMIN" && existing.status !== "DRAFT") {
     throw new ApiError(ERROR_CODES.ENTITY_IMMUTABLE, "当前状态不可修改", 403);
   }
+  // 防御: 即使调用方通过某种方式传了 customerId / signerId / status,service 层也显式丢弃,
+  // 防止 spread 时把这些字段写进 DB
+  const safeInput = { ...input } as Record<string, unknown>;
+  delete safeInput.customerId;
+  delete safeInput.signerId;
+  delete safeInput.status;
+
   // 负责人变更时, 校验目标用户存在且 ACTIVE
   if (input.ownerUserId !== undefined && input.ownerUserId !== existing.ownerUserId) {
     await assertActiveUser(input.ownerUserId, "负责人");
   }
+  // 日期顺序校验(与编辑页一致:止期必须晚于起期)
+  assertDateOrder(input.startDate ?? existing.startDate, input.endDate ?? existing.endDate);
   // 合同编号若变更需唯一性校验
   if (input.contractNo !== undefined && input.contractNo !== existing.contractNo) {
     const dup = await prisma.contract.findFirst({
@@ -330,7 +350,7 @@ export async function updateContract(user: SessionUser, id: string, input: Contr
       const updated = await tx.contract.update({
       where: { id },
         data: {
-          ...input,
+          ...(safeInput as ContractUpdateInput),
           signDate: input.signDate ? new Date(input.signDate) : undefined,
           startDate: input.startDate ? new Date(input.startDate) : undefined,
           endDate: input.endDate ? new Date(input.endDate) : undefined,
@@ -578,7 +598,7 @@ export async function getContractOverview(
 /**
  * 软删除合同（仅 admin 可调用）。
  * 约束：
- *   - 状态必须是 DRAFT / PENDING_REVIEW（其他状态可能已有开票/回款联动，需走 terminate/complete 走完生命周期）
+ *   - admin 任意状态可删; 实际能否删除由子数据兜底 (发票/回款/附件)
  *   - 不能存在未删除的子发票 / 回款 / 附件
  *   - 事务内写 deletedAt + audit log
  *
@@ -665,8 +685,6 @@ export async function softDeleteContract(user: SessionUser, id: string) {
 // 自动转换的 audit action 串:
 //   CONTRACT_AUTO_EXPIRE    - 定时任务扫到 endDate < now 时 → EXPIRED
 // ContractReviewLog.action 同步写, 详情页时间线可见.
-
-import { SYSTEM_USER_ID } from "@/lib/system";
 
 /**
  * 单笔合同过期检查: endDate < now 且 status = ACTIVE → CLOSED (reason=expired).
@@ -840,7 +858,7 @@ export async function tryAutoPublish(tx: Prisma.TransactionClient, contractId: s
 export async function tryAutoComplete(contractId: string, now: Date): Promise<"CLOSED" | "SKIPPED"> {
   // now 当前未使用, 保留参数便于将来加"开票时效"等条件
   void now;
-  const ratio = Number(process.env.CONTRACT_COMPLETION_INVOICE_RATIO ?? "0.95");
+  const ratio = env.CONTRACT_COMPLETION_INVOICE_RATIO;
   for (let attempt = 1; attempt <= SERIALIZABLE_RETRY; attempt++) {
     try {
       return await prisma.$transaction(

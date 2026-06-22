@@ -4,7 +4,6 @@ import { ProCard } from "@ant-design/pro-components";
 import { Column } from "@ant-design/charts";
 import { Badge, Col, Row, Space, Tag, Typography, theme } from "antd";
 import { CalendarOutlined } from "@ant-design/icons";
-import { formatStatus } from "@/lib/status";
 import { Page } from "@/components/page";
 import { PageHeader } from "@/components/page-header";
 import { StatGrid, type StatItem } from "@/components/stat-grid";

@@ -27,7 +27,7 @@ export const customerCreateSchema = z.object({
   ownerUserId: z.string().optional()
 });
 
-export const customerUpdateSchema = customerCreateSchema.partial().extend({ status: z.enum(CUSTOMER_STATUS).optional() });
+export const customerUpdateSchema = customerCreateSchema.partial().extend({ status: z.enum(CUSTOMER_STATUS).optional(), reason: z.string().max(200).optional() });
 
 export const followUpCreateSchema = z.object({
   followAt: z.iso.datetime(),

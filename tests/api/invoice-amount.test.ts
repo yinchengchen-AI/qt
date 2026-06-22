@@ -184,6 +184,11 @@ async function issueInvoice(invoiceId: string, invoiceNo20: string) {
     invoiceNo: digits20(invoiceNo20),
     actualIssueDate: new Date().toISOString()
   });
+  // issue 会自动创建一笔 PLANNED 回款, 收集 id 便于 afterAll 清理
+  const planned = await prisma.payment.findFirst({
+    where: { invoiceId, status: "PLANNED", deletedAt: null }
+  });
+  if (planned) createdPaymentIds.push(planned.id);
 }
 
 async function mkPlannedPayment(invoiceId: string, contractId: string, amount: number, bankRefNo: string) {

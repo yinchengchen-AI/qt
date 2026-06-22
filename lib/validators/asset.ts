@@ -3,7 +3,7 @@
 // - 顶层 refine 校验 validTo >= validFrom(放在 union 之后,跟 contract 风格一致)
 // - 属性代码(统社代码 / 资质编号等)在 type-specific schema 内分别校验
 import { z } from "zod";
-import { ASSET_TYPE, ASSET_STATUS, SERVICE_TYPE } from "@/types/enums";
+import { ASSET_TYPE, ASSET_STATUS } from "@/types/enums";
 import { isValidCreditCode } from "@/lib/credit-code";
 
 // 通用字段(name/description/tags/有效期)

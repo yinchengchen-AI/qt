@@ -92,7 +92,9 @@ export const MESSAGE_TYPE = [
   "CONTRACT_REJECTED",
   "INVOICE_OVERDUE_PAYMENT",
   "PAYMENT_RECEIVED",
-  "CUSTOMER_INACTIVE"
+  "PROJECT_DUE",
+  "CUSTOMER_INACTIVE",
+  "CUSTOMER_STATUS_SUGGEST"
 ] as const;
 export type MessageType = (typeof MESSAGE_TYPE)[number];
 

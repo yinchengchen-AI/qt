@@ -1,11 +1,10 @@
-// 软删除合同服务层单测 (softDeleteContract, server/services/contract.ts:594)
+// 软删除合同服务层单测 (softDeleteContract, server/services/contract.ts)
 //
 // 覆盖矩阵:
 //   1) DRAFT + 无子数据 → 软删成功 + 写 audit log
-//   2) PENDING_REVIEW + 无子数据 → 软删成功
-//   3) ACTIVE 状态 → 抛 403 ENTITY_IMMUTABLE
-//   5) 合同不存在 → 抛 404
-//   6) 非 admin (SALES) → 抛 403 FORBIDDEN
+//   2) ACTIVE + 无子数据 → admin 软删成功 (新模型: admin 任意态可删, 子数据兜底)
+//   3) 合同不存在 → 抛 404 NOT_FOUND
+//   4) 非 admin (SALES) → 抛 403 FORBIDDEN
 //
 // DB 不可达时整组 skip. 测试数据用 unique 前缀, 跑完自己清理, 不污染生产.
 
@@ -154,18 +153,11 @@ describe("softDeleteContract 服务层", () => {
     expect(reloaded?.deletedAt).toBeInstanceOf(Date);
   }));
 
-  it("PENDING_REVIEW + 无子数据 → 软删成功", guard(async () => {
-    const c = await mkContract("ACTIVE", "PENDING-OK");
-    const r = await softDeleteContract(buildAdmin(), c.id);
-    expect(r.deletedAt).toBeInstanceOf(Date);
-  }));
-
   it("ACTIVE 状态 + 无子数据 → admin 软删成功 (新模型: admin 任意态可删, 子数据兜底)", guard(async () => {
     const c = await mkContract("ACTIVE", "ACTIVE-DEL");
     const r = await softDeleteContract(buildAdmin(), c.id);
     expect(r.deletedAt).toBeInstanceOf(Date);
   }));
-
 
   it("合同不存在 → 抛 404 NOT_FOUND", guard(async () => {
     await expect(softDeleteContract(buildAdmin(), "non-existent-id")).rejects.toMatchObject({

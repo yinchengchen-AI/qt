@@ -71,11 +71,14 @@ async function resolveInvoiceAttachmentSnapshots(
 
 
 function calcTotals(amount: number, taxRate: number) {
-  const taxAmount = round2((amount * taxRate) / (1 + taxRate));
-  const amountExcludingTax = round2(amount - taxAmount);
+  // 用 Decimal 精确到 2 位, 避免 JS 浮点失真 (如 2.675 → 2.67)
+  const amt = new Prisma.Decimal(amount);
+  const rate = new Prisma.Decimal(taxRate);
+  const divisor = new Prisma.Decimal(1).plus(rate);
+  const taxAmount = amt.mul(rate).div(divisor).toDecimalPlaces(2);
+  const amountExcludingTax = amt.minus(taxAmount).toDecimalPlaces(2);
   return { taxAmount, amountExcludingTax };
 }
-function round2(v: number) { return Math.round(v * 100) / 100; }
 
 export async function listInvoices(
   user: SessionUser,
@@ -168,7 +171,7 @@ export async function createInvoice(user: SessionUser, input: InvoiceCreateInput
         address: input.address ?? null,
         phone: input.phone ?? null,
         remark: input.remark ?? null,
-        // attachmentRefs 是 Attachment[] 关系, 暂不在 create 时显式绑定 (后续按 attachment.invoiceId 反向连)
+        attachments: [] as unknown as Prisma.InputJsonValue,
         status: "DRAFT",
         applicantUserId: user.id,
         createdById: user.id,
@@ -176,8 +179,11 @@ export async function createInvoice(user: SessionUser, input: InvoiceCreateInput
       }
     });
     // 解析附件: 内部已把临时附件 updateMany 绑到 invoiceId (Attachment.invoiceId 关系)
-    // attachmentRefs 是反向关系, 不用再写; createInvoice 直接返回
-    await resolveInvoiceAttachmentSnapshots(input.attachments ?? [], invoice.id, tx);
+    // 同时把真实记录写回 JSON 快照, 详情页直接读 invoice.attachments
+    const attachments = await resolveInvoiceAttachmentSnapshots(input.attachments ?? [], invoice.id, tx);
+    if ((input.attachments ?? []).length > 0) {
+      await tx.invoice.update({ where: { id: invoice.id }, data: { attachments } });
+    }
     return tx.invoice.findUnique({ where: { id: invoice.id } });
   });
 }
@@ -189,14 +195,28 @@ export async function updateInvoice(user: SessionUser, id: string, input: Invoic
   });
   if (!inv) throw new ApiError(ERROR_CODES.NOT_FOUND, "发票不存在", 404);
   if (inv.status !== "DRAFT") throw new ApiError(ERROR_CODES.ENTITY_IMMUTABLE, "仅 DRAFT 可修改", 403);
+
+  // 防御: 即使 schema 允许 partial(), service 层也显式丢弃不可更新字段, 防止 spread 时写进 DB
+  const safeInput = { ...input } as Record<string, unknown>;
+  delete safeInput.contractId;
+  delete safeInput.invoiceNo;
+  delete safeInput.status;
+  delete safeInput.customerId;
+  delete safeInput.customerName;
+  delete safeInput.applicantUserId;
+  delete safeInput.createdById;
+  delete safeInput.updatedById;
+
   let taxAmount = inv.taxAmount;
   let amountExcludingTax = inv.amountExcludingTax;
-  const newAmount = input.amount;
-  if (newAmount !== undefined || input.taxRate !== undefined) {
-    const r = calcTotals(newAmount ?? Number(inv.amount), input.taxRate ?? Number(inv.taxRate));
+  const newAmount = safeInput.amount as number | undefined;
+  const newTaxRate = safeInput.taxRate as number | undefined;
+  if (newAmount !== undefined || newTaxRate !== undefined) {
+    const r = calcTotals(newAmount ?? Number(inv.amount), newTaxRate ?? Number(inv.taxRate));
     taxAmount = new Prisma.Decimal(r.taxAmount);
     amountExcludingTax = new Prisma.Decimal(r.amountExcludingTax);
   }
+
   return prisma.$transaction(async (tx) => {
     // P1-1: 改 amount 时重新跑 R-08, 防止"DRAFT 100 → 改 1000000 → 提交 → 财务开票"绕过合同总额
     if (newAmount !== undefined) {
@@ -204,8 +224,14 @@ export async function updateInvoice(user: SessionUser, id: string, input: Invoic
         where: { id: inv.contractId },
         select: { totalAmount: true }
       });
+      // R-08 口径与 createInvoice 对齐: DRAFT + ISSUED + RED_FLUSHED, 排除自身
       const issued = await tx.invoice.aggregate({
-        where: { contractId: inv.contractId, status: "ISSUED", deletedAt: null },
+        where: {
+          contractId: inv.contractId,
+          status: { in: ["DRAFT", "ISSUED", "RED_FLUSHED"] },
+          deletedAt: null,
+          NOT: { id }
+        },
         _sum: { amount: true }
       });
       const issuedAmt = new Prisma.Decimal(issued._sum.amount?.toString() ?? "0");
@@ -214,7 +240,7 @@ export async function updateInvoice(user: SessionUser, id: string, input: Invoic
       if (issuedAmt.plus(newAmount.toString()).greaterThan(contractTotal.plus(TOL))) {
         throw new ApiError(
           ERROR_CODES.INVOICE_OVER_LIMIT,
-          `已开票 ¥${issuedAmt.toFixed(2)}，本次 ¥${newAmount.toFixed(2)}，将超过合同总额 ¥${contract.totalAmount}`,
+          `已开票/草稿 ¥${issuedAmt.toFixed(2)}，本次 ¥${newAmount.toFixed(2)}，将超过合同总额 ¥${contract.totalAmount}`,
           422
         );
       }
@@ -225,11 +251,11 @@ export async function updateInvoice(user: SessionUser, id: string, input: Invoic
     return tx.invoice.update({
       where: { id },
       data: {
-        ...input,
+        ...(safeInput as InvoiceUpdateInput),
         applyDate: input.applyDate ? new Date(input.applyDate) : undefined,
         expectedIssueDate: input.expectedIssueDate ? new Date(input.expectedIssueDate) : undefined,
         amount: newAmount,
-        taxRate: input.taxRate,
+        taxRate: newTaxRate,
         taxAmount,
         amountExcludingTax,
         attachments,

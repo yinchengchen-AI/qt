@@ -10,7 +10,6 @@
 import { PrismaClient } from "@prisma/client";
 import { PrismaPg } from "@prisma/adapter-pg";
 import mysql from "mysql2/promise";
-import bcrypt from "bcrypt";
 import { config } from "dotenv";
 import { writeFileSync, mkdirSync } from "node:fs";
 import path from "node:path";

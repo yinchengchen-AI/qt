@@ -69,6 +69,12 @@ const TYPE_TO_TEMPLATE: Record<string, (p: Record<string, unknown>, uid: string)
     content: `请尽快联系客户。`,
     link: { kind: "customer", id: p.customerId }
   }),
+  CUSTOMER_STATUS_SUGGEST: (p) => ({
+    receiverUserId: "",
+    title: `建议将客户 ${p.customerName} 状态变更为 ${p.suggestedStatusLabel ?? p.suggestedStatus}`,
+    content: `原因: ${p.reason ?? "-"}\n点击查看详情并确认。`,
+    link: { kind: "customer", id: p.customerId, suggest: p.suggestedStatus }
+  }),
   WORKFLOW_TASK_ASSIGNED: (p) => ({
     receiverUserId: "",
     title: `任务「${p.taskName}」已指派给您`,

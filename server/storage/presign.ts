@@ -5,6 +5,7 @@
 // 而不是直接打 MinIO — 因为 MinIO 绑在 server-localhost:9000,公网到不了;
 // 代理让前端只走 3000,不需要在阿里云安全组开 9000
 import { HeadObjectCommand } from "@aws-sdk/client-s3";
+import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { ApiError } from "@/lib/api";
 import { ERROR_CODES } from "@/types/errors";
@@ -297,4 +298,26 @@ export async function softDeleteAttachment(attachmentId: string, userId: string)
     where: { id: attachmentId },
     data: { deletedAt: new Date() }
   });
+  // 同步清理合同 attachments JSON 快照,避免详情页/编辑页出现已删除附件
+  if (att.contractId && !att.isDeliverable) {
+    await removeAttachmentFromContractSnapshot(att.contractId, attachmentId);
+  }
+}
+
+async function removeAttachmentFromContractSnapshot(contractId: string, attachmentId: string): Promise<void> {
+  const contract = await prisma.contract.findUnique({
+    where: { id: contractId },
+    select: { id: true, deletedAt: true, attachments: true }
+  });
+  if (!contract || contract.deletedAt) return;
+  const list = Array.isArray(contract.attachments)
+    ? (contract.attachments as Array<{ id?: string }>)
+    : [];
+  const filtered = list.filter((a) => a.id !== attachmentId);
+  if (filtered.length !== list.length) {
+    await prisma.contract.update({
+      where: { id: contractId },
+      data: { attachments: filtered as Prisma.InputJsonValue }
+    });
+  }
 }

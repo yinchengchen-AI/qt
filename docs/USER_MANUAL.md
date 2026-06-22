@@ -166,10 +166,30 @@
 | `FROZEN` 已冻结 | 内部暂停合作 | 重大风险 / 投诉期 |
 
 > **状态变更约束**(重要):
-> - `→ SIGNED` **必须** 至少有一份 `ACTIVE` 的合同
-> - `→ FROZEN` **必须** 无活跃合同;否则拒绝并提示 `CUSTOMER_HAS_ACTIVE_CONTRACT`
+> - `→ SIGNED` **必须** 至少有一份 `ACTIVE` 的合同,否则抛 `CUSTOMER_STATUS_INVALID`
+> - `→ FROZEN` **必须** 无 `ACTIVE` 合同 + 无 `PLANNED/CONFIRMED` 回款;
+>   活跃合同存在则抛 `CUSTOMER_HAS_ACTIVE_CONTRACT`,未对账回款则抛 `CUSTOMER_FROZEN_ACTIVE_PAYMENT`
+> - 详情页右上角「变更状态」按钮只列出当前状态可去往的目标(由状态机迁移表决定)
+> - 不在迁移表内的目标会被服务端拒,返回 `CUSTOMER_STATUS_TRANSITION_INVALID`
 > - 新建客户时不允许直接选 `FROZEN`
 > - 软删除的客户在列表里默认隐藏;管理员可在筛选中开启「含已删除」
+
+**状态机迁移表**(迁移表集中在 `lib/customer-status-transitions.ts`,是单一事实源):
+
+| 起点状态 | 可去往 |
+|---|---|
+| `LEAD` 线索 | `NEGOTIATING` 洽谈中、`SIGNED` 已签约、`LOST` 已流失 |
+| `NEGOTIATING` 洽谈中 | `SIGNED` 已签约、`LOST` 已流失、`FROZEN` 已冻结 |
+| `SIGNED` 已签约 | `LOST` 已流失、`FROZEN` 已冻结 |
+| `LOST` 已流失 | `NEGOTIATING` 洽谈中(恢复推进) |
+| `FROZEN` 已冻结 | `NEGOTIATING` 洽谈中(恢复推进) |
+
+> 终态恢复: LOST / FROZEN 都可通过回到 `NEGOTIATING` 重新激活。
+> 越级跳转(例如 SIGNED→LEAD)会被服务端拒,错误码 `CUSTOMER_STATUS_TRANSITION_INVALID`。
+> LEAD→FROZEN 暂不允许: FROZEN 通常是合规/欠款场景,不符合「线索」语义。
+> 自动联动: `tickCustomerStatusSuggestions` 每天扫一次,对满足规则(90 天无跟进 + 无活跃合同 等)
+> 的客户发 `CUSTOMER_STATUS_SUGGEST` 站内信建议变更,**不直接写状态**;用户点消息进入详情页
+> 「变更状态」走完整校验。
 
 ### 5.2 列表功能
 

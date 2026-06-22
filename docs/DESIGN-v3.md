@@ -307,7 +307,7 @@ PLANNED ─confirm(finance)─▶ CONFIRMED ─reconcile(finance)─▶ RECONCIL
 | 编号 | 触发 | 规则 | 错误码 |
 |---|---|---|---|
 | R-01 | 客户 `unifiedSocialCreditCode` | 18 位 + GB 32100-2015 加权校验（Zod 自定义 `.refine`） | `CUSTOMER_CREDIT_CODE_INVALID` |
-| R-02 | 客户 `→ SIGNED` | 至少一份 `ACTIVE/CLOSED` 合同 | `CUSTOMER_STATUS_INVALID` |
+| R-02 | 客户 `→ SIGNED` | 至少一份 `ACTIVE` 合同 | `CUSTOMER_STATUS_INVALID` |
 | R-03 | 新建合同 | 客户 `status ∈ {NEGOTIATING, SIGNED}` | `CONTRACT_CUSTOMER_STATUS` |
 | R-04 | 合同 `→ ACTIVE` | 字段完整 + 至少 1 附件（`isPublishable`） | `CONTRACT_INCOMPLETE` |
 | R-05 | 新建项目 | 所属合同 `status = ACTIVE` | `PROJECT_CONTRACT_NOT_EFFECTIVE` |
@@ -318,10 +318,10 @@ PLANNED ─confirm(finance)─▶ CONFIRMED ─reconcile(finance)─▶ RECONCIL
 | R-10 | 回款 `→ CONFIRMED` | `bankRefNo` 全局唯一 | `PAYMENT_DUPLICATE_REF` |
 | R-11 | 回款 `→ CONFIRMED` | 该发票下累计回款 ≤ 发票金额 | `PAYMENT_OVER_INVOICE` |
 | R-12 | 回款 `→ CONFIRMED` | 合同级累计回款 ≤ 合同总额 | `PAYMENT_OVER_CONTRACT` |
-| R-13 | 客户 `→ FROZEN` | 无未完成合同、无未 RECONCILED 回款 | `CUSTOMER_HAS_ACTIVE_CONTRACT` |
+| R-13 | 客户 `→ FROZEN` | 无 `ACTIVE` 合同 + 无 `PLANNED/CONFIRMED` 回款 | `CUSTOMER_HAS_ACTIVE_CONTRACT` / `CUSTOMER_FROZEN_ACTIVE_PAYMENT` |
 | R-14 | 删除 | 终态记录禁止物理删除 | `ENTITY_IMMUTABLE` |
 | R-15 | 用户 `DISABLED` | 名下 ACTIVE 合同需先转移 owner | `USER_HAS_ACTIVE_OWNERSHIP` |
-| R-16 | 状态机迁移 | 强制走 Service；事务内 `Serializable` + 行锁 | – |
+| R-16 | 状态机迁移 | 强制走 Service；事务内 `Serializable` + 行锁；迁移表集中在 `lib/customer-status-transitions.ts` | `CUSTOMER_STATUS_TRANSITION_INVALID` |
 
 > **错误码约定**：`{ENTITY}_{REASON}` 大写下划线；前端 ProForm `onFinish` 失败时按 `errorCode` 映射到 `errorCodeMessageMap` 文案 + 字段级错误从 `details.fieldErrors` 注入 ProForm `error`。
 
@@ -337,6 +337,7 @@ PLANNED ─confirm(finance)─▶ CONFIRMED ─reconcile(finance)─▶ RECONCIL
 | `PAYMENT_RECEIVED` | 回款 `→ CONFIRMED` | 业务负责人 | 「客户 {customerName} 回款 ¥{amount} 已确认」 |
 | `PROJECT_DUE` | 定时任务：项目 `endDate − 7` 天 | 项目负责人 + 业务负责人 | 「项目 `{projectNo}` 将于 {n} 天后计划完成」 |
 | `CUSTOMER_INACTIVE` | 客户 90 天无 `FollowUp` 记录 | 业务负责人 | 「客户 {customerName} 已 90 天未跟进」 |
+| `CUSTOMER_STATUS_SUGGEST` | 定时任务: 客户满足状态机联动规则 | 业务负责人 | 「建议将客户 {customerName} 状态变更为 {suggestedStatus}」 |
 
 **实现**：领域事件总线（`src/server/events/bus.ts`）→ 消息 Worker（Next.js Route Handler + Vercel Cron / 外部 scheduler）→ 写 `Message` → 站内信（默认）/ 邮件 / 企业微信三通道（`config.notifications.{email,wechatWork}` 开关，默认关闭）。
 

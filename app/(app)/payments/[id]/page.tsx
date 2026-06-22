@@ -48,8 +48,10 @@ export default function PaymentDetailPage() {
     );
   }
   const roleCode = session?.user?.roleCode;
+  const userId = session?.user?.id;
   const isFinance = roleCode === "FINANCE" || roleCode === "ADMIN";
   const status = payment.status;
+  const canCancel = status === "PLANNED" && (payment.recorderUserId === userId || roleCode === "ADMIN" || roleCode === "FINANCE");
 
   const askConfirm = () => {
     bankRefNoRef.current = "";
@@ -114,7 +116,7 @@ export default function PaymentDetailPage() {
                 <Button danger onClick={askRefund}>退款</Button>
               </>
             )}
-            {status === "PLANNED" && <Button danger onClick={() => run("cancel")}>取消</Button>}
+            {canCancel && <Button danger onClick={() => run("cancel")}>取消</Button>}
           </Space>
         }
       />

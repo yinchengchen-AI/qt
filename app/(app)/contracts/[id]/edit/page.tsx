@@ -24,6 +24,7 @@ import { FormPageSkeleton } from "@/components/form-page-skeleton";
 import { proCustomRequest } from "@/lib/upload-client";
 import { PreviewableProFormUploadButton as UploadButton } from "@/components/file/pro-form-upload-button";
 import { AttachmentList, type AttachmentItem } from "@/components/file/attachment-list";
+import { TAX_RATE_OPTIONS, TAX_RATE_LABELS } from "@/lib/validators/_shared";
 
 const { Text } = Typography;
 
@@ -114,7 +115,7 @@ export default function EditContractPage() {
             startDate: data.startDate ? new Date(data.startDate) : undefined,
             endDate: data.endDate ? new Date(data.endDate) : undefined,
             totalAmount: data.totalAmount ? Number(data.totalAmount) : undefined,
-            taxRate: data.taxRate ? Number(data.taxRate) : 0.06,
+            taxRate: data.taxRate != null ? Number(data.taxRate) : 0.06,
             // 合同结构化交付物 (deliverables) 已下线; 实际交付文件走 Attachment.isDeliverable
           }}
           onFinish={async (values) => {
@@ -133,7 +134,6 @@ export default function EditContractPage() {
               // 合同结构化交付物 (deliverables) 已下线; 实际交付文件走 Attachment.isDeliverable
               attachments: merged
             };
-            delete (payload as Record<string, unknown>).attachments_uploads;
             const res = await fetch(`/api/contracts/${id}`, {
               method: "PATCH",
               headers: { "Content-Type": "application/json" },
@@ -271,12 +271,12 @@ export default function EditContractPage() {
                 rules={[{ required: true, message: "请输入合同总额" }]}
                 fieldProps={{ size: "large", precision: 2, prefix: "¥" }}
               />
-              <ProFormDigit
+              <ProFormSelect
                 name="taxRate"
                 label="税率"
-                min={0}
-                max={1}
-                fieldProps={{ size: "large", precision: 4, step: 0.01 }}
+                options={TAX_RATE_OPTIONS.map((v, i) => ({ value: v, label: TAX_RATE_LABELS[i] }))}
+                rules={[{ required: true, message: "请选择税率" }]}
+                fieldProps={{ size: "large" }}
               />
             </FormGrid>
           </FormSection>
