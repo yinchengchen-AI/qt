@@ -98,7 +98,6 @@ afterAll(async () => {
   if (!dbReachable) return;
   try {
     if (createdPaymentIds.length > 0) {
-      await prisma.paymentAllocation.deleteMany({ where: { paymentId: { in: createdPaymentIds } } });
       await prisma.payment.deleteMany({ where: { id: { in: createdPaymentIds } } });
     }
     if (createdInvoiceIds.length > 0) {
@@ -323,63 +322,5 @@ describe("paymentAction.refund P1-2", () => {
     await expect(
       paymentAction(buildFinance(), p2.id, { action: "confirm", bankRefNo: ref2 })
     ).resolves.toBeTruthy();
-  }));
-});
-
-describe("paymentAction.allocate 校验", () => {
-  it("合计 ≠ 支付金额 → VALIDATION_FAILED", guard(async () => {
-    const c = await mkContract("200.00", "ALLOC-SUM");
-    const ref = `${TAG}-ALLOC-SUM`;
-    const p = await mkPlannedPayment(c.id, null, 100, ref);
-    await expect(
-      paymentAction(buildFinance(), p.id, {
-        action: "allocate",
-        allocations: [{ amount: 60 }, { amount: 30 }]  // 合计 90 ≠ 100
-      })
-    ).rejects.toMatchObject({ code: ERROR_CODES.VALIDATION_FAILED });
-  }));
-
-  it("跨合同 invoiceId → VALIDATION_FAILED (P1-5)", guard(async () => {
-    const c1 = await mkContract("200.00", "ALLOC-XINV");
-    // 准备另一合同下的发票
-    const otherContract = await prisma.contract.findUniqueOrThrow({ where: { id: otherContractId! } });
-    const otherInv = await mkIssuedInvoice(otherContract.id, 50, "ALLOC-OTHER");
-    const ref = `${TAG}-ALLOC-XINV`;
-    const p = await mkPlannedPayment(c1.id, null, 100, ref);
-    await expect(
-      paymentAction(buildFinance(), p.id, {
-        action: "allocate",
-        allocations: [{ invoiceId: otherInv.id, amount: 100 }]
-      })
-    ).rejects.toMatchObject({ code: ERROR_CODES.VALIDATION_FAILED });
-  }));
-
-  it("跨合同 projectId → VALIDATION_FAILED (P1-5)", guard(async () => {
-    const c1 = await mkContract("200.00", "ALLOC-XPROJ");
-    const otherContract = await prisma.contract.findUniqueOrThrow({ where: { id: otherContractId! } });
-    const otherProj = await mkProject(otherContract.id, "ALLOC-OTHER-PROJ");
-    const ref = `${TAG}-ALLOC-XPROJ`;
-    const p = await mkPlannedPayment(c1.id, null, 100, ref);
-    await expect(
-      paymentAction(buildFinance(), p.id, {
-        action: "allocate",
-        allocations: [{ projectId: otherProj.id, amount: 100 }]
-      })
-    ).rejects.toMatchObject({ code: ERROR_CODES.VALIDATION_FAILED });
-  }));
-
-  it("同合同 invoiceId + 合计一致 → 成功", guard(async () => {
-    const c = await mkContract("200.00", "ALLOC-OK");
-    const inv = await mkIssuedInvoice(c.id, 80, "ALLOC-OK");
-    const ref = `${TAG}-ALLOC-OK`;
-    const p = await mkPlannedPayment(c.id, null, 100, ref);
-    const result = (await paymentAction(buildFinance(), p.id, {
-      action: "allocate",
-      allocations: [{ invoiceId: inv.id, amount: 100 }]
-    })) as unknown as { allocations: Array<{ amount: { toString(): string } }> };
-    expect(result.allocations.length).toBe(1);
-    const firstAlloc = result.allocations[0];
-    expect(firstAlloc).toBeDefined();
-    expect(Number(firstAlloc!.amount)).toBe(100);
   }));
 });

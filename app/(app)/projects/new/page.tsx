@@ -233,18 +233,6 @@ export default function NewProjectPage() {
             </FormGrid>
           </FormSection>
 
-          <FormSection title="预算">
-            <FormGrid columns={1}>
-              <ProFormDigit
-                name="budgetAmount"
-                label="项目预算"
-                placeholder="可空;留空表示不单设预算"
-                min={0}
-                fieldProps={{ size: "large", precision: 2, prefix: "¥", addonAfter: "元" }}
-              />
-            </FormGrid>
-          </FormSection>
-
           <Space>
             <Text type="secondary" style={{ fontSize: 12 }}>
               项目默认状态 <Tag color="blue">计划中</Tag>;

@@ -41,6 +41,8 @@ type Customer = {
   contactName: string | null;
   contactTitle: string | null;
   contactPhone: string;
+  // listCustomers 返回全字段, 预填"负责人"要用; 没有显式 select 所以这里字段可选
+  ownerUserId?: string | null;
 };
 
 type ActiveUser = {
@@ -64,6 +66,9 @@ export default function NewContractPage() {
   // 改写成 React element(用来高亮匹配的子串),所以拿不到原始字符串。
   // 在 request 里同步把 value -> name 存进来,onChange 用 value 反查。
   const [customerNameById, setCustomerNameById] = useState<Map<string, string>>(() => new Map());
+  // 选客户时记录其业务负责人,新建合同时给"负责人"字段预填
+  // (合同 ownerUserId 默认 = customer.ownerUserId, 跟历史行为一致; admin 可手动改)
+  const [customerOwnerById, setCustomerOwnerById] = useState<Map<string, string>>(() => new Map());
   const { tryAutoFill } = useContractTitleAutofill({ formRef, serviceType, customerName: selectedCustomerLabel });
 
   // 会话异步加载完成后再把当前用户写入签订人默认值;initialValue 是一次性应用,
@@ -134,6 +139,11 @@ export default function NewContractPage() {
                     // 原始字符串只能靠 value 在同步保存的 map 里反查,见 lib/extract-option-label.ts
                     const label = extractOptionLabel(_value, option, customerNameById);
                     setSelectedCustomerLabel(label);
+                    // 客户切换时,把"负责人"预填为该客户的业务负责人; 用户后续可手动改
+                    const ownerId = customerOwnerById.get(String(_value));
+                    if (ownerId && formRef.current) {
+                      formRef.current.setFieldValue("ownerUserId", ownerId);
+                    }
                     // 客户/服务类型/签订日变化时尝试自动填充合同标题(空标题或仍是上次自动填充值才覆盖)
                     tryAutoFill({ customerName: label });
                   }
@@ -150,6 +160,14 @@ export default function NewContractPage() {
                   setCustomerNameById((prev) => {
                     const m = new Map(prev);
                     for (const c of list) m.set(c.id, c.name);
+                    return m;
+                  });
+                  setCustomerOwnerById((prev) => {
+                    const m = new Map(prev);
+                    // 优先用后端 listCustomers 已经返回的 ownerUserId; 客户端只缓存不二次查询
+                    for (const c of list) {
+                      if (c.ownerUserId) m.set(c.id, c.ownerUserId);
+                    }
                     return m;
                   });
                   return list.map((c) => ({
@@ -225,6 +243,31 @@ export default function NewContractPage() {
                 showSearch
                 initialValue={currentUserId}
                 rules={[{ required: true, message: "请选择签订人" }]}
+                fieldProps={{
+                  size: "large",
+                  optionFilterProp: "label"
+                }}
+                request={async (params: { keyWords?: string }) => {
+                  const qs = new URLSearchParams();
+                  qs.set("pageSize", "100");
+                  qs.set("status", "ACTIVE");
+                  qs.set("keyword", params.keyWords ?? "");
+                  const r = await fetch(`/api/users?${qs}`, { credentials: "include" });
+                  const j = await r.json();
+                  if (j.code !== 0) return [];
+                  return (j.data.list as ActiveUser[]).map((u) => ({
+                    value: u.id,
+                    label: `${u.name} (${u.employeeNo})`
+                  }));
+                }}
+              />
+              <ProFormSelect
+                name="ownerUserId"
+                label="负责人"
+                placeholder="搜索员工姓名/工号"
+                tooltip="默认继承所选客户的业务负责人,admin 可改为任意 ACTIVE 员工,方便代录/转交"
+                showSearch
+                rules={[{ required: true, message: "请选择负责人" }]}
                 fieldProps={{
                   size: "large",
                   optionFilterProp: "label"

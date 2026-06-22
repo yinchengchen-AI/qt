@@ -23,6 +23,7 @@
     "reset-password": "tsx scripts/shared/reset-password.ts",
     "seed": "tsx prisma/seed.ts",
     "seed:assets": "tsx prisma/seed-assets.ts",
+    "seed:dev-users": "tsx scripts/shared/seed-test-users.ts",
     "seed-dicts": "tsx scripts/shared/seed-dicts.ts",
     "seed-roles": "tsx scripts/shared/seed-roles.ts",
     "start": "next start",

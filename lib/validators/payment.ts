@@ -14,15 +14,9 @@ export const paymentCreateSchema = z.object({
 });
 
 export const paymentActionSchema = z.object({
-  action: z.enum(["confirm", "reconcile", "refund", "cancel", "allocate"]),
+  action: z.enum(["confirm", "reconcile", "refund", "cancel"]),
   bankRefNo: z.string().max(50).optional(),
-  reason: z.string().max(500).optional(),
-  allocations: z.array(z.object({
-    invoiceId: z.string().nullable().optional(),
-    projectId: z.string().nullable().optional(),
-    // P1-5: 单条分配金额必须 > 0, 0 或负数无业务意义且会被 service 端合计校验绕过
-    amount: z.number().positive("分配金额必须大于 0")
-  })).optional()
+  reason: z.string().max(500).optional()
 });
 
 export type PaymentCreateInput = z.infer<typeof paymentCreateSchema>;

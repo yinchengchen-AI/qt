@@ -189,6 +189,7 @@ const handleDelete = () => {
             { title: "合同编号", dataIndex: "contractNo" },
             { title: "标题", dataIndex: "title" },
             { title: "客户", dataIndex: "customerName" },
+            { title: "负责人", dataIndex: "ownerUserId", render: (_, r) => r.ownerName || "—" },
             { title: "服务类型", dataIndex: "serviceType", render: (v) => SERVICE_TYPE_MAP[v as string] ?? v },
             { title: "签订日", dataIndex: "signDate", valueType: "date", render: (_, r) => <DateTimeCell value={r.signDate as string} /> },
             { title: "起期", dataIndex: "startDate", valueType: "date", render: (_, r) => <DateTimeCell value={r.startDate as string} /> },

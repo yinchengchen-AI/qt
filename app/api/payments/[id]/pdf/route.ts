@@ -66,17 +66,6 @@ export async function GET(
           },
           { label: "备注", value: p.remark ?? "—" },
         ],
-        sections: [
-          {
-            title: "分配明细",
-            rows: p.allocations.length
-              ? p.allocations.map((a) => ({
-                  label: `分配 ¥${Number(a.amount).toFixed(2)}`,
-                  value: `发票 ${a.invoiceId ?? "—"} · 项目 ${a.projectId ?? "—"}${a.remark ? ` · ${a.remark}` : ""}`,
-                }))
-              : [{ label: "(无)", value: "" }],
-          },
-        ],
       };
       return new Response(renderPrintHtml(doc), {
         headers: { "Content-Type": "text/html; charset=utf-8" },

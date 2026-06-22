@@ -2,6 +2,7 @@
 import { writeFileSync } from "node:fs";
 
 const BASE = "http://localhost:3000";
+const DEV_PASSWORD = process.env.DEV_QUICK_FILL_PASSWORD ?? 'dev-only-fill';
 const results = [];
 const start = Date.now();
 
@@ -105,8 +106,8 @@ const sales = new Session("sales");
 
 try {
   // 1. 登录
-  const r1 = await admin.login("admin", "123456");
-  const r2 = await sales.login("sales", "123456");
+  const r1 = await admin.login(`admin`, `${DEV_PASSWORD}`);
+  const r2 = await sales.login(`sales`, `${DEV_PASSWORD}`);
   log("admin 登录", r1.status === 200 || r1.status === 302);
   log("sales 登录", r2.status === 200 || r2.status === 302);
 

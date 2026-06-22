@@ -153,7 +153,7 @@ async function seedOneTx(tx, adminId, link) {
       name: `${link.customerName} - ${serviceLabel(link.serviceType)}项目`,
       serviceScope: `${serviceLabel(link.serviceType)}全流程服务`,
       managerUserId: adminId, startDate, endDate,
-      budgetAmount: link.totalAmount, status: link.projectStatus,
+      status: link.projectStatus,
       createdById: adminId, updatedById: adminId
     }
   });

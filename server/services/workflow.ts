@@ -1527,7 +1527,6 @@ export type ProjectWorkflowExport = {
     status: string;
     startDate: string;
     endDate: string;
-    budgetAmount: string | null;
   };
   contract: {
     id: string;
@@ -1649,8 +1648,7 @@ export async function exportProjectWorkflow(
       serviceScope: project.serviceScope,
       status: project.status,
       startDate: project.startDate.toISOString(),
-      endDate: project.endDate.toISOString(),
-      budgetAmount: project.budgetAmount ? project.budgetAmount.toString() : null
+      endDate: project.endDate.toISOString()
     },
     contract: {
       id: project.contract.id,

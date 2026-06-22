@@ -22,7 +22,18 @@ export async function listPayments(
     ...(statusList ? { status: { in: statusList } } : {}),
     ...(contractId ? { contractId } : {}),
     ...(invoiceId ? { invoiceId } : {}),
-    ...(keyword ? { OR: [{ paymentNo: { contains: keyword, mode: "insensitive" } }, { bankRefNo: { contains: keyword, mode: "insensitive" } }] } : {}),
+    ...(keyword
+      ? {
+          // 关键字命中:回款号 / 银行流水号 / 客户名称;
+          // customer 用 Prisma 关系过滤 (payment.customerId -> customer.name),
+          // 一并排除软删客户避免历史脏数据. 这样查询是单 SQL,不走 N+1 反查.
+          OR: [
+            { paymentNo: { contains: keyword, mode: "insensitive" } },
+            { bankRefNo: { contains: keyword, mode: "insensitive" } },
+            { customer: { name: { contains: keyword, mode: "insensitive" }, deletedAt: null } }
+          ]
+        }
+      : {}),
     ...(ownerViaContract(user) as Prisma.PaymentWhereInput),
   };
   const [list, total] = await Promise.all([
@@ -36,34 +47,10 @@ export async function getPayment(user: SessionUser, id: string) {
   requirePermission(user.roleCode, RESOURCE.PAYMENT, ACTION.READ);
   const p = await prisma.payment.findFirst({
     where: { id, deletedAt: null, ...(ownerViaContract(user) as Prisma.PaymentWhereInput) },
-    include: { allocations: { include: { invoice: { select: { id: true, invoiceNo: true } } } }, invoice: { select: { id: true, invoiceNo: true, amount: true } } }
+    include: { invoice: { select: { id: true, invoiceNo: true, amount: true } } }
   });
   if (!p) throw new ApiError(ERROR_CODES.NOT_FOUND, "回款不存在", 404);
-
-  // 详情展示需要:发票编号(从 invoice 嵌套拍平)、项目编号/名称(PaymentAllocation 无 project 关系,用 projectId 反查)
-  // TODO(数据模型):在 schema 给 PaymentAllocation 加 project 关系,可让 include 一把出
-  const projectIds = Array.from(
-    new Set(p.allocations.map((a) => a.projectId).filter((x): x is string => Boolean(x)))
-  );
-  const projects = projectIds.length > 0
-    ? await prisma.project.findMany({
-        where: { id: { in: projectIds } },
-        select: { id: true, projectNo: true, name: true }
-      })
-    : [];
-  const projectById = new Map(projects.map((x) => [x.id, x]));
-
-  const allocations = p.allocations.map((a) => {
-    const proj = a.projectId ? projectById.get(a.projectId) : undefined;
-    return {
-      ...a,
-      invoiceNo: a.invoice?.invoiceNo ?? null,
-      projectNo: proj?.projectNo ?? null,
-      projectName: proj?.name ?? null
-    };
-  });
-
-  return { ...p, allocations };
+  return p;
 }
 
 export async function createPayment(user: SessionUser, input: PaymentCreateInput) {
@@ -197,68 +184,6 @@ export async function paymentAction(user: SessionUser, id: string, input: Paymen
       const updated = await tx.payment.update({ where: { id }, data: { status: "CANCELLED" } });
       await audit(tx, { actorId: user.id, action: "PAYMENT_CANCEL", entity: "Payment", entityId: id, before, after: { status: "CANCELLED" } });
       return updated;
-    }
-
-    if (input.action === "allocate") {
-      // 对账后(RECONCILED)及终态(REFUNDED/CANCELLED)锁定分配,避免事后篡改
-      if (!["PLANNED", "CONFIRMED"].includes(p.status)) {
-        throw new ApiError(
-          ERROR_CODES.ENTITY_IMMUTABLE,
-          `当前状态 ${p.status} 不允许修改分配明细(仅 PLANNED / CONFIRMED 可重分配)`,
-          403
-        );
-      }
-      if (!input.allocations || input.allocations.length === 0) {
-        throw new ApiError(ERROR_CODES.VALIDATION_FAILED, "请提供分配明细", 400);
-      }
-      // P1-5: 每条 invoiceId/projectId 必须存在且归属本回款所在合同, 防止跨合同抹账
-      for (const a of input.allocations) {
-        if (a.invoiceId) {
-          const inv = await tx.invoice.findUnique({
-            where: { id: a.invoiceId },
-            select: { contractId: true, deletedAt: true }
-          });
-          if (!inv || inv.deletedAt) {
-            throw new ApiError(ERROR_CODES.NOT_FOUND, `发票 ${a.invoiceId} 不存在`, 404);
-          }
-          if (inv.contractId !== p.contractId) {
-            throw new ApiError(
-              ERROR_CODES.VALIDATION_FAILED,
-              `发票 ${a.invoiceId} 不属于本回款所在合同`,
-              400
-            );
-          }
-        }
-        if (a.projectId) {
-          const proj = await tx.project.findUnique({
-            where: { id: a.projectId },
-            select: { contractId: true, deletedAt: true }
-          });
-          if (!proj || proj.deletedAt) {
-            throw new ApiError(ERROR_CODES.NOT_FOUND, `项目 ${a.projectId} 不存在`, 404);
-          }
-          if (proj.contractId !== p.contractId) {
-            throw new ApiError(
-              ERROR_CODES.VALIDATION_FAILED,
-              `项目 ${a.projectId} 不属于本回款所在合同`,
-              400
-            );
-          }
-        }
-      }
-      const totalAlloc = input.allocations.reduce((s, a) => s + a.amount, 0);
-      const totalAllocDec = new Prisma.Decimal(totalAlloc.toString());
-      const paymentAmtDec = new Prisma.Decimal(p.amount.toString());
-      if (!totalAllocDec.equals(paymentAmtDec)) {
-        throw new ApiError(ERROR_CODES.VALIDATION_FAILED, `分配合计 ¥${totalAlloc} 与回款金额 ¥${p.amount} 不一致`, 400);
-      }
-      await tx.paymentAllocation.deleteMany({ where: { paymentId: id } });
-      for (const a of input.allocations) {
-        await tx.paymentAllocation.create({
-          data: { paymentId: id, invoiceId: a.invoiceId ?? null, projectId: a.projectId ?? null, amount: a.amount }
-        });
-      }
-      return tx.payment.findUniqueOrThrow({ where: { id }, include: { allocations: true } });
     }
 
     throw new ApiError(ERROR_CODES.VALIDATION_FAILED, "未知动作", 400);

@@ -166,7 +166,6 @@ export async function GET(
           },
           { label: "起期", value: fmtDate(p.startDate) },
           { label: "止期", value: fmtDate(p.endDate) },
-          { label: "预算", value: fmtAmount(Number(p.budgetAmount)) },
           {
             label: "项目进度",
             value: `${progressPct.toFixed(1)}%(基于工作流任务完成度)`,

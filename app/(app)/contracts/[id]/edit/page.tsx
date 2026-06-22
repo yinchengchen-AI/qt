@@ -99,6 +99,7 @@ export default function EditContractPage() {
             title: data.title,
             serviceType: data.serviceType,
             paymentMethod: data.paymentMethod,
+            ownerUserId: data.ownerUserId,
             signDate: data.signDate ? new Date(data.signDate) : undefined,
             startDate: data.startDate ? new Date(data.startDate) : undefined,
             endDate: data.endDate ? new Date(data.endDate) : undefined,
@@ -183,6 +184,31 @@ export default function EditContractPage() {
                 options={PAYMENT_METHOD_OPTIONS}
                 rules={[{ required: true, message: "请选择付款方式" }]}
                 fieldProps={{ size: "large" }}
+              />
+              <ProFormSelect
+                name="ownerUserId"
+                label="负责人"
+                placeholder="搜索员工姓名/工号"
+                tooltip="admin 可改为任意 ACTIVE 员工,业务上等同于把合同转交给对方"
+                showSearch
+                rules={[{ required: true, message: "请选择负责人" }]}
+                fieldProps={{
+                  size: "large",
+                  optionFilterProp: "label"
+                }}
+                request={async (params: { keyWords?: string }) => {
+                  const qs = new URLSearchParams();
+                  qs.set("pageSize", "100");
+                  qs.set("status", "ACTIVE");
+                  qs.set("keyword", params.keyWords ?? "");
+                  const r = await fetch(`/api/users?${qs}`, { credentials: "include" });
+                  const j = await r.json();
+                  if (j.code !== 0) return [];
+                  return (j.data.list as Array<{ id: string; name: string; employeeNo: string }>).map((u) => ({
+                    value: u.id,
+                    label: `${u.name} (${u.employeeNo})`
+                  }));
+                }}
               />
             </FormGrid>
           </FormSection>

@@ -70,7 +70,6 @@ export default function EditProjectPage() {
             serviceScope: data.serviceScope,
             startDate: data.startDate ? new Date(data.startDate) : undefined,
             endDate: data.endDate ? new Date(data.endDate) : undefined,
-            budgetAmount: data.budgetAmount ? Number(data.budgetAmount) : undefined
           }}
           onFinish={async (values) => {
             const payload = {
@@ -142,22 +141,6 @@ export default function EditProjectPage() {
             </FormGrid>
           </FormSection>
 
-          <FormSection title="预算">
-            <FormGrid columns={1}>
-              <ProFormDigit
-                name="budgetAmount"
-                label="项目预算"
-                min={0}
-                fieldProps={{ size: "large", precision: 2, prefix: "¥", addonAfter: "元" }}
-              />
-            </FormGrid>
-          </FormSection>
-
-          <Space>
-            <Text type="secondary" style={{ fontSize: 12 }}>
-              项目预算为参考值,合同总额是最终结算依据。
-            </Text>
-          </Space>
           <SubmitBar
             onSubmit={() => formRef.current?.submit()}
             onCancel={() => router.push(`/projects/${id}`)}

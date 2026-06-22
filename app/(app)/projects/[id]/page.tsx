@@ -1,16 +1,17 @@
 "use client";
 import { ProCard, ProDescriptions } from "@ant-design/pro-components";
-import { Button, Col, Modal, Row, Space, Tag, Typography } from "antd";
+import { App as AntdApp, Button, Col, Modal, Row, Space, Tag, Typography } from "antd";
 import { useParams, useRouter } from "next/navigation";
 import type { Project as ProjectEntity } from "@/lib/types/entities";
 import useSWR from "swr";
 import { useState } from "react";
+import { useSession } from "next-auth/react";
 import { Page } from "@/components/page";
 import { PageHeader } from "@/components/page-header";
 import { DetailPageSkeleton } from "@/components/detail-page-skeleton";
 import { StatusTag } from "@/components/status-tag";
 import { useActionCall } from "@/lib/use-action-call";
-import { FilePdfOutlined } from "@ant-design/icons";
+import { DeleteOutlined, FilePdfOutlined } from "@ant-design/icons";
 import { openPrintWindow } from "@/lib/print-client";
 import { CurrencyCell, DateTimeCell } from "@/components/table-cells";
 import { useUserName } from "@/lib/user-lookup";
@@ -39,7 +40,37 @@ export default function ProjectDetailPage() {
   const { data, isLoading, mutate } = useSWR<ProjectEntity>(`/api/projects/${id}`);
   const project = data;
   const { run } = useActionCall({ baseUrl: `/api/projects/${id}`, reload: () => mutate() });
+  const { data: session } = useSession();
+  const { message: msg, modal } = AntdApp.useApp();
   const [upgradeOpen, setUpgradeOpen] = useState(false);
+
+  // admin 删除项目 (后端会再做 admin + 状态 + 级联校验)
+  // 仅 PLANNED (没开工) / CANCELLED (已终止) 允许; 其它状态 (IN_PROGRESS / SUSPENDED /
+  // DELIVERED / ACCEPTED / CLOSED) 一律隐藏按钮, 避免误删进行中或已结清的项目.
+  const handleDelete = () => {
+    const isPlanned = project?.status === "PLANNED";
+    const content = isPlanned
+      ? "确认删除该项目?项目下所有工作流任务与进度记录会一并软删,可在回收站恢复。"
+      : "确认删除该项目(已取消)?删除后可在回收站恢复,仅项目负责人 / 管理员可恢复。";
+    modal.confirm({
+      title: "确认删除该项目?",
+      content,
+      okButtonProps: { danger: true },
+      okText: "删除",
+      cancelText: "取消",
+      onOk: async () => {
+        try {
+          const res = await fetch(`/api/projects/${id}`, { method: "DELETE", credentials: "include" });
+          const j = await res.json();
+          if (j.code !== 0) { msg.error(j.message); return; }
+          msg.success("项目已删除");
+          router.push("/projects");
+        } catch (e) {
+          msg.error((e as Error).message);
+        }
+      }
+    });
+  };
 
   if (isLoading || !project) {
     return (
@@ -128,6 +159,11 @@ export default function ProjectDetailPage() {
                 {ACTION_LABEL[a] ?? a}
               </Button>
             ))}
+            {session?.user?.roleCode === "ADMIN" && ["PLANNED", "CANCELLED"].includes(project.status) && (
+              <Button danger icon={<DeleteOutlined />} onClick={handleDelete}>
+                删除
+              </Button>
+            )}
           </Space>
         }
       />
@@ -138,7 +174,6 @@ export default function ProjectDetailPage() {
           { title: "项目负责人", dataIndex: "managerUserId", render: (_, r) => <ManagerName id={r.managerUserId as string | null} /> },
           { title: "起期", dataIndex: "startDate", render: (v) => <DateTimeCell value={v as string} /> },
           { title: "止期", dataIndex: "endDate", render: (v) => <DateTimeCell value={v as string} /> },
-          { title: "预算", dataIndex: "budgetAmount", render: (v) => <CurrencyCell value={v as string} /> },
           { title: "状态", dataIndex: "status", render: (_, r) => <StatusTag status={r.status as string} domain="project" /> },
           {
             title: "进度(工作流派生)",

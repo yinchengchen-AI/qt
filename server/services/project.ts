@@ -8,7 +8,7 @@ import { tryAutoExecuteContract, tryAutoCompleteContract } from "./contract";
 import { audit } from "@/server/audit";
 import { requirePermission, RESOURCE, ACTION } from "@/lib/permissions";
 import type { ProjectCreateInput, ProjectUpdateInput, ProjectActionInput } from "@/lib/validators/project";
-import type { Prisma } from "@prisma/client";
+import { Prisma } from "@prisma/client";
 import { ownerEq, ownerViaContract, parseStatusList } from "@/lib/ownership";
 
 // P14: 项目 360 视图 — 聚合工作流统计数据
@@ -178,7 +178,6 @@ export async function updateProject(user: SessionUser, id: string, input: Projec
       ...input,
       startDate: input.startDate ? new Date(input.startDate) : undefined,
       endDate: input.endDate ? new Date(input.endDate) : undefined,
-      budgetAmount: input.budgetAmount ?? undefined,
       updatedById: user.id
     }
   });
@@ -274,7 +273,6 @@ export async function createProject(user: SessionUser, input: ProjectCreateInput
         managerUserId: input.managerUserId ?? user.id,
         startDate: new Date(input.startDate),
         endDate: new Date(input.endDate),
-        budgetAmount: input.budgetAmount ?? null,
         status: "PLANNED",
         createdById: user.id,
         updatedById: user.id
@@ -292,4 +290,90 @@ export async function createProject(user: SessionUser, input: ProjectCreateInput
     }
     return project;
   });
+}
+
+// =====================================================
+// P2: 项目软删除 (admin only, 走 deletedAt)
+// =====================================================
+//
+// 设计要点 (跟 softDeleteContract 一致):
+//   1) requirePermission 只给 ADMIN 配了 PROJECT.DELETE, 这里再显式双检 user.roleCode === "ADMIN"
+//      防止以后误改 ROLE_PERMISSIONS 表而悄悄放权. 合同软删 admin-only 是高敏操作, 同样的双检
+//      模式搬到项目上, 避免有人通过权限矩阵把 SALES 也加上 DELETE 后悄悄能删别人的项目.
+//   2) 状态机门控: 只允许 PLANNED / CANCELLED. PLANNED 是"还没动"的项目, 通常是录错或计划变更;
+//      CANCELLED 是终态, 内部历史不再需要可以清掉. IN_PROGRESS / SUSPENDED / DELIVERED /
+//      ACCEPTED / CLOSED 都不行, 避免误删还在用或财务已结清的项目.
+//   3) 级联软删: 项目下的 WorkflowTaskInstance + ProjectProgressLog 全部打 deletedAt.
+//      后续如果从回收站恢复, 也要级联 un-delete (但本 PR 不做, 后续若需要再加).
+//   4) 用 Serializable 事务 + P2034 重试, 防止并发场景: T1 校验"无子任务"时 T2 突然
+//      插了任务, T1 在 read committed 下把无子任务的项目软删掉, 违反不变量.
+//
+const SERIALIZABLE_RETRY_PROJECT = 3;
+
+export async function softDeleteProject(user: SessionUser, id: string) {
+  requirePermission(user.roleCode, RESOURCE.PROJECT, ACTION.DELETE);
+  // 双检兜底: 项目软删是 admin-only 高敏操作, 跟合同软删同款防御
+  if (user.roleCode !== "ADMIN") {
+    throw new ApiError(ERROR_CODES.FORBIDDEN, "仅管理员可删除项目", 403);
+  }
+
+  for (let attempt = 1; attempt <= SERIALIZABLE_RETRY_PROJECT; attempt++) {
+    try {
+      return await prisma.$transaction(
+        async (tx) => {
+          const existing = await tx.project.findFirst({ where: { id, deletedAt: null } });
+          if (!existing) throw new ApiError(ERROR_CODES.NOT_FOUND, "项目不存在", 404);
+          if (!["PLANNED", "CANCELLED"].includes(existing.status)) {
+            throw new ApiError(
+              ERROR_CODES.ENTITY_IMMUTABLE,
+              `当前状态 ${existing.status} 不可删除（须 PLANNED / CANCELLED）`,
+              403
+            );
+          }
+          // 级联软删子表: workflowTaskInstance + projectProgressLog.
+          // 同事务一起做, 避免半删 (项目没了但子任务还活着, 后续列表/统计会出脏数据).
+          const [taskResult, logResult] = await Promise.all([
+            tx.workflowTaskInstance.updateMany({
+              where: { projectId: id, deletedAt: null },
+              data: { deletedAt: new Date() }
+            }),
+            tx.projectProgressLog.updateMany({
+              where: { projectId: id, deletedAt: null },
+              data: { deletedAt: new Date() }
+            })
+          ]);
+          const before = { status: existing.status, projectNo: existing.projectNo };
+          const r = await tx.project.update({
+            where: { id },
+            data: { deletedAt: new Date(), updatedById: user.id }
+          });
+          await audit(tx, {
+            actorId: user.id,
+            action: "PROJECT_SOFT_DELETE",
+            entity: "Project",
+            entityId: id,
+            before,
+            after: {
+              deleted: true,
+              cascadedTaskInstances: taskResult.count,
+              cascadedProgressLogs: logResult.count
+            }
+          });
+          return r;
+        },
+        { isolationLevel: Prisma.TransactionIsolationLevel.Serializable }
+      );
+    } catch (e) {
+      if (
+        e instanceof Prisma.PrismaClientKnownRequestError &&
+        e.code === "P2034" &&
+        attempt < SERIALIZABLE_RETRY_PROJECT
+      ) {
+        continue;
+      }
+      throw e;
+    }
+  }
+  // 不可达: 内层 catch 已 throw e
+  throw new Error("unreachable: SERIALIZABLE_RETRY exhausted");
 }

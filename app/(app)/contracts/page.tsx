@@ -27,6 +27,9 @@ type Row = {
   invoicedAmount: number;
   paidAmount: number;
   billingStatus: "NOT_STARTED" | "IN_PROGRESS" | "COMPLETED";
+  ownerUserId: string;
+  ownerName: string;
+  ownerEmployeeNo: string;
   status: string;
 };
 
@@ -98,6 +101,7 @@ export default function ContractsPage() {
             render: (_, r) => <Link href={`/contracts/${r.id}`}>{r.contractNo}</Link>
           },
           { title: "客户", dataIndex: "customerName", search: false, width: 180 },
+          { title: "负责人", dataIndex: "ownerUserId", search: false, width: 110, render: (_, r) => r.ownerName || "—" },
           { title: "合同标题", dataIndex: "title", search: false, width: 240 },
           {
             title: "服务类型",

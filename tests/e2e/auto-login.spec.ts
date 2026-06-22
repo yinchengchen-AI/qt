@@ -12,6 +12,7 @@
 //
 // 只在 chromium project 跑(webkit 登录已知在 dev 环境有 CSRF/cookie 兼容问题)。
 import { test, expect, type Page, type BrowserContext } from "@playwright/test";
+import { DEV_PASSWORD } from "./_dev-credentials";
 import { jwtDecrypt } from "jose";
 import { hkdf } from "@panva/hkdf";
 import * as dotenv from "dotenv";
@@ -28,7 +29,7 @@ if (!SECRET) {
   throw new Error("NEXTAUTH_SECRET not set in .env; cannot decrypt session JWE in test");
 }
 
-const ADMIN = { employeeNo: "admin", password: "123456" };
+const ADMIN = { employeeNo: "admin", password: DEV_PASSWORD };
 // 登录/签发/解密之间的耗时,加上 60s 容差
 const TOLERANCE_SECONDS = 60;
 const SESSION_COOKIE = "next-auth.session-token";

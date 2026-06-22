@@ -89,13 +89,6 @@ export async function GET(req: Request) {
               v ? new Date(v as string).toLocaleDateString("zh-CN") : "",
           },
           {
-            header: "预算",
-            key: "budgetAmount",
-            width: 16,
-            formatter: (v) =>
-              v != null && v !== "" ? Number(v).toFixed(2) : "",
-          },
-          {
             header: "状态",
             key: "status",
             width: 10,

@@ -8,8 +8,7 @@ export const projectCreateSchema = z.object({
   serviceScope: z.string().min(1, "请输入服务范围").max(2000),
   managerUserId: z.string().optional(),
   startDate: isoDate,
-  endDate: isoDate,
-  budgetAmount: z.number().nonnegative().optional()
+  endDate: isoDate
 });
 
 export const projectUpdateSchema = projectCreateSchema.partial();

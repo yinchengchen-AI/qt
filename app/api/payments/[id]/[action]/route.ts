@@ -13,7 +13,6 @@ const ACTIONS: ReadonlySet<PaymentActionInput["action"]> = new Set([
   "reconcile",
   "refund",
   "cancel",
-  "allocate",
 ]);
 
 export async function POST(

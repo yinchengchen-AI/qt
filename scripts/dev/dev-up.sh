@@ -60,6 +60,8 @@ say "prisma generate (postinstall 只跑 patch-package, 显式跑一次保险)"
 pnpm prisma:generate
 say "pnpm seed (系统字典/角色/管理员 幂等)"
 pnpm seed
+say "pnpm seed:dev-users (admin/sales/finance/ops 4 个测试账号, 密码读 DEV_QUICK_FILL_PASSWORD)"
+pnpm seed:dev-users
 
 # --- 5) 烟测预检 ---
 say "烟测: dev server 起来后访问 /login /dashboard /api/customers"

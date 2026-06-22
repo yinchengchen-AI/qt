@@ -2,6 +2,7 @@
 import { writeFileSync } from "node:fs";
 
 const BASE = "http://localhost:3000";
+const DEV_PASSWORD = process.env.DEV_QUICK_FILL_PASSWORD ?? 'dev-only-fill';
 const results = [];
 const start = Date.now();
 
@@ -106,9 +107,9 @@ const admin = new Session("admin");
 const sales = new Session("sales");
 
 try {
-  const meAdmin = await admin.login("admin", "123456");
+  const meAdmin = await admin.login(`admin`, `${DEV_PASSWORD}`);
   log("admin login", !!meAdmin?.id, `id=${meAdmin?.id}`);
-  const meSales = await sales.login("sales", "123456");
+  const meSales = await sales.login(`sales`, `${DEV_PASSWORD}`);
   log("sales login", !!meSales?.id, `id=${meSales?.id}`);
 
   // 1. 消息：合同 submit 后给 admin 发 CONTRACT_PENDING_REVIEW

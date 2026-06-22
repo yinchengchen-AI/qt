@@ -2,6 +2,7 @@
 // 覆盖 spec §5 / §8.3 / §10 关键路径
 // 跑法: npm run dev:setup 起来后,npm run test:e2e -- 06-bid-asset-library
 import { test, expect, type Page } from "@playwright/test";
+import { DEV_PASSWORD } from "./_dev-credentials";
 
 const stamp = Date.now();
 const certName = `E2E人员证书-${stamp}`;
@@ -21,7 +22,7 @@ async function ensureLoggedIn(page: Page, employeeNo: string, password: string) 
 
 test.describe.serial("06 - 标书素材库 v1", () => {
   test("06.1 admin 登录并进入 /assets 主页", async ({ page }) => {
-    await ensureLoggedIn(page, "admin", "123456");
+    await ensureLoggedIn(page, "admin", DEV_PASSWORD);
     await page.goto("/assets");
     await page.waitForLoadState("networkidle");
     await expect(page.getByRole("heading", { name: "企业资产" })).toBeVisible({ timeout: 10000 });
@@ -32,7 +33,7 @@ test.describe.serial("06 - 标书素材库 v1", () => {
   });
 
   test("06.2 场景 A: 录入人员证书 (PERSONNEL_CERT) - 端到端", async ({ page }) => {
-    await ensureLoggedIn(page, "admin", "123456");
+    await ensureLoggedIn(page, "admin", DEV_PASSWORD);
     await page.goto("/assets/new");
     await page.waitForLoadState("networkidle");
 
@@ -66,7 +67,7 @@ test.describe.serial("06 - 标书素材库 v1", () => {
   });
 
   test("06.3 列表筛选 PERSONNEL_CERT 能看到刚录入", async ({ page }) => {
-    await ensureLoggedIn(page, "admin", "123456");
+    await ensureLoggedIn(page, "admin", DEV_PASSWORD);
     await page.goto("/assets/list");
     await page.waitForLoadState("networkidle");
 
@@ -80,7 +81,7 @@ test.describe.serial("06 - 标书素材库 v1", () => {
   });
 
   test("06.4 场景 B: 录入投标模板 (TEMPLATE) - 通用模板 (留空服务类型)", async ({ page }) => {
-    await ensureLoggedIn(page, "admin", "123456");
+    await ensureLoggedIn(page, "admin", DEV_PASSWORD);
     await page.goto("/assets/new");
     await page.waitForLoadState("networkidle");
 
@@ -100,7 +101,7 @@ test.describe.serial("06 - 标书素材库 v1", () => {
   });
 
   test("06.5 场景 C: 现有 8 类补齐 - 录入 LICENSE 营业执照 (无文件)", async ({ page }) => {
-    await ensureLoggedIn(page, "admin", "123456");
+    await ensureLoggedIn(page, "admin", DEV_PASSWORD);
     await page.goto("/assets/new");
     await page.waitForLoadState("networkidle");
 
@@ -118,7 +119,7 @@ test.describe.serial("06 - 标书素材库 v1", () => {
   });
 
   test("06.6 场景 D: 列表类型下拉里能看到 v1 新增的 2 类", async ({ page }) => {
-    await ensureLoggedIn(page, "admin", "123456");
+    await ensureLoggedIn(page, "admin", DEV_PASSWORD);
     await page.goto("/assets/list");
     await page.waitForLoadState("networkidle");
 
@@ -131,7 +132,7 @@ test.describe.serial("06 - 标书素材库 v1", () => {
   });
 
   test("06.7 权限: SALES 看不到 /assets 的 '录入资产' 按钮 (回归)", async ({ page }) => {
-    await ensureLoggedIn(page, "sales", "123456");
+    await ensureLoggedIn(page, "sales", DEV_PASSWORD);
     await page.goto("/assets");
     await page.waitForLoadState("networkidle");
 
@@ -143,7 +144,7 @@ test.describe.serial("06 - 标书素材库 v1", () => {
   });
 
   test("06.8 权限: SALES 直接 POST /api/assets 应被服务端拒绝", async ({ page }) => {
-    await ensureLoggedIn(page, "sales", "123456");
+    await ensureLoggedIn(page, "sales", DEV_PASSWORD);
     // 直接打 POST 模拟绕过 UI - 服务端应 403
     const res = await page.request.post("/api/assets", {
       data: {

@@ -211,7 +211,6 @@ model Project {
   managerUserId String
   startDate     DateTime  @db.Timestamptz(6)
   endDate       DateTime  @db.Timestamptz(6)
-  budgetAmount  Decimal?  @db.Decimal(18, 2)
   status        String    @default("PLANNED") // PLANNED | IN_PROGRESS | SUSPENDED | DELIVERED | ACCEPTED | CLOSED | CANCELLED
   createdAt     DateTime  @default(now()) @db.Timestamptz(6)
   updatedAt     DateTime  @updatedAt @db.Timestamptz(6)
@@ -229,12 +228,17 @@ model Project {
 }
 
 model ProjectProgressLog {
-  id        String   @id @default(cuid())
+  id        String    @id @default(cuid())
   projectId String
-  project   Project  @relation(fields: [projectId], references: [id])
+  project   Project   @relation(fields: [projectId], references: [id])
   userId    String
   remark    String
-  at        DateTime @default(now()) @db.Timestamptz(6)
+  at        DateTime  @default(now()) @db.Timestamptz(6)
+  // 软删除标记:项目被软删时级联打 deletedAt, 后续从回收站恢复要 un-delete.
+  // 与 Project / WorkflowTaskInstance 的 deletedAt 模式一致.
+  deletedAt DateTime? @db.Timestamptz(6)
+  // 索引: 项目下"未软删"日志查询 (ProjectHistory) 走 deletedAt IS NULL 谓词, 加索引避免大表慢查
+  @@index([projectId, deletedAt])
 }
 
 // =====================================================
@@ -378,7 +382,6 @@ model Invoice {
 
   payments       Payment[]
   auditLogs      InvoiceAuditLog[]
-  allocations    PaymentAllocation[]
   attachmentRefs Attachment[]        @relation("InvoiceAttachments")
 
   @@index([status])
@@ -429,29 +432,12 @@ model Payment {
   updatedById     String
   deletedAt       DateTime? @db.Timestamptz(6)
 
-  allocations PaymentAllocation[]
 
   @@index([invoiceId])
   @@index([contractId])
   @@index([status])
   @@index([receivedAt])
   @@index([customerId])
-}
-
-model PaymentAllocation {
-  id        String   @id @default(cuid())
-  paymentId String
-  payment   Payment  @relation(fields: [paymentId], references: [id])
-  invoiceId String?
-  invoice   Invoice? @relation(fields: [invoiceId], references: [id])
-  projectId String?
-  amount    Decimal  @db.Decimal(18, 2)
-  remark    String?
-  createdAt DateTime @default(now()) @db.Timestamptz(6)
-
-  @@index([paymentId])
-  @@index([invoiceId])
-  @@index([projectId])
 }
 
 // =====================================================

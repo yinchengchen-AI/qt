@@ -41,6 +41,9 @@ export type Contract = {
   reviewerId: string | null;
   reviewAt: string | null;
   reviewLogs: ContractReviewLog[];
+  // 负责人姓名 (后端 list/get 投影, 前端展示用)
+  ownerName?: string;
+  ownerEmployeeNo?: string;
 };
 
 export type ContractReviewLog = {
@@ -79,7 +82,6 @@ export type Invoice = {
   status: string;
   attachments: AttachmentSnapshot[];
   invoice: Invoice | null;
-  allocations: PaymentAllocation[];
 };
 
 export type Project = {
@@ -93,7 +95,6 @@ export type Project = {
   status: string;
   startDate: string;
   endDate: string;
-  budgetAmount: string | null;
   managerUserId: string | null;
   managerName: string | null;
   customerId: string;
@@ -103,18 +104,6 @@ export type Project = {
   progressLogs: { id: string; projectId: string; userId: string; remark: string; at: string }[];
   // 数字进度,由工作流任务完成度派生(Project.progressPct)
   progressPct: number;
-};
-
-export type PaymentAllocation = {
-  id: string;
-  invoiceId: string;
-  projectId: string;
-  /** 关联展示用,后端 getPayment include 一并 select;老数据/重分配后未回填时为 undefined */
-  invoiceNo?: string | null;
-  projectNo?: string | null;
-  projectName?: string | null;
-  amount: string;
-  remark: string | null;
 };
 
 export type Payment = {
@@ -139,7 +128,6 @@ export type Payment = {
   reconciledAt: string | null;
   attachments: AttachmentSnapshot[];
   invoice: Invoice | null;
-  allocations: PaymentAllocation[];
 };
 
 export type Customer = {

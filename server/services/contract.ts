@@ -137,14 +137,24 @@ export async function listContracts(
   const invoicedByContract = new Map(invoiceAgg.map((r) => [r.contractId, Number(r._sum.amount ?? 0)]));
   const paidByContract = new Map(paymentAgg.map((r) => [r.contractId, Number(r._sum.amount ?? 0)]));
 
+  // 批量回填负责人姓名 (ownerName), 列表/详情表头展示用; 避免 N+1
+  const ownerIds = Array.from(new Set(list.map((c) => c.ownerUserId).filter(Boolean)));
+  const owners = ownerIds.length
+    ? await prisma.user.findMany({ where: { id: { in: ownerIds } }, select: { id: true, name: true, employeeNo: true } })
+    : [];
+  const ownerById = new Map(owners.map((u) => [u.id, u]));
+
   const enriched = list.map((c) => {
     const invoicedAmount = invoicedByContract.get(c.id) ?? 0;
     const paidAmount = paidByContract.get(c.id) ?? 0;
+    const owner = ownerById.get(c.ownerUserId);
     return {
       ...c,
       invoicedAmount,
       paidAmount,
-      billingStatus: getBillingStatus(invoicedAmount, Number(c.totalAmount))
+      billingStatus: getBillingStatus(invoicedAmount, Number(c.totalAmount)),
+      ownerName: owner?.name ?? "",
+      ownerEmployeeNo: owner?.employeeNo ?? ""
     };
   });
   return { list: enriched, total, page, pageSize };
@@ -165,6 +175,11 @@ export async function getContract(user: SessionUser, id: string) {
     }
   });
   if (!c) throw new ApiError(ERROR_CODES.NOT_FOUND, "合同不存在", 404);
+  // 投影负责人姓名,详情页头部展示; 跟 reviewer 走同一套"白名单投影"模式避免越权泄露其他 user 字段
+  const owner = await prisma.user.findFirst({
+    where: { id: c.ownerUserId, deletedAt: null },
+    select: { id: true, name: true, employeeNo: true }
+  });
   // 投影 reviewer 姓名(批量查避免 N+1),只返回 id + name
   const reviewerIds = Array.from(new Set(c.reviewLogs.map((l) => l.reviewerId).filter(Boolean)));
   const reviewers = reviewerIds.length
@@ -176,6 +191,8 @@ export async function getContract(user: SessionUser, id: string) {
   const nameById = new Map(reviewers.map((u) => [u.id, u.name]));
   return {
     ...c,
+    ownerName: owner?.name ?? "",
+    ownerEmployeeNo: owner?.employeeNo ?? "",
     reviewLogs: c.reviewLogs.map((l) => ({
       id: l.id,
       action: l.action,
@@ -185,6 +202,16 @@ export async function getContract(user: SessionUser, id: string) {
       reviewerName: nameById.get(l.reviewerId) ?? ""
     }))
   };
+}
+
+// 校验"签订人 / 负责人"等指派字段:用户必须存在、未软删、ACTIVE.
+// 单独抽出来避免 createContract / updateContract 各自重复 3 行.
+async function assertActiveUser(userId: string, label: string): Promise<void> {
+  const u = await prisma.user.findFirst({ where: { id: userId, deletedAt: null } });
+  if (!u) throw new ApiError(ERROR_CODES.NOT_FOUND, `${label}不存在`, 404);
+  if (u.status !== "ACTIVE") {
+    throw new ApiError(ERROR_CODES.VALIDATION_FAILED, `${label}必须是启用状态员工`, 400);
+  }
 }
 
 export async function createContract(user: SessionUser, input: ContractCreateInput) {
@@ -200,13 +227,11 @@ export async function createContract(user: SessionUser, input: ContractCreateInp
   }
   // 校验签订人:前端不传时回退为当前 user;若显式传入,确保目标用户存在且未停用
   const signerId = input.signerId ?? user.id;
-  const signer = await prisma.user.findFirst({ where: { id: signerId, deletedAt: null } });
-  if (!signer) {
-    throw new ApiError(ERROR_CODES.NOT_FOUND, "签订人不存在", 404);
-  }
-  if (signer.status !== "ACTIVE") {
-    throw new ApiError(ERROR_CODES.VALIDATION_FAILED, "签订人必须是启用状态员工", 400);
-  }
+  await assertActiveUser(signerId, "签订人");
+  // 校验负责人:前端不传时回退为客户业务负责人(customer.ownerUserId);
+  // 显式传入时同样要目标用户 ACTIVE, 防止前端传错 id 静默落到一个停用员工头上.
+  const ownerUserId = input.ownerUserId ?? customer.ownerUserId;
+  await assertActiveUser(ownerUserId, "负责人");
   if (new Date(input.endDate) < new Date(input.startDate)) {
     throw new ApiError(ERROR_CODES.VALIDATION_FAILED, "结束日期不能早于开始日期", 400);
   }
@@ -236,9 +261,9 @@ export async function createContract(user: SessionUser, input: ContractCreateInp
         amountExcludingTax,
         paymentMethod: input.paymentMethod,
         signerId,
+        ownerUserId,
         installmentPlan: (input.installmentPlan ?? null) as Prisma.InputJsonValue,
         status: "DRAFT",
-        ownerUserId: customer.ownerUserId,
         attachments: [] as unknown as Prisma.InputJsonValue,
         createdById: user.id,
         updatedById: user.id
@@ -266,6 +291,10 @@ export async function updateContract(user: SessionUser, id: string, input: Contr
   if (!existing) throw new ApiError(ERROR_CODES.NOT_FOUND, "合同不存在", 404);
   if (!["DRAFT", "PENDING_REVIEW", "SUSPENDED"].includes(existing.status)) {
     throw new ApiError(ERROR_CODES.ENTITY_IMMUTABLE, "当前状态不可修改", 403);
+  }
+  // 负责人变更时, 校验目标用户存在且 ACTIVE
+  if (input.ownerUserId !== undefined && input.ownerUserId !== existing.ownerUserId) {
+    await assertActiveUser(input.ownerUserId, "负责人");
   }
   // 合同编号若变更需唯一性校验
   if (input.contractNo !== undefined && input.contractNo !== existing.contractNo) {

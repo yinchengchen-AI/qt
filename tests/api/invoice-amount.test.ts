@@ -66,7 +66,6 @@ afterAll(async () => {
   if (!dbReachable) return;
   try {
     if (createdPaymentIds.length > 0) {
-      await prisma.paymentAllocation.deleteMany({ where: { paymentId: { in: createdPaymentIds } } });
       await prisma.payment.deleteMany({ where: { id: { in: createdPaymentIds } } });
     }
     if (createdInvoiceIds.length > 0) {

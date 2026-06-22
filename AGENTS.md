@@ -17,7 +17,7 @@ Node `>=20.9.0`. Use `npm`; `pnpm-lock.yaml` is kept in sync.
 - `npm run build` / `npm run start` — production build and serve.
 - `npm run typecheck` — `tsc --noEmit`. `npm run lint` / `lint:fix` — ESLint 9 flat config.
 - `npm test` (Vitest) and `npm run test:e2e` (Playwright; auto-boots dev).
-- `npm run prisma:migrate` / `prisma:generate` / `prisma:studio` for schema; `npm run seed`, `create-admin`, `reset-password` for system data.
+- `npm run prisma:migrate` / `prisma:generate` / `prisma:studio` for schema; `npm run seed`, `seed:dev-users`, `create-admin`, `reset-password` for system data. The `seed:dev-users` script idempotently upserts the 5 dev test accounts (admin/sales/finance/ops/expert — one per role, EXPERT is for permission tests, not on the login quick-fill card); their shared password is `DEV_QUICK_FILL_PASSWORD` (default `dev-only-fill`).
 
 ## Coding Style & Naming Conventions
 

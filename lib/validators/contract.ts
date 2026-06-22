@@ -32,6 +32,10 @@ export const contractCreateSchema = z.object({
   // 签订人:前端表单默认选当前登录员工,允许 admin 改成任意员工;
   // 不传时 service 层回退为当前 user.id,避免历史调用方漏字段
   signerId: z.string().min(1).optional(),
+  // 负责人:前端表单默认跟 customer.ownerUserId 一致(继承客户业务负责人);
+  // admin 可显式改成任意 ACTIVE 员工(支持跨部门代签/转交).
+  // 不传时 service 层回退为 customer.ownerUserId.
+  ownerUserId: z.string().min(1).optional(),
   installmentPlan: z
     .array(
       z.object({

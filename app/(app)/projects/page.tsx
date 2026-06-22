@@ -21,7 +21,6 @@ type Row = {
   contractId?: string;
   startDate: string;
   endDate: string;
-  budgetAmount?: string;
   status: string;
 };
 
@@ -92,7 +91,6 @@ export default function ProjectsPage() {
           { title: "所属合同", dataIndex: ["contract", "contractNo"], search: false, width: 180 },
           { title: "起期", dataIndex: "startDate", search: false, valueType: "date", width: 110, render: (_, r) => <DateCell value={r.startDate} /> },
           { title: "止期", dataIndex: "endDate", search: false, valueType: "date", width: 110, render: (_, r) => <DateCell value={r.endDate} /> },
-          { title: "预算(元)", dataIndex: "budgetAmount", search: false, width: 120, render: (_, r) => <CurrencyCell value={r.budgetAmount ?? ""} /> },
           {
             title: "状态",
             dataIndex: "status",

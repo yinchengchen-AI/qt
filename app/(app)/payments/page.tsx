@@ -82,7 +82,7 @@ export default function PaymentsPage() {
         }}
         columns={[
           // 搜索专属列:仅在 ProTable 搜索表单里出现,数据来自 params.keyword
-          { title: "关键词", dataIndex: "keyword", hideInTable: true, fieldProps: { placeholder: "回款号 / 银行流水号" } },
+          { title: "关键词", dataIndex: "keyword", hideInTable: true, fieldProps: { placeholder: "回款号 / 银行流水号 / 客户名称" } },
           {
             title: "回款号",
             dataIndex: "paymentNo",

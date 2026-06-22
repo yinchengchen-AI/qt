@@ -2,6 +2,7 @@
 import { writeFileSync } from 'node:fs';
 
 const BASE = 'http://localhost:3000';
+const DEV_PASSWORD = process.env.DEV_QUICK_FILL_PASSWORD ?? 'dev-only-fill';
 const results = [];
 const start = Date.now();
 
@@ -73,7 +74,7 @@ const admin = new Session('admin');
 const sales = new Session('sales');
 
 try {
-  const meAdmin = await admin.login('admin', '123456');
+  const meAdmin = await admin.login(`admin`, `${DEV_PASSWORD}`);
   log('admin login', !!meAdmin?.id, `id=${meAdmin?.id} role=${meAdmin?.roleCode}`);
 
   // 上游把 createContract 改为 resolveAttachmentSnapshots:前端传的 attachment.id 必须在 Attachment 表里真实存在
@@ -118,7 +119,7 @@ try {
     throw new Error('PUT 到 MinIO 失败');
   }
   log('setup attachment', !!e2eAttachmentId, `id=${e2eAttachmentId}`);
-  const meSales = await sales.login('sales', '123456');
+  const meSales = await sales.login(`sales`, `${DEV_PASSWORD}`);
   log('sales login', !!meSales?.id, `id=${meSales?.id} role=${meSales?.roleCode}`);
 
   const badCredit = await admin.req('/api/customers', {
@@ -178,7 +179,7 @@ try {
     method: 'POST',
     body: { contractId, name: `E2E 项目-A-${stamp}`, serviceScope: '安全评估',
       managerUserId: meAdmin.id, startDate: new Date().toISOString(),
-      endDate: new Date(Date.now() + 60 * 86400_000).toISOString(), budgetAmount: 80000 },
+      endDate: new Date(Date.now() + 60 * 86400_000).toISOString() },
   });
   const projectId = newProj.body?.data?.id;
   log('create project', newProj.status === 200 && !!projectId, `id=${projectId} no=${newProj.body?.data?.projectNo}`);

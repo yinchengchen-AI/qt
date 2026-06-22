@@ -3,8 +3,9 @@
 // 2. 关键交互可用(汉堡 Drawer、列表滚动、表单填得开)
 // 3. 没有页面级横向滚动条
 import { test, expect, type Page, type ViewportSize } from "@playwright/test";
+import { DEV_PASSWORD } from "./_dev-credentials";
 
-const ADMIN = { employeeNo: "admin", password: "123456" };
+const ADMIN = { employeeNo: "admin", password: DEV_PASSWORD };
 
 function isPhoneViewport(viewport: ViewportSize | null): boolean {
   return !!viewport && viewport.width < 768;

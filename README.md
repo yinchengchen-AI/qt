@@ -60,6 +60,25 @@ npm run create-admin -- \
 
 忘记密码可重置:`tsx scripts/shared/reset-password.ts --employeeNo <id> --password <newPwd>`。
 
+### 3.5 测试账号(dev 快速填充卡)
+
+登录页右下角的"测试账号"快速填充卡会列出 `admin / sales / finance / ops` 4 个角色账号;`seed:dev-users` 还会一并建 `expert` 账号,方便切 EXPERT 角色做权限/工作流测试。
+密码统一从 `.env` 的 `DEV_QUICK_FILL_PASSWORD` 读(默认 `dev-only-fill`)。
+`npm run dev:setup` 已经会自动跑 `npm run seed:dev-users` 把这 5 个账号建好, 密码与登录页保持一致。
+
+```bash
+# 默认: 5 个测试账号 (admin/sales/finance/ops/expert) 密码 = dev-only-fill
+npm run seed:dev-users
+
+# 自定义密码: 先在 .env 改 DEV_QUICK_FILL_PASSWORD, 然后重跑
+DEV_QUICK_FILL_PASSWORD='my-dev-pwd-2026' npm run seed:dev-users
+```
+
+> **仅 dev/test 用**; 脚本幂等 (按 employeeNo 判重), 重跑会重置 5 个账号的密码到 env 值,
+> **不会**碰其他用户。生产环境请用 `create-admin` + 真实工号建账号, 不要跑这个脚本。
+>
+> 5 个 role 的权限位分别来自 `lib/permissions.ts`, 跟 `prisma/seed.ts` 同源, 跟生产用户行为一致 (只是密码统一用 dev 占位串)。
+
 ### 4. 起服务
 
 ```bash
@@ -111,6 +130,7 @@ npm run seed                # 此时会找到 ADMIN, 写入 9 份工作流模板
 | `npm run seed-roles` | 只插 5 角色(创建首个 admin 前用) |
 | `npm run seed-dicts` | 只插 8 类字典 |
 | `npm run create-admin` | CLI 创建账号,首登前必跑(`--employeeNo` / `--name` / `--email` / `--password` 必填) |
+| `npm run seed:dev-users` | dev 专用: 幂等 upsert 5 个测试账号 (admin/sales/finance/ops/expert, 一个 role 一个), 密码读 `DEV_QUICK_FILL_PASSWORD` |
 
 ## 当前状态:v0.2.0(2026-06-12)移动端 + 自动登录 待发布
 
