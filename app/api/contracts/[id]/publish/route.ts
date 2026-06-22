@@ -1,11 +1,12 @@
-import { z } from "zod";
 import { runWithRequestContext } from "@/lib/request-context";
 import { ok, err } from "@/lib/api";
 import { requireSession } from "@/lib/session";
-import { reviewContract } from "@/server/services/contract";
+import { publishContract } from "@/server/services/contract";
 
-const schema = z.object({ comment: z.string().max(500).optional() });
-
+/**
+ * admin 强制发布: DRAFT → ACTIVE 兜底入口
+ * 正常情况下 createContract / updateContract 已自动触发, 这里是 admin 在字段/附件不满足自动条件时的兜底
+ */
 export async function POST(
   req: Request,
   { params }: { params: Promise<{ id: string }> },
@@ -14,12 +15,7 @@ export async function POST(
     try {
       const user = await requireSession();
       const { id } = await params;
-      const body = await req.json().catch(() => ({}));
-      const parsed = schema.parse(body);
-      const data = await reviewContract(user, id, {
-        action: "APPROVE",
-        ...parsed,
-      });
+      const data = await publishContract(user, id);
       return ok(data);
     } catch (e) {
       return err(e);
