@@ -183,7 +183,7 @@ export async function updateProject(user: SessionUser, id: string, input: Projec
   });
 }
 
-// 状态机：start / suspend / resume / deliver / accept / close / cancel / progress
+// 状态机: start / suspend / resume / close / cancel (5 动作)
 export async function projectAction(user: SessionUser, id: string, input: ProjectActionInput) {
   requirePermission(user.roleCode, RESOURCE.PROJECT, ACTION.UPDATE);
   return prisma.$transaction(async (tx) => {
@@ -191,48 +191,16 @@ export async function projectAction(user: SessionUser, id: string, input: Projec
       where: { id, deletedAt: null, ...(ownerViaContract(user) as Prisma.ProjectWhereInput) }
     });
     if (!p) throw new ApiError(ERROR_CODES.NOT_FOUND, "项目不存在", 404);
+    // 5 状态机: PLANNED → IN_PROGRESS → CLOSED, 中间可 SUSPENDED ↔ IN_PROGRESS,
+    // 任何非终态可 → CANCELLED. close 无前置, admin 显式关单即可.
     const transitions: Record<string, { from: string[]; to: string }> = {
       start: { from: ["PLANNED"], to: "IN_PROGRESS" },
       suspend: { from: ["IN_PROGRESS"], to: "SUSPENDED" },
       resume: { from: ["SUSPENDED"], to: "IN_PROGRESS" },
-      deliver: { from: ["IN_PROGRESS"], to: "DELIVERED" },
-      accept: { from: ["DELIVERED"], to: "ACCEPTED" },
-      close: { from: ["ACCEPTED"], to: "CLOSED" },
+      close: { from: ["IN_PROGRESS", "SUSPENDED"], to: "CLOSED" },
       cancel: { from: ["PLANNED", "IN_PROGRESS", "SUSPENDED"], to: "CANCELLED" }
     };
-    // R-17:deliver / accept / close 三个向前推进动作,要求所有 requiresDeliverable=true 的工作流任务
-    // 必须 COMPLETED 或 SKIPPED,否则拒绝并报 PROJECT_DELIVERABLES_INCOMPLETE。
-    // cancel 不在此门控内:取消即停,遗留任务保留为 PENDING/IN_PROGRESS 作为历史。
-    if (["deliver", "accept", "close"].includes(input.action)) {
-      const pending = await tx.workflowTaskInstance.count({
-        where: {
-          projectId: id,
-          deletedAt: null,
-          status: { notIn: ["COMPLETED", "SKIPPED"] },
-          task: { requiresDeliverable: true }
-        }
-      });
-      if (pending > 0) {
-        throw new ApiError(
-          ERROR_CODES.PROJECT_DELIVERABLES_INCOMPLETE,
-          `仍有 ${pending} 个必交付任务未完成,项目不可 ${input.action}`,
-          422
-        );
-      }
-    }
-    if (input.action === "progress") {
-      // 项目级里程碑记录:仅写 remark(text),不携带任何数字;
-      // 数字进度自 v0.3.1 起由工作流任务完成度派生(Project.progressPct)
-      const remark = (input.remark ?? "").trim();
-      if (!remark) {
-        throw new ApiError(ERROR_CODES.VALIDATION_FAILED, "请填写里程碑说明", 400);
-      }
-      await tx.projectProgressLog.create({
-        data: { projectId: id, userId: user.id, remark }
-      });
-      return tx.project.findUniqueOrThrow({ where: { id } });
-    }
-    const t = transitions[input.action];
+const t = transitions[input.action];
     if (!t) throw new ApiError(ERROR_CODES.VALIDATION_FAILED, "未知动作", 400);
     if (!t.from.includes(p.status)) {
       throw new ApiError(ERROR_CODES.ENTITY_IMMUTABLE, `当前状态 ${p.status} 不允许 ${input.action}`, 403);

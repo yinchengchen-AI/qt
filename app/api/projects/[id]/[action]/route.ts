@@ -12,11 +12,8 @@ const ACTIONS = new Set([
   "start",
   "suspend",
   "resume",
-  "deliver",
-  "accept",
   "close",
   "cancel",
-  "progress",
 ]);
 
 export async function POST(
@@ -40,8 +37,6 @@ export async function POST(
           | "start"
           | "suspend"
           | "resume"
-          | "deliver"
-          | "accept"
           | "close"
           | "cancel",
         ...parsed,

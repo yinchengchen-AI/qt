@@ -14,7 +14,7 @@ export const projectCreateSchema = z.object({
 export const projectUpdateSchema = projectCreateSchema.partial();
 
 export const projectActionSchema = z.object({
-  action: z.enum(["start", "suspend", "resume", "deliver", "accept", "close", "cancel", "progress"]),
+  action: z.enum(["start", "suspend", "resume", "close", "cancel"]),
   remark: z.string().max(500).optional()
 });
 
