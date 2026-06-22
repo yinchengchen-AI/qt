@@ -219,28 +219,12 @@ model Project {
   createdById   String
   updatedById   String
   deletedAt     DateTime? @db.Timestamptz(6)
-
-  progressLogs  ProjectProgressLog[]
   taskInstances WorkflowTaskInstance[]
 
   @@unique([contractId, name])
   @@index([contractId])
   @@index([status])
   @@index([managerUserId])
-}
-
-model ProjectProgressLog {
-  id        String    @id @default(cuid())
-  projectId String
-  project   Project   @relation(fields: [projectId], references: [id])
-  userId    String
-  remark    String
-  at        DateTime  @default(now()) @db.Timestamptz(6)
-  // 软删除标记:项目被软删时级联打 deletedAt, 后续从回收站恢复要 un-delete.
-  // 与 Project / WorkflowTaskInstance 的 deletedAt 模式一致.
-  deletedAt DateTime? @db.Timestamptz(6)
-  // 索引: 项目下"未软删"日志查询 (ProjectHistory) 走 deletedAt IS NULL 谓词, 加索引避免大表慢查
-  @@index([projectId, deletedAt])
 }
 
 // =====================================================
@@ -299,13 +283,6 @@ model WorkflowTask {
   // 期望执行角色：与 Role.code 对齐，删除 Role 时 RESTRICT（工作流里还在引用不能删）
   requiredRole          String?
   requiredRoleRef       Role?         @relation(fields: [requiredRole], references: [code], onDelete: Restrict, onUpdate: Cascade)
-  requiresDeliverable   Boolean       @default(false)
-  requiresOnsite        Boolean       @default(false) // 跨阶段控制点: 现场前沟通确认
-  requiresTwoStepReview Boolean       @default(false) // 跨阶段控制点: 报告类校核+审核二审
-  isRecurring           Boolean       @default(false)
-  recurrenceUnit        String? // DAY | WEEK | MONTH | YEAR
-  recurrenceInterval    Int? // 配合 unit, e.g. 1 MONTH = 每月
-  estimateDays          Int?
 
   instances WorkflowTaskInstance[]
 
@@ -321,23 +298,17 @@ model WorkflowTaskInstance {
   task             WorkflowTask @relation(fields: [taskId], references: [id], onDelete: Cascade)
   status           String       @default("PENDING") // PENDING | IN_PROGRESS | COMPLETED | SKIPPED | BLOCKED
   assigneeId       String?
-  parentInstanceId String? // 循环任务的上一个实例
-  reviewStatus     String? // null | REVIEWING | REVIEWED | APPROVED | REJECTED
-  reviewedById     String?
-  reviewedAt       DateTime?    @db.Timestamptz(6)
   completedAt      DateTime?    @db.Timestamptz(6)
   completedById    String?
   remark           String?
-  attachments      Json? // MinIO 交付物 keys
   createdAt        DateTime     @default(now()) @db.Timestamptz(6)
   updatedAt        DateTime     @updatedAt @db.Timestamptz(6)
   deletedAt        DateTime?    @db.Timestamptz(6)
 
   // 包含 parentInstanceId 让循环任务可多次出现(P2 修复)
-  @@unique([projectId, taskId, parentInstanceId])
+  @@unique([projectId, taskId])
   @@index([projectId, status])
   @@index([assigneeId, status])
-  @@index([parentInstanceId])
 }
 
 // =====================================================
@@ -367,11 +338,9 @@ model Invoice {
   address            String?
   phone              String?
   remark             String?
-  attachments        Json?
   status             String    @default("DRAFT") // DRAFT | PENDING_FINANCE | ISSUED | REJECTED | VOIDED | RED_FLUSHED
   applicantUserId    String
   financeUserId      String?
-  reviewedAt         DateTime? @db.Timestamptz(6)
   reviewComment      String?
   linkedInvoiceId    String?   @unique
   linkedInvoice      Invoice?  @relation("InvoiceRedFlush", fields: [linkedInvoiceId], references: [id])
@@ -433,7 +402,6 @@ model Payment {
   createdById     String
   updatedById     String
   deletedAt       DateTime? @db.Timestamptz(6)
-
 
   @@index([invoiceId])
   @@index([contractId])

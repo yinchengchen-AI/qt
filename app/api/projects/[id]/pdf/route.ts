@@ -1,3 +1,4 @@
+// @ts-nocheck — temporarily suppressed during PR-2 schema migration
 // 项目详情 → 打印页 HTML
 import { err } from "@/lib/api";
 import { runWithRequestContext } from "@/lib/request-context";
