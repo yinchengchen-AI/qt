@@ -122,8 +122,10 @@ export async function createInvoice(user: SessionUser, input: InvoiceCreateInput
       );
     }
     // R-08：累计开票不能超合同总额 (P2-1: 与 R-11/R-12 一致, 加 0.01 元容差)
+    // R-08: 累计开票 = DRAFT + ISSUED + RED_FLUSHED (负数自然抵扣), VOIDED 不算 (已作废)
+    // 包含 DRAFT 是为了避免业务可以无限制创建草稿, 实际开票时才发现超额
     const issued = await tx.invoice.aggregate({
-      where: { contractId: contract.id, status: "ISSUED", deletedAt: null },
+      where: { contractId: contract.id, status: { in: ["DRAFT", "ISSUED", "RED_FLUSHED"] }, deletedAt: null },
       _sum: { amount: true }
     });
     // 用 Prisma.Decimal 比较，避免 JS number 浮点失真
@@ -133,7 +135,7 @@ export async function createInvoice(user: SessionUser, input: InvoiceCreateInput
     if (issuedAmt.plus(input.amount.toString()).greaterThan(contractTotal.plus(TOL))) {
       throw new ApiError(
         ERROR_CODES.INVOICE_OVER_LIMIT,
-        `已开票 ¥${issuedAmt.toFixed(2)}，本次 ¥${input.amount.toFixed(2)}，将超过合同总额 ¥${contract.totalAmount}`,
+        `累计开票 ¥${issuedAmt.toFixed(2)}，本次 ¥${input.amount.toFixed(2)}，将超过合同总额 ¥${contract.totalAmount}`,
         422
       );
     }
