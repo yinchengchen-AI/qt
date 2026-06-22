@@ -1,29 +1,10 @@
-import { ok, err } from "@/lib/api";
-import { runWithRequestContext } from "@/lib/request-context";
-import { requireSession } from "@/lib/session";
-import { removeTaskAttachment } from "@/server/services/workflow";
-import { softDeleteAttachment } from "@/server/storage/presign";
+// 410 Gone — workflow-tasks/[id]/attachments/[attId]
+// 端点已下线, 详情见 docs/superpowers/specs/2026-06-22-minimal-pm-workflow-design.md
+// PR-1 阶段临时返回 410, PR-2 阶段整个文件 + 目录会被删除.
+import { gone410 } from "@/lib/dead-route";
 
-export async function DELETE(
-  req: Request,
-  { params }: { params: Promise<{ id: string; attId: string }> },
-) {
-  return runWithRequestContext(req, async () => {
-    try {
-      const user = await requireSession();
-      const { id, attId } = await params;
-      // 1. 从 task JSON 移除
-      await removeTaskAttachment(user, id, attId);
-      // 2. 软删 attachment
-      try {
-        await softDeleteAttachment(attId, user.id);
-      } catch (e) {
-        // 即使软删失败(JSON 里已经移除,主体干净),只 log
-        console.warn(`[workflow] softDeleteAttachment ${attId} 失败:`, e);
-      }
-      return ok({ id, attId });
-    } catch (e) {
-      return err(e);
-    }
-  });
+const ENDPOINT = "workflow-tasks/[id]/attachments/[attId]";
+
+export async function DELETE() {
+  return gone410(ENDPOINT);
 }

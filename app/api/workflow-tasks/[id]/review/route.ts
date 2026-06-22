@@ -1,25 +1,10 @@
-import { ok, err } from "@/lib/api";
-import { runWithRequestContext } from "@/lib/request-context";
-import { requireSession } from "@/lib/session";
-import { reviewTask } from "@/server/services/workflow";
-import { workflowTaskReviewSchema } from "@/lib/validators/workflow";
+// 410 Gone — workflow-tasks/[id]/review
+// 端点已下线, 详情见 docs/superpowers/specs/2026-06-22-minimal-pm-workflow-design.md
+// PR-1 阶段临时返回 410, PR-2 阶段整个文件 + 目录会被删除.
+import { gone410 } from "@/lib/dead-route";
 
-export async function POST(
-  req: Request,
-  { params }: { params: Promise<{ id: string }> },
-) {
-  return runWithRequestContext(req, async () => {
-    try {
-      const user = await requireSession();
-      const { id } = await params;
-      const body = await req.json();
-      const input = workflowTaskReviewSchema.parse(body);
-      const data = await reviewTask(user, id, input.action, {
-        comment: input.comment,
-      });
-      return ok(data);
-    } catch (e) {
-      return err(e);
-    }
-  });
+const ENDPOINT = "workflow-tasks/[id]/review";
+
+export async function POST() {
+  return gone410(ENDPOINT);
 }

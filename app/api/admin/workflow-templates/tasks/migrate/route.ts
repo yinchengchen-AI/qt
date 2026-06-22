@@ -1,28 +1,10 @@
-import { z } from "zod";
-import { runWithRequestContext } from "@/lib/request-context";
-import { ok, err } from "@/lib/api";
-import { requireSession } from "@/lib/session";
-import { migrateTaskInstances } from "@/server/services/workflow-template";
+// 410 Gone — admin/workflow-templates/tasks/migrate
+// 端点已下线, 详情见 docs/superpowers/specs/2026-06-22-minimal-pm-workflow-design.md
+// PR-1 阶段临时返回 410, PR-2 阶段整个文件 + 目录会被删除.
+import { gone410 } from "@/lib/dead-route";
 
-const schema = z.object({
-  fromTaskId: z.string().min(1),
-  toTaskId: z.string().min(1),
-});
+const ENDPOINT = "admin/workflow-templates/tasks/migrate";
 
-export async function POST(req: Request) {
-  return runWithRequestContext(req, async () => {
-    try {
-      const user = await requireSession();
-      const body = await req.json();
-      const input = schema.parse(body);
-      const data = await migrateTaskInstances(
-        user,
-        input.fromTaskId,
-        input.toTaskId,
-      );
-      return ok(data);
-    } catch (e) {
-      return err(e);
-    }
-  });
+export async function POST() {
+  return gone410(ENDPOINT);
 }

@@ -1,22 +1,10 @@
-import { ok, err } from "@/lib/api";
-import { runWithRequestContext } from "@/lib/request-context";
-import { requireSession } from "@/lib/session";
-import { diffTemplates } from "@/server/services/workflow-template";
+// 410 Gone — admin/workflow-templates/diff
+// 端点已下线, 详情见 docs/superpowers/specs/2026-06-22-minimal-pm-workflow-design.md
+// PR-1 阶段临时返回 410, PR-2 阶段整个文件 + 目录会被删除.
+import { gone410 } from "@/lib/dead-route";
 
-export async function GET(req: Request) {
-  return runWithRequestContext(req, async () => {
-    try {
-      const user = await requireSession();
-      const url = new URL(req.url);
-      const fromId = url.searchParams.get("fromId");
-      const toId = url.searchParams.get("toId");
-      if (!fromId || !toId) {
-        return err(new Error("fromId 与 toId 必填"));
-      }
-      const data = await diffTemplates(user, fromId, toId);
-      return ok(data);
-    } catch (e) {
-      return err(e);
-    }
-  });
+const ENDPOINT = "admin/workflow-templates/diff";
+
+export async function GET() {
+  return gone410(ENDPOINT);
 }
