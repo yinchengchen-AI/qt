@@ -15,6 +15,7 @@ import { DeleteOutlined, FilePdfOutlined } from "@ant-design/icons";
 import { openPrintWindow } from "@/lib/print-client";
 import { CurrencyCell, DateTimeCell } from "@/components/table-cells";
 import { useUserName } from "@/lib/user-lookup";
+import { TaskHistory } from "@/components/workflow/task-history";
 import { WorkflowSection } from "@/components/workflow/workflow-section";
 import { AppstoreOutlined, DownloadOutlined, ThunderboltOutlined } from "@ant-design/icons";
 
@@ -208,6 +209,12 @@ export default function ProjectDetailPage() {
           />
           <ProCard>
             <WorkflowSection projectId={id} canEdit={canEditWorkflow} />
+          </ProCard>
+        </Col>
+        <Col xs={24} lg={8}>
+          <PageHeader level="section" title="任务历史" />
+          <ProCard>
+            <TaskHistory projectId={id} />
           </ProCard>
         </Col>
       </Row>
