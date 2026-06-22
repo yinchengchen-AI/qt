@@ -498,8 +498,8 @@ PLANNED ─confirm─▶ CONFIRMED ─reconcile─▶ RECONCILED
 ### 9.4 确认 / 核销
 
 - **确认到账**:`PLANNED → CONFIRMED`,流水号此时起全局唯一
-- **核销**:`CONFIRMED → RECONCILED`,**必须** 选择对应发票 / 合同(走 `PaymentAllocation` 表)
-- 一次回款可分摊到 **多张发票**:`PaymentAllocation` 一对多
+- **核销**:`CONFIRMED → RECONCILED`,由 finance 在「对账」动作里勾选目标发票即可
+- 一笔回款对应 **一张发票**(`payment.invoiceId`),没有跨发票分摊 —— 回款在创建时已绑定发票,避免一笔回款挂多张发票带来的跨合同抹账风险
 - **退款**:`→ REFUNDED`,必填退款原因
 - **取消**:`PLANNED / CONFIRMED → CANCELLED`,`RECONCILED` 状态不能直接取消(需先反核销)
 

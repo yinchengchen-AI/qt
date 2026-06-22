@@ -4,7 +4,7 @@ import { Button, App as AntdApp } from "antd";
 import { DownloadOutlined } from "@ant-design/icons";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import React, { useEffect, useRef } from "react";
+import React, { useRef } from "react";
 import { Page } from "@/components/page";
 import { PageHeader } from "@/components/page-header";
 import { StatusTag } from "@/components/status-tag";
@@ -46,12 +46,9 @@ export default function CustomersPage() {
   // 用 ref 拿当前表格的查询参数(关键字/状态/等级),导出时一并带上
   const searchRef = useRef<Record<string, unknown>>({});
   const actionRef = useRef<ActionType>(undefined);
-  // formRef 用于在 onChange 中触发 form.submit(),以同步 formSearch(参见 pro-table typing.d.ts 说明)
+  // formRef 在需要时可以拿来手动 reset / submit, 当前列表是"点查询按钮或回车才查"的标准行为,
+  // 不再自动 submit. 这个 ref 留作后续 export 时按需扩展 (如要按表单值重置导出条件).
   const formRef = useRef<ProFormInstance>(undefined);
-  const searchDebounceRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
-  useEffect(() => () => {
-    if (searchDebounceRef.current) clearTimeout(searchDebounceRef.current);
-  }, []);
   const { message } = AntdApp.useApp();
 
   const handleExport = async () => {
@@ -87,13 +84,13 @@ export default function CustomersPage() {
       />
       <ProTable<Customer> actionRef={actionRef} formRef={formRef}
         rowKey="id"
-        search={{ labelWidth: "auto", defaultCollapsed: isMobile, layout: isMobile ? "vertical" : undefined, collapsed: isMobile ? false : undefined }} debounceTime={400}
+        search={{ labelWidth: "auto", defaultCollapsed: isMobile, layout: isMobile ? "vertical" : undefined, collapsed: isMobile ? false : undefined }}
         // 移动端横向滚动;Pad/桌面靠列宽自适应
         scroll={{ x: 'max-content' }}
         pagination={{ defaultPageSize: 20, showSizeChanger: !isMobile, size: isMobile ? "small" : undefined }}
         cardBordered={false}
         sticky={isMobile}
-        request={async (params) => { console.log("[REQ-keys]", Object.keys(params).join(","), "kw=", JSON.stringify(params.keyword), "status=", JSON.stringify(params.status), "scale=", JSON.stringify(params.scale));
+        request={async (params) => {
           // 记下当前查询参数,导出时复用
           searchRef.current = {
             keyword: params.keyword,
@@ -104,7 +101,9 @@ export default function CustomersPage() {
         }}
         columns={[
           // 搜索专属列:仅在 ProTable 搜索表单里出现,数据来自 params.keyword
-          { title: "关键词", dataIndex: "keyword", hideInTable: true, fieldProps: { placeholder: "客户名 / 简称 / 编号", onChange: () => { if (searchDebounceRef.current) clearTimeout(searchDebounceRef.current); searchDebounceRef.current = setTimeout(() => formRef.current?.submit?.(), 400); } } },
+          // 关键词查询: 现在点 "查询" 按钮或回车才提交 (去掉原 onChange 手动 debounce + debounceTime 之后),
+          // 避免每打一个字符就触发一次请求, 改回 antd ProTable 标准交互
+          { title: "关键词", dataIndex: "keyword", hideInTable: true, fieldProps: { placeholder: "客户名 / 简称 / 编号" } },
           { title: "客户编号", dataIndex: "code", search: false, width: 180, fixed: !isMobile ? "left" : undefined },
           {
             title: "客户名称",
@@ -117,6 +116,10 @@ export default function CustomersPage() {
             title: "类型",
             dataIndex: "customerType",
             width: 100,
+            valueType: "select",
+            // 跟 规模/行业 同款: 必须显式 valueType=select + valueEnum, 默认是文本输入框
+            // 搜的是 code (ENTERPRISE/GOV/OTHER), 用户在 label (企业/政府/其他) 里选,
+            // 表格里仍是 label 渲染 (valueEnum 把 code -> {text: label} 翻译过去).
             valueEnum: Object.fromEntries(customerTypeDict.map((d) => [d.code, { text: d.label }]))
           },
           {

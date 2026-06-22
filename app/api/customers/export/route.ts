@@ -29,9 +29,10 @@ async function loadDict(): Promise<Record<string, string>> {
 
 const query = z.object({
   keyword: z.string().optional(),
-  // status / scale 接受单值或逗号分隔多值
+  // status / scale / customerType 接受单值或逗号分隔多值
   status: z.string().optional(),
   scale: z.string().optional(),
+  customerType: z.string().optional(),
 });
 
 export async function GET(req: Request) {

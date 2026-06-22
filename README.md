@@ -171,6 +171,26 @@ npm run seed                # 此时会找到 ADMIN, 写入 9 份工作流模板
 
 ## 最近更新
 
+### v0.2.0(2026-06-22)合同/项目收紧 + 业务纯化
+
+- **feat(contract)**:合同管理新增「负责人」字段,创建/编辑表单可从员工列表选任意 ACTIVE 员工,默认继承客户业务负责人(`customer.ownerUserId`)。列表 / 详情均展示负责人姓名 + 工号
+  - 后端 `lib/validators/contract.ts` 加 `ownerUserId: z.string().min(1).optional()`;`server/services/contract.ts` 抽 `assertActiveUser` 工具,create 默认 `customer.ownerUserId`,update 变更时校验目标用户 ACTIVE;list/get 批量回填 `ownerName / ownerEmployeeNo`
+  - 「重分配」场景下 admin 可把合同转给任意员工,前端直接走 `ownerUserId` 字段(无新增 API 路径)
+- **feat(project)**:项目详情页 admin-only 删除按钮(状态门控 `PLANNED / CANCELLED`,双检 `user.roleCode === "ADMIN"`),级联软删 `WorkflowTaskInstance` + `ProjectProgressLog`
+  - 后端 `server/services/project.ts` 新增 `softDeleteProject`;Serializable + P2034 重试 + 写 `PROJECT_SOFT_DELETE` audit
+  - `app/api/projects/[id]/route.ts` 新增 `DELETE` handler,跟前 `POST` 走同一套 `runWithRequestContext` / `requireSession` 模板
+  - 迁移 `20260622_project_progress_log_soft_delete` 给 `ProjectProgressLog` 加 `deletedAt` + 复合索引 `(projectId, deletedAt)`,让级联软删干净落地
+  - `tests/api/soft-delete-project.test.ts` 7 case(PLANNED 删 / CANCELLED 删 / IN_PROGRESS 拒 / 状态门控 / 级联 workflowTask / 级联 progressLog / 非 admin 拒),`vitest run` 7/7
+- **feat(payment)**:回款列表关键字搜索扩到「客户名称」,placeholder 同步更新(`回款号 / 银行流水号 / 客户名称`)
+  - `server/services/payment.ts:listPayments` 在 OR 加 `customer: { name: { contains, mode: "insensitive" }, deletedAt: null }`,单 SQL 走 Prisma 关系过滤,无 N+1
+- **refactor(clean-up)**:项目回归纯业务 —— 移除「项目预算」+「回款分配明细」两个非核心横切功能
+  - `Project.budgetAmount` 字段删除:迁移 `20260622_drop_project_budget_and_payment_allocation` `DROP COLUMN "Project"."budgetAmount"`;schema/validator/service/PDF/Excel/表单/列表/详情/seed/e2e 全链路清理
+  - `PaymentAllocation` 表整表删除(`DROP TABLE ... CASCADE`):`paymentAction` 删 `allocate` 分支(含 P1-5 跨合同抹账校验);`paymentActionSchema` 删 `allocate` + `allocations`;`/api/payments/[id]/[action]` ACTIONS 集合去 `"allocate"`;回款详情页删「重分配」按钮 + Modal + 分配明细 ProTable + 相关 `useSWR`/`Form.List`/`canReallocate`/`REALLOCATABLE`/`LOCKED` 状态机
+  - 移除理由:回款「按合同挂」+ payment.invoiceId → invoice.contractId 的链路已经足够,「一笔回款拆给多张发票/多个项目」反而引入跨合同抹账风险;Project.budgetAmount 跟合同总额重叠干扰核心业务流(服务范围/起止/负责人 才是核心)
+  - **Contract ↔ Project 主干没动**(见「已知设计点」)—— 项目仍 required 挂合同,R-05/R-06/ownerViaContract 行级隔离全部保留
+
+质量:`tsc --noEmit` 0 错,`vitest run tests/api/soft-delete-project.test.ts` 7/7,迁移物理落地。
+
 ### v0.2.0(2026-06-22)操作日志审计字段补全 + 前端优化
 
 - **feat(audit)**：`OperationLog` 补 6 字段 `userAgent / requestId / method / path / status(SUCCESS|FAILURE) / errorMessage` + 配套索引 + `userAgent` 500 字符 CHECK 约束；迁移 `20260622_operation_log_audit_fields`
@@ -478,6 +498,10 @@ node tests/e2e-flow.mjs
 - `Customer.ownerUserId` 默认 `currentUser.id`（admin 创建时也归自己），SALES 行级隔离依靠 `ownershipWhere(user)` 注入 + Prisma 查询 `where` 子句。
 - `Invoice` 编号在草稿阶段为 `DRAFT-{timestamp}`，待 finance issue 后由 service 重新分配正式编号。
 - `Code` 字段（如 `QT-HT-2026-0005`）由 `Sequence` 表 + `SELECT … FOR UPDATE` 行锁保证并发安全，事务内串行。
+- **合同负责人**（`Contract.ownerUserId`）：admin 可改，非 admin 走 `customer.ownerUserId` 继承。改合同负责人 = 转交业务（对应 `CUSTOMER_INACTIVE` 通知接收人变更）；改客户负责人 = 转客户（合同 owner 不联动，需要单独改合同）
+- **项目软删**（`DELETE /api/projects/:id`）：仅 admin、仅状态 ∈ {PLANNED, CANCELLED}。IN_PROGRESS / SUSPENDED / DELIVERED / ACCEPTED / CLOSED 一律 403 `ENTITY_IMMUTABLE`，避免误删进行中或已结清项目。同事务内级联 `WorkflowTaskInstance` + `ProjectProgressLog` 打 `deletedAt`，前端 `Modal.confirm` 二次确认后跳列表
+- **Contract ↔ Project 主干关联保留**：项目仍 required 挂合同（R-05 强校验，合同必须 EFFECTIVE/EXECUTING）；R-06 `endDate` 不超合同 endDate；`ownerViaContract(user)` 行级隔离通过 `Project → Contract.ownerUserId` 链路生效；合同状态机自动转换由项目 `start/close/cancel` 反向触发，合同 `tryAutoCompleteContract` 也看项目是否收尾
+- **回款单线化**：回款只通过 `payment.invoiceId → invoice.contractId` 关联合同，不再有 `PaymentAllocation` 中间表（已 DROP）。一笔回款 = 一张发票 = 一份合同，跨合同抹账风险窗口彻底关闭
 
 ## P2 支撑系统验收
 

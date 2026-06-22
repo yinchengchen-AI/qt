@@ -13,17 +13,19 @@ import { ownerEq, ownerViaContract, parseStatusList } from "@/lib/ownership";
 
 export async function listCustomers(
   user: SessionUser,
-  params: { page: number; pageSize: number; keyword?: string; status?: string; scale?: string }
+  params: { page: number; pageSize: number; keyword?: string; status?: string; scale?: string; customerType?: string }
 ) {
   requirePermission(user.roleCode, RESOURCE.CUSTOMER, ACTION.READ);
   const { page, pageSize, keyword } = params;
   const statusList = parseStatusList(params.status);
   const scaleList = parseStatusList(params.scale);
+  const customerTypeList = parseStatusList(params.customerType);
   const where: Prisma.CustomerWhereInput = {
     ...ownerEq(user),
     deletedAt: null,
     ...(statusList ? { status: { in: statusList } } : {}),
     ...(scaleList ? { scale: { in: scaleList } } : {}),
+    ...(customerTypeList ? { customerType: { in: customerTypeList } } : {}),
     ...(keyword
       ? {
           OR: [
