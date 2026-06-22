@@ -3,7 +3,6 @@
 // - instantiateProjectWorkflow  按合同 serviceType 克隆模板 → 任务实例
 // - getProjectWorkflow          读项目全量实例(按阶段+任务组装返回给前端)
 // - taskAction                  实例状态机(PENDING→IN_PROGRESS→COMPLETED 等)
-// - reviewTask                  报告类二审(submit 校核 → approve/reject 审核)
 // - assignTask / updateTaskRemark  局部字段更新
 // - generateRecurringInstances  循环任务的下一个实例(占位,P2 接 cron)
 //
@@ -32,19 +31,6 @@ const TASK_TRANSITIONS: Record<WorkflowTaskAction, { from: WorkflowTaskStatus[];
   block:    { from: ["PENDING", "IN_PROGRESS"], to: "BLOCKED" },
   unblock:  { from: ["BLOCKED"],            to: "PENDING" },
   skip:     { from: ["PENDING", "BLOCKED"], to: "SKIPPED" }
-};
-
-// 二审:report 任务的 reviewStatus 状态机
-// submit   PENDING/IN_PROGRESS → REVIEWING
-// approve  REVIEWING            → APPROVED  (任务置 COMPLETED)
-// reject   REVIEWING            → REJECTED   (任务回到 IN_PROGRESS 待重交)
-const REVIEW_TRANSITIONS: Record<
-  "submit" | "approve" | "reject",
-  { from: (WorkflowReviewStatus | null)[]; to: WorkflowReviewStatus | null }
-> = {
-  submit:  { from: [null, "REJECTED"], to: "REVIEWING" },
-  approve: { from: ["REVIEWING"],     to: "APPROVED" },
-  reject:  { from: ["REVIEWING"],     to: "REJECTED" }
 };
 
 // =====================================================
@@ -153,23 +139,11 @@ export type ProjectWorkflowDto = {
       description: string | null;
       sort: number;
       requiredRole: string | null;
-      requiresDeliverable: boolean;
-      requiresOnsite: boolean;
-      requiresTwoStepReview: boolean;
-      isRecurring: boolean;
-      recurrenceUnit: string | null;
-      recurrenceInterval: number | null;
-      estimateDays: number | null;
       status: WorkflowTaskStatus;
       assigneeId: string | null;
-      reviewStatus: WorkflowReviewStatus | null;
-      reviewedById: string | null;
-      reviewedAt: string | null;
       completedAt: string | null;
       completedById: string | null;
       remark: string | null;
-      attachments: unknown;
-      parentInstanceId: string | null;
       createdAt: string;
       updatedAt: string;
       projectId: string;
@@ -246,23 +220,11 @@ export async function getProjectWorkflow(user: SessionUser, projectId: string): 
       description: ins.task.description,
       sort: ins.task.sort,
       requiredRole: ins.task.requiredRole,
-      requiresDeliverable: ins.task.requiresDeliverable,
-      requiresOnsite: ins.task.requiresOnsite,
-      requiresTwoStepReview: ins.task.requiresTwoStepReview,
-      isRecurring: ins.task.isRecurring,
-      recurrenceUnit: ins.task.recurrenceUnit,
-      recurrenceInterval: ins.task.recurrenceInterval,
-      estimateDays: ins.task.estimateDays,
       status: ins.status as WorkflowTaskStatus,
       assigneeId: ins.assigneeId,
-      reviewStatus: ins.reviewStatus as WorkflowReviewStatus | null,
-      reviewedById: ins.reviewedById,
-      reviewedAt: ins.reviewedAt ? ins.reviewedAt.toISOString() : null,
       completedAt: ins.completedAt ? ins.completedAt.toISOString() : null,
       completedById: ins.completedById,
       remark: ins.remark,
-      attachments: ins.attachments,
-      parentInstanceId: ins.parentInstanceId,
       createdAt: ins.createdAt.toISOString(),
       updatedAt: ins.updatedAt.toISOString(),
       projectId: ins.projectId,
@@ -315,7 +277,7 @@ export async function taskAction(
   user: SessionUser,
   instanceId: string,
   action: WorkflowTaskAction,
-  opts: { remark?: string; attachments?: unknown } = {}
+  opts: { remark?: string } = {}
 ) {
   requirePermission(user.roleCode, RESOURCE.PROJECT, ACTION.UPDATE);
   const transition = TASK_TRANSITIONS[action];
@@ -348,23 +310,11 @@ export async function taskAction(
     const data: Prisma.WorkflowTaskInstanceUpdateInput = { status: transition.to };
     if (action === "start" && !ins.assigneeId) data.assigneeId = user.id;
     if (action === "complete") {
-      // 交付物校验
-      if (ins.task.requiresDeliverable && !hasDeliverable(opts.attachments ?? ins.attachments)) {
-        throw new ApiError(ERROR_CODES.WORKFLOW_DELIVERABLE_REQUIRED, "本任务需先上传至少一份交付物", 422);
-      }
-      // 报告类二审:校核+审核;complete 仅在校核通过后才能走(REVIEWED),否则要求先走 review.submit
-      if (ins.task.requiresTwoStepReview && ins.reviewStatus !== "REVIEWED" && ins.reviewStatus !== "APPROVED") {
-        throw new ApiError(ERROR_CODES.WORKFLOW_REVIEW_REQUIRED, "报告类任务需先校核再完成", 422);
-      }
       data.completedAt = new Date();
       data.completedById = user.id;
-      if (ins.task.requiresTwoStepReview) data.reviewStatus = "APPROVED";
     }
     if (opts.remark !== undefined) data.remark = opts.remark;
-    if (opts.attachments !== undefined) {
-      data.attachments = opts.attachments === null ? Prisma.JsonNull : (opts.attachments as Prisma.InputJsonValue);
-    }
-    const updated = await tx.workflowTaskInstance.update({ where: { id: instanceId }, data });
+const updated = await tx.workflowTaskInstance.update({ where: { id: instanceId }, data });
     await audit(tx, {
       actorId: user.id,
       action: `WORKFLOW_TASK_${action.toUpperCase()}`,
@@ -373,80 +323,6 @@ export async function taskAction(
       before: { status: ins.status, assigneeId: ins.assigneeId },
       after: { status: updated.status, assigneeId: updated.assigneeId }
     });
-    return updated;
-  });
-}
-
-// =====================================================
-// 报告类二审:submit / approve / reject
-// =====================================================
-export async function reviewTask(
-  user: SessionUser,
-  instanceId: string,
-  action: "submit" | "approve" | "reject",
-  opts: { comment?: string } = {}
-) {
-  requirePermission(user.roleCode, RESOURCE.PROJECT, ACTION.UPDATE);
-  const transition = REVIEW_TRANSITIONS[action];
-  if (!transition) throw new ApiError(ERROR_CODES.WORKFLOW_TASK_INVALID_TRANSITION, "未知二审动作", 400);
-
-  return prisma.$transaction(async (tx) => {
-    const ins = await loadInstanceForUpdate(tx, user, instanceId);
-    if (!ins.task.requiresTwoStepReview) {
-      throw new ApiError(ERROR_CODES.WORKFLOW_TASK_INVALID_TRANSITION, "该任务非报告类,不需要二审", 400);
-    }
-    const cur = ins.reviewStatus as WorkflowReviewStatus | null;
-    if (!transition.from.includes(cur as WorkflowReviewStatus | null)) {
-      throw new ApiError(
-        ERROR_CODES.WORKFLOW_TASK_INVALID_TRANSITION,
-        `当前审阅状态 ${cur ?? "未提交"} 不允许 ${action}`,
-        403
-      );
-    }
-    const data: Prisma.WorkflowTaskInstanceUpdateInput = { reviewStatus: transition.to };
-    if (action === "submit") {
-      data.reviewedAt = null;
-      data.reviewedById = null;
-    } else {
-      data.reviewedAt = new Date();
-      data.reviewedById = user.id;
-    }
-    if (opts.comment) {
-      // 二审备注拼到原 remark 后面,保留历史
-      data.remark = ins.remark ? `${ins.remark}\n[${action}] ${opts.comment}` : `[${action}] ${opts.comment}`;
-    }
-    const updated = await tx.workflowTaskInstance.update({ where: { id: instanceId }, data });
-    await audit(tx, {
-      actorId: user.id,
-      action: `WORKFLOW_REVIEW_${action.toUpperCase()}`,
-      entity: "WorkflowTaskInstance",
-      entityId: instanceId,
-      before: { reviewStatus: cur },
-      after: { reviewStatus: updated.reviewStatus }
-    });
-    // submit 校核时通知项目负责人 + 管理员去审核
-    if (action === "submit") {
-      const receivers = new Set<string>([ins.project.managerUserId]);
-      const admins = await tx.user.findMany({
-        where: { role: { code: "ADMIN" }, deletedAt: null, status: "ACTIVE", isSystem: false },
-        select: { id: true }
-      });
-      for (const a of admins) receivers.add(a.id);
-      receivers.delete(user.id);
-      if (receivers.size > 0) {
-        const submitter = await tx.user.findUnique({ where: { id: user.id }, select: { name: true } });
-        await emit(tx, {
-          type: "WORKFLOW_REVIEW_REQUESTED",
-          payload: {
-            projectId: ins.projectId,
-            projectNo: ins.project.projectNo,
-            taskName: ins.task.name,
-            submittedByName: submitter?.name ?? user.name
-          },
-          receivers: Array.from(receivers)
-        });
-      }
-    }
     return updated;
   });
 }
@@ -1551,12 +1427,9 @@ export type ProjectWorkflowExport = {
       name: string;
       status: WorkflowTaskStatus;
       assigneeId: string | null;
-      reviewStatus: WorkflowReviewStatus | null;
       completedAt: string | null;
       completedById: string | null;
       remark: string | null;
-      attachments: unknown;
-      parentInstanceId: string | null;
       updatedAt: string;
     }>;
   }>;
