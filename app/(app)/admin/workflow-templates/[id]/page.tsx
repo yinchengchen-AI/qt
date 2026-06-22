@@ -9,7 +9,6 @@ import {
   Alert,
   Button,
   Card,
-  Checkbox,
   Collapse,
   Empty,
   Form,
@@ -18,21 +17,19 @@ import {
   Modal,
   Select,
   Skeleton,
-  Upload,
   Space,
   Switch,
   Tag,
   Typography
 } from "antd";
-import { CopyOutlined, DeleteOutlined, DownloadOutlined, EditOutlined, PlusOutlined, SwapOutlined, UploadOutlined } from "@ant-design/icons";
+import { CopyOutlined, DeleteOutlined, EditOutlined, PlusOutlined } from "@ant-design/icons";
 import { Page } from "@/components/page";
 import { PageHeader } from "@/components/page-header";
 import {
   WORKFLOW_PHASE_MAP,
-  WORKFLOW_RECURRENCE_UNIT_MAP,
   SERVICE_TYPE_MAP
 } from "@/lib/enum-maps";
-import { ROLE_CODES, WORKFLOW_PHASE_ORDER, WORKFLOW_RECURRENCE_UNIT } from "@/types/enums";
+import { ROLE_CODES, WORKFLOW_PHASE_ORDER } from "@/types/enums";
 import { useRoleNameMap } from "@/lib/role-lookup";
 
 const { Text } = Typography;
@@ -45,13 +42,6 @@ type Task = {
   sort: number;
   description: string | null;
   requiredRole: string | null;
-  requiresDeliverable: boolean;
-  requiresOnsite: boolean;
-  requiresTwoStepReview: boolean;
-  isRecurring: boolean;
-  recurrenceUnit: string | null;
-  recurrenceInterval: number | null;
-  estimateDays: number | null;
 };
 
 type Stage = {
@@ -87,16 +77,11 @@ export default function TemplateDetailPage() {
   const [editingMeta, setEditingMeta] = useState(false);
   const [editingTask, setEditingTask] = useState<Task | null>(null);
   const [addingToStage, setAddingToStage] = useState<string | null>(null);
-  const [migratingFrom, setMigratingFrom] = useState<Task | null>(null);
   const [editingStage, setEditingStage] = useState<Stage | null>(null);
   const [duplicatingTask, setDuplicatingTask] = useState<Task | null>(null);
   const [addingStage, setAddingStage] = useState(false);
   const [stageForm] = Form.useForm();
   const [duplicateForm] = Form.useForm();
-  const [importing, setImporting] = useState(false);
-  // 查同 serviceType 下所有版本,看是否有上一版可对比
-  const { data: allVersions } = useSWR<Array<{ id: string; version: number; serviceType: string }>>("/api/admin/workflow-templates");
-  const prevVersion = allVersions?.filter((v) => v.serviceType === data?.serviceType && v.id !== data?.id).sort((a, b) => b.version - a.version)[0];
   const roleNameMap = useRoleNameMap();
   const [metaForm] = Form.useForm();
   const [taskForm] = Form.useForm();
@@ -151,13 +136,6 @@ export default function TemplateDetailPage() {
       sort: t.sort,
       description: t.description ?? "",
       requiredRole: t.requiredRole ?? undefined,
-      requiresDeliverable: t.requiresDeliverable,
-      requiresOnsite: t.requiresOnsite,
-      requiresTwoStepReview: t.requiresTwoStepReview,
-      isRecurring: t.isRecurring,
-      recurrenceUnit: t.recurrenceUnit,
-      recurrenceInterval: t.recurrenceInterval,
-      estimateDays: t.estimateDays
     });
     setEditingTask(t);
   };
@@ -195,7 +173,7 @@ export default function TemplateDetailPage() {
   const onDeleteTask = (t: Task) => {
     modal.confirm({
       title: "删除任务「" + t.name + "」?",
-      content: "无实例引用时才能删除。若有正在使用的项目,会拒绝。如需迁移实例,请用「迁移到其他任务」。",
+      content: "无实例引用时才能删除。若有正在使用的项目,会拒绝。",
       okType: "danger",
       onOk: async () => {
         const r = await fetch("/api/admin/workflow-templates/" + id + "/tasks/" + t.id, { method: "DELETE", credentials: "include" });
@@ -251,49 +229,6 @@ export default function TemplateDetailPage() {
     });
   };
 
-  // 导出:GET JSON 文件
-  const onExport = async () => {
-    const r = await fetch("/api/admin/workflow-templates/" + id + "/export", { credentials: "include" });
-    const j = await r.json();
-    if (j.code !== 0) return message.error(j.message);
-    const blob = new Blob([JSON.stringify(j.data, null, 2)], { type: "application/json" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `template-${data.serviceType}-v${data.version}.json`;
-    a.click();
-    URL.revokeObjectURL(url);
-  };
-
-  // 导入:从 JSON 文件新建一份
-  const onImport = async (file: File) => {
-    setImporting(true);
-    try {
-      const text = await file.text();
-      const json = JSON.parse(text);
-      const r = await fetch("/api/admin/workflow-templates/import", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include",
-        body: JSON.stringify({ data: json })
-      });
-      const j = await r.json();
-      if (j.code !== 0) { message.error(j.message); return false; }
-      message.success(`已导入:${j.data.stageCount} 阶段 / ${j.data.taskCount} 任务 (新版本 v${j.data.version})`);
-      router.push("/admin/workflow-templates");
-      return false;
-    } catch (e) {
-      const err = e as { message?: string };
-
-      message.error("导入失败:" + (err.message ?? String(e)));
-      return false;
-    } finally {
-      setImporting(false);
-    }
-  };
-
-  // 任务迁移(让被引用任务可被删除)
-  // 实际迁移操作改用 MigrationModal 组件(下方声明)——这里只触发打开
 
   return (
     <Page>
@@ -304,15 +239,7 @@ export default function TemplateDetailPage() {
         meta={data.isActive ? <Tag color="success">激活</Tag> : <Tag>未激活</Tag>}
         actions={
           <Space>
-            {prevVersion && (
-              <Button
-                icon={<SwapOutlined />}
-                onClick={() => router.push("/admin/workflow-templates/diff?fromId=" + prevVersion.id + "&toId=" + data.id)}
-              >
-                对比 v{prevVersion.version}
-              </Button>
-            )}
-            <Button icon={<EditOutlined />} onClick={() => {
+<Button icon={<EditOutlined />} onClick={() => {
               metaForm.setFieldsValue({ name: data.name, description: data.description ?? "", isActive: data.isActive });
               setEditingMeta(true);
             }}>
@@ -322,12 +249,6 @@ export default function TemplateDetailPage() {
         }
       />
 
-      <div style={{ marginBottom: 12, display: "flex", gap: 8, alignItems: "center" }}>
-        <Button icon={<DownloadOutlined />} onClick={onExport}>导出 JSON</Button>
-        <Upload accept=".json" showUploadList={false} beforeUpload={onImport}>
-          <Button icon={<UploadOutlined />} loading={importing}>从 JSON 导入(新版本)</Button>
-        </Upload>
-      </div>
       <Alert
         type="info"
         showIcon
@@ -365,11 +286,6 @@ export default function TemplateDetailPage() {
                       <Space>
                         <Text strong>{t.name}</Text>
                         <Tag>{t.code}</Tag>
-                        {t.requiresDeliverable && <Tag color="cyan">交付物</Tag>}
-                        {t.requiresOnsite && <Tag color="gold">现场</Tag>}
-                        {t.requiresTwoStepReview && <Tag color="purple">二审</Tag>}
-                        {t.isRecurring && <Tag color="geekblue">循环</Tag>}
-                        {t.estimateDays && <Tag>预估 {t.estimateDays} 天</Tag>}
                       </Space>
                     }
                     extra={
@@ -380,7 +296,6 @@ export default function TemplateDetailPage() {
                           // Default newCode suggestion
                           duplicateForm.setFieldsValue({ targetStageId: t.stageId, newCode: t.code + "_COPY", newName: t.name + " (副本)" });
                         }}>复制</Button>
-                        <Button size="small" type="text" icon={<SwapOutlined />} onClick={() => setMigratingFrom(t)}>迁移</Button>
                         <Button size="small" type="text" danger icon={<DeleteOutlined />} onClick={() => onDeleteTask(t)}>删除</Button>
                       </Space>
                     }
@@ -390,11 +305,6 @@ export default function TemplateDetailPage() {
                       <div style={{ marginTop: 4 }}>
                         <Text type="secondary" style={{ fontSize: 12 }}>期望角色: </Text>
                         <Tag>{roleNameMap[t.requiredRole] ?? t.requiredRole}</Tag>
-                      </div>
-                    )}
-                    {t.isRecurring && (
-                      <div style={{ marginTop: 4 }}>
-                        <Tag color="geekblue">每 {t.recurrenceInterval ?? 1} {WORKFLOW_RECURRENCE_UNIT_MAP[t.recurrenceUnit ?? ""] ?? t.recurrenceUnit}</Tag>
                       </div>
                     )}
                   </Card>
@@ -515,48 +425,14 @@ export default function TemplateDetailPage() {
             </Form.Item>
           </Form>
         </Modal>
-      {migratingFrom && (
-        <MigrationModal
-          fromTask={migratingFrom}
-          candidates={data!.stages.flatMap((s) => s.tasks).filter((x) => x.id !== migratingFrom.id).map((c) => {
-            const stage = data!.stages.find((s) => s.tasks.some((x) => x.id === c.id));
-            return { id: c.id, label: "[" + (WORKFLOW_PHASE_MAP[stage?.phase ?? ""] ?? stage?.phase) + "] " + c.name + " (" + c.code + ")" };
-          })}
-          onClose={() => setMigratingFrom(null)}
-          onMigrated={() => mutate()}
-        />
-      )}
     </Page>
-  );
-}
-
-function MigrationModal({ fromTask, candidates, onClose, onMigrated }: { fromTask: Task; candidates: { id: string; label: string }[]; onClose: () => void; onMigrated: () => void }) {
-  const [target, setTarget] = useState<string | undefined>(candidates[0]?.id);
-  const { message } = AntdApp.useApp();
-  const [busy, setBusy] = useState(false);
-  return (
-    <Modal open title={"迁移「" + fromTask.name + "」的实例"} onCancel={onClose} onOk={async () => {
-      if (!target) { message.warning("请选择目标任务"); return; }
-      setBusy(true);
-      try {
-        const r = await fetch("/api/admin/workflow-templates/tasks/migrate", { method: "POST", headers: { "Content-Type": "application/json" }, credentials: "include", body: JSON.stringify({ fromTaskId: fromTask.id, toTaskId: target }) });
-        const j = await r.json();
-        if (j.code !== 0) { message.error(j.message); return; }
-        message.success("已迁移 " + j.data.migratedInstances + " 个实例(跨 " + j.data.migratedProjects + " 个项目)");
-        onMigrated();
-        onClose();
-      } finally { setBusy(false); }
-    }} okText="执行迁移" confirmLoading={busy}>
-      <p>把引用「" + fromTask.name + "」的所有实例改挂到目标任务,即可删除旧任务。</p>
-      <Select value={target} onChange={setTarget} style={{ width: "100%" }} options={candidates} />
-    </Modal>
   );
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function TaskFormFields({ form, onFinish, roleNameMap }: { form: FormInstance<any>; onFinish: (vals: Record<string, unknown>) => void; roleNameMap: Record<string, string> }) {
   return (
-    <Form form={form} layout="vertical" onFinish={onFinish} initialValues={{ sort: 99, requiresDeliverable: false, requiresOnsite: false, requiresTwoStepReview: false, isRecurring: false }}>
+    <Form form={form} layout="vertical" onFinish={onFinish} initialValues={{ sort: 99 }}>
       <Form.Item name="code" label="任务编码 (英文,模板内唯一)" rules={[{ required: true, max: 50, pattern: /^[A-Z0-9_]+$/ }]}>
         <Input placeholder="例如:VISIT_INIT" />
       </Form.Item>
@@ -571,42 +447,6 @@ function TaskFormFields({ form, onFinish, roleNameMap }: { form: FormInstance<an
       </Form.Item>
       <Form.Item name="requiredRole" label="期望执行角色">
         <Select allowClear options={ROLE_CODES.map((c) => ({ value: c, label: roleNameMap[c] ?? c }))} />
-      </Form.Item>
-      <Form.Item name="estimateDays" label="预估天数">
-        <InputNumber min={1} max={365} style={{ width: "100%" }} />
-      </Form.Item>
-      <Space size={16} wrap>
-        <Form.Item name="requiresDeliverable" valuePropName="checked">
-          <Checkbox>需交付物</Checkbox>
-        </Form.Item>
-        <Form.Item name="requiresOnsite" valuePropName="checked">
-          <Checkbox>现场</Checkbox>
-        </Form.Item>
-        <Form.Item name="requiresTwoStepReview" valuePropName="checked">
-          <Checkbox>二审</Checkbox>
-        </Form.Item>
-        <Form.Item name="isRecurring" valuePropName="checked">
-          <Checkbox>循环任务</Checkbox>
-        </Form.Item>
-      </Space>
-      <Form.Item shouldUpdate noStyle>
-        {() => {
-          const isRec = form.getFieldValue("isRecurring");
-          if (!isRec) return null;
-          return (
-            <Space>
-              <Form.Item name="recurrenceUnit" label="周期单位" rules={[{ required: true }]}>
-                <Select
-                  style={{ width: 120 }}
-                  options={WORKFLOW_RECURRENCE_UNIT.map((u) => ({ value: u, label: WORKFLOW_RECURRENCE_UNIT_MAP[u] }))}
-                />
-              </Form.Item>
-              <Form.Item name="recurrenceInterval" label="间隔" rules={[{ required: true }]}>
-                <InputNumber min={1} max={365} />
-              </Form.Item>
-            </Space>
-          );
-        }}
       </Form.Item>
     </Form>
   );
