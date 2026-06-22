@@ -1,4 +1,5 @@
 #!/usr/bin/env tsx
+/* eslint-disable @typescript-eslint/ban-ts-comment */
 // @ts-nocheck — 独立 tsx 种子脚本, 不用走 lib/ 的严格类型, 见 scripts/seed-business-demo.README.md
 /**
  * 业务 demo 种子: 5 套完整数据链 (Customer -> Contract -> Project -> Invoice -> Payment).

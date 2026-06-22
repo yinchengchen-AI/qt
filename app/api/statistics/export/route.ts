@@ -17,6 +17,9 @@ const query = z.object({
   to: z.string().optional(),
 });
 
+// 数字格式化辅助: 给统计页统一保留两位
+const num = (v: unknown) => (v != null && v !== "" ? Number(v).toFixed(2) : "");
+
 export async function GET(req: Request) {
   return runWithRequestContext(req, async () => {
     try {
@@ -38,25 +41,17 @@ export async function GET(req: Request) {
           { name: "开票率(%)", value: o.invoiceRate, count: "" },
           { name: "回款率(%)", value: o.paymentRate, count: "" },
         ];
-        const buf = await exportToXlsx(
-          rows,
-          [
-            { header: "指标", key: "name", width: 20 },
-            {
-              header: "金额",
-              key: "value",
-              width: 20,
-              formatter: (v) => Number(v).toFixed(2),
-            },
-            { header: "数量", key: "count", width: 12 },
-          ],
-          `总览_${ts}.xlsx`,
-        );
+        const buf = await exportToXlsx(rows, [
+          { header: "指标", key: "name", width: 20 },
+          { header: "金额", key: "value", width: 20, formatter: num },
+          { header: "数量", key: "count", width: 12 },
+        ]);
         return new Response(new Uint8Array(buf), {
           headers: {
             "Content-Type":
               "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-            "Content-Disposition": `attachment; filename=overview_${ts}.xlsx`,
+            "Content-Disposition": `attachment; filename="overview-${ts}.xlsx"`,
+            "Cache-Control": "no-store",
           },
         });
       }
@@ -66,75 +61,39 @@ export async function GET(req: Request) {
           parsed.metric ?? "contract",
           50,
         );
-        const buf = await exportToXlsx(
-          data,
-          [
-            { header: "客户编号", key: "code", width: 20 },
-            { header: "客户名称", key: "name", width: 30 },
-            { header: "合同数", key: "contractCount", width: 10 },
-            {
-              header: "合同额",
-              key: "total",
-              width: 18,
-              formatter: (v) => Number(v).toFixed(2),
-            },
-            {
-              header: "已开票额",
-              key: "invoiceTotal",
-              width: 18,
-              formatter: (v) => Number(v).toFixed(2),
-            },
-            {
-              header: "已回款额",
-              key: "paymentTotal",
-              width: 18,
-              formatter: (v) => Number(v).toFixed(2),
-            },
-          ],
-          `客户Top50_${ts}.xlsx`,
-        );
+        const buf = await exportToXlsx(data, [
+          { header: "客户编号", key: "code", width: 20 },
+          { header: "客户名称", key: "name", width: 30 },
+          { header: "合同数", key: "contractCount", width: 10 },
+          { header: "合同额", key: "total", width: 18, formatter: num },
+          { header: "已开票额", key: "invoiceTotal", width: 18, formatter: num },
+          { header: "已回款额", key: "paymentTotal", width: 18, formatter: num },
+        ]);
         return new Response(new Uint8Array(buf), {
           headers: {
             "Content-Type":
               "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-            "Content-Disposition": `attachment; filename=top-customers_${ts}.xlsx`,
+            "Content-Disposition": `attachment; filename="top-customers-${ts}.xlsx"`,
+            "Cache-Control": "no-store",
           },
         });
       }
       // sales-performance
       const data = await getSalesPerformance(user, undefined, { from, to });
-      const buf = await exportToXlsx(
-        data,
-        [
-          { header: "工号", key: "employeeNo", width: 12 },
-          { header: "姓名", key: "name", width: 14 },
-          { header: "合同数", key: "contractCount", width: 10 },
-          {
-            header: "合同额",
-            key: "contractAmount",
-            width: 18,
-            formatter: (v) => Number(v).toFixed(2),
-          },
-          {
-            header: "已开票额",
-            key: "invoiceAmount",
-            width: 18,
-            formatter: (v) => Number(v).toFixed(2),
-          },
-          {
-            header: "已回款额",
-            key: "paymentAmount",
-            width: 18,
-            formatter: (v) => Number(v).toFixed(2),
-          },
-        ],
-        `业务员业绩_${ts}.xlsx`,
-      );
+      const buf = await exportToXlsx(data, [
+        { header: "工号", key: "employeeNo", width: 12 },
+        { header: "姓名", key: "name", width: 14 },
+        { header: "合同数", key: "contractCount", width: 10 },
+        { header: "合同额", key: "contractAmount", width: 18, formatter: num },
+        { header: "已开票额", key: "invoiceAmount", width: 18, formatter: num },
+        { header: "已回款额", key: "paymentAmount", width: 18, formatter: num },
+      ]);
       return new Response(new Uint8Array(buf), {
         headers: {
           "Content-Type":
             "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-          "Content-Disposition": `attachment; filename=sales-performance_${ts}.xlsx`,
+          "Content-Disposition": `attachment; filename="sales-performance-${ts}.xlsx"`,
+          "Cache-Control": "no-store",
         },
       });
     } catch (e) {

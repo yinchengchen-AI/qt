@@ -1,7 +1,7 @@
 // 客户列表导出 XLSX
-// - 入参同 GET /api/customers(keyword/status),便于从列表页带当前筛选条件拉全量
-// - 行级隔离:仍调 listCustomers,SALES 用户只会导出自己负责的客户
-// - 上限 10000 行,够用
+// - 入参同 GET /api/customers(keyword/status), 便于从列表页带当前筛选条件拉全量
+// - 行级隔离: 仍调 listCustomers, SALES 用户只会导出自己负责的客户
+// - 上限 10000 行, 够用
 import { z } from "zod";
 import { runWithRequestContext } from "@/lib/request-context";
 import { err } from "@/lib/api";
@@ -41,11 +41,10 @@ export async function GET(req: Request) {
       requirePermission(user.roleCode, RESOURCE.CUSTOMER, ACTION.EXPORT);
       const url = new URL(req.url);
       const params = query.parse(Object.fromEntries(url.searchParams));
-      // pageSize 用 exportMaxRows() 兜底,防止单次导出 OOM;按时间倒序,导出后可以补差量
-      const max = exportMaxRows();
-      const { list, total: _total } = await listCustomers(user, {
+      // pageSize 用 exportMaxRows() 兜底, 防止单次导出 OOM; 按时间倒序, 导出后可以补差量
+      const { list } = await listCustomers(user, {
         page: 1,
-        pageSize: max,
+        pageSize: exportMaxRows(),
         ...params,
       });
       const dict = await loadDict();
@@ -133,13 +132,13 @@ export async function GET(req: Request) {
               v ? new Date(v as string).toLocaleString("zh-CN") : "",
           },
         ],
-        `客户列表_${ts}.xlsx`,
       );
       return new Response(new Uint8Array(buf), {
         headers: {
           "Content-Type":
             "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-          "Content-Disposition": `attachment; filename=customers_${ts}.xlsx`,
+          "Content-Disposition": `attachment; filename="customers-${ts}.xlsx"`,
+          "Cache-Control": "no-store",
         },
       });
     } catch (e) {

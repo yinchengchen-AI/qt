@@ -28,15 +28,14 @@ export async function GET(req: Request) {
       requirePermission(user.roleCode, RESOURCE.CONTRACT, ACTION.EXPORT);
       const url = new URL(req.url);
       const params = query.parse(Object.fromEntries(url.searchParams));
-      // pageSize 用 exportMaxRows() 兜底,防止单次导出 OOM
-      const max = exportMaxRows();
-      const { list, total: _total } = await listContracts(user, {
+      // pageSize 用 exportMaxRows() 兜底, 防止单次导出 OOM
+      const { list } = await listContracts(user, {
         page: 1,
-        pageSize: max,
+        pageSize: exportMaxRows(),
         ...params,
       });
-      // listContracts 已返回 invoicedAmount / paidAmount;按 totalAmount 补一份开票状态
-      // totalAmount 是 Prisma.Decimal,Number() 接受 any(Decimal 有 valueOf),无需 cast
+      // listContracts 已返回 invoicedAmount / paidAmount; 按 totalAmount 补一份开票状态
+      // totalAmount 是 Prisma.Decimal, Number() 接受 any(Decimal 有 valueOf), 无需 cast
       const enriched = list.map((c) => ({
         ...c,
         billingStatus: getBillingStatus(
@@ -44,7 +43,7 @@ export async function GET(req: Request) {
           Number(c.totalAmount),
         ),
       }));
-      // 批量把签订人 id 解析成姓名(employeeNo),避免导出 N+1
+      // 批量把签订人 id 解析成姓名(employeeNo), 避免导出 N+1
       const signerIds = [
         ...new Set(
           list
@@ -167,13 +166,13 @@ export async function GET(req: Request) {
               v ? (CONTRACT_STATUS_MAP[v as string] ?? (v as string)) : "",
           },
         ],
-        `合同列表_${ts}.xlsx`,
       );
       return new Response(new Uint8Array(buf), {
         headers: {
           "Content-Type":
             "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-          "Content-Disposition": `attachment; filename=contracts_${ts}.xlsx`,
+          "Content-Disposition": `attachment; filename="contracts-${ts}.xlsx"`,
+          "Cache-Control": "no-store",
         },
       });
     } catch (e) {

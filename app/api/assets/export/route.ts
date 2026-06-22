@@ -5,8 +5,8 @@ import { runWithRequestContext } from "@/lib/request-context";
 import { requireSession } from "@/lib/session";
 import { requirePermission, RESOURCE, ACTION } from "@/lib/permissions";
 import { listAssets, ASSET_EXPORT_COLUMNS } from "@/server/services/asset";
-import { exportToXlsx } from "@/lib/excel";
-import { assetListQuerySchema } from "@/lib/validators/asset";
+import { exportToXlsx, exportMaxRows } from "@/lib/excel";
+import { assetExportQuerySchema } from "@/lib/validators/asset";
 import { ASSET_TYPE_MAP, ASSET_STATUS_MAP } from "@/lib/enum-maps";
 
 export async function GET(req: Request) {
@@ -15,10 +15,11 @@ export async function GET(req: Request) {
       const user = await requireSession();
       requirePermission(user.roleCode, RESOURCE.ASSET, ACTION.EXPORT);
       const url = new URL(req.url);
-      const params = assetListQuerySchema.parse({
+      // 用 export-only schema (pageSize 上限 10000), 与其它 export 路由保持一致
+      const params = assetExportQuerySchema.parse({
         ...Object.fromEntries(url.searchParams),
-        pageSize: 1000,
         page: 1,
+        pageSize: exportMaxRows(),
       });
       const data = await listAssets(user, params);
       const rows = (data.list as unknown as Record<string, unknown>[]).map(
@@ -28,16 +29,16 @@ export async function GET(req: Request) {
           status: ASSET_STATUS_MAP[r.status as string] ?? r.status,
         }),
       );
+      const ts = new Date().toISOString().slice(0, 10);
       const buf = await exportToXlsx(
         rows,
         ASSET_EXPORT_COLUMNS as unknown as Parameters<typeof exportToXlsx>[1],
-        `assets-${new Date().toISOString().slice(0, 10)}.xlsx`,
       );
       return new Response(new Uint8Array(buf), {
         headers: {
           "Content-Type":
             "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-          "Content-Disposition": `attachment; filename="assets-${new Date().toISOString().slice(0, 10)}.xlsx"`,
+          "Content-Disposition": `attachment; filename="assets-${ts}.xlsx"`,
           "Cache-Control": "no-store",
         },
       });

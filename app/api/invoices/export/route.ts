@@ -5,8 +5,12 @@ import { err } from "@/lib/api";
 import { requireSession } from "@/lib/session";
 import { requirePermission, RESOURCE, ACTION } from "@/lib/permissions";
 import { listInvoices } from "@/server/services/invoice";
-import { exportToXlsx } from "@/lib/excel";
-import { INVOICE_TYPE_MAP, TITLE_TYPE_MAP } from "@/lib/enum-maps";
+import { exportToXlsx, exportMaxRows } from "@/lib/excel";
+import {
+  INVOICE_TYPE_MAP,
+  TITLE_TYPE_MAP,
+  INVOICE_STATUS_MAP,
+} from "@/lib/enum-maps";
 
 const query = z.object({
   keyword: z.string().optional(),
@@ -23,7 +27,7 @@ export async function GET(req: Request) {
       const params = query.parse(Object.fromEntries(url.searchParams));
       const { list } = await listInvoices(user, {
         page: 1,
-        pageSize: 10000,
+        pageSize: exportMaxRows(),
         ...params,
       });
       const ts = new Date().toISOString().slice(0, 10);
@@ -96,25 +100,16 @@ export async function GET(req: Request) {
             key: "status",
             width: 10,
             formatter: (v) =>
-              v
-                ? ({
-                    DRAFT: "草稿",
-                    PENDING_FINANCE: "财务待审",
-                    ISSUED: "已开票",
-                    REJECTED: "已驳回",
-                    VOIDED: "已作废",
-                    RED_FLUSHED: "已红冲",
-                  }[v as string] ?? (v as string))
-                : "",
+              v ? (INVOICE_STATUS_MAP[v as string] ?? (v as string)) : "",
           },
         ],
-        `发票列表_${ts}.xlsx`,
       );
       return new Response(new Uint8Array(buf), {
         headers: {
           "Content-Type":
             "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-          "Content-Disposition": `attachment; filename=invoices_${ts}.xlsx`,
+          "Content-Disposition": `attachment; filename="invoices-${ts}.xlsx"`,
+          "Cache-Control": "no-store",
         },
       });
     } catch (e) {

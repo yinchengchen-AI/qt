@@ -5,7 +5,7 @@ import { err } from "@/lib/api";
 import { requireSession } from "@/lib/session";
 import { requirePermission, RESOURCE, ACTION } from "@/lib/permissions";
 import { listProjects } from "@/server/services/project";
-import { exportToXlsx } from "@/lib/excel";
+import { exportToXlsx, exportMaxRows } from "@/lib/excel";
 import { prisma } from "@/lib/prisma";
 import { PROJECT_STATUS_MAP } from "@/lib/enum-maps";
 
@@ -24,10 +24,10 @@ export async function GET(req: Request) {
       const params = query.parse(Object.fromEntries(url.searchParams));
       const { list } = await listProjects(user, {
         page: 1,
-        pageSize: 10000,
+        pageSize: exportMaxRows(),
         ...params,
       });
-      // 批量把负责人 id 解析成姓名(employeeNo),避免导出 N+1
+      // 批量把负责人 id 解析成姓名(employeeNo), 避免导出 N+1
       const managerIds = [
         ...new Set(
           list
@@ -103,13 +103,13 @@ export async function GET(req: Request) {
               v ? (PROJECT_STATUS_MAP[v as string] ?? (v as string)) : "",
           },
         ],
-        `项目列表_${ts}.xlsx`,
       );
       return new Response(new Uint8Array(buf), {
         headers: {
           "Content-Type":
             "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-          "Content-Disposition": `attachment; filename=projects_${ts}.xlsx`,
+          "Content-Disposition": `attachment; filename="projects-${ts}.xlsx"`,
+          "Cache-Control": "no-store",
         },
       });
     } catch (e) {

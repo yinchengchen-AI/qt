@@ -5,8 +5,8 @@ import { err } from "@/lib/api";
 import { requireSession } from "@/lib/session";
 import { requirePermission, RESOURCE, ACTION } from "@/lib/permissions";
 import { listPayments } from "@/server/services/payment";
-import { exportToXlsx } from "@/lib/excel";
-import { METHOD_MAP } from "@/lib/enum-maps";
+import { exportToXlsx, exportMaxRows } from "@/lib/excel";
+import { METHOD_MAP, PAYMENT_STATUS_MAP } from "@/lib/enum-maps";
 
 const query = z.object({
   keyword: z.string().optional(),
@@ -24,7 +24,7 @@ export async function GET(req: Request) {
       const params = query.parse(Object.fromEntries(url.searchParams));
       const { list } = await listPayments(user, {
         page: 1,
-        pageSize: 10000,
+        pageSize: exportMaxRows(),
         ...params,
       });
       const ts = new Date().toISOString().slice(0, 10);
@@ -61,25 +61,17 @@ export async function GET(req: Request) {
             key: "status",
             width: 10,
             formatter: (v) =>
-              v
-                ? ({
-                    PLANNED: "计划中",
-                    CONFIRMED: "已确认",
-                    RECONCILED: "已对账",
-                    REFUNDED: "已退款",
-                    CANCELLED: "已取消",
-                  }[v as string] ?? (v as string))
-                : "",
+              v ? (PAYMENT_STATUS_MAP[v as string] ?? (v as string)) : "",
           },
           { header: "备注", key: "remark", width: 24 },
         ],
-        `回款列表_${ts}.xlsx`,
       );
       return new Response(new Uint8Array(buf), {
         headers: {
           "Content-Type":
             "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-          "Content-Disposition": `attachment; filename=payments_${ts}.xlsx`,
+          "Content-Disposition": `attachment; filename="payments-${ts}.xlsx"`,
+          "Cache-Control": "no-store",
         },
       });
     } catch (e) {
