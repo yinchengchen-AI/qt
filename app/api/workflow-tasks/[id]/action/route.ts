@@ -16,7 +16,6 @@ export async function POST(
       const input = workflowTaskActionSchema.parse(body);
       const data = await taskAction(user, id, input.action, {
         remark: input.remark,
-        attachments: input.attachments ?? undefined,
       });
       return ok(data);
     } catch (e) {

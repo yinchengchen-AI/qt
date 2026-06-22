@@ -1486,12 +1486,9 @@ export async function exportProjectWorkflow(
       name: ins.task.name,
       status: ins.status as WorkflowTaskStatus,
       assigneeId: ins.assigneeId,
-      reviewStatus: ins.reviewStatus as WorkflowReviewStatus | null,
       completedAt: ins.completedAt ? ins.completedAt.toISOString() : null,
       completedById: ins.completedById,
       remark: ins.remark,
-      attachments: ins.attachments,
-      parentInstanceId: ins.parentInstanceId,
       updatedAt: ins.updatedAt.toISOString()
     });
   }
