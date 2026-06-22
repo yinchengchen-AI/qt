@@ -44,7 +44,7 @@ export const ERROR_MESSAGES: Record<ErrorCode, string> = {
   CONTRACT_CUSTOMER_STATUS: "客户当前状态不允许新建合同",
   CONTRACT_INCOMPLETE: "合同资料不完整（缺少附件或关键字段）",
   CONTRACT_NOT_COMPLETABLE: "合同尚不满足结清条件",
-  CONTRACT_STATUS_INVALID: "合同当前状态不允许开票（须 EFFECTIVE / EXECUTING）",
+  CONTRACT_STATUS_INVALID: "合同当前状态不允许开票（须 ACTIVE）",
   INVOICE_OVER_LIMIT: "累计开票金额将超过合同总额",
   INVOICE_INFO_INVALID: "开票信息不完整或电子发票号不合规",
   PAYMENT_DUPLICATE_REF: "银行流水号重复",

@@ -59,6 +59,7 @@ export const PAYMENT_METHOD_MAP: Record<string, string> = {
 };
 
 export const REVIEW_ACTION_MAP: Record<string, string> = {
+  // 旧审批/lifecycle 动作 (历史数据保留, 不再写入)
   SUBMIT:    "提交审批",
   APPROVE:   "批准",
   REJECT:    "驳回",
@@ -66,7 +67,14 @@ export const REVIEW_ACTION_MAP: Record<string, string> = {
   EXECUTE:   "开始执行",
   SUSPEND:   "暂停",
   RESUME:    "恢复",
-  COMPLETE:  "结清"
+  COMPLETE:  "结清",
+  // 新模型 3 态状态机 (v3)
+  AUTO_PUBLISH:           "⚡ 自动发布",
+  MANUAL_PUBLISH:         "强制发布",
+  AUTO_CLOSE_COMPLETED:   "⚡ 自动完结（开票足额）",
+  AUTO_CLOSE_EXPIRED:     "⚡ 自动完结（已到期）",
+  AUTO_CLOSE_TERMINATED:  "⚡ 自动完结（业务终止）",
+  MANUAL_CLOSE:           "强制完结"
 };
 
 export const USER_STATUS_MAP: Record<string, string> = {
@@ -95,14 +103,9 @@ export const CUSTOMER_STATUS_MAP: Record<string, string> = {
 };
 
 export const CONTRACT_STATUS_MAP: Record<string, string> = {
-  DRAFT:          "草稿",
-  PENDING_REVIEW: "待审批",
-  EFFECTIVE:      "已生效",
-  EXECUTING:      "执行中",
-  SUSPENDED:      "已暂停",
-  COMPLETED:      "已完成",
-  TERMINATED:     "已终止",
-  EXPIRED:        "已过期"
+  DRAFT:  "草稿",
+  ACTIVE: "生效中",
+  CLOSED: "已完结"
 };
 
 export const METHOD_MAP: Record<string, string> = {

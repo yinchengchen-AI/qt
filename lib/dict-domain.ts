@@ -52,7 +52,7 @@ export const DICT_META: Record<string, DictDomainMeta> = {
   REVIEW_ACTION: { category: "REVIEW_ACTION", label: "审批动作", shape: "table", readonly: false, description: "工作流审批动作" },
   // 状态域
   CUSTOMER_STATUS: { category: "CUSTOMER_STATUS", label: "客户状态", shape: "table", readonly: false, description: "客户状态机: 线索/谈判/签约/流失/冻结" },
-  CONTRACT_STATUS: { category: "CONTRACT_STATUS", label: "合同状态", shape: "table", readonly: false, description: "合同状态机: 草稿/待审/生效/执行/完结/终止" },
+  CONTRACT_STATUS: { category: "CONTRACT_STATUS", label: "合同状态", shape: "table", readonly: false, description: "合同状态机: 草稿/生效中/已完结" },
   INVOICE_STATUS: { category: "INVOICE_STATUS", label: "开票状态", shape: "table", readonly: false, description: "开票状态机" },
   PAYMENT_STATUS: { category: "PAYMENT_STATUS", label: "回款状态", shape: "table", readonly: false, description: "回款状态机" },
   // 区域域 (系统, 不在 16 类白名单, 由同步脚本管理)
