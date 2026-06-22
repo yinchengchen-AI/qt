@@ -290,7 +290,10 @@ export async function updateContract(user: SessionUser, id: string, input: Contr
   requirePermission(user.roleCode, RESOURCE.CONTRACT, ACTION.UPDATE);
   const existing = await prisma.contract.findFirst({ where: { id, deletedAt: null, ...ownerEq(user) } });
   if (!existing) throw new ApiError(ERROR_CODES.NOT_FOUND, "合同不存在", 404);
-  if (!["DRAFT", "PENDING_REVIEW", "SUSPENDED"].includes(existing.status)) {
+  // 状态机门控: 仅 草稿 / 待审批 / 已暂停 可改;
+  // **admin 跳过此门控**: 任何状态下都能编辑 (跟合同软删 admin-only 同款防御 — 显式断言 roleCode 而非只靠 permission 表,
+  // 防止以后 ROLE_PERMISSIONS 误改给 SALES 时悄悄放权)
+  if (user.roleCode !== "ADMIN" && !["DRAFT", "PENDING_REVIEW", "SUSPENDED"].includes(existing.status)) {
     throw new ApiError(ERROR_CODES.ENTITY_IMMUTABLE, "当前状态不可修改", 403);
   }
   // 负责人变更时, 校验目标用户存在且 ACTIVE

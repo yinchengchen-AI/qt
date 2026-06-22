@@ -11,6 +11,7 @@ import {
 } from "@ant-design/pro-components";
 import { App as AntdApp, Space, Typography } from "antd";
 import { StatusTag } from "@/components/status-tag";
+import { useSession } from "next-auth/react";
 import { useParams, useRouter } from "next/navigation";
 import useSWR from "swr";
 import { useDict, groupDictByLegacy } from "@/lib/dict-client";
@@ -34,6 +35,7 @@ const PAYMENT_METHOD_OPTIONS = [
 ];
 
 export default function EditContractPage() {
+  const { data: session } = useSession();
   const params = useParams();
   const id = String(params.id);
   const router = useRouter();
@@ -63,13 +65,17 @@ export default function EditContractPage() {
     );
   }
 
-  if (!["DRAFT", "PENDING_REVIEW", "SUSPENDED"].includes(data.status)) {
+  // 状态机门控: 非 admin 仅 草稿 / 待审批 / 已暂停 可编辑;
+  // **admin 跳过门控**, 任何状态下都能打开编辑页 (跟后端 service 同步)
+  const roleCode = (session?.user as { roleCode?: string } | undefined)?.roleCode;
+  const isAdmin = roleCode === "ADMIN";
+  if (!isAdmin && !["DRAFT", "PENDING_REVIEW", "SUSPENDED"].includes(data.status)) {
     return (
       <Page compact>
         <PageHeader back={() => router.push(`/contracts/${id}`)} title="编辑合同" />
         <FormCard>
           <Text type="warning">
-            当前状态 <StatusTag status={data.status} domain="contract" /> 不可编辑;仅 草稿 / 待审批 / 已暂停 可改。
+            当前状态 <StatusTag status={data.status} domain="contract" /> 不可编辑;仅 草稿 / 待审批 / 已暂停 可改 (管理员可改任意状态)。
           </Text>
         </FormCard>
       </Page>
