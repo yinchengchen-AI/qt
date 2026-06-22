@@ -18,7 +18,6 @@ type MyTask = {
   projectNo: string;
   projectName: string;
   phase: string;
-  requiresTwoStepReview: boolean;
   updatedAt: string;
 };
 
@@ -87,7 +86,6 @@ export function MyTasksWidget() {
               <Text strong style={{ flex: 1, minWidth: 0 }} ellipsis>
                 {t.taskName}
               </Text>
-              {t.requiresTwoStepReview && <Tag color="purple">二审</Tag>}
               <div style={{ textAlign: "right", flexShrink: 0, maxWidth: 200, lineHeight: 1.4 }}>
                 <div style={{ fontSize: 12, color: "rgba(0,0,0,0.85)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                   {WORKFLOW_PHASE_MAP[t.phase] ?? t.phase}
