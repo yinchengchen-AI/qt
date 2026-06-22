@@ -26,6 +26,8 @@
     "seed:dev-users": "tsx scripts/shared/seed-test-users.ts",
     "seed:dev-customers": "tsx scripts/dev/seed-yuhang-linping-customers.ts",
     "seed-dicts": "tsx scripts/shared/seed-dicts.ts",
+    "sync-dict": "tsx scripts/shared/sync-dict-from-enum.ts",
+    "migrate:contract-status-dict": "tsx scripts/migrate/contract-status-simplify-dict.ts",
     "seed-roles": "tsx scripts/shared/seed-roles.ts",
     "start": "next start",
     "test": "vitest run",

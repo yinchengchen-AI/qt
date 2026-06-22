@@ -125,13 +125,9 @@ async function main() {
     { category: "CUSTOMER_STATUS", code: "LOST",        label: "已流失",   sort: 4 },
     { category: "CUSTOMER_STATUS", code: "FROZEN",      label: "已冻结",   sort: 5 },
     // 合同状态机
-    { category: "CONTRACT_STATUS", code: "DRAFT",          label: "草稿",     sort: 1 },
-    { category: "CONTRACT_STATUS", code: "PENDING_REVIEW", label: "待审批",   sort: 2 },
-    { category: "CONTRACT_STATUS", code: "EFFECTIVE",      label: "已生效",   sort: 3 },
-    { category: "CONTRACT_STATUS", code: "EXECUTING",      label: "执行中",   sort: 4 },
-    { category: "CONTRACT_STATUS", code: "COMPLETED",      label: "已完成",   sort: 5 },
-    { category: "CONTRACT_STATUS", code: "TERMINATED",     label: "已终止",   sort: 6 },
-    { category: "CONTRACT_STATUS", code: "EXPIRED",        label: "已过期",   sort: 7 },
+    { category: "CONTRACT_STATUS", code: "DRAFT",  label: "草稿",     sort: 1 },
+    { category: "CONTRACT_STATUS", code: "ACTIVE", label: "生效中",   sort: 2 },
+    { category: "CONTRACT_STATUS", code: "CLOSED", label: "已完结",   sort: 3 },
     // 发票类型
     { category: "INVOICE_TYPE", code: "VAT_SPECIAL",    label: "增值税专用发票", sort: 1 },
     { category: "INVOICE_TYPE", code: "VAT_GENERAL",    label: "增值税普通发票", sort: 2 },

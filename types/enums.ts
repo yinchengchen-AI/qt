@@ -35,12 +35,8 @@ export type ServiceType = (typeof SERVICE_TYPE)[number];
 
 export const CONTRACT_STATUS = [
   "DRAFT",
-  "PENDING_REVIEW",
-  "EFFECTIVE",
-  "EXECUTING",
-  "COMPLETED",
-  "TERMINATED",
-  "EXPIRED"
+  "ACTIVE",
+  "CLOSED"
 ] as const;
 export type ContractStatus = (typeof CONTRACT_STATUS)[number];
 
