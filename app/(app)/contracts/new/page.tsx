@@ -5,6 +5,7 @@ import { useSession } from "next-auth/react";
 import {
   ProForm,
   ProFormText,
+  ProFormTextArea,
   ProFormSelect,
   ProFormDigit,
   ProFormDatePicker
@@ -343,6 +344,22 @@ export default function NewContractPage() {
                 options={TAX_RATE_OPTIONS.map((v, i) => ({ value: v, label: TAX_RATE_LABELS[i] }))}
                 rules={[{ required: true, message: "请选择税率" }]}
                 fieldProps={{ size: "large" }}
+              />
+            </FormGrid>
+          </FormSection>
+
+          <FormSection title="备注" description="签约背景 / 特殊条款 / 客户偏好等自由文本;不影响审批流">
+            <FormGrid columns={1}>
+              <ProFormTextArea
+                name="remark"
+                label="合同备注"
+                placeholder="可空;500 字符以内"
+                rules={[{ max: 500, message: "备注不超过 500 字符" }]}
+                fieldProps={{
+                  autoSize: { minRows: 3, maxRows: 6 },
+                  showCount: true,
+                  maxLength: 500
+                }}
               />
             </FormGrid>
           </FormSection>

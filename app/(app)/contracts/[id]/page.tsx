@@ -201,6 +201,8 @@ const handleDelete = () => {
             { title: "不含税金额", dataIndex: "amountExcludingTax", render: (_, r) => <CurrencyCell value={r.amountExcludingTax as string} /> },
             { title: "付款方式", dataIndex: "paymentMethod", render: (v) => PAYMENT_METHOD_MAP[v as string] ?? paymentMethod.find((d) => d.code === v)?.label ?? v },
             { title: "签订人", dataIndex: "signerId", render: (_, r) => <SignerName id={r.signerId as string | null} /> },
+            // 备注: 自由文本, 可能很长 -> ProDescriptions 默认会换行; 跟 reviewComment (审批意见) 区分
+            { title: "备注", dataIndex: "remark", render: (v) => v || "—" },
             { title: "状态", dataIndex: "status", render: (_, r) => <StatusTag status={r.status as string} domain="contract" /> }
           ]} />
         </ProCard>

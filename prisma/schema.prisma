@@ -164,6 +164,8 @@ model Contract {
   reviewerId             String?
   reviewAt               DateTime? @db.Timestamptz(6)
   reviewComment          String?
+  // 合同备注: 自由文本, 跟 reviewComment (审批意见) 区分; 不参与状态机/审批流
+  remark                 String?
   attachments            Json
   completionInvoiceRatio Decimal   @default(0.95) @db.Decimal(4, 2)
   createdAt              DateTime  @default(now()) @db.Timestamptz(6)

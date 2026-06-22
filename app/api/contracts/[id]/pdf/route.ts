@@ -121,6 +121,7 @@ export async function GET(
             value: c.reviewAt ? fmtDateTime(c.reviewAt) : "—",
           },
           { label: "审批意见", value: c.reviewComment ?? "—" },
+          { label: "合同备注", value: c.remark ?? "—" },
         ],
         summary: [
           {

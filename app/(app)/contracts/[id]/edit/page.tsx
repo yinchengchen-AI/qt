@@ -4,6 +4,7 @@ import { useMemo, useRef } from "react";
 import {
   ProForm,
   ProFormText,
+  ProFormTextArea,
   ProFormSelect,
   ProFormDigit,
   ProFormDatePicker
@@ -100,6 +101,7 @@ export default function EditContractPage() {
             serviceType: data.serviceType,
             paymentMethod: data.paymentMethod,
             ownerUserId: data.ownerUserId,
+            remark: data.remark ?? undefined,
             signDate: data.signDate ? new Date(data.signDate) : undefined,
             startDate: data.startDate ? new Date(data.startDate) : undefined,
             endDate: data.endDate ? new Date(data.endDate) : undefined,
@@ -265,6 +267,22 @@ export default function EditContractPage() {
                 min={0}
                 max={1}
                 fieldProps={{ size: "large", precision: 4, step: 0.01 }}
+              />
+            </FormGrid>
+          </FormSection>
+
+          <FormSection title="备注">
+            <FormGrid columns={1}>
+              <ProFormTextArea
+                name="remark"
+                label="合同备注"
+                placeholder="可空;500 字符以内"
+                rules={[{ max: 500, message: "备注不超过 500 字符" }]}
+                fieldProps={{
+                  autoSize: { minRows: 3, maxRows: 6 },
+                  showCount: true,
+                  maxLength: 500
+                }}
               />
             </FormGrid>
           </FormSection>

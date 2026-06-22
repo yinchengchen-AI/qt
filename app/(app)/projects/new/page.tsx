@@ -16,6 +16,8 @@ import { Page } from "@/components/page";
 import { PageHeader } from "@/components/page-header";
 import { FormSection, FormGrid, FormCard, SubmitBar } from "@/components/form";
 import { toIsoDateTime } from "@/lib/format";
+import { useDict } from "@/lib/dict-client";
+import { useProjectTitleAutofill } from "@/lib/use-project-title-autofill";
 
 const { Text } = Typography;
 
@@ -47,6 +49,16 @@ export default function NewProjectPage() {
   const formRef = useRef<any>(null);
   const [contractEnd, setContractEnd] = useState<string | null>(null);
   const [contractStart, setContractStart] = useState<string | null>(null);
+  // 合同选中后保存"最小元数据"用于项目名自动填充; 跟合同选项 option 同形
+  const [selectedContract, setSelectedContract] = useState<{
+    id: string;
+    customerName?: string;
+    serviceType?: string;
+  } | null>(null);
+  // 服务类型字典 (code -> label), hook 内部用
+  const serviceType = useDict("SERVICE_TYPE");
+  // 合同变化时 hook 内部 useEffect 自动 tryAutoFill (不需要在 onChange 手动调)
+  useProjectTitleAutofill({ formRef, contract: selectedContract, serviceType });
 
   // 会话异步加载完成后再把当前用户写入项目负责人默认值;initialValue 是一次性应用,
   // 第一次渲染时 session 还没回来,这里补一次 setFieldValue
@@ -121,10 +133,36 @@ export default function NewProjectPage() {
                     serviceType: c.serviceType
                   }));
               }}
-              onChange={(_: unknown, opt: { startDate?: string; endDate?: string } | unknown) => {
-                const o = opt as { startDate?: string; endDate?: string } | undefined;
+              onChange={(value: unknown, opt: unknown) => {
+                // pro-components 签名: onChange(value, option)
+                //   - value 是选项的 value 字段 (我们这里 = 合同 id)
+                //   - option 是选项对象 (label + 我们扩展的 customerName/serviceType/startDate/endDate)
+                // 之前误把 id 当 option 字段, 一直 undefined, setSelectedContract 永远没跑.
+                // 这里拆开用: value 给 id, opt 给派生字段.
+                const o = opt as
+                  | { startDate?: string; endDate?: string; customerName?: string; serviceType?: string }
+                  | undefined;
+                const newId = typeof value === "string" ? value : null;
                 setContractStart(o?.startDate ?? null);
                 setContractEnd(o?.endDate ?? null);
+                if (process.env.NODE_ENV !== "production") {
+                  // eslint-disable-next-line no-console
+                  console.debug(
+                    "[project-new] contract onChange: value=" + newId +
+                    " customerName=" + (o?.customerName ?? "") +
+                    " serviceType=" + (o?.serviceType ?? "")
+                  );
+                }
+                // 记下最小元数据 (id + 客户名 + 服务类型 code) 供项目名自动填充用;
+                // useProjectTitleAutofill 内部 useEffect 监听 contract.id 变化自动 tryAutoFill,
+                // 这里只负责 set state, 不直接调 (避免 React 闭包抓旧 contract)
+                if (newId && newId !== selectedContract?.id) {
+                  setSelectedContract({
+                    id: newId,
+                    customerName: o?.customerName,
+                    serviceType: o?.serviceType
+                  });
+                }
               }}
             />
           </FormSection>

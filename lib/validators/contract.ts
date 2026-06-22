@@ -36,6 +36,9 @@ export const contractCreateSchema = z.object({
   // admin 可显式改成任意 ACTIVE 员工(支持跨部门代签/转交).
   // 不传时 service 层回退为 customer.ownerUserId.
   ownerUserId: z.string().min(1).optional(),
+  // 合同备注: 自由文本, 跟 reviewComment (审批意见) 区分; 500 字符上限跟付款备注对齐
+  // 允许 null: PATCH 时传 {remark: null} 表示显式清空; 不传 / undefined 表示不动
+  remark: z.union([z.string().max(500), z.null()]).optional(),
   installmentPlan: z
     .array(
       z.object({

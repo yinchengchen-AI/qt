@@ -62,6 +62,8 @@ say "pnpm seed (系统字典/角色/管理员 幂等)"
 pnpm seed
 say "pnpm seed:dev-users (admin/sales/finance/ops 4 个测试账号, 密码读 DEV_QUICK_FILL_PASSWORD)"
 pnpm seed:dev-users
+say "pnpm seed:dev-customers (余杭 + 临平 20 个镇街各 5 个 = 100 个 dev 客户; 已存在则 skip, --reset 重建)"
+pnpm seed:dev-customers
 
 # --- 5) 烟测预检 ---
 say "烟测: dev server 起来后访问 /login /dashboard /api/customers"

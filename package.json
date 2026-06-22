@@ -24,6 +24,7 @@
     "seed": "tsx prisma/seed.ts",
     "seed:assets": "tsx prisma/seed-assets.ts",
     "seed:dev-users": "tsx scripts/shared/seed-test-users.ts",
+    "seed:dev-customers": "tsx scripts/dev/seed-yuhang-linping-customers.ts",
     "seed-dicts": "tsx scripts/shared/seed-dicts.ts",
     "seed-roles": "tsx scripts/shared/seed-roles.ts",
     "start": "next start",

@@ -262,6 +262,7 @@ export async function createContract(user: SessionUser, input: ContractCreateInp
         paymentMethod: input.paymentMethod,
         signerId,
         ownerUserId,
+        remark: input.remark ?? null,
         installmentPlan: (input.installmentPlan ?? null) as Prisma.InputJsonValue,
         status: "DRAFT",
         attachments: [] as unknown as Prisma.InputJsonValue,
