@@ -112,7 +112,6 @@ const MENU: MenuItem[] = [
       { path: "/statistics/performance", name: "业务员业绩", permission: { resource: RESOURCE.STATISTICS, action: ACTION.READ } },
       // 后端硬卡 ADMIN 角色, 这里用 OPERATION_LOG.READ(仅 ADMIN)做菜单隐藏
       { path: "/statistics/workflow", name: "工作流概览", permission: { resource: RESOURCE.OPERATION_LOG, action: ACTION.READ } },
-      { path: "/workflow/follow-ups", name: "跟进 360", permission: { resource: RESOURCE.CUSTOMER, action: ACTION.READ } }
     ]
   },
   {
@@ -671,8 +670,6 @@ export function DashboardShell({ user, children }: Props) {
 
 // URL 与菜单层级不一致的路由 — 按菜单结构定义面包屑,绕开按路径段拆分
 const BREADCRUMB_OVERRIDE: Record<string, string[]> = {
-  // /workflow/follow-ups 在菜单上属于 统计分析 父菜单,不再是 我的工作流 子项
-  "/workflow/follow-ups": ["统计分析", "跟进 360"]
 };
 
 const CRUMB_LABEL: Record<string, string> = {

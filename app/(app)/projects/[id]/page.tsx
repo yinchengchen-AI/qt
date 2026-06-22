@@ -16,7 +16,6 @@ import { openPrintWindow } from "@/lib/print-client";
 import { CurrencyCell, DateTimeCell } from "@/components/table-cells";
 import { useUserName } from "@/lib/user-lookup";
 import { WorkflowSection } from "@/components/workflow/workflow-section";
-import { ProjectHistory } from "@/components/workflow/project-history";
 import { AppstoreOutlined, DownloadOutlined, ThunderboltOutlined } from "@ant-design/icons";
 
 
@@ -209,12 +208,6 @@ export default function ProjectDetailPage() {
           />
           <ProCard>
             <WorkflowSection projectId={id} canEdit={canEditWorkflow} />
-          </ProCard>
-        </Col>
-        <Col xs={24} lg={8}>
-          <PageHeader level="section" title="活动历史" />
-          <ProCard>
-            <ProjectHistory projectId={id} canEdit={canEditWorkflow} />
           </ProCard>
         </Col>
       </Row>

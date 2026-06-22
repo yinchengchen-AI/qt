@@ -1,7 +1,6 @@
 "use client";
 // P5: 任务实例抽屉
 // 内容: 完整信息 + 状态机操作 + 备注编辑 + 附件上传/列表
-// 活动历史已移至项目详情页(/projects/{id})的 ProjectHistory 组件
 import { useState } from "react";
 import { App as AntdApp, Button, Drawer, Space, Tag, Typography } from "antd";
 import {
