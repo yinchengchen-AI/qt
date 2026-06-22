@@ -13,14 +13,12 @@ import {
   ExclamationCircleOutlined,
   LockOutlined,
   PlayCircleOutlined,
-  ReloadOutlined,
   StopOutlined
 } from "@ant-design/icons";
 import { TaskDrawer } from "./task-drawer";
 import {
   WORKFLOW_PHASE_MAP,
   WORKFLOW_TASK_STATUS_MAP,
-  WORKFLOW_RECURRENCE_UNIT_MAP,
   SERVICE_TYPE_MAP
 } from "@/lib/enum-maps";
 import { useRoleNameMap } from "@/lib/role-lookup";
@@ -35,24 +33,12 @@ type TaskInstance = {
   description: string | null;
   sort: number;
   requiredRole: string | null;
-  requiresDeliverable: boolean;
-  requiresOnsite: boolean;
-  requiresTwoStepReview: boolean;
-  isRecurring: boolean;
-  recurrenceUnit: string | null;
-  recurrenceInterval: number | null;
-  estimateDays: number | null;
   status: "PENDING" | "IN_PROGRESS" | "COMPLETED" | "SKIPPED" | "BLOCKED";
   assigneeId: string | null;
-  reviewStatus: "REVIEWING" | "REVIEWED" | "APPROVED" | "REJECTED" | null;
-  reviewedById: string | null;
-  reviewedAt: string | null;
   completedAt: string | null;
   completedById: string | null;
   remark: string | null;
-  parentInstanceId: string | null;
   phase: string;
-  attachments: unknown;
   projectId: string;
   projectNo: string;
   projectName: string;
@@ -284,15 +270,6 @@ function TaskCard({
         </Tag>
         <Text strong>{task.name}</Text>
         {task.requiredRole && <Tag>{roleNameMap[task.requiredRole] ?? task.requiredRole}</Tag>}
-        {task.requiresDeliverable && <Tag color="cyan">需交付物</Tag>}
-        {task.requiresOnsite && <Tag color="gold">现场</Tag>}
-        {task.requiresTwoStepReview && <Tag color="purple">二审</Tag>}
-        {task.isRecurring && (
-          <Tag color="geekblue" icon={<ReloadOutlined />}>
-            每 {task.recurrenceInterval ?? 1} {WORKFLOW_RECURRENCE_UNIT_MAP[task.recurrenceUnit ?? ""] ?? task.recurrenceUnit}
-          </Tag>
-        )}
-        {task.estimateDays && <Tag>预估 {task.estimateDays} 天</Tag>}
       </div>
       {task.description && (
         <Text
