@@ -4,7 +4,7 @@ import useSWR from "swr";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { App as AntdApp, Button, Card, Empty, Space, Tag, Tooltip, Typography } from "antd";
-import { CopyOutlined, EditOutlined } from "@ant-design/icons";
+import { EditOutlined } from "@ant-design/icons";
 import { Page } from "@/components/page";
 import { PageHeader } from "@/components/page-header";
 import { SERVICE_TYPE_MAP } from "@/lib/enum-maps";
@@ -27,31 +27,6 @@ export default function WorkflowTemplatesPage() {
   const router = useRouter();
   const { message, modal } = AntdApp.useApp();
   const { data, isLoading, mutate } = useSWR<Template[]>("/api/admin/workflow-templates");
-  const [cloning, setCloning] = useState<string | null>(null);
-
-  const handleClone = async (t: Template) => {
-    modal.confirm({
-      title: `克隆 ${t.name} 为新版本?`,
-      content: "新版本会自增 version 号,旧版本自动 isActive=false。已有项目不受影响——它们用的是实例化时的快照。",
-      okText: "确认克隆",
-      onOk: async () => {
-        setCloning(t.id);
-        try {
-          const r = await fetch(`/api/admin/workflow-templates/${t.id}/clone`, { method: "POST", credentials: "include" });
-          const j = await r.json();
-          if (j.code !== 0) {
-            message.error(j.message);
-            return;
-          }
-          message.success(`已克隆为 v${j.data.version}`);
-          await mutate();
-          router.push(`/admin/workflow-templates/${j.data.id}`);
-        } finally {
-          setCloning(null);
-        }
-      }
-    });
-  };
 
   if (isLoading) {
     return (
@@ -102,16 +77,7 @@ export default function WorkflowTemplatesPage() {
                 }
                 extra={
                   <Space>
-                    <Tooltip title="克隆为新版本">
-                      <Button
-                        size="small"
-                        type="text"
-                        icon={<CopyOutlined />}
-                        loading={cloning === latest.id}
-                        onClick={() => handleClone(latest)}
-                      />
-                    </Tooltip>
-                    <Tooltip title="编辑">
+<Tooltip title="编辑">
                       <Button size="small" type="text" icon={<EditOutlined />} onClick={() => router.push(`/admin/workflow-templates/${latest.id}`)} />
                     </Tooltip>
                   </Space>
@@ -124,22 +90,8 @@ export default function WorkflowTemplatesPage() {
                 <Space size={4} wrap>
                   <Tag>v{latest.version}</Tag>
                   <Tag>{latest.stageCount} 阶段</Tag>
-                  {versions.length > 1 && <Tag color="purple">{versions.length} 个历史版本</Tag>}
                 </Space>
-                {versions.length > 1 && (
-                  <div style={{ marginTop: 8 }}>
-                    <Text type="secondary" style={{ fontSize: 12 }}>历史版本: </Text>
-                    {versions.slice(1).map((v) => (
-                      <Tag
-                        key={v.id}
-                        style={{ cursor: "pointer" }}
-                        onClick={() => router.push(`/admin/workflow-templates/${v.id}`)}
-                      >
-                        v{v.version}
-                      </Tag>
-                    ))}
-                  </div>
-                )}
+
               </Card>
             );
           })}
