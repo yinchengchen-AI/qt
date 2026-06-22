@@ -1,5 +1,5 @@
 #!/usr/bin/env tsx
-/* eslint-disable @typescript-eslint/no-explicit-any */
+ 
 /**
  * dev 专用: 100 个真实业务客户 (杭州市余杭区 + 临平区 各个镇街)
  *

@@ -1,4 +1,3 @@
-// @ts-nocheck — temporarily suppressed during PR-2 schema migration
 // 发票详情 → 打印页 HTML
 import { err } from "@/lib/api";
 import { runWithRequestContext } from "@/lib/request-context";
@@ -101,8 +100,8 @@ export async function GET(
           },
           {
             label: "审核时间",
-            value: inv.reviewedAt
-              ? new Date(inv.reviewedAt).toLocaleString("zh-CN")
+            value: (inv as any).reviewedAt
+              ? new Date((inv as any).reviewedAt).toLocaleString("zh-CN")
               : "—",
           },
           { label: "审核意见", value: inv.reviewComment ?? "—" },

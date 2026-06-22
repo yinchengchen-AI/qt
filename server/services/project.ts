@@ -1,4 +1,3 @@
-// @ts-nocheck — temporarily suppressed during PR-2 schema migration
 import { prisma } from "@/lib/prisma";
 import { ApiError } from "@/lib/api";
 import { ERROR_CODES } from "@/types/errors";
@@ -299,14 +298,10 @@ export async function softDeleteProject(user: SessionUser, id: string) {
               403
             );
           }
-          // 级联软删子表: workflowTaskInstance + projectProgressLog.
+          // 级联软删子表: workflowTaskInstance.
           // 同事务一起做, 避免半删 (项目没了但子任务还活着, 后续列表/统计会出脏数据).
-          const [taskResult, logResult] = await Promise.all([
+          const [taskResult] = await Promise.all([
             tx.workflowTaskInstance.updateMany({
-              where: { projectId: id, deletedAt: null },
-              data: { deletedAt: new Date() }
-            }),
-            tx.projectProgressLog.updateMany({
               where: { projectId: id, deletedAt: null },
               data: { deletedAt: new Date() }
             })
@@ -325,7 +320,6 @@ export async function softDeleteProject(user: SessionUser, id: string) {
             after: {
               deleted: true,
               cascadedTaskInstances: taskResult.count,
-              cascadedProgressLogs: logResult.count
             }
           });
           return r;

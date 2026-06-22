@@ -88,13 +88,13 @@ export function useProjectTitleAutofill(opts: ProjectTitleAutofillOptions) {
     // 字典还没加载完, 本轮不填 (deps 变了会再跑一次)
     if (serviceTypeLabelByCode.size === 0) {
       if (process.env.NODE_ENV !== "production") {
-        // eslint-disable-next-line no-console
+         
         console.debug("[project-autofill] skip: serviceType dict not loaded yet");
       }
       return;
     }
     if (process.env.NODE_ENV !== "production") {
-      // eslint-disable-next-line no-console
+       
       console.debug(
         "[project-autofill] fire: contract=" + contract.id +
         " customerName=" + (contract.customerName ?? "") +

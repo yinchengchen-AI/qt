@@ -1,4 +1,3 @@
-// @ts-nocheck — temporarily suppressed during PR-2 schema migration
 // 项目详情 → 打印页 HTML
 import { err } from "@/lib/api";
 import { runWithRequestContext } from "@/lib/request-context";
@@ -36,18 +35,13 @@ export async function GET(
       const p = await getProject(user, id);
       const overview = await getProjectOverview(user, id);
       const history = await getProjectHistory(user, id);
-      const [manager, progressLogs, taskInstances] = await Promise.all([
+      const [manager, taskInstances] = await Promise.all([
         p.managerUserId
           ? prisma.user.findUnique({
               where: { id: p.managerUserId },
               select: { name: true, employeeNo: true },
             })
           : Promise.resolve(null),
-        prisma.projectProgressLog.findMany({
-          where: { projectId: id },
-          orderBy: { at: "desc" },
-          take: 20,
-        }),
         // 项目级附件 = 所有任务实例 attachments JSON 的并集(去重)
         prisma.workflowTaskInstance.findMany({
           where: { projectId: id, deletedAt: null },
@@ -197,16 +191,6 @@ export async function GET(
               上传时间: a.uploadedAt ? fmtDateTime(a.uploadedAt) : "—",
             })),
             emptyText: "暂无项目附件",
-          },
-          {
-            title: "里程碑日志",
-            rows: progressLogs.length
-              ? progressLogs.map((l) => ({
-                  label: fmtDateTime(l.at),
-                  value: l.remark ?? "",
-                }))
-              : [],
-            emptyText: "暂无里程碑记录",
           },
           historySection,
         ],

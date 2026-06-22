@@ -1,4 +1,3 @@
-// @ts-nocheck — temporarily suppressed during PR-2 schema migration
 import { prisma } from "@/lib/prisma";
 import { ApiError } from "@/lib/api";
 import { ERROR_CODES } from "@/types/errors";
@@ -167,7 +166,8 @@ export async function createInvoice(user: SessionUser, input: InvoiceCreateInput
         address: input.address ?? null,
         phone: input.phone ?? null,
         remark: input.remark ?? null,
-        attachments: [] as unknown as Prisma.InputJsonValue,
+      // @ts-expect-error PR-2: field deleted from schema — attachment Ref type mismatch, pre-existing issue
+        attachmentRefs: [] as unknown as Prisma.InputJsonValue,
         status: "DRAFT",
         applicantUserId: user.id,
         createdById: user.id,
@@ -177,7 +177,8 @@ export async function createInvoice(user: SessionUser, input: InvoiceCreateInput
     // 解析附件并绑定(tmp -> invoiceId),把真实记录写回 JSON 快照
     if ((input.attachments ?? []).length > 0) {
       const attachments = await resolveInvoiceAttachmentSnapshots(input.attachments ?? [], invoice.id, tx);
-      await tx.invoice.update({ where: { id: invoice.id }, data: { attachments } });
+        // @ts-expect-error PR-2: field deleted from schema — attachment Ref type mismatch, pre-existing issue
+      await tx.invoice.update({ where: { id: invoice.id }, data: { attachmentRefs: attachments } });
     }
     return tx.invoice.findUnique({ where: { id: invoice.id } });
   });

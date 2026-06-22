@@ -1,4 +1,3 @@
-// @ts-nocheck — temporarily suppressed during PR-2 schema migration, cleaned in follow-up PR-2.1
 // 软删除项目服务层单测 (softDeleteProject, server/services/project.ts)
 //
 // 覆盖矩阵:
@@ -95,7 +94,7 @@ afterAll(async () => {
   try {
     // 物理清理测试数据 (软删的也一并 deleteMany 兜底)
     if (createdProjectIds.length > 0) {
-      await prisma.projectProgressLog.deleteMany({ where: { projectId: { in: createdProjectIds } } });
+      // projectProgressLog table deleted in PR-2
       await prisma.workflowTaskInstance.deleteMany({ where: { projectId: { in: createdProjectIds } } });
       await prisma.project.deleteMany({ where: { id: { in: createdProjectIds } } });
     }
@@ -212,24 +211,7 @@ describe("softDeleteProject 服务层", () => {
     }
   }));
 
-  it("PLANNED + 有 project progress log → 软删成功, 日志一并 deletedAt (级联软删)", guard(async () => {
-    const p = await mkProject("PLANNED", "WITH-LOG");
-    const log = await prisma.projectProgressLog.create({
-      data: {
-        projectId: p.id,
-        userId: adminUser!.id,
-        remark: "test progress"
-      }
-    });
-    try {
-      const r = await softDeleteProject(buildAdmin(), p.id);
-      expect(r.deletedAt).toBeInstanceOf(Date);
-      const reloadedLog = await prisma.projectProgressLog.findUnique({ where: { id: log.id } });
-      expect(reloadedLog?.deletedAt).toBeInstanceOf(Date);
-    } finally {
-      await prisma.projectProgressLog.deleteMany({ where: { projectId: p.id } });
-    }
-  }));
+
 
   it("项目不存在 → 抛 404 NOT_FOUND", guard(async () => {
     await expect(softDeleteProject(buildAdmin(), "non-existent-id")).rejects.toMatchObject({

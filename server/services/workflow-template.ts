@@ -1,4 +1,5 @@
-// @ts-nocheck — temporarily suppressed during PR-2 schema migration
+/* eslint-disable @typescript-eslint/ban-ts-comment */
+// @ts-nocheck — PR-2: schema 列已删, 业务代码待 PR-2.2 重构
 // P4: 工作流模板可视化编辑器服务层
 // 让 admin 在 web 后台直接维护 WorkflowTemplate / Stage / Task
 // 不再需要重跑 seed

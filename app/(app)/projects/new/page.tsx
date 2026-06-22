@@ -146,7 +146,7 @@ export default function NewProjectPage() {
                 setContractStart(o?.startDate ?? null);
                 setContractEnd(o?.endDate ?? null);
                 if (process.env.NODE_ENV !== "production") {
-                  // eslint-disable-next-line no-console
+                   
                   console.debug(
                     "[project-new] contract onChange: value=" + newId +
                     " customerName=" + (o?.customerName ?? "") +
