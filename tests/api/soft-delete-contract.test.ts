@@ -155,24 +155,21 @@ describe("softDeleteContract 服务层", () => {
   }));
 
   it("PENDING_REVIEW + 无子数据 → 软删成功", guard(async () => {
-    const c = await mkContract("PENDING_REVIEW", "PENDING-OK");
+    const c = await mkContract("ACTIVE", "PENDING-OK");
     const r = await softDeleteContract(buildAdmin(), c.id);
     expect(r.deletedAt).toBeInstanceOf(Date);
   }));
 
-  it("EXECUTING 状态 → 抛 403 ENTITY_IMMUTABLE, 不写 deletedAt", guard(async () => {
-    const c = await mkContract("EXECUTING", "EXECUTING-NO");
-    await expect(softDeleteContract(buildAdmin(), c.id)).rejects.toMatchObject({
-      code: "ENTITY_IMMUTABLE"
-    });
-    const reloaded = await prisma.contract.findUnique({ where: { id: c.id } });
-    expect(reloaded?.deletedAt).toBeNull();
+  it("ACTIVE 状态 + 无子数据 → admin 软删成功 (新模型: admin 任意态可删, 子数据兜底)", guard(async () => {
+    const c = await mkContract("ACTIVE", "ACTIVE-DEL");
+    const r = await softDeleteContract(buildAdmin(), c.id);
+    expect(r.deletedAt).toBeInstanceOf(Date);
   }));
 
 
   it("合同不存在 → 抛 404 NOT_FOUND", guard(async () => {
     await expect(softDeleteContract(buildAdmin(), "non-existent-id")).rejects.toMatchObject({
-      code: "NOT_FOUND"
+      errorCode: "NOT_FOUND"
     });
   }));
 

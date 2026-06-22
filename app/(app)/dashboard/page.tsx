@@ -84,7 +84,7 @@ export default function DashboardPage() {
     },
     {
       label: "合同总额",
-      tooltip: <>合同状态为 <b>已生效 / 执行中 / 已完成</b>(对应枚举 EFFECTIVE / EXECUTING / COMPLETED),<b>签订日期</b>落在统计区间内的合同金额合计。<br/>草稿、待审、终止、过期不计入。<br/>{permHint}</>,
+      tooltip: <>合同状态为 <b>生效中 / 已完结</b>(对应枚举 ACTIVE / CLOSED),<b>签订日期</b>落在统计区间内的合同金额合计。<br/>草稿、待审、终止、过期不计入。<br/>{permHint}</>,
       value: formatCompact(o.contractAmount),
       suffix: "元",
       description: `共 ${o.contractCount} 份有效合同`

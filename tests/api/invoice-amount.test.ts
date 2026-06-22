@@ -134,7 +134,7 @@ async function mkContract(totalAmount: string, suffix: string) {
       taxAmount: "0",
       amountExcludingTax: "0",
       paymentMethod: "LUMP_SUM",
-      status: "EFFECTIVE",
+      status: "ACTIVE",
       ownerUserId: adminUser.id,
       signerId: adminUser.id,
       attachments: [] as unknown as Parameters<typeof prisma.contract.create>[0]["data"]["attachments"],
@@ -210,7 +210,7 @@ describe("createInvoice R-08 累计开票", () => {
   it("超合同总额 → 抛 INVOICE_OVER_LIMIT", guard(async () => {
     const c = await mkContract("100.00", "R08-CREATE");
     await mkDraftInvoice(c.id, 60, "R08-1");
-    await expect(mkDraftInvoice(c.id, 60, "R08-2")).rejects.toMatchObject({ code: ERROR_CODES.INVOICE_OVER_LIMIT });
+    await expect(mkDraftInvoice(c.id, 60, "R08-2")).rejects.toMatchObject({ errorCode: ERROR_CODES.INVOICE_OVER_LIMIT });
   }));
 
   it("0.01 元容差内 → 通过 (P2-1)", guard(async () => {
@@ -227,7 +227,7 @@ describe("updateInvoice R-08 重新校验 (P1-1)", () => {
     const inv = await mkDraftInvoice(c.id, 10, "R08-UPD-1");
     await expect(
       updateInvoice(buildAdmin(), inv.id, { amount: 200 })
-    ).rejects.toMatchObject({ code: ERROR_CODES.INVOICE_OVER_LIMIT });
+    ).rejects.toMatchObject({ errorCode: ERROR_CODES.INVOICE_OVER_LIMIT });
   }));
 
   it("DRAFT 改 amount 改小 → 通过", guard(async () => {
@@ -244,7 +244,7 @@ describe("invoiceAction.void P1-3", () => {
     await issueInvoice(inv.id, `${TAG}-VOID-20-1`);
     await expect(
       invoiceAction(buildFinance(), inv.id, { action: "void" })
-    ).rejects.toMatchObject({ code: ERROR_CODES.VALIDATION_FAILED });
+    ).rejects.toMatchObject({ errorCode: ERROR_CODES.VALIDATION_FAILED });
   }));
 
   it("有 reason + 已 CONFIRMED 回款 → 发票 VOIDED + 回款 REFUNDED", guard(async () => {
@@ -274,7 +274,7 @@ describe("invoiceAction.red-flush P1-3", () => {
     await issueInvoice(inv.id, `${TAG}RED1`);
     await expect(
       invoiceAction(buildFinance(), inv.id, { action: "red-flush" })
-    ).rejects.toMatchObject({ code: ERROR_CODES.VALIDATION_FAILED });
+    ).rejects.toMatchObject({ errorCode: ERROR_CODES.VALIDATION_FAILED });
   }));
 
   it("有 reason + 已 CONFIRMED 回款 → 原 RED_FLUSHED + 负数 ISSUED + 回款 REFUNDED", guard(async () => {

@@ -159,7 +159,7 @@ model Contract {
   installmentPlan        Json?
   // 合同交付物不再以结构化 JSON 存; 实际交付文件走 Attachment.isDeliverable=true
   // (admin / 签订人 / 负责人 三者之一 才能上传; 详见 server/storage/presign.ts assertCanManageDeliverables)
-  status                 String    @default("DRAFT") // DRAFT | PENDING_REVIEW | EFFECTIVE | EXECUTING | COMPLETED | TERMINATED | EXPIRED
+  status                 String    @default("DRAFT") // DRAFT | ACTIVE | CLOSED
   ownerUserId            String
   signerId               String
   reviewerId             String?

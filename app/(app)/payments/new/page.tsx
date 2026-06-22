@@ -111,7 +111,7 @@ export default function NewPaymentPage() {
                   if (j.code !== 0) return [];
                   return (j.data.list as Contract[])
                     .filter((c) =>
-                      ["EFFECTIVE", "EXECUTING", "COMPLETED"].includes(c.status)
+                      ["ACTIVE", "CLOSED"].includes(c.status)
                     )
                     .map((c) => ({
                       value: c.id,

@@ -1,6 +1,6 @@
 "use client";
 import { ProCard, ProDescriptions, ProTable } from "@ant-design/pro-components";
-import { Alert, App as AntdApp, Button, Card, Col, Divider, Empty, Row, Space, Statistic, Tabs, Tag, Typography } from "antd";
+import { Alert, App as AntdApp, Button, Card, Col, Divider, Empty, Radio, Row, Space, Statistic, Tabs, Tag, Typography } from "antd";
 import { CloudUploadOutlined, DeleteOutlined, FilePdfOutlined } from "@ant-design/icons";
 import { useParams, useRouter } from "next/navigation";
 import type { Contract as ContractEntity } from "@/lib/types/entities";
@@ -27,6 +27,7 @@ import { useT } from "@/lib/i18n";
 const { Text } = Typography;
 
 const REVIEW_ACTION_TONE: Record<string, string> = {
+  // 旧
   SUBMIT:    "processing",
   APPROVE:   "success",
   REJECT:    "danger",
@@ -34,7 +35,14 @@ const REVIEW_ACTION_TONE: Record<string, string> = {
   EXECUTE:   "processing",
   SUSPEND:   "warning",
   RESUME:    "processing",
-  COMPLETE:  "success"
+  COMPLETE:  "success",
+  // 新: 自动用蓝色, 手动用 default
+  AUTO_PUBLISH:           "blue",
+  MANUAL_PUBLISH:         "default",
+  AUTO_CLOSE_COMPLETED:   "blue",
+  AUTO_CLOSE_EXPIRED:     "blue",
+  AUTO_CLOSE_TERMINATED:  "blue",
+  MANUAL_CLOSE:           "default"
 };
 
 const DESC_COL = { xs: 1, sm: 1, md: 2, lg: 2, xl: 3 } as const;
@@ -198,7 +206,7 @@ export default function ContractDetailPage() {
 const handleDelete = () => {
   modal.confirm({
     title: "确认删除该合同？",
-    content: "删除后可在回收站恢复，状态为 DRAFT / PENDING_REVIEW 且无发票 / 回款 / 附件 时可操作。",
+    content: "删除后可在回收站恢复，状态为 DRAFT 且无发票 / 回款 / 附件 时可操作。",
     okButtonProps: { danger: true },
     okText: "删除",
     cancelText: "取消",
@@ -216,6 +224,8 @@ const handleDelete = () => {
   });
 };
   const [activeTab, setActiveTab] = useState("info");
+  // 强制完结弹窗: admin 选 reason (completed / terminated / expired)
+  const [closeReason, setCloseReason] = useState<"completed" | "terminated" | "expired">("completed");
 
   if (error) {
     return (
@@ -240,15 +250,48 @@ const handleDelete = () => {
   const t = overview?.totals;
   const fmtWan = (v: number) => (v / 10000).toFixed(1);
 
+  // 状态机 3 态: DRAFT/ACTIVE/CLOSED. 业务基本无需手动操作, 自动化处理常见流转;
+  // 这里只暴露 admin 兜底入口: DRAFT 强制发布, ACTIVE 强制完结.
   const can = (() => {
     const s = contract.status;
-    if (s === "DRAFT") return ["submit"];
-    if (s === "PENDING_REVIEW") return ["approve", "reject", "withdraw"];
-    if (s === "EFFECTIVE") return ["execute", "complete", "terminate"];
-    if (s === "EXECUTING") return ["suspend", "complete", "terminate"];
-    if (s === "SUSPENDED") return ["resume", "complete", "terminate"];
+    if (s === "DRAFT") return ["publish"];
+    if (s === "ACTIVE") return ["close"];
     return [];
   })();
+  const handleClose = async () => {
+    try {
+      const res = await fetch(`/api/contracts/${id}/close`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ reason: closeReason })
+      });
+      const j = await res.json();
+      if (j.code !== 0) { msg.error(j.message); return; }
+      msg.success("合同已完结");
+      mutate();
+    } catch (e) {
+      msg.error((e as Error).message);
+    }
+  };
+  const askClose = () => {
+    modal.confirm({
+      title: "强制完结合同",
+      content: (
+        <div style={{ paddingTop: 8 }}>
+          <div style={{ marginBottom: 8 }}>请选择完结原因 (记录到 reviewComment):</div>
+          <Radio.Group value={closeReason} onChange={(e) => setCloseReason(e.target.value)}>
+            <Radio value="completed">提前结清 (completed)</Radio>
+            <Radio value="terminated">业务终止 (terminated)</Radio>
+            <Radio value="expired">到期兜底 (expired)</Radio>
+          </Radio.Group>
+        </div>
+      ),
+      okText: "确认完结",
+      cancelText: "取消",
+      onOk: handleClose
+    });
+  };
   const isOwnerOrAdmin = (session?.user as { roleCode?: string })?.roleCode === "ADMIN";
   const allowed = isOwnerOrAdmin ? can : [];
 
@@ -380,7 +423,7 @@ const handleDelete = () => {
     },
     {
       key: "review",
-      label: <span>审批记录 ({overview?.reviewLogs.length ?? 0})</span>,
+      label: <span>状态记录 ({overview?.reviewLogs.length ?? 0})</span>,
       children: (
         <ProCard>
           {overview && overview.reviewLogs.length > 0 ? (
@@ -397,7 +440,7 @@ const handleDelete = () => {
                 { title: "审批人", dataIndex: "reviewerId", width: 120, render: (_, r) => <ReviewerName id={r.reviewerId as string} /> },
                 { title: "意见", dataIndex: "comment", render: (v) => v || "—" }
               ]} />
-          ) : <Empty description="本合同暂无审批记录" />}
+          ) : <Empty description="本合同暂无状态变更记录" />}
         </ProCard>
       )
     },
@@ -433,17 +476,16 @@ const handleDelete = () => {
         actions={
           <Space wrap>
             <Button key="pdf" icon={<FilePdfOutlined />} onClick={() => openPrintWindow(`/api/contracts/${id}/pdf`)}>导出 PDF</Button>
-            {["DRAFT", "PENDING_REVIEW", "SUSPENDED"].includes(contract.status) && (
+            {(isOwnerOrAdmin || contract.status === "DRAFT") && (
               <Button onClick={() => router.push(`/contracts/${id}/edit`)}>编辑</Button>
             )}
             {allowed.map((a) => (
               <Button
                 key={a}
-                type={a === "cancel" ? "default" : "primary"}
-                danger={a === "reject" || a === "terminate"}
-                onClick={() => run(a)}
+                type="primary"
+                onClick={a === "close" ? askClose : () => run(a)}
               >
-                {a === "submit" ? "提交审批" : a === "approve" ? "批准" : a === "reject" ? "驳回" : a === "withdraw" ? "撤回" : a === "execute" ? "开始执行" : a === "complete" ? "结清" : a === "suspend" ? "暂停" : a === "resume" ? "恢复" : a === "terminate" ? "终止" : a}
+                {a === "publish" ? "发布" : a === "close" ? "完结" : a}
               </Button>
             ))}
             {isOwnerOrAdmin && (

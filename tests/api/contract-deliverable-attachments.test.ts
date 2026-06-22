@@ -155,7 +155,7 @@ describe("presignUpload isDeliverable 校验", () => {
         isDeliverable: true,
         uploadedById: adminUser!.id
       })
-    ).rejects.toMatchObject({ code: "VALIDATION_FAILED" });
+    ).rejects.toMatchObject({ errorCode: "VALIDATION_FAILED" });
   }));
 
   it("contractId 指向已软删合同 → 404", guard(async () => {
@@ -170,7 +170,7 @@ describe("presignUpload isDeliverable 校验", () => {
           isDeliverable: true,
           uploadedById: adminUser!.id
         })
-      ).rejects.toMatchObject({ code: "NOT_FOUND" });
+      ).rejects.toMatchObject({ errorCode: "NOT_FOUND" });
     } finally {
       await prisma.contract.update({ where: { id: testContractId! }, data: { deletedAt: null } });
     }
@@ -230,7 +230,7 @@ describe("presignUpload 写权限矩阵 (isDeliverable=true 路径)", () => {
         isDeliverable: true,
         uploadedById: salesOther!.id
       })
-    ).rejects.toMatchObject({ code: "FORBIDDEN" });
+    ).rejects.toMatchObject({ errorCode: "FORBIDDEN" });
   }));
 
   it("FINANCE → 403", guard(async () => {
@@ -243,7 +243,7 @@ describe("presignUpload 写权限矩阵 (isDeliverable=true 路径)", () => {
         isDeliverable: true,
         uploadedById: financeUser!.id
       })
-    ).rejects.toMatchObject({ code: "FORBIDDEN" });
+    ).rejects.toMatchObject({ errorCode: "FORBIDDEN" });
   }));
 
   it("isDeliverable=false (默认) → 旧路径, 走 ROLE_PERMISSIONS (admin 允许)", guard(async () => {
@@ -317,7 +317,7 @@ describe("softDeleteAttachment 交付物路径", () => {
       uploadedById: adminUser!.id
     });
     cleanupAttachmentIds.push(r.attachmentId);
-    await expect(softDeleteAttachment(r.attachmentId, salesOther!.id)).rejects.toMatchObject({ code: "FORBIDDEN" });
+    await expect(softDeleteAttachment(r.attachmentId, salesOther!.id)).rejects.toMatchObject({ errorCode: "FORBIDDEN" });
   }));
 });
 

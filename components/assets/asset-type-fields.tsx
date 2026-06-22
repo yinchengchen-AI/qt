@@ -187,7 +187,7 @@ function ContractPicker({
         const qs = new URLSearchParams();
         qs.set("pageSize", "50");
         qs.set("customerId", customerId);
-        qs.set("status", "EFFECTIVE,EXECUTING,COMPLETED");
+        qs.set("status", "ACTIVE,CLOSED");
         if (keyWords) qs.set("keyword", keyWords);
         const r = await fetch(`/api/contracts?${qs}`, { credentials: "include" });
         const j = await r.json();

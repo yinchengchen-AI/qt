@@ -81,7 +81,7 @@ beforeAll(async () => {
       taxAmount: "0",
       amountExcludingTax: "0",
       paymentMethod: "LUMP_SUM",
-      status: "EFFECTIVE",
+      status: "ACTIVE",
       ownerUserId: adminUser.id,
       signerId: adminUser.id,
       attachments: [] as unknown as Parameters<typeof prisma.contract.create>[0]["data"]["attachments"],
@@ -150,7 +150,7 @@ async function mkContract(totalAmount: string, suffix: string) {
       taxAmount: "0",
       amountExcludingTax: "0",
       paymentMethod: "LUMP_SUM",
-      status: "EFFECTIVE",
+      status: "ACTIVE",
       ownerUserId: adminUser.id,
       signerId: adminUser.id,
       attachments: [] as unknown as Parameters<typeof prisma.contract.create>[0]["data"]["attachments"],
@@ -226,7 +226,7 @@ describe("paymentAction.confirm 校验", () => {
     const p2 = await mkPlannedPayment(c.id, null, 60, ref);
     await expect(
       paymentAction(buildFinance(), p2.id, { action: "confirm", bankRefNo: ref })
-    ).rejects.toMatchObject({ code: ERROR_CODES.PAYMENT_DUPLICATE_REF });
+    ).rejects.toMatchObject({ errorCode: ERROR_CODES.PAYMENT_DUPLICATE_REF });
   }));
 
   it("R-11 0.01 容差内通过, 超容差拒 (P2-1/P2-2)", guard(async () => {
@@ -243,7 +243,7 @@ describe("paymentAction.confirm 校验", () => {
     const p2 = await mkPlannedPayment(c.id, inv.id, 0.01, ref2);
     await expect(
       paymentAction(buildFinance(), p2.id, { action: "confirm", bankRefNo: ref2 })
-    ).rejects.toMatchObject({ code: ERROR_CODES.PAYMENT_OVER_INVOICE });
+    ).rejects.toMatchObject({ errorCode: ERROR_CODES.PAYMENT_OVER_INVOICE });
   }));
 
   it("R-12 超合同总额 → 抛 PAYMENT_OVER_CONTRACT", guard(async () => {
@@ -255,7 +255,7 @@ describe("paymentAction.confirm 校验", () => {
     const p2 = await mkPlannedPayment(c.id, null, 1, ref2);
     await expect(
       paymentAction(buildFinance(), p2.id, { action: "confirm", bankRefNo: ref2 })
-    ).rejects.toMatchObject({ code: ERROR_CODES.PAYMENT_OVER_CONTRACT });
+    ).rejects.toMatchObject({ errorCode: ERROR_CODES.PAYMENT_OVER_CONTRACT });
   }));
 });
 
@@ -267,11 +267,11 @@ describe("paymentAction.refund P1-2", () => {
     await paymentAction(buildFinance(), p.id, { action: "confirm", bankRefNo: ref });
     await expect(
       paymentAction(buildFinance(), p.id, { action: "refund" })
-    ).rejects.toMatchObject({ code: ERROR_CODES.VALIDATION_FAILED });
+    ).rejects.toMatchObject({ errorCode: ERROR_CODES.VALIDATION_FAILED });
     // 空白字符串同样拒
     await expect(
       paymentAction(buildFinance(), p.id, { action: "refund", reason: "   " })
-    ).rejects.toMatchObject({ code: ERROR_CODES.VALIDATION_FAILED });
+    ).rejects.toMatchObject({ errorCode: ERROR_CODES.VALIDATION_FAILED });
   }));
 
   it("有 reason → 原 payment 翻 REFUNDED, 不创建负数补偿", guard(async () => {

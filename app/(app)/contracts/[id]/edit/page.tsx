@@ -66,17 +66,18 @@ export default function EditContractPage() {
     );
   }
 
-  // 状态机门控: 非 admin 仅 草稿 / 待审批 / 已暂停 可编辑;
-  // **admin 跳过门控**, 任何状态下都能打开编辑页 (跟后端 service 同步)
+  // 状态机门控: 新模型下, 非 admin 仅 DRAFT 可编辑;
+  // admin 任意态都能打开编辑页 (跟后端 service 同步).
+  // 业务/财务/行政角色在 ACTIVE/CLOSED 状态下打开会提示不可编辑.
   const roleCode = (session?.user as { roleCode?: string } | undefined)?.roleCode;
   const isAdmin = roleCode === "ADMIN";
-  if (!isAdmin && !["DRAFT", "PENDING_REVIEW", "SUSPENDED"].includes(data.status)) {
+  if (!isAdmin && data.status !== "DRAFT") {
     return (
       <Page compact>
         <PageHeader back={() => router.push(`/contracts/${id}`)} title="编辑合同" />
         <FormCard>
           <Text type="warning">
-            当前状态 <StatusTag status={data.status} domain="contract" /> 不可编辑;仅 草稿 / 待审批 / 已暂停 可改 (管理员可改任意状态)。
+            当前状态 <StatusTag status={data.status} domain="contract" /> 不可编辑;仅 草稿 可改 (管理员可改任意状态)。
           </Text>
         </FormCard>
       </Page>
