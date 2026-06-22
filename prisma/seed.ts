@@ -19,11 +19,11 @@ const prisma = new PrismaClient({
 // =====================================================
 // 数据结构说明:
 // - serviceType: 对应 SERVICE_TYPE 字典码
-// - stages: 严格 5 段(PREP/REQUIREMENT/CONTRACT/EXECUTE/FOLLOWUP),前 4 段通用, EXECUTE 段按服务类型差异化
+// - stages: 2 段(DO/DELIVER), DO = PREP+REQ+CONTRACT+EXECUTE, DELIVER = FOLLOWUP
 // - tasks: 阶段下挂任务, sort 决定顺序
-// - 标识: ⭐ requiresDeliverable=true, ⭐⭐ requiresTwoStepReview=true(同时 requiresDeliverable), ⌖ requiresOnsite=true
-// - 循环任务: isRecurring=true + recurrenceUnit/Interval (RESIDENT 月报 / STANDARDIZATION 年度自评)
-// - 通用阶段任务 PREP/REQUIREMENT/CONTRACT/FOLLOWUP 在 9 类模板上完全一致, EXECUTE 段按服务类型定制
+
+
+// - DO 段: 通用 PREP/REQ/CONTRACT + 按类型的 EXECUTE; DELIVER: 通用 FOLLOWUP
 type SeedTask = {
   code: string;
   name: string;
@@ -38,7 +38,7 @@ type SeedTask = {
   estimateDays?: number;
 };
 type SeedStage = {
-  phase: "PREP" | "REQUIREMENT" | "CONTRACT" | "EXECUTE" | "FOLLOWUP";
+  phase: "DO" | "DELIVER";
   code: string;
   name: string;
   description?: string;
@@ -54,28 +54,28 @@ type SeedTemplate = {
 
 // 通用 4 阶段(所有 9 类服务一致)
 const COMMON_PREP_TASKS: SeedTask[] = [
-  { code: "VISIT_INIT",     name: "委托单位初访",       description: "了解委托单位及项目基本概况、安全管理现状、技术要求、服务目的", requiredRole: "SALES", estimateDays: 3 },
-  { code: "MATCH_CHECK",    name: "服务匹配度评估",     description: "分析服务要求、自身业务能力、风险程度及法律责任", requiredRole: "SALES", estimateDays: 2 },
-  { code: "COST_ESTIMATE",  name: "费用测算",           description: "按工作量/人员/技术含量测算成本,分析达成目标的可行性", requiredRole: "SALES", estimateDays: 2 },
-  { code: "QUOTE_BID",      name: "报价/投标",          description: "通过洽谈、竞价、投标等方式确定服务费用,接受项目委托", requiredRole: "SALES", estimateDays: 5 },
-  { code: "INTERNAL_KICKOFF", name: "内部立项",         description: "内部立项审批", requiredRole: "SALES", requiresDeliverable: true, estimateDays: 2 }
+  { code: "VISIT_INIT",     name: "委托单位初访",       description: "了解委托单位及项目基本概况、安全管理现状、技术要求、服务目的", requiredRole: "SALES" },
+  { code: "MATCH_CHECK",    name: "服务匹配度评估",     description: "分析服务要求、自身业务能力、风险程度及法律责任", requiredRole: "SALES" },
+  { code: "COST_ESTIMATE",  name: "费用测算",           description: "按工作量/人员/技术含量测算成本,分析达成目标的可行性", requiredRole: "SALES" },
+  { code: "QUOTE_BID",      name: "报价/投标",          description: "通过洽谈、竞价、投标等方式确定服务费用,接受项目委托", requiredRole: "SALES" },
+  { code: "INTERNAL_KICKOFF", name: "内部立项",         description: "内部立项审批", requiredRole: "SALES" }
 ];
 const COMMON_REQ_TASKS: SeedTask[] = [
-  { code: "REQ_DISCUSS",    name: "服务内容沟通",       description: "充分沟通安全生产特点、服务内容、时限、频次", requiredRole: "SALES", estimateDays: 3 },
-  { code: "WORK_PLAN",      name: "服务工作方案编制",   description: "任务/进度/资源规划", requiredRole: "EXPERT", requiresDeliverable: true, requiresTwoStepReview: true, estimateDays: 5 },
-  { code: "PLAN_REVIEW",    name: "方案内部评审",       description: "方案内部评审会", requiredRole: "ADMIN", estimateDays: 2 }
+  { code: "REQ_DISCUSS",    name: "服务内容沟通",       description: "充分沟通安全生产特点、服务内容、时限、频次", requiredRole: "SALES" },
+  { code: "WORK_PLAN",      name: "服务工作方案编制",   description: "任务/进度/资源规划", requiredRole: "EXPERT" },
+  { code: "PLAN_REVIEW",    name: "方案内部评审",       description: "方案内部评审会", requiredRole: "ADMIN" }
 ];
 const COMMON_CONTRACT_TASKS: SeedTask[] = [
-  { code: "TERM_DISCUSS",   name: "合同条款协商",       description: "责权对等的合同条款协商", requiredRole: "SALES", estimateDays: 3 },
-  { code: "CONTRACT_REVIEW", name: "合同评审",          description: "合同评审(责权对等)", requiredRole: "ADMIN", estimateDays: 2 },
-  { code: "CONTRACT_SIGN",  name: "合同签订",           description: "书面服务合同签订", requiredRole: "SALES", estimateDays: 1 },
-  { code: "CONTRACT_ARCHIVE", name: "合同归档",         description: "合同正本归档", requiredRole: "OPS", requiresDeliverable: true, estimateDays: 1 }
+  { code: "TERM_DISCUSS",   name: "合同条款协商",       description: "责权对等的合同条款协商", requiredRole: "SALES" },
+  { code: "CONTRACT_REVIEW", name: "合同评审",          description: "合同评审(责权对等)", requiredRole: "ADMIN" },
+  { code: "CONTRACT_SIGN",  name: "合同签订",           description: "书面服务合同签订", requiredRole: "SALES" },
+  { code: "CONTRACT_ARCHIVE", name: "合同归档",         description: "合同正本归档", requiredRole: "OPS" }
 ];
 const COMMON_FOLLOWUP_TASKS: SeedTask[] = [
-  { code: "SATISFACTION",   name: "满意度回访",         description: "电话/网络/现场回访,记录满意度与具体意见", requiredRole: "SALES", requiresDeliverable: true, estimateDays: 7 },
-  { code: "FEEDBACK_LOG",   name: "意见反馈记录",       description: "汇总反馈意见", requiredRole: "OPS", estimateDays: 2 },
-  { code: "IMPROVEMENT_PLAN", name: "改进措施制定",     description: "针对不足制定改进措施", requiredRole: "ADMIN", requiresDeliverable: true, estimateDays: 5 },
-  { code: "IMPROVEMENT_DO", name: "改进措施落实",       description: "落实改进措施并跟踪", requiredRole: "OPS", estimateDays: 14 }
+  { code: "SATISFACTION",   name: "满意度回访",         description: "电话/网络/现场回访,记录满意度与具体意见", requiredRole: "SALES" },
+  { code: "FEEDBACK_LOG",   name: "意见反馈记录",       description: "汇总反馈意见", requiredRole: "OPS" },
+  { code: "IMPROVEMENT_PLAN", name: "改进措施制定",     description: "针对不足制定改进措施", requiredRole: "ADMIN" },
+  { code: "IMPROVEMENT_DO", name: "改进措施落实",       description: "落实改进措施并跟踪", requiredRole: "OPS" }
 ];
 
 function commonPrepStage(): SeedStage { return { phase: "PREP", code: "PREP", name: "前期准备", description: "项目前期准备: 评估、测算、报价、立项", isRequired: true, tasks: COMMON_PREP_TASKS }; }
@@ -83,95 +83,95 @@ function commonReqStage(): SeedStage  { return { phase: "REQUIREMENT", code: "RE
 function commonContractStage(): SeedStage { return { phase: "CONTRACT", code: "CONTRACT", name: "合同签订", description: "签订服务合同", isRequired: true, tasks: COMMON_CONTRACT_TASKS }; }
 function commonFollowupStage(): SeedStage { return { phase: "FOLLOWUP", code: "FOLLOWUP", name: "回访与改进", description: "服务回访与改进", isRequired: true, tasks: COMMON_FOLLOWUP_TASKS }; }
 
-// EXECUTE 段按 9 类服务差异化(任务完整清单)
+// DO 段差异化任务按 9 类服务(原 EXECUTE 段,已去废弃字段)
 const EXECUTE_BY_TYPE: Record<string, SeedTask[]> = {
   HAZARD_ANA: [
-    { code: "ANA_PLAN",          name: "排查方案制定",       description: "依据法规标准,结合区域/行业风险特点制定方案", requiredRole: "EXPERT", requiresDeliverable: true, estimateDays: 3 },
-    { code: "TEAM_BUILD",        name: "专家组建 + 资料收集", description: "组建专家组,收集法规/标准/技术/类比资料", requiredRole: "EXPERT", estimateDays: 2 },
-    { code: "ONSITE_SURVEY",     name: "现场勘查",           description: "现场管理与基础管理双线勘查", requiredRole: "EXPERT", requiresOnsite: true, estimateDays: 5 },
-    { code: "HAZARD_RECORD",     name: "隐患拍照/记录/访谈", description: "隐患现场记录、拍照、人员访谈", requiredRole: "EXPERT", requiresOnsite: true, estimateDays: 3 },
-    { code: "HAZARD_REPORT",     name: "隐患清单 + 整改对策", description: "汇总隐患清单,提出整改对策措施", requiredRole: "EXPERT", requiresDeliverable: true, requiresTwoStepReview: true, estimateDays: 5 },
-    { code: "RECT_CONFIRM",      name: "整改确认",           description: "按委托单位要求的时间/方式实施整改确认", requiredRole: "EXPERT", requiresOnsite: true, estimateDays: 7 },
-    { code: "RECT_FOLLOWUP",     name: "整改回访",           description: "整改情况回访", requiredRole: "EXPERT", requiresOnsite: true, estimateDays: 5 }
+    { code: "ANA_PLAN",          name: "排查方案制定",       description: "依据法规标准,结合区域/行业风险特点制定方案", requiredRole: "EXPERT" },
+    { code: "TEAM_BUILD",        name: "专家组建 + 资料收集", description: "组建专家组,收集法规/标准/技术/类比资料", requiredRole: "EXPERT" },
+    { code: "ONSITE_SURVEY",     name: "现场勘查",           description: "现场管理与基础管理双线勘查", requiredRole: "EXPERT" },
+    { code: "HAZARD_RECORD",     name: "隐患拍照/记录/访谈", description: "隐患现场记录、拍照、人员访谈", requiredRole: "EXPERT" },
+    { code: "HAZARD_REPORT",     name: "隐患清单 + 整改对策", description: "汇总隐患清单,提出整改对策措施", requiredRole: "EXPERT" },
+    { code: "RECT_CONFIRM",      name: "整改确认",           description: "按委托单位要求的时间/方式实施整改确认", requiredRole: "EXPERT" },
+    { code: "RECT_FOLLOWUP",     name: "整改回访",           description: "整改情况回访", requiredRole: "EXPERT" }
   ],
   SYS_BUILDING: [
-    { code: "DIAGNOSIS",         name: "现状诊断 / 差距分析", description: "诊断现状,识别差距", requiredRole: "EXPERT", estimateDays: 5 },
-    { code: "SYS_DOCS",          name: "体系文件编制",       description: "文化/标准化/风险分级/应急救援四大子体系文件编制", requiredRole: "EXPERT", requiresDeliverable: true, requiresTwoStepReview: true, estimateDays: 20 },
-    { code: "TRIAL_RUN",         name: "试运行",             description: "体系试运行", requiredRole: "EXPERT", estimateDays: 30 },
-    { code: "TRAINING_GUIDE",    name: "培训指导",           description: "配套培训与现场指导", requiredRole: "EXPERT", requiresOnsite: true, estimateDays: 10 },
-    { code: "INTERNAL_REVIEW",   name: "内部评审",           description: "体系内部评审", requiredRole: "EXPERT", estimateDays: 3 },
-    { code: "EXTERNAL_REVIEW",   name: "外部评审",           description: "外部专家评审", requiredRole: "EXPERT", requiresDeliverable: true, requiresTwoStepReview: true, estimateDays: 5 },
-    { code: "CONTINUOUS_IMPROVE", name: "持续改进跟踪",     description: "持续改进跟踪", requiredRole: "EXPERT", estimateDays: 90 }
+    { code: "DIAGNOSIS",         name: "现状诊断 / 差距分析", description: "诊断现状,识别差距", requiredRole: "EXPERT" },
+    { code: "SYS_DOCS",          name: "体系文件编制",       description: "文化/标准化/风险分级/应急救援四大子体系文件编制", requiredRole: "EXPERT" },
+    { code: "TRIAL_RUN",         name: "试运行",             description: "体系试运行", requiredRole: "EXPERT" },
+    { code: "TRAINING_GUIDE",    name: "培训指导",           description: "配套培训与现场指导", requiredRole: "EXPERT" },
+    { code: "INTERNAL_REVIEW",   name: "内部评审",           description: "体系内部评审", requiredRole: "EXPERT" },
+    { code: "EXTERNAL_REVIEW",   name: "外部评审",           description: "外部专家评审", requiredRole: "EXPERT" },
+    { code: "CONTINUOUS_IMPROVE", name: "持续改进跟踪",     description: "持续改进跟踪", requiredRole: "EXPERT" }
   ],
   EVALUATION: [
-    { code: "OBJ_IDENTIFY",      name: "评价对象识别",       description: "识别危化品使用/工程/系统/区域/作业过程", requiredRole: "EXPERT", estimateDays: 2 },
-    { code: "EVAL_PLAN",         name: "评估方案",           description: "安全评估方案", requiredRole: "EXPERT", requiresDeliverable: true, estimateDays: 3 },
-    { code: "DATA_COLLECT",      name: "现场数据采集",       description: "现场数据采集 + 类比工程调研 + 检测检验", requiredRole: "EXPERT", requiresOnsite: true, estimateDays: 7 },
-    { code: "RISK_ANALYSIS",     name: "风险分析",           description: "利用安全系统工程原理进行风险分析", requiredRole: "EXPERT", estimateDays: 3 },
-    { code: "COUNTERMEASURE",    name: "安全对策措施",       description: "按事故风险大小提出对策措施", requiredRole: "EXPERT", estimateDays: 3 },
-    { code: "REPORT_DRAFT",      name: "报告初稿",           description: "风险评估报告/专家意见书初稿", requiredRole: "EXPERT", estimateDays: 5 },
-    { code: "REPORT_PUBLISH",    name: "报告发布",           description: "校核→审核→发布", requiredRole: "EXPERT", requiresDeliverable: true, requiresTwoStepReview: true, estimateDays: 5 },
-    { code: "FILING_RECEIPT",    name: "备案回执",           description: "备案回执(可选)", requiredRole: "OPS", requiresDeliverable: true, isRequired: false, estimateDays: 7 }
+    { code: "OBJ_IDENTIFY",      name: "评价对象识别",       description: "识别危化品使用/工程/系统/区域/作业过程", requiredRole: "EXPERT" },
+    { code: "EVAL_PLAN",         name: "评估方案",           description: "安全评估方案", requiredRole: "EXPERT" },
+    { code: "DATA_COLLECT",      name: "现场数据采集",       description: "现场数据采集 + 类比工程调研 + 检测检验", requiredRole: "EXPERT" },
+    { code: "RISK_ANALYSIS",     name: "风险分析",           description: "利用安全系统工程原理进行风险分析", requiredRole: "EXPERT" },
+    { code: "COUNTERMEASURE",    name: "安全对策措施",       description: "按事故风险大小提出对策措施", requiredRole: "EXPERT" },
+    { code: "REPORT_DRAFT",      name: "报告初稿",           description: "风险评估报告/专家意见书初稿", requiredRole: "EXPERT" },
+    { code: "REPORT_PUBLISH",    name: "报告发布",           description: "校核→审核→发布", requiredRole: "EXPERT" },
+    { code: "FILING_RECEIPT",    name: "备案回执",           description: "备案回执(可选)", requiredRole: "OPS" }
   ],
   RESIDENT: [
-    { code: "RES_PLAN",          name: "派驻方案",           description: "派驻人数/周期/频次方案", requiredRole: "SALES", requiresDeliverable: true, estimateDays: 3 },
-    { code: "RES_PERSONNEL",     name: "派驻人员确定",       description: "派驻人员确定", requiredRole: "ADMIN", estimateDays: 2 },
-    { code: "PRE_TRAINING",      name: "岗前培训",           description: "派驻人员岗前培训", requiredRole: "EXPERT", estimateDays: 3 },
-    { code: "MONTHLY_REPORT",    name: "月度报告",           description: "派驻期间月度报告(循环 1 MONTH)", requiredRole: "EXPERT", requiresDeliverable: true, requiresTwoStepReview: true, requiresOnsite: true, isRecurring: true, recurrenceUnit: "MONTH", recurrenceInterval: 1, estimateDays: 3 },
-    { code: "FINAL_EVAL",        name: "末期评估报告",       description: "派驻末期评估报告", requiredRole: "EXPERT", requiresDeliverable: true, requiresTwoStepReview: true, estimateDays: 7 },
-    { code: "HANDOVER",          name: "撤场交接 + 档案归档", description: "撤场交接,服务档案归档(3 年保管)", requiredRole: "OPS", requiresDeliverable: true, estimateDays: 3 }
+    { code: "RES_PLAN",          name: "派驻方案",           description: "派驻人数/周期/频次方案", requiredRole: "SALES" },
+    { code: "RES_PERSONNEL",     name: "派驻人员确定",       description: "派驻人员确定", requiredRole: "ADMIN" },
+    { code: "PRE_TRAINING",      name: "岗前培训",           description: "派驻人员岗前培训", requiredRole: "EXPERT" },
+    { code: "MONTHLY_REPORT",    name: "月度报告",           description: "派驻期间月度报告(循环 1 MONTH)", requiredRole: "EXPERT" },
+    { code: "FINAL_EVAL",        name: "末期评估报告",       description: "派驻末期评估报告", requiredRole: "EXPERT" },
+    { code: "HANDOVER",          name: "撤场交接 + 档案归档", description: "撤场交接,服务档案归档(3 年保管)", requiredRole: "OPS" }
   ],
   SAFETY_CONSULT: [
-    { code: "REQ_RESEARCH",      name: "需求调研",           description: "政策/战略/规划/方案方向调研", requiredRole: "EXPERT", estimateDays: 3 },
-    { code: "STRATEGY_DOCS",     name: "战略/规划/方案编制", description: "战略/规划/方案编制", requiredRole: "EXPERT", requiresDeliverable: true, requiresTwoStepReview: true, estimateDays: 14 },
-    { code: "DOC_INTERNAL_REVIEW", name: "内部评审",         description: "方案内部评审", requiredRole: "EXPERT", estimateDays: 2 },
-    { code: "CLIENT_CONFIRM",    name: "客户对接确认",       description: "与客户对接确认方案", requiredRole: "SALES", estimateDays: 3 },
-    { code: "POLICY_BRIEF",      name: "政策解读/方案审核意见", description: "政策解读报告或方案审核意见", requiredRole: "EXPERT", requiresDeliverable: true, estimateDays: 5 },
-    { code: "TECH_PROMOTE",      name: "新技术推广",         description: "应急领域新技术/产品/材料/设备推广(可选)", requiredRole: "EXPERT", isRequired: false, estimateDays: 7 },
-    { code: "SEMINAR_ORG",       name: "研讨交流组织",       description: "先进安全管理和技术交流研讨(可选)", requiredRole: "SALES", isRequired: false, estimateDays: 7 }
+    { code: "REQ_RESEARCH",      name: "需求调研",           description: "政策/战略/规划/方案方向调研", requiredRole: "EXPERT" },
+    { code: "STRATEGY_DOCS",     name: "战略/规划/方案编制", description: "战略/规划/方案编制", requiredRole: "EXPERT" },
+    { code: "DOC_INTERNAL_REVIEW", name: "内部评审",         description: "方案内部评审", requiredRole: "EXPERT" },
+    { code: "CLIENT_CONFIRM",    name: "客户对接确认",       description: "与客户对接确认方案", requiredRole: "SALES" },
+    { code: "POLICY_BRIEF",      name: "政策解读/方案审核意见", description: "政策解读报告或方案审核意见", requiredRole: "EXPERT" },
+    { code: "TECH_PROMOTE",      name: "新技术推广",         description: "应急领域新技术/产品/材料/设备推广(可选)", requiredRole: "EXPERT" },
+    { code: "SEMINAR_ORG",       name: "研讨交流组织",       description: "先进安全管理和技术交流研讨(可选)", requiredRole: "SALES" }
   ],
   SURVEY: [
-    { code: "SURVEY_PLAN",       name: "普查方案",           description: "普查指标/范围/时间表", requiredRole: "EXPERT", requiresDeliverable: true, estimateDays: 3 },
-    { code: "FORM_TRAINING",     name: "表格设计 + 填报培训", description: "普查表格设计 + 填报培训", requiredRole: "EXPERT", estimateDays: 3 },
-    { code: "DATA_COLLECT_S",    name: "数据采集",           description: "普查数据采集", requiredRole: "EXPERT", requiresOnsite: true, estimateDays: 14 },
-    { code: "DATA_AUDIT",        name: "数据初审 + 复核",    description: "数据初审与复核", requiredRole: "EXPERT", estimateDays: 7 },
-    { code: "DATA_CLEAN",        name: "数据清洗 + 统计分析", description: "数据清洗与统计分析", requiredRole: "EXPERT", estimateDays: 5 },
-    { code: "SURVEY_REPORT",     name: "普查/核验报告",      description: "普查/核验报告", requiredRole: "EXPERT", requiresDeliverable: true, requiresTwoStepReview: true, estimateDays: 7 },
-    { code: "CLIENT_ACCEPT",     name: "客户验收",           description: "政府部门/集团/平台客户验收", requiredRole: "ADMIN", estimateDays: 3 },
-    { code: "PLATFORM_FEEDBACK", name: "平台数据回填",       description: "工业企业安全在线等平台数据常普常新回填(可选)", requiredRole: "OPS", isRequired: false, estimateDays: 3 }
+    { code: "SURVEY_PLAN",       name: "普查方案",           description: "普查指标/范围/时间表", requiredRole: "EXPERT" },
+    { code: "FORM_TRAINING",     name: "表格设计 + 填报培训", description: "普查表格设计 + 填报培训", requiredRole: "EXPERT" },
+    { code: "DATA_COLLECT_S",    name: "数据采集",           description: "普查数据采集", requiredRole: "EXPERT" },
+    { code: "DATA_AUDIT",        name: "数据初审 + 复核",    description: "数据初审与复核", requiredRole: "EXPERT" },
+    { code: "DATA_CLEAN",        name: "数据清洗 + 统计分析", description: "数据清洗与统计分析", requiredRole: "EXPERT" },
+    { code: "SURVEY_REPORT",     name: "普查/核验报告",      description: "普查/核验报告", requiredRole: "EXPERT" },
+    { code: "CLIENT_ACCEPT",     name: "客户验收",           description: "政府部门/集团/平台客户验收", requiredRole: "ADMIN" },
+    { code: "PLATFORM_FEEDBACK", name: "平台数据回填",       description: "工业企业安全在线等平台数据常普常新回填(可选)", requiredRole: "OPS" }
   ],
   SAFETY_TRAIN: [
-    { code: "TRAIN_REQ",         name: "培训需求调研",       description: "培训需求调研", requiredRole: "EXPERT", estimateDays: 3 },
-    { code: "COURSE_DESIGN",     name: "课程设计",           description: "安全知识/法规/评估方法课程设计", requiredRole: "EXPERT", requiresDeliverable: true, estimateDays: 5 },
-    { code: "LECTURER_MATCH",    name: "讲师对接",           description: "讲师对接", requiredRole: "OPS", estimateDays: 2 },
-    { code: "TRAIN_PREP",        name: "培训通知 + 场地物料", description: "培训通知 + 场地物料准备", requiredRole: "OPS", estimateDays: 2 },
-    { code: "TRAIN_EXEC",        name: "培训实施",           description: "培训实施", requiredRole: "EXPERT", requiresOnsite: true, estimateDays: 3 },
-    { code: "ATTENDANCE",        name: "签到记录",           description: "培训签到记录", requiredRole: "OPS", estimateDays: 1 },
-    { code: "TRAIN_EVAL",        name: "培训考核 + 效果评估", description: "培训考核与效果评估", requiredRole: "EXPERT", estimateDays: 2 },
-    { code: "TRAIN_ARCHIVE",     name: "资料归档",           description: "培训资料归档", requiredRole: "OPS", estimateDays: 1 },
-    { code: "CERT_ISSUE",        name: "证书发放",           description: "培训证书发放(可选)", requiredRole: "OPS", isRequired: false, estimateDays: 2 }
+    { code: "TRAIN_REQ",         name: "培训需求调研",       description: "培训需求调研", requiredRole: "EXPERT" },
+    { code: "COURSE_DESIGN",     name: "课程设计",           description: "安全知识/法规/评估方法课程设计", requiredRole: "EXPERT" },
+    { code: "LECTURER_MATCH",    name: "讲师对接",           description: "讲师对接", requiredRole: "OPS" },
+    { code: "TRAIN_PREP",        name: "培训通知 + 场地物料", description: "培训通知 + 场地物料准备", requiredRole: "OPS" },
+    { code: "TRAIN_EXEC",        name: "培训实施",           description: "培训实施", requiredRole: "EXPERT" },
+    { code: "ATTENDANCE",        name: "签到记录",           description: "培训签到记录", requiredRole: "OPS" },
+    { code: "TRAIN_EVAL",        name: "培训考核 + 效果评估", description: "培训考核与效果评估", requiredRole: "EXPERT" },
+    { code: "TRAIN_ARCHIVE",     name: "资料归档",           description: "培训资料归档", requiredRole: "OPS" },
+    { code: "CERT_ISSUE",        name: "证书发放",           description: "培训证书发放(可选)", requiredRole: "OPS" }
   ],
   STANDARDIZATION: [
-    { code: "STD_SELF_EVAL",     name: "标准化自评",         description: "安全生产标准化自评", requiredRole: "EXPERT", requiresDeliverable: true, estimateDays: 7 },
-    { code: "STD_DOCS",          name: "体系文件编制",       description: "安全生产标准化体系文件编制", requiredRole: "EXPERT", requiresDeliverable: true, requiresTwoStepReview: true, estimateDays: 30 },
-    { code: "STD_TRIAL",         name: "试运行",             description: "标准化体系试运行", requiredRole: "EXPERT", estimateDays: 60 },
-    { code: "STD_INT_REVIEW",    name: "内部评审",           description: "标准化内部评审", requiredRole: "EXPERT", estimateDays: 3 },
-    { code: "STD_EXT_REVIEW",    name: "外部评审",           description: "标准化外部评审", requiredRole: "EXPERT", requiresDeliverable: true, requiresTwoStepReview: true, estimateDays: 5 },
-    { code: "ANNUAL_SELF_EVAL",  name: "年度自评报告",       description: "每年完成企业年度自评报告(循环 1 YEAR)", requiredRole: "EXPERT", requiresDeliverable: true, requiresTwoStepReview: true, isRecurring: true, recurrenceUnit: "YEAR", recurrenceInterval: 1, estimateDays: 7 },
-    { code: "STD_RENEWAL",       name: "期满换证",           description: "安全生产标准化期满换证", requiredRole: "EXPERT", requiresDeliverable: true, requiresTwoStepReview: true, estimateDays: 14 },
-    { code: "STD_CONTINUOUS",    name: "持续改进",           description: "标准化体系持续改进", requiredRole: "EXPERT", estimateDays: 30 }
+    { code: "STD_SELF_EVAL",     name: "标准化自评",         description: "安全生产标准化自评", requiredRole: "EXPERT" },
+    { code: "STD_DOCS",          name: "体系文件编制",       description: "安全生产标准化体系文件编制", requiredRole: "EXPERT" },
+    { code: "STD_TRIAL",         name: "试运行",             description: "标准化体系试运行", requiredRole: "EXPERT" },
+    { code: "STD_INT_REVIEW",    name: "内部评审",           description: "标准化内部评审", requiredRole: "EXPERT" },
+    { code: "STD_EXT_REVIEW",    name: "外部评审",           description: "标准化外部评审", requiredRole: "EXPERT" },
+    { code: "ANNUAL_SELF_EVAL",  name: "年度自评报告",       description: "每年完成企业年度自评报告(循环 1 YEAR)", requiredRole: "EXPERT" },
+    { code: "STD_RENEWAL",       name: "期满换证",           description: "安全生产标准化期满换证", requiredRole: "EXPERT" },
+    { code: "STD_CONTINUOUS",    name: "持续改进",           description: "标准化体系持续改进", requiredRole: "EXPERT" }
   ],
   EMERGENCY_PLAN: [
-    { code: "EP_COLLECT",        name: "资料收集 + 风险分析", description: "收集资料,识别风险", requiredRole: "EXPERT", estimateDays: 5 },
-    { code: "EP_DRAFT",          name: "预案初稿",           description: "应急预案初稿编制", requiredRole: "EXPERT", requiresDeliverable: true, estimateDays: 7 },
-    { code: "EP_INT_REVIEW",     name: "预案内部评审",       description: "预案内部评审", requiredRole: "EXPERT", estimateDays: 2 },
-    { code: "EP_EXT_REVIEW",     name: "预案专家评审",       description: "预案专家评审", requiredRole: "EXPERT", requiresDeliverable: true, requiresTwoStepReview: true, estimateDays: 3 },
-    { code: "EP_CLIENT_CONFIRM", name: "客户确认",           description: "委托单位确认预案", requiredRole: "SALES", estimateDays: 2 },
-    { code: "DRILL_PLAN",        name: "演练方案",           description: "应急预案演练方案", requiredRole: "EXPERT", requiresDeliverable: true, estimateDays: 5 },
-    { code: "DRILL_EXEC",        name: "演练实施 + 评估",    description: "演练实施与评估", requiredRole: "EXPERT", requiresOnsite: true, estimateDays: 3 },
-    { code: "EP_FILING",         name: "备案提交",           description: "应急预案备案提交", requiredRole: "OPS", requiresDeliverable: true, estimateDays: 2 },
-    { code: "EP_FILING_RECEIPT", name: "备案回执",           description: "备案回执归档", requiredRole: "OPS", requiresDeliverable: true, estimateDays: 7 },
-    { code: "EP_TRAINING",       name: "应急预案培训",       description: "应急预案培训", requiredRole: "EXPERT", requiresOnsite: true, estimateDays: 2 }
+    { code: "EP_COLLECT",        name: "资料收集 + 风险分析", description: "收集资料,识别风险", requiredRole: "EXPERT" },
+    { code: "EP_DRAFT",          name: "预案初稿",           description: "应急预案初稿编制", requiredRole: "EXPERT" },
+    { code: "EP_INT_REVIEW",     name: "预案内部评审",       description: "预案内部评审", requiredRole: "EXPERT" },
+    { code: "EP_EXT_REVIEW",     name: "预案专家评审",       description: "预案专家评审", requiredRole: "EXPERT" },
+    { code: "EP_CLIENT_CONFIRM", name: "客户确认",           description: "委托单位确认预案", requiredRole: "SALES" },
+    { code: "DRILL_PLAN",        name: "演练方案",           description: "应急预案演练方案", requiredRole: "EXPERT" },
+    { code: "DRILL_EXEC",        name: "演练实施 + 评估",    description: "演练实施与评估", requiredRole: "EXPERT" },
+    { code: "EP_FILING",         name: "备案提交",           description: "应急预案备案提交", requiredRole: "OPS" },
+    { code: "EP_FILING_RECEIPT", name: "备案回执",           description: "备案回执归档", requiredRole: "OPS" },
+    { code: "EP_TRAINING",       name: "应急预案培训",       description: "应急预案培训", requiredRole: "EXPERT" }
   ]
 };
 
@@ -193,18 +193,8 @@ function buildTemplate(serviceType: string): SeedTemplate {
     name: TEMPLATE_META[serviceType].name,
     description: TEMPLATE_META[serviceType].description,
     stages: [
-      commonPrepStage(),
-      commonReqStage(),
-      commonContractStage(),
-      {
-        phase: "EXECUTE",
-        code: "EXECUTE",
-        name: "服务实施",
-        description: "按服务类型差异化的实施阶段",
-        isRequired: true,
-        tasks: EXECUTE_BY_TYPE[serviceType] || []
-      },
-      commonFollowupStage()
+doStage([...COMMON_PREP_TASKS, ...COMMON_REQ_TASKS, ...COMMON_CONTRACT_TASKS, ...(EXECUTE_BY_TYPE[serviceType] || [])]),
+      deliverStage(COMMON_FOLLOWUP_TASKS)
     ]
   };
 }

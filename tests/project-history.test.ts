@@ -70,7 +70,7 @@ describe("项目级活动历史", () => {
     expect(src, "应使用 <DiffRow ").toMatch(/<DiffRow\b/);
     // BEFORE_LABEL 必须覆盖 16 个 key
     const requiredKeys = [
-      "status", "assigneeId", "reviewStatus", "remark",
+      "status", "assigneeId", "remark",
       "attachments", "attachmentId", "name",
       "templateId", "serviceType", "count", "force",
       "taskId", "wouldCompleteAt", "projectEndDate",

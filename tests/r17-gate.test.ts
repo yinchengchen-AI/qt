@@ -1,5 +1,5 @@
 // R-17 项目状态机门控:
-// deliver / accept / close 三个向前推进动作,要求所有 requiresDeliverable=true 的
+// deliver / accept / close 三个向前推进动作
 // 工作流任务必须 COMPLETED 或 SKIPPED,否则抛 PROJECT_DELIVERABLES_INCOMPLETE (422)。
 // cancel 不在门控内(取消即停,遗留任务保留作为历史)。
 //

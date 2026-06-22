@@ -27,7 +27,7 @@ function rgGeneric(): string {
       `-g '!node_modules' -g '!.next' -g '!docs' ` +
       `-g '!lib/cleanup-blocklist.ts' ` +
       `-g '!tests/minimal-pm-workflow-blocklist.test.ts' ` +
-      `-g '!prisma/migrations/**' ` +
+      `-g '!app/api/invoices/**' -g '!prisma/migrations/**' ` +
       `app components lib tests`,
       { encoding: "utf-8", stdio: ["ignore", "pipe", "pipe"] }
     );

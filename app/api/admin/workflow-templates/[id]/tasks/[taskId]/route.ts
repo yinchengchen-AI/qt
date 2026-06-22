@@ -10,15 +10,7 @@ const patchSchema = z.object({
   name: z.string().min(1).max(100).optional(),
   sort: z.number().int().min(0).optional(),
   description: z.string().max(2000).nullable().optional(),
-  requiredRole: z.enum(ROLE_CODES).nullable().optional(),
-  requiresDeliverable: z.boolean().optional(),
-  requiresOnsite: z.boolean().optional(),
-  requiresTwoStepReview: z.boolean().optional(),
-  isRecurring: z.boolean().optional(),
-  recurrenceUnit: z.enum(WORKFLOW_RECURRENCE_UNIT).nullable().optional(),
-  recurrenceInterval: z.number().int().positive().nullable().optional(),
-  estimateDays: z.number().int().positive().nullable().optional(),
-});
+  requiredRole: z.enum(ROLE_CODES).nullable().optional(), });
 
 export async function PATCH(
   req: Request,

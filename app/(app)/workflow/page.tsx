@@ -27,16 +27,11 @@ type MyTask = {
   taskName: string;
   taskDescription: string | null;
   status: "PENDING" | "IN_PROGRESS" | "COMPLETED" | "SKIPPED" | "BLOCKED";
-  reviewStatus: "REVIEWING" | "REVIEWED" | "APPROVED" | "REJECTED" | null;
   projectId: string;
   projectNo: string;
   projectName: string;
   phase: string;
   phaseName: string;
-  requiresDeliverable: boolean;
-  requiresTwoStepReview: boolean;
-  isRecurring: boolean;
-  estimateDays: number | null;
   startedAt: string | null;
   completedAt: string | null;
   updatedAt: string;
@@ -66,17 +61,16 @@ export default function MyTasksPage() {
     `/api/workflow/my-tasks?statuses=${statuses}&limit=100`
   );
 
-  // 抽屉打开期间,SWR 重新拉取后把 status/reviewStatus/completedAt 同步回 drawerTask,让按钮立即反映新状态
+  // 抽屉打开期间,SWR 重新拉取后把 status/completedAt 同步回 drawerTask,让按钮立即反映新状态
   // 依赖项只放 data: 仅在服务端数据刷新时同步,避免 drawerTask 自更新导致循环
   useEffect(() => {
     if (!drawerTask || !data) return;
     const updated = data.items.find((x) => x.id === drawerTask.id);
     if (updated && (
       updated.status !== drawerTask.status ||
-      updated.reviewStatus !== drawerTask.reviewStatus ||
       updated.completedAt !== drawerTask.completedAt
     )) {
-      setDrawerTask({ ...drawerTask, status: updated.status, reviewStatus: updated.reviewStatus, completedAt: updated.completedAt });
+      setDrawerTask({ ...drawerTask, status: updated.status, completedAt: updated.completedAt });
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [data]);
@@ -116,9 +110,6 @@ export default function MyTasksPage() {
                   <Tag color={WORKFLOW_TASK_STATUS_TONE[v]} icon={STATUS_ICON[v]}>
                     {WORKFLOW_TASK_STATUS_MAP[v]}
                   </Tag>
-                  {r.reviewStatus && (
-                    <Tag color="purple">{WORKFLOW_REVIEW_STATUS_MAP[r.reviewStatus]}</Tag>
-                  )}
                 </Space>
               )
             },
@@ -131,14 +122,6 @@ export default function MyTasksPage() {
                   <Text strong>{v}</Text>
                   <Space size={4} wrap>
                     <Tag>{WORKFLOW_PHASE_MAP[r.phase] ?? r.phaseName}</Tag>
-                    {r.requiresDeliverable && <Tag color="cyan">需交付物</Tag>}
-                    {r.requiresTwoStepReview && <Tag color="purple">二审</Tag>}
-                    {r.isRecurring && (
-                      <Tag color="geekblue" icon={<ReloadOutlined />}>
-                        循环
-                      </Tag>
-                    )}
-                    {r.estimateDays && <Tag>预估 {r.estimateDays} 天</Tag>}
                   </Space>
                 </Space>
               )

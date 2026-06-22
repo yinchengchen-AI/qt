@@ -31,11 +31,8 @@ type OverdueItem = {
   assigneeId: string | null;
   assigneeName: string | null;
   status: string;
-  reviewStatus: string | null;
   startedAt: string;
-  estimateDays: number;
-  elapsedDays: number;
-  overdueDays: number;
+  daysElapsed: number;
 };
 
 const STATUS_TONE: Record<string, string> = {
@@ -215,7 +212,7 @@ export default function WorkflowStatsPage() {
                     {v} 天
                   </Tag>
                 ),
-                sorter: (a, b) => a.overdueDays - b.overdueDays
+                sorter: (a, b) => a.daysElapsed - b.daysElapsed
               },
               {
                 title: "任务",
@@ -228,7 +225,7 @@ export default function WorkflowStatsPage() {
                       <Tag color={STATUS_TONE[r.status]}>
                         {WORKFLOW_TASK_STATUS_MAP[r.status] ?? r.status}
                       </Tag>
-                      {r.reviewStatus && <Tag color="purple">{WORKFLOW_REVIEW_STATUS_MAP[r.reviewStatus] ?? r.reviewStatus}</Tag>}
+                      
                     </Space>
                   </Space>
                 )
@@ -252,12 +249,10 @@ export default function WorkflowStatsPage() {
                 render: (v: string | null) => v ?? <Text type="secondary">未指派</Text>
               },
               {
-                title: "已耗时 / 预估",
-                width: 140,
+                title: "已耗时",
+                width: 100,
                 render: (_, r) => (
-                  <Text type={r.elapsedDays > r.estimateDays ? "danger" : undefined}>
-                    {r.elapsedDays} / {r.estimateDays} 天
-                  </Text>
+                  <Text>{r.daysElapsed ?? "-"} 天</Text>
                 )
               }
             ]}
