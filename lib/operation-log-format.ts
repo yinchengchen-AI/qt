@@ -13,12 +13,8 @@ export const ENTITY_LABELS: Record<string, string> = {
   FollowUp: "跟进记录",
   Invoice: "开票",
   Payment: "回款",
-  Project: "项目",
   Role: "角色",
   User: "用户",
-  WorkflowInstance: "工作流实例",
-  WorkflowTask: "工作流任务",
-  WorkflowTemplate: "工作流模板",
 };
 
 /** Entity -> 详情页相对路径（用于跳转），不存在的 entity 留空表示纯文本 */
@@ -27,12 +23,10 @@ export const ENTITY_PATHS: Record<string, string> = {
   Customer: "/customers",
   Invoice: "/invoices",
   Payment: "/payments",
-  Project: "/projects",
   User: "/admin/users",
   Role: "/admin/roles",
   Department: "/admin/departments",
   Announcement: "/announcements",
-  WorkflowTemplate: "/admin/workflow-templates",
   Dictionary: "/admin/dictionaries",
 };
 
@@ -48,7 +42,6 @@ export function entityHref(entity: string, entityId: string): string | null {
 /** 已知的 action 前缀 -> 业务域；供 StatusTag 染色用 */
 export function actionDomain(action: string): StatusDomain | null {
   if (action.startsWith("CONTRACT_")) return "contract";
-  if (action.startsWith("PROJECT_")) return "project";
   if (action.startsWith("INVOICE_")) return "invoice";
   if (action.startsWith("PAYMENT_")) return "payment";
   if (action.startsWith("CUSTOMER_")) return "customer";
@@ -75,13 +68,6 @@ const ACTION_LABELS: Record<string, string> = {
   TERMINATE: "终止",
   AUTO_EXECUTE: "自动执行",
   AUTO_EXPIRE: "自动过期",
-  // 项目
-  START: "启动",
-  DELIVER: "交付",
-  ACCEPT: "验收",
-  CLOSE: "关闭",
-  CANCEL: "取消",
-  REOPEN: "重新打开",
   // 开票
   ISSUE: "开具",
   VOID: "作废",
@@ -97,14 +83,6 @@ const ACTION_LABELS: Record<string, string> = {
   CREATE: "新建",
   UPDATE: "更新",
   DELETE: "删除",
-  ASSIGN: "指派",
-  REMARK: "备注",
-  BLOCK: "阻塞",
-  UNBLOCK: "解除阻塞",
-  SKIP: "跳过",
-  // 工作流
-  INSTANTIATE: "发起",
-  GENERATE: "生成",
 };
 
 export function shortActionLabel(action: string): string {

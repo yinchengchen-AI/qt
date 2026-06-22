@@ -2,7 +2,7 @@
 // 每个组件使用 2 列网格(通过 FormGrid),让字段更紧凑、相关字段并列
 // 关键链接:
 //   - PERFORMANCE:customer + contract 双向 picker,选合同后自动回填服务类型/金额/日期
-//   - CASE:project picker,选项目后自动回填客户名/服务类型/年份
+//   - CASE:项目名称手工录入 + 合同 picker 回填客户/服务类型
 import { useEffect, useMemo, useState } from "react";
 import {
   ProForm,
@@ -265,7 +265,7 @@ export function PerformanceFields() {
       <ProFormText
         name={["attributes", "customerName"]}
         label="客户名称"
-        tooltip="从客户选择自动回填,可手工覆盖"
+        tooltip="客户名称,可手工填写"
         rules={[{ required: true, message: "请填写客户名称" }]}
       />
       <ProFormText
@@ -347,70 +347,12 @@ export function TeamMemberFields() {
   );
 }
 
-/** 项目 picker:模糊搜索 /api/projects,选中后回填 title/customerName/serviceType/year */
-function ProjectPicker({ name, label = "关联项目" }: { name: [string, string]; label?: string }) {
-  const form = Form.useFormInstance();
-  const projectId = Form.useWatch(name, form) as string | undefined;
-
-  useEffect(() => {
-    if (!projectId) return;
-    (async () => {
-      const data = await fetchJSON<{
-        list: Array<{
-          id: string; name: string; startDate: string; contract: {
-            customerName: string; serviceType: string;
-          };
-        }>;
-      }>(`/api/projects?keyword=&pageSize=50`);
-      const p = data?.list?.find((x) => x.id === projectId);
-      if (!p) return;
-      const patch: Record<string, unknown> = {};
-      if (p.name) patch["attributes.title"] = p.name;
-      if (p.contract?.customerName) patch["attributes.customerName"] = p.contract.customerName;
-      if (p.contract?.serviceType) patch["attributes.serviceType"] = p.contract.serviceType;
-      if (p.startDate) patch["attributes.year"] = Number(dayjs(p.startDate).year());
-      if (Object.keys(patch).length > 0) {
-        form?.setFieldsValue(patch);
-      }
-    })();
-  }, [projectId, form, name]);
-
-  return (
-    <ProFormSelect
-      name={name}
-      label={label}
-      placeholder="输入项目名/编号搜索"
-      showSearch
-      allowClear
-      fieldProps={{
-        optionFilterProp: "label",
-        showSearch: true,
-        filterOption: false
-      }}
-      request={async ({ keyWords }: { keyWords?: string }) => {
-        const qs = new URLSearchParams();
-        qs.set("pageSize", "50");
-        if (keyWords) qs.set("keyword", keyWords);
-        const r = await fetch(`/api/projects?${qs}`, { credentials: "include" });
-        const j = await r.json();
-        if (j.code !== 0) return [];
-        return (j.data.list as Array<{
-          id: string; projectNo: string; name: string;
-        }>).map((p) => ({
-          value: p.id,
-          label: `${p.projectNo} · ${p.name}`
-        }));
-      }}
-    />
-  );
-}
 
 export function CaseFields() {
   const dictList = useDict("SERVICE_TYPE");
   const serviceTypeOptions = useMemo(() => groupDictByLegacy(dictList), [dictList]);
   return (
     <FormGrid columns={2}>
-      <ProjectPicker name={["attributes", "projectId"]} />
       <ProFormText
         name={["attributes", "title"]}
         label="案例标题"
@@ -420,13 +362,13 @@ export function CaseFields() {
       <ProFormText
         name={["attributes", "customerName"]}
         label="客户名称"
-        tooltip="从项目→合同→客户自动回填"
+        tooltip="客户名称,可手工填写"
         rules={[{ required: true }]}
       />
       <ProFormSelect
         name={["attributes", "serviceType"]}
         label="服务类型"
-        tooltip="从项目→合同自动回填"
+        tooltip="服务类型,可手工选择"
         rules={[{ required: true }]}
         options={serviceTypeOptions}
         showSearch
@@ -434,7 +376,7 @@ export function CaseFields() {
       <ProForm.Item
         name={["attributes", "year"]}
         label="年份"
-        tooltip="从项目开始日期自动回填"
+        tooltip="项目年份,可手工填写"
         rules={[{ required: true, message: "请填写年份" }]}
       >
         <InputNumber min={2000} max={2100} style={{ width: "100%" }} />

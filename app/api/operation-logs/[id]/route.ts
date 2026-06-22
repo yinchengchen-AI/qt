@@ -48,13 +48,6 @@ async function lookupEntityLabel(
         });
         return p?.id ?? null;
       }
-      case "Project": {
-        const p = await prisma.project.findUnique({
-          where: { id: entityId },
-          select: { name: true },
-        });
-        return p?.name ?? null;
-      }
       case "User": {
         const u = await prisma.user.findUnique({
           where: { id: entityId },

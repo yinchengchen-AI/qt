@@ -23,7 +23,6 @@ type Resp = {
   overview: Overview; series: Series;
   customers: { total: number; newThisMonth: number };
   townDistribution: { town: string | null; count: number }[];
-  projects: { total: number; byStatus: { status: string; count: number }[] };
   distribution: { byScale: DistItem[]; byType: DistItem[]; byStatus: DistItem[] };
 };
 
@@ -70,7 +69,6 @@ export default function OverviewPage() {
   const o = data?.overview;
   const s = data?.series ?? [];
   const cust = data?.customers;
-  const proj = data?.projects;
 
   const lineData = s.flatMap((x) => [
     { month: x.month, value: x.contractAmount, type: "合同额" },
@@ -81,18 +79,15 @@ export default function OverviewPage() {
   const kpis: StatItem[] = [
     { label: "客户总数", value: cust?.total ?? 0, suffix: "家", description: `${cust?.newThisMonth ?? 0} 家新增` },
     { label: "合同额", value: formatCurrency(o?.contractAmount ?? 0), prefix: "¥", description: `共 ${o?.contractCount ?? 0} 份` },
-    { label: "项目数", value: proj?.total ?? 0, suffix: "个", description: `进行中 ${proj?.byStatus.find(s => s.status === "IN_PROGRESS")?.count ?? 0} 个` },
     { label: "已开票额", value: formatCurrency(o?.invoiceAmount ?? 0), prefix: "¥", description: `开票率 ${o?.invoiceRate ?? 0}%` },
     { label: "已回款额", value: formatCurrency(o?.paymentAmount ?? 0), prefix: "¥", description: `回款率 ${o?.paymentRate ?? 0}%` }
   ];
-
-  const projData = proj?.byStatus.map(x => ({ status: formatStatus(x.status, "project").label, count: x.count })) ?? [];
 
   return (
     <Page>
       <PageHeader
         title="统计分析"
-        subtitle="客户、合同、项目、开票、回款 5 维度综合看板"
+        subtitle="客户、合同、开票、回款 4 维度综合看板"
         actions={
           <Space wrap>
             <DatePicker.RangePicker value={range} onChange={(v) => setRange(v as [dayjs.Dayjs, dayjs.Dayjs] | null)} />
@@ -116,15 +111,6 @@ export default function OverviewPage() {
                   xAxis={{ label: { autoRotate: true, autoHide: false } }}
                 />
               ) : <EmptyState empty title="暂无区域分布数据" description="客户所在地尚未录入镇街信息" height={townChartHeight} />}
-            </ProCard>
-          </div>
-
-          <div style={{ marginTop: 32 }}>
-            <PageHeader level="section" title="项目状态" />
-            <ProCard>
-              {projData.length > 0 ? (
-                <Column data={projData} xField="status" yField="count" height={isMobile ? 220 : 260} colorField="status" autoFit />
-              ) : <EmptyState empty title="暂无项目数据" height={isMobile ? 220 : 260} />}
             </ProCard>
           </div>
 

@@ -16,16 +16,15 @@ datasource db {
 // Auth & Users
 // =====================================================
 model Role {
-  id            String         @id @default(cuid())
-  code          String         @unique
-  name          String
-  description   String?
-  permissions   Json
-  isSystem      Boolean        @default(false)
-  createdAt     DateTime       @default(now()) @db.Timestamptz(6)
-  updatedAt     DateTime       @updatedAt @db.Timestamptz(6)
-  users         User[]
-  workflowTasks WorkflowTask[]
+  id          String   @id @default(cuid())
+  code        String   @unique
+  name        String
+  description String?
+  permissions Json
+  isSystem    Boolean  @default(false)
+  createdAt   DateTime @default(now()) @db.Timestamptz(6)
+  updatedAt   DateTime @updatedAt @db.Timestamptz(6)
+  users       User[]
 
   @@index([code])
 }
@@ -174,7 +173,6 @@ model Contract {
   updatedById            String
   deletedAt              DateTime? @db.Timestamptz(6)
 
-  projects       Project[]
   payments       Payment[]
   invoices       Invoice[]
   reviewLogs     ContractReviewLog[]
@@ -198,117 +196,6 @@ model ContractReviewLog {
   at         DateTime @default(now()) @db.Timestamptz(6)
 
   @@index([contractId])
-}
-
-// =====================================================
-// Projects
-// =====================================================
-model Project {
-  id            String    @id @default(cuid())
-  projectNo     String    @unique
-  contractId    String
-  contract      Contract  @relation(fields: [contractId], references: [id])
-  name          String
-  serviceScope  String
-  managerUserId String
-  startDate     DateTime  @db.Timestamptz(6)
-  endDate       DateTime  @db.Timestamptz(6)
-  status        String    @default("PLANNED") // PLANNED | IN_PROGRESS | SUSPENDED | DELIVERED | ACCEPTED | CLOSED | CANCELLED
-  createdAt     DateTime  @default(now()) @db.Timestamptz(6)
-  updatedAt     DateTime  @updatedAt @db.Timestamptz(6)
-  createdById   String
-  updatedById   String
-  deletedAt     DateTime? @db.Timestamptz(6)
-  taskInstances WorkflowTaskInstance[]
-
-  @@unique([contractId, name])
-  @@index([contractId])
-  @@index([status])
-  @@index([managerUserId])
-}
-
-// =====================================================
-// Workflow Engine — 服务类型工作流 (P0: 数据模型 + seed)
-// =====================================================
-// 阶段(phase)固定 5 段: PREP 前期准备 / REQUIREMENT 需求识别 / CONTRACT 合同签订 / EXECUTE 实施 / FOLLOWUP 回访改进
-// 任务(task)挂载在 stage 下;模板版本(isActive)控制激活态
-// 实例(instance)是模板克隆到具体项目的运行时任务状态
-// phase: PREP | REQUIREMENT | CONTRACT | EXECUTE | FOLLOWUP
-// taskStatus: PENDING | IN_PROGRESS | COMPLETED | SKIPPED | BLOCKED
-// reviewStatus: null | REVIEWING | REVIEWED | APPROVED | REJECTED (requiresTwoStepReview=true 时使用)
-// recurrenceUnit: DAY | WEEK | MONTH | YEAR
-model WorkflowTemplate {
-  id          String    @id @default(cuid())
-  serviceType String // SERVICE_TYPE
-  name        String
-  version     Int       @default(1)
-  isActive    Boolean   @default(true)
-  description String?
-  createdById String
-  createdAt   DateTime  @default(now()) @db.Timestamptz(6)
-  updatedAt   DateTime  @updatedAt @db.Timestamptz(6)
-  deletedAt   DateTime? @db.Timestamptz(6)
-
-  stages WorkflowStage[]
-
-  @@unique([serviceType, isActive])
-  @@index([serviceType])
-  @@index([isActive])
-}
-
-model WorkflowStage {
-  id          String           @id @default(cuid())
-  templateId  String
-  template    WorkflowTemplate @relation(fields: [templateId], references: [id], onDelete: Cascade)
-  phase       String // PREP | REQUIREMENT | CONTRACT | EXECUTE | FOLLOWUP
-  code        String
-  name        String
-  sort        Int
-  description String?
-  isRequired  Boolean          @default(true)
-
-  tasks WorkflowTask[]
-
-  @@index([templateId, phase])
-}
-
-model WorkflowTask {
-  id                    String        @id @default(cuid())
-  stageId               String
-  stage                 WorkflowStage @relation(fields: [stageId], references: [id], onDelete: Cascade)
-  code                  String
-  name                  String
-  sort                  Int
-  description           String?
-  // 期望执行角色：与 Role.code 对齐，删除 Role 时 RESTRICT（工作流里还在引用不能删）
-  requiredRole          String?
-  requiredRoleRef       Role?         @relation(fields: [requiredRole], references: [code], onDelete: Restrict, onUpdate: Cascade)
-
-  instances WorkflowTaskInstance[]
-
-  @@index([stageId, sort])
-  @@index([requiredRole])
-}
-
-model WorkflowTaskInstance {
-  id               String       @id @default(cuid())
-  projectId        String
-  project          Project      @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  taskId           String
-  task             WorkflowTask @relation(fields: [taskId], references: [id], onDelete: Cascade)
-  status           String       @default("PENDING") // PENDING | IN_PROGRESS | COMPLETED | SKIPPED | BLOCKED
-  assigneeId       String?
-  completedAt      DateTime?    @db.Timestamptz(6)
-  completedById    String?
-  remark           String?
-  createdAt        DateTime     @default(now()) @db.Timestamptz(6)
-  updatedAt        DateTime     @updatedAt @db.Timestamptz(6)
-  deletedAt        DateTime?    @db.Timestamptz(6)
-
-  // 包含 parentInstanceId 让循环任务可多次出现(P2 修复)
-  @@unique([projectId, taskId])
-  @@index([projectId, status])
-  @@index([assigneeId, status])
 }
 
 // =====================================================
@@ -353,7 +240,7 @@ model Invoice {
 
   payments       Payment[]
   auditLogs      InvoiceAuditLog[]
-  attachmentRefs Attachment[]        @relation("InvoiceAttachments")
+  attachmentRefs Attachment[]      @relation("InvoiceAttachments")
 
   @@index([status])
   @@index([actualIssueDate])
@@ -448,13 +335,13 @@ model Announcement {
 // Audit / Dictionaries / Sequences
 // =====================================================
 model OperationLog {
-  id       String   @id @default(cuid())
-  actorId  String
-  entity   String
-  entityId String
-  action   String
-  diff     Json?
-  ip       String?
+  id           String   @id @default(cuid())
+  actorId      String
+  entity       String
+  entityId     String
+  action       String
+  diff         Json?
+  ip           String?
   // 审计扩展字段:UA / 请求 ID / HTTP method/path / 状态 / 失败原因
   // 字段定义与迁移 prisma/migrations/20260622_operation_log_audit_fields 同步
   userAgent    String?

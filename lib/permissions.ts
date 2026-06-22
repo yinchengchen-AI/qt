@@ -9,7 +9,6 @@ export const RESOURCE = {
   DICTIONARY: "DICTIONARY",
   CUSTOMER: "CUSTOMER",
   CONTRACT: "CONTRACT",
-  PROJECT: "PROJECT",
   INVOICE: "INVOICE",
   PAYMENT: "PAYMENT",
   STATISTICS: "STATISTICS",
@@ -17,7 +16,6 @@ export const RESOURCE = {
   ANNOUNCEMENT: "ANNOUNCEMENT",
   OPERATION_LOG: "OPERATION_LOG",
   DEPARTMENT: "DEPARTMENT",
-  WORKFLOW_TEMPLATE: "WORKFLOW_TEMPLATE",
   ASSET: "ASSET"
 } as const;
 export type Resource = (typeof RESOURCE)[keyof typeof RESOURCE];
@@ -44,7 +42,7 @@ const R_EXPORT: Action[] = ["READ", "EXPORT"];
 export const ROLE_PERMISSIONS: Record<RoleCode, Permission[]> = {
   ADMIN: Object.values(RESOURCE).map((resource) =>
     resource === RESOURCE.STATISTICS || resource === RESOURCE.CUSTOMER || resource === RESOURCE.CONTRACT ||
-    resource === RESOURCE.PROJECT || resource === RESOURCE.INVOICE || resource === RESOURCE.PAYMENT ||
+    resource === RESOURCE.INVOICE || resource === RESOURCE.PAYMENT ||
     resource === RESOURCE.ASSET
       ? { resource, actions: [...CRUD, ACTION.EXPORT] }
       : { resource, actions: CRUD }
@@ -55,7 +53,6 @@ export const ROLE_PERMISSIONS: Record<RoleCode, Permission[]> = {
     { resource: RESOURCE.DICTIONARY, actions: R },
     { resource: RESOURCE.CUSTOMER, actions: [...CRU, ACTION.EXPORT] },
     { resource: RESOURCE.CONTRACT, actions: [...CRU, ACTION.EXPORT] },
-    { resource: RESOURCE.PROJECT, actions: [...CRU, ACTION.EXPORT] },
     { resource: RESOURCE.INVOICE, actions: [...CR, ACTION.EXPORT] },
     { resource: RESOURCE.PAYMENT, actions: [...CR, ACTION.EXPORT] },
     { resource: RESOURCE.STATISTICS, actions: R },
@@ -69,7 +66,6 @@ export const ROLE_PERMISSIONS: Record<RoleCode, Permission[]> = {
     { resource: RESOURCE.DICTIONARY, actions: R },
     { resource: RESOURCE.CUSTOMER, actions: [...R, ACTION.EXPORT] },
     { resource: RESOURCE.CONTRACT, actions: [...R, ACTION.EXPORT] },
-    { resource: RESOURCE.PROJECT, actions: [...R, ACTION.EXPORT] },
     { resource: RESOURCE.INVOICE, actions: [...CRUD, ACTION.EXPORT] },
     { resource: RESOURCE.PAYMENT, actions: [...CRUD, ACTION.EXPORT] },
     { resource: RESOURCE.STATISTICS, actions: R_EXPORT },
@@ -84,7 +80,6 @@ export const ROLE_PERMISSIONS: Record<RoleCode, Permission[]> = {
     // CUSTOMER 金额字段不触碰（P1 阶段在 service 层显式过滤）
     { resource: RESOURCE.CUSTOMER, actions: [...CRU, ACTION.EXPORT] },
     { resource: RESOURCE.CONTRACT, actions: [...R, ACTION.EXPORT] },
-    { resource: RESOURCE.PROJECT, actions: [...CRU, ACTION.EXPORT] },
     { resource: RESOURCE.INVOICE, actions: [...R, ACTION.EXPORT] },
     { resource: RESOURCE.PAYMENT, actions: [...R, ACTION.EXPORT] },
     { resource: RESOURCE.STATISTICS, actions: R },
@@ -99,7 +94,6 @@ export const ROLE_PERMISSIONS: Record<RoleCode, Permission[]> = {
     { resource: RESOURCE.DICTIONARY, actions: R },
     { resource: RESOURCE.CUSTOMER, actions: [...CRU, ACTION.EXPORT] },
     { resource: RESOURCE.CONTRACT, actions: [...CRU, ACTION.EXPORT] },
-    { resource: RESOURCE.PROJECT, actions: [...CRU, ACTION.EXPORT] },
     { resource: RESOURCE.INVOICE, actions: [...CR, ACTION.EXPORT] },
     { resource: RESOURCE.PAYMENT, actions: [...CR, ACTION.EXPORT] },
     { resource: RESOURCE.STATISTICS, actions: R },

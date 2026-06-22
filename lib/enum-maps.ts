@@ -105,16 +105,6 @@ export const CONTRACT_STATUS_MAP: Record<string, string> = {
   EXPIRED:        "已过期"
 };
 
-export const PROJECT_STATUS_MAP: Record<string, string> = {
-  PLANNED:     "计划中",
-  IN_PROGRESS: "进行中",
-  SUSPENDED:   "已暂停",
-  DELIVERED:   "已交付",
-  ACCEPTED:    "已验收",
-  CLOSED:      "已关闭",
-  CANCELLED:   "已取消"
-};
-
 export const METHOD_MAP: Record<string, string> = {
   BANK_TRANSFER: "银行转账",
   CHECK:         "支票",
@@ -128,72 +118,6 @@ export function lookup<T extends Record<string, string>>(map: T, code?: string |
   if (!code) return "";
   return map[code] ?? code;
 }
-
-/* === Workflow Engine === */
-export const WORKFLOW_PHASE_MAP: Record<string, string> = {
-  PREP:        "前期准备",
-  REQUIREMENT: "需求识别",
-  CONTRACT:    "合同签订",
-  EXECUTE:     "服务实施",
-  FOLLOWUP:    "回访与改进"
-};
-
-export const WORKFLOW_TASK_STATUS_MAP: Record<string, string> = {
-  PENDING:     "待开始",
-  IN_PROGRESS: "进行中",
-  COMPLETED:   "已完成",
-  SKIPPED:     "已跳过",
-  BLOCKED:     "已阻塞"
-};
-
-export const WORKFLOW_REVIEW_STATUS_MAP: Record<string, string> = {
-  REVIEWING: "校核中",
-  REVIEWED:  "已校核",
-  APPROVED:  "已审核",
-  REJECTED:  "已驳回"
-};
-
-export const WORKFLOW_RECURRENCE_UNIT_MAP: Record<string, string> = {
-  DAY:   "天",
-  WEEK:  "周",
-  MONTH: "月",
-  YEAR:  "年"
-};
-
-/* === 工作流看板辅助映射 === */
-export const WORKFLOW_TASK_STATUS_TONE: Record<string, string> = {
-  PENDING:     "default",
-  IN_PROGRESS: "processing",
-  COMPLETED:   "success",
-  SKIPPED:     "warning",
-  BLOCKED:     "error"
-};
-
-export const WORKFLOW_PHASE_STATE_LABEL: Record<string, string> = {
-  DONE:    "已完成",
-  PARTIAL: "进行中",
-  LOCKED:  "未解锁",
-  READY:   "待开始"
-};
-
-export const WORKFLOW_PHASE_STATE_TONE: Record<string, string> = {
-  DONE:    "success",
-  PARTIAL: "processing",
-  LOCKED:  "default",
-  READY:   "default"
-};
-
-export const WORKFLOW_TASK_ACTION_LABEL: Record<string, string> = {
-  start:    "开始",
-  complete: "完成",
-  block:    "阻塞",
-  unblock:  "解除",
-  skip:     "跳过"
-};
-
-export const WORKFLOW_TASK_STATUS_SORT: Record<string, number> = {
-  PENDING: 0, IN_PROGRESS: 1, BLOCKED: 2, COMPLETED: 3, SKIPPED: 4
-};
 
 
 /* === 发票/回款状态(PDF 路由用) === */
@@ -212,25 +136,6 @@ export const PAYMENT_STATUS_MAP: Record<string, string> = {
   RECONCILED: "已对账",
   REFUNDED:   "已退款",
   CANCELLED:  "已取消"
-};
-
-/* === 工作流动作(项目活动历史用,标签与 components/workflow/project-history.tsx 对齐) === */
-export const WORKFLOW_ACTION_MAP: Record<string, string> = {
-  WORKFLOW_INSTANTIATE:            "模板实例化",
-  WORKFLOW_TASK_START:             "开始任务",
-  WORKFLOW_TASK_COMPLETE:          "完成任务",
-  WORKFLOW_TASK_BLOCK:             "阻塞任务",
-  WORKFLOW_TASK_UNBLOCK:           "解除阻塞",
-  WORKFLOW_TASK_SKIP:              "跳过任务",
-  WORKFLOW_TASK_ASSIGN:            "重新指派",
-  WORKFLOW_TASK_REMARK:            "更新备注",
-  WORKFLOW_TASK_ATTACHMENT_ADD:    "新增附件",
-  WORKFLOW_TASK_ATTACHMENT_REMOVE: "删除附件",
-  WORKFLOW_REVIEW_SUBMIT:          "提交校核",
-  WORKFLOW_REVIEW_APPROVE:         "审核通过",
-  WORKFLOW_REVIEW_REJECT:          "驳回校核",
-  WORKFLOW_RECURRING_GENERATE:     "循环生成",
-  WORKFLOW_RECURRING_GENERATE_PARENT: "循环实例"
 };
 
 export const ASSET_TYPE_MAP: Record<string, string> = {

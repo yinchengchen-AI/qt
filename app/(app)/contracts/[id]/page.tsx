@@ -35,19 +35,13 @@ const REVIEW_ACTION_TONE: Record<string, string> = {
 const DESC_COL = { xs: 1, sm: 1, md: 2, lg: 2, xl: 3 } as const;
 
 type Overview = {
-  projects: Array<{ id: string; projectNo: string; name: string; status: string; startDate: string; endDate: string; managerUserId: string; workflowTaskCount: number; workflowCompleted: number }>;
   invoices: Array<{ id: string; invoiceNo: string; status: string; amount: string; applyDate: string; actualIssueDate: string | null }>;
   payments: Array<{ id: string; paymentNo: string; status: string; amount: string; receiveDate: string }>;
   reviewLogs: Array<{ id: string; action: string; reviewerId: string; comment: string | null; at: string }>;
-  totals: { projectCount: number; invoiceCount: number; paymentCount: number; totalAmount: number; invoicedAmount: number; paidAmount: number; billingStatus: BillingStatus; workflowTaskCount: number; workflowCompleted: number };
+  totals: { invoiceCount: number; paymentCount: number; totalAmount: number; invoicedAmount: number; paidAmount: number; billingStatus: BillingStatus };
 };
 
 function ReviewerName({ id }: { id: string }) {
-  const name = useUserName(id, "—");
-  return <span>{name}</span>;
-}
-
-function ProjectManagerName({ id }: { id: string }) {
   const name = useUserName(id, "—");
   return <span>{name}</span>;
 }
@@ -73,7 +67,7 @@ export default function ContractDetailPage() {
 const handleDelete = () => {
   modal.confirm({
     title: "确认删除该合同？",
-    content: "删除后可在回收站恢复，状态为 DRAFT / PENDING_REVIEW 且无项目 / 发票 / 回款 / 附件 时可操作。",
+    content: "删除后可在回收站恢复，状态为 DRAFT / PENDING_REVIEW 且无发票 / 回款 / 附件 时可操作。",
     okButtonProps: { danger: true },
     okText: "删除",
     cancelText: "取消",
@@ -130,7 +124,7 @@ const handleDelete = () => {
   const tabItems = [
     {
       key: "info",
-      label: <span>概览 ({t?.projectCount ?? 0} 项目)</span>,
+      label: <span>概览</span>,
       children: (
         <Row gutter={[16, 16]}>
           <Col xs={12} sm={8} md={6}>
@@ -141,16 +135,6 @@ const handleDelete = () => {
           </Col>
           <Col xs={12} sm={8} md={6}>
             <Card><Statistic title="已回款" value={t ? fmtWan(t.paidAmount) : 0} suffix="万" /></Card>
-          </Col>
-          <Col xs={12} sm={8} md={6}>
-            <Card>
-              <Statistic
-                title="工作流完成率"
-                value={t && t.workflowTaskCount > 0 ? Math.round((t.workflowCompleted / t.workflowTaskCount) * 100) : 0}
-                suffix="%"
-                
-              />
-            </Card>
           </Col>
           <Col xs={24}>
             <Card>
@@ -171,9 +155,8 @@ const handleDelete = () => {
           <Col xs={24}>
             <ProCard>
               <Row gutter={16}>
-                <Col xs={8}><Statistic title="项目数" value={t?.projectCount ?? 0} /></Col>
-                <Col xs={8}><Statistic title="开票数" value={t?.invoiceCount ?? 0} /></Col>
-                <Col xs={8}><Statistic title="回款数" value={t?.paymentCount ?? 0} /></Col>
+                <Col xs={12}><Statistic title="开票数" value={t?.invoiceCount ?? 0} /></Col>
+                <Col xs={12}><Statistic title="回款数" value={t?.paymentCount ?? 0} /></Col>
               </Row>
             </ProCard>
           </Col>
@@ -205,38 +188,6 @@ const handleDelete = () => {
             { title: "备注", dataIndex: "remark", render: (v) => v || "—" },
             { title: "状态", dataIndex: "status", render: (_, r) => <StatusTag status={r.status as string} domain="contract" /> }
           ]} />
-        </ProCard>
-      )
-    },
-    {
-      key: "projects",
-      label: <span>项目 ({t?.projectCount ?? 0})</span>,
-      children: (
-        <ProCard>
-          {overview && overview.projects.length > 0 ? (
-            <ProTable
-              rowKey="id"
-              search={false}
-              options={false}
-              pagination={{ defaultPageSize: 10, size: isMobile ? "small" : "middle" }}
-              dataSource={overview.projects}
-              scroll={{ x: 'max-content' }}
-              sticky={isMobile}
-              onRow={(r) => ({ onClick: () => router.push(`/projects/${r.id}`), style: { cursor: "pointer" } })}
-              columns={[
-                { title: "项目编号", dataIndex: "projectNo", width: 180 },
-                { title: "项目名称", dataIndex: "name" },
-                { title: "起期", dataIndex: "startDate", width: 120, render: (_, r) => <DateTimeCell value={r.startDate as string} /> },
-                { title: "止期", dataIndex: "endDate", width: 120, render: (_, r) => <DateTimeCell value={r.endDate as string} /> },
-                { title: "负责人", dataIndex: "managerUserId", width: 100, render: (_, r) => <ProjectManagerName id={r.managerUserId as string} /> },
-                { title: "工作流", dataIndex: "workflowTaskCount", width: 140, render: (_, r) => (
-                  <Tag color={r.workflowCompleted === r.workflowTaskCount ? "success" : "processing"}>
-                    {r.workflowCompleted}/{r.workflowTaskCount}
-                  </Tag>
-                ) },
-                { title: "状态", dataIndex: "status", width: 100, render: (_, r) => <StatusTag status={r.status as string} domain="project" /> }
-              ]} />
-          ) : <Empty description="本合同暂无项目" />}
         </ProCard>
       )
     },

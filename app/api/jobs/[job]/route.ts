@@ -1,6 +1,6 @@
 // 定时任务入口：POST /api/jobs/{job}
-// - job=run-all：跑全部 5 个
-// - job=contract-expiring / invoice-overdue / project-due / customer-inactive / contract-expiry：单跑
+// - job=run-all：跑全部 4 个
+// - job=contract-expiring / invoice-overdue / customer-inactive / contract-expiry：单跑
 // 鉴权：仅 ADMIN 可调；生产环境建议用 CRON_SECRET header
 import { z } from "zod";
 import { runWithRequestContext } from "@/lib/request-context";
@@ -11,7 +11,6 @@ import {
   runAllJobs,
   contractExpiringJob,
   invoiceOverdueJob,
-  projectDueJob,
   customerInactiveJob,
   runContractExpiryJob,
 } from "@/server/jobs/runner";
@@ -20,7 +19,6 @@ const jobEnum = z.enum([
   "run-all",
   "contract-expiring",
   "invoice-overdue",
-  "project-due",
   "customer-inactive",
   "contract-expiry",
 ]);
@@ -49,11 +47,9 @@ export async function POST(
             ? [await contractExpiringJob(now)]
             : parsed === "invoice-overdue"
               ? [await invoiceOverdueJob(now)]
-              : parsed === "project-due"
-                ? [await projectDueJob(now)]
-                : parsed === "contract-expiry"
-                  ? [await runContractExpiryJob(now)]
-                  : [await customerInactiveJob(now)];
+              : parsed === "contract-expiry"
+                ? [await runContractExpiryJob(now)]
+                : [await customerInactiveJob(now)];
       return ok({ at: now.toISOString(), results });
     } catch (e) {
       return err(e);

@@ -9,7 +9,7 @@
 //   6) refund 后 R-12 累计下降, 后续可继续 confirm (P1-2 回归)
 //   7) allocate 合计 ≠ 支付金额 → VALIDATION_FAILED
 //   8) allocate 跨合同 invoiceId → VALIDATION_FAILED (P1-5)
-//   9) allocate 跨合同 projectId → VALIDATION_FAILED (P1-5)
+
 //  10) allocate 同合同 invoiceId + 合计一致 → 成功
 //
 // DB 不可达时整组 skip. 全部数据用 unique TAG 前缀, 跑完自己清理.
@@ -27,7 +27,6 @@ const TAG = `TEST-PAY-AMT-${Date.now()}-${Math.random().toString(36).slice(2, 8)
 const createdInvoiceIds: string[] = [];
 const createdContractNos: string[] = [];
 const createdPaymentIds: string[] = [];
-const createdProjectIds: string[] = [];
 let adminUser: { id: string; employeeNo: string; name: string; email: string; roleCode: "ADMIN" } | null = null;
 let financeUser: { id: string; employeeNo: string; name: string; email: string; roleCode: "FINANCE" } | null = null;
 let testCustomerId: string | null = null;
@@ -104,9 +103,6 @@ afterAll(async () => {
       await prisma.invoiceAuditLog.deleteMany({ where: { invoiceId: { in: createdInvoiceIds } } });
       await prisma.invoice.deleteMany({ where: { id: { in: createdInvoiceIds } } });
     }
-    if (createdProjectIds.length > 0) {
-      await prisma.project.deleteMany({ where: { id: { in: createdProjectIds } } });
-    }
     if (createdContractNos.length > 0) {
       await prisma.contract.deleteMany({ where: { contractNo: { in: createdContractNos } } });
     }
@@ -164,24 +160,6 @@ async function mkContract(totalAmount: string, suffix: string) {
   });
 }
 
-async function mkProject(contractId: string, suffix: string) {
-  if (!adminUser) throw new Error("setup not ready");
-  const p = await prisma.project.create({
-    data: {
-      projectNo: `${TAG}-${suffix}`,
-      contractId,
-      name: `${TAG}-proj-${suffix}`,
-      serviceScope: "test",
-      managerUserId: adminUser.id,
-      startDate: new Date("2026-01-01T00:00:00Z"),
-      endDate: new Date("2026-12-31T00:00:00Z"),
-      createdById: adminUser.id,
-      updatedById: adminUser.id
-    }
-  });
-  createdProjectIds.push(p.id);
-  return p;
-}
 
 // 把任意字符串映射成 20 位纯数字 (电子发票号要求 \d{20})
 function digits20(s: string): string {

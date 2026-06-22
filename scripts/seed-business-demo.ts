@@ -2,7 +2,7 @@
 /* eslint-disable @typescript-eslint/ban-ts-comment */
 // @ts-nocheck — 独立 tsx 种子脚本, 不用走 lib/ 的严格类型, 见 scripts/seed-business-demo.README.md
 /**
- * 业务 demo 种子: 5 套完整数据链 (Customer -> Contract -> Project -> Invoice -> Payment).
+ * 业务 demo 种子: 5 套完整数据链 (Customer -> Contract -> Invoice -> Payment).
  *
  * 5 套链覆盖:
  *   #1 早期  - 已签约, 项目 IN_PROGRESS, 已开 DRAFT 发票, 暂无回款
@@ -48,7 +48,6 @@ function makeIds(no) {
   return {
     customerCode: `DEMO-CUS-${pad(no, 3)}`,
     contractNo:   `DEMO-CT-${pad(no, 3)}`,
-    projectNo:    `DEMO-P-${pad(no, 3)}`,
     invoiceNo:    `DEMO-INV-${pad(no, 3)}`,
     paymentNo:    `DEMO-PAY-${pad(no, 3)}`
   };
@@ -76,36 +75,31 @@ const LINKS = [
     industry: "信息传输/软件", province: "浙江省", city: "杭州市",
     contactName: "张志远", contactPhone: "13800000001",
     customerStatus: "SIGNED", contractStatus: "EFFECTIVE", serviceType: "HAZARD_ANA",
-    totalAmount: 180000, paymentMethod: "BY_PHASE",
-    projectStatus: "IN_PROGRESS", invoiceStatus: "DRAFT", invoiceAmount: 90000, paymentAmount: null,
+    totalAmount: 180000, paymentMethod: "BY_PHASE", invoiceStatus: "DRAFT", invoiceAmount: 90000, paymentAmount: null,
     remark: "链 #1 早期: 已签约, 项目执行中, 发票草稿" },
   { no: 2, customerName: "杭州川泽电子科技有限公司", customerType: "ENTERPRISE", scale: "SMALL",
     industry: "制造业", province: "浙江省", city: "杭州市",
     contactName: "李文涛", contactPhone: "13800000002",
     customerStatus: "SIGNED", contractStatus: "EFFECTIVE", serviceType: "SAFETY_CONSULT",
-    totalAmount: 80000, paymentMethod: "LUMP_SUM",
-    projectStatus: "IN_PROGRESS", invoiceStatus: "ISSUED", invoiceAmount: 40000, paymentAmount: 20000,
+    totalAmount: 80000, paymentMethod: "LUMP_SUM", invoiceStatus: "ISSUED", invoiceAmount: 40000, paymentAmount: 20000,
     remark: "链 #2 中期: 已开部分票, 部分回款" },
   { no: 3, customerName: "杭州宏远印刷有限公司", customerType: "ENTERPRISE", scale: "MICRO",
     industry: "印刷包装", province: "浙江省", city: "杭州市",
     contactName: "王慧敏", contactPhone: "13800000003",
     customerStatus: "SIGNED", contractStatus: "COMPLETED", serviceType: "EMERGENCY_PLAN",
-    totalAmount: 50000, paymentMethod: "LUMP_SUM",
-    projectStatus: "DELIVERED", invoiceStatus: "ISSUED", invoiceAmount: 50000, paymentAmount: 50000,
+    totalAmount: 50000, paymentMethod: "LUMP_SUM", invoiceStatus: "ISSUED", invoiceAmount: 50000, paymentAmount: 50000,
     remark: "链 #3 后期: 项目交付, 全额开票, 全额回款" },
   { no: 4, customerName: "杭州军途重卡汽车服务有限公司", customerType: "OTHER", scale: "LARGE",
     industry: "运输/物流", province: "浙江省", city: "杭州市",
     contactName: "陈建国", contactPhone: "13800000004",
     customerStatus: "SIGNED", contractStatus: "COMPLETED", serviceType: "EVALUATION",
-    totalAmount: 280000, paymentMethod: "BY_QUARTER",
-    projectStatus: "CLOSED", invoiceStatus: "ISSUED", invoiceAmount: 280000, paymentAmount: 280000,
+    totalAmount: 280000, paymentMethod: "BY_QUARTER", invoiceStatus: "ISSUED", invoiceAmount: 280000, paymentAmount: 280000,
     remark: "链 #4 长期: 多年前签约, 项目已 CLOSED, 全部回款" },
   { no: 5, customerName: "杭州浩润电气有限公司", customerType: "ENTERPRISE", scale: "SMALL",
     industry: "电气机械", province: "浙江省", city: "杭州市",
     contactName: "周晓东", contactPhone: "13800000005",
     customerStatus: "LOST", contractStatus: null, serviceType: null,
-    totalAmount: 0, paymentMethod: "LUMP_SUM",
-    projectStatus: null, invoiceStatus: null, invoiceAmount: null, paymentAmount: null,
+    totalAmount: 0, paymentMethod: "LUMP_SUM", invoiceStatus: null, invoiceAmount: null, paymentAmount: null,
     remark: "链 #5 流失: 无合同, 客户状态 LOST" }
 ];
 
@@ -144,20 +138,6 @@ async function seedOneTx(tx, adminId, link) {
     }
   });
   created.push(`Contract ${ids.contractNo}`);
-
-  if (!link.projectStatus) return { created };
-
-  const project = await tx.project.create({
-    data: {
-      projectNo: ids.projectNo, contractId: contract.id,
-      name: `${link.customerName} - ${serviceLabel(link.serviceType)}项目`,
-      serviceScope: `${serviceLabel(link.serviceType)}全流程服务`,
-      managerUserId: adminId, startDate, endDate,
-      status: link.projectStatus,
-      createdById: adminId, updatedById: adminId
-    }
-  });
-  created.push(`Project ${ids.projectNo}`);
 
   if (!link.invoiceStatus || !link.invoiceAmount) return { created };
 
@@ -202,10 +182,9 @@ async function cleanAll() {
   return bypassRls(async (tx) => {
     const payments = await tx.payment.deleteMany({ where: { paymentNo: { startsWith: `${DEMO_TAG}PAY-` } } });
     const invoices = await tx.invoice.deleteMany({ where: { invoiceNo: { startsWith: `${DEMO_TAG}INV-` } } });
-    const projects = await tx.project.deleteMany({ where: { projectNo: { startsWith: `${DEMO_TAG}P-` } } });
     const contracts = await tx.contract.deleteMany({ where: { contractNo: { startsWith: `${DEMO_TAG}CT-` } } });
     const customers = await tx.customer.deleteMany({ where: { code: { startsWith: `${DEMO_TAG}CUS-` } } });
-    return { Payment: payments.count, Invoice: invoices.count, Project: projects.count,
+    return { Payment: payments.count, Invoice: invoices.count,
              Contract: contracts.count, Customer: customers.count };
   });
 }
@@ -228,7 +207,6 @@ async function main() {
     if (link.contractStatus) {
       console.log(`  合同: ${serviceLabel(link.serviceType)} ¥${link.totalAmount.toLocaleString()} [${link.contractStatus}] 付款方式=${link.paymentMethod}`);
     } else { console.log(`  合同: - (无)`); }
-    if (link.projectStatus) { console.log(`  项目: [${link.projectStatus}]`); } else { console.log(`  项目: -`); }
     if (link.invoiceStatus) { console.log(`  发票: ¥${(link.invoiceAmount || 0).toLocaleString()} [${link.invoiceStatus}]`); } else { console.log(`  发票: -`); }
     if (link.paymentAmount) { console.log(`  回款: ¥${link.paymentAmount.toLocaleString()}`); } else { console.log(`  回款: -`); }
 

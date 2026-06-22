@@ -37,10 +37,9 @@ type FollowUp = {
 
 type Overview = {
   contracts: Array<{ id: string; contractNo: string; title: string; status: string; serviceType: string; signDate: string; totalAmount: string }>;
-  projects: Array<{ id: string; projectNo: string; name: string; status: string; contractNo: string; startDate: string; endDate: string }>;
   invoices: Array<{ id: string; invoiceNo: string; status: string; amount: string; actualIssueDate: string | null; contractNo: string }>;
   payments: Array<{ id: string; paymentNo: string; status: string; amount: string; receiveDate: string; contractNo: string }>;
-  totals: { contractCount: number; projectCount: number; invoiceCount: number; paymentCount: number; contractTotal: number; invoicedTotal: number; paidTotal: number };
+  totals: { contractCount: number; invoiceCount: number; paymentCount: number; contractTotal: number; invoicedTotal: number; paidTotal: number };
 };
 
 const DESC_COL = { xs: 1, sm: 1, md: 2, lg: 2, xl: 3 } as const;
@@ -108,11 +107,7 @@ export default function CustomerDetailPage() {
           </Col>
           <Col xs={24}>
             <ProCard>
-              <Row gutter={16}>
-                <Col xs={12} sm={8}><Statistic title="项目数" value={t?.projectCount ?? 0} suffix="个" /></Col>
-                <Col xs={12} sm={8}><Statistic title="开票数" value={t?.invoiceCount ?? 0} suffix="张" /></Col>
-                <Col xs={12} sm={8}><Statistic title="回款数" value={t?.paymentCount ?? 0} suffix="笔" /></Col>
-              </Row>
+
             </ProCard>
           </Col>
         </Row>
@@ -195,33 +190,6 @@ export default function CustomerDetailPage() {
               { title: "总额", dataIndex: "totalAmount", width: 140, render: (_, r) => <CurrencyCell value={r.totalAmount as string} /> },
               { title: "状态", dataIndex: "status", width: 100, render: (_, r) => <StatusTag status={r.status as string} domain="contract" /> }
             ]} />
-        </ProCard>
-      )
-    },
-    {
-      key: "projects",
-      label: <span>项目 ({overview?.projects.length ?? 0})</span>,
-      children: (
-        <ProCard>
-          {overview && overview.projects.length > 0 ? (
-            <ProTable
-              rowKey="id"
-              search={false}
-              options={false}
-              pagination={{ defaultPageSize: 10, size: isMobile ? "small" : "middle" }}
-              dataSource={overview.projects}
-              scroll={{ x: 'max-content' }}
-              sticky={isMobile}
-              onRow={(r) => ({ onClick: () => router.push(`/projects/${r.id}`), style: { cursor: "pointer" } })}
-              columns={[
-                { title: "项目编号", dataIndex: "projectNo", width: 180 },
-                { title: "项目名称", dataIndex: "name" },
-                { title: "所属合同", dataIndex: "contractNo", width: 180 },
-                { title: "起期", dataIndex: "startDate", width: 120, render: (_, r) => <DateCell value={r.startDate as string} /> },
-                { title: "止期", dataIndex: "endDate", width: 120, render: (_, r) => <DateCell value={r.endDate as string} /> },
-                { title: "状态", dataIndex: "status", width: 100, render: (_, r) => <StatusTag status={r.status as string} domain="project" /> }
-              ]} />
-          ) : <Empty description="该客户暂无项目" />}
         </ProCard>
       )
     },

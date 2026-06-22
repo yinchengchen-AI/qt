@@ -33,7 +33,6 @@ export async function GET(req: Request) {
         distribution,
         customerCount,
         newCustomers,
-        projectStats,
       ] = await Promise.all([
         getOverview(user, range),
         getTimeSeries(user, range),
@@ -50,11 +49,6 @@ export async function GET(req: Request) {
               ...(to ? { lte: to } : {}),
             },
           } as Prisma.CustomerWhereInput,
-        }),
-        prisma.project.groupBy({
-          by: ["status"],
-          where: { deletedAt: null, ...own } as Prisma.ProjectWhereInput,
-          _count: { _all: true },
         }),
       ]);
 
@@ -79,13 +73,6 @@ export async function GET(req: Request) {
         series,
         distribution,
         customers: { total: customerCount, newThisMonth: newCustomers },
-        projects: {
-          total: projectStats.reduce((s, x) => s + x._count._all, 0),
-          byStatus: projectStats.map((x) => ({
-            status: x.status,
-            count: x._count._all,
-          })),
-        },
         townDistribution,
       });
     } catch (e) {

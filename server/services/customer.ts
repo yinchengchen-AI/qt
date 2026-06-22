@@ -176,7 +176,7 @@ export async function softDeleteCustomer(user: SessionUser, id: string) {
 }
 
 // =====================================================
-// P10: 客户 360 度视图 — 聚合 contracts/projects/invoices/payments
+// P10: 客户 360 度视图 — 聚合 contracts/invoices/payments
 // =====================================================
 export type CustomerOverview = {
   contracts: Array<{
@@ -189,17 +189,6 @@ export type CustomerOverview = {
     startDate: string;
     endDate: string;
     totalAmount: string;
-  }>;
-  projects: Array<{
-    id: string;
-    projectNo: string;
-    name: string;
-    status: string;
-    serviceType: string | null;
-    startDate: string;
-    endDate: string;
-    contractId: string;
-    contractNo: string;
   }>;
   invoices: Array<{
     id: string;
@@ -221,7 +210,6 @@ export type CustomerOverview = {
   }>;
   totals: {
     contractCount: number;
-    projectCount: number;
     invoiceCount: number;
     paymentCount: number;
     contractTotal: number; // 元
@@ -245,11 +233,7 @@ export async function getCustomerOverview(
     orderBy: { signDate: "desc" }
   });
   const contractIds = contracts.map((c) => c.id);
-  const [projects, invoices, payments] = await Promise.all([
-    prisma.project.findMany({
-      where: { contractId: { in: contractIds }, deletedAt: null, ...(ownerViaContract(user) as Prisma.ProjectWhereInput) },
-      orderBy: { createdAt: "desc" }
-    }),
+  const [invoices, payments] = await Promise.all([
     prisma.invoice.findMany({
       where: { contractId: { in: contractIds }, deletedAt: null, ...(ownerViaContract(user) as Prisma.InvoiceWhereInput) },
       orderBy: { applyDate: "desc" }
@@ -286,17 +270,6 @@ export async function getCustomerOverview(
       endDate: c.endDate.toISOString(),
       totalAmount: c.totalAmount.toString()
     })),
-    projects: projects.map((p) => ({
-      id: p.id,
-      projectNo: p.projectNo,
-      name: p.name,
-      status: p.status,
-      serviceType: null, // Project 没有 serviceType,通过 contract 关联
-      startDate: p.startDate.toISOString(),
-      endDate: p.endDate.toISOString(),
-      contractId: p.contractId,
-      contractNo: contractNoMap.get(p.contractId) ?? ""
-    })),
     invoices: invoices.map((i) => ({
       id: i.id,
       invoiceNo: i.invoiceNo,
@@ -317,7 +290,6 @@ export async function getCustomerOverview(
     })),
     totals: {
       contractCount: contracts.length,
-      projectCount: projects.length,
       invoiceCount: invoices.length,
       paymentCount: payments.length,
       contractTotal,

@@ -4,7 +4,6 @@
 //   1) DRAFT + 无子数据 → 软删成功 + 写 audit log
 //   2) PENDING_REVIEW + 无子数据 → 软删成功
 //   3) ACTIVE 状态 → 抛 403 ENTITY_IMMUTABLE
-//   4) DRAFT + 有子 Project → 抛 403 ENTITY_IMMUTABLE (含子数据统计)
 //   5) 合同不存在 → 抛 404
 //   6) 非 admin (SALES) → 抛 403 FORBIDDEN
 //
@@ -72,7 +71,6 @@ afterAll(async () => {
       await prisma.contract.deleteMany({ where: { contractNo: { in: createdContractNos } } });
     }
     if (testCustomerId) {
-      await prisma.project.deleteMany({ where: { contract: { customerId: testCustomerId } } });
       await prisma.contract.deleteMany({ where: { customerId: testCustomerId } });
       await prisma.customer.delete({ where: { id: testCustomerId } });
     }
@@ -171,34 +169,6 @@ describe("softDeleteContract 服务层", () => {
     expect(reloaded?.deletedAt).toBeNull();
   }));
 
-  it("DRAFT + 有子 Project → 抛 403 ENTITY_IMMUTABLE, 错误信息含子数据统计", guard(async () => {
-    const c = await mkContract("DRAFT", "WITH-CHILD");
-    // 造一个未软删的子项目
-    const p = await prisma.project.create({
-      data: {
-        projectNo: `${c.contractNo}-P`,
-        contractId: c.id,
-        name: "子项目",
-        serviceScope: "test",
-        managerUserId: adminUser!.id,
-        startDate: new Date("2026-01-01T00:00:00Z"),
-        endDate: new Date("2026-12-31T00:00:00Z"),
-        createdById: adminUser!.id,
-        updatedById: adminUser!.id
-      }
-    });
-    try {
-      await expect(softDeleteContract(buildAdmin(), c.id)).rejects.toMatchObject({
-        code: "ENTITY_IMMUTABLE",
-        message: expect.stringContaining("项目 1")
-      });
-    } finally {
-      // 物理清理子项目, 不然下次跑会因为合同已被软删拿不到子数据计数
-      await prisma.project.delete({ where: { id: p.id } });
-    }
-    const reloaded = await prisma.contract.findUnique({ where: { id: c.id } });
-    expect(reloaded?.deletedAt).toBeNull();
-  }));
 
   it("合同不存在 → 抛 404 NOT_FOUND", guard(async () => {
     await expect(softDeleteContract(buildAdmin(), "non-existent-id")).rejects.toMatchObject({

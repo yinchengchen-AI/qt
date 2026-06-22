@@ -12,13 +12,7 @@ import {
 import { prisma } from "@/lib/prisma";
 import { renderPrintHtml, type PrintDoc } from "@/lib/print-html";
 import { ALLOWED_DICTIONARY_CATEGORIES } from "@/lib/dictionary-categories";
-import {
-  CUSTOMER_STATUS_MAP,
-  CONTRACT_STATUS_MAP,
-  PROJECT_STATUS_MAP,
-  INVOICE_STATUS_MAP,
-  PAYMENT_STATUS_MAP,
-} from "@/lib/enum-maps";
+import { CUSTOMER_STATUS_MAP, CONTRACT_STATUS_MAP, INVOICE_STATUS_MAP, PAYMENT_STATUS_MAP } from "@/lib/enum-maps";
 
 const fmtDate = (s: string | Date | null | undefined) =>
   s ? new Date(s).toLocaleDateString("zh-CN") : "—";
@@ -139,18 +133,6 @@ export async function GET(
               状态: CONTRACT_STATUS_MAP[c2.status] ?? c2.status,
             })),
             emptyText: "暂无关联合同",
-          },
-          {
-            title: "项目清单",
-            columns: ["项目编号", "项目名称", "所属合同", "起期", "状态"],
-            rows: overview.projects.map((p) => ({
-              项目编号: p.projectNo,
-              项目名称: p.name,
-              所属合同: p.contractNo,
-              起期: fmtDate(p.startDate),
-              状态: PROJECT_STATUS_MAP[p.status] ?? p.status,
-            })),
-            emptyText: "暂无项目",
           },
           {
             title: "开票记录",

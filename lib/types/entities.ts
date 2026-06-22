@@ -84,28 +84,6 @@ export type Invoice = {
   invoice: Invoice | null;
 };
 
-export type Project = {
-  id: string;
-  projectNo: string;
-  contractId: string;
-  contractNo: string;
-  contract: { contractNo: string; customerName: string } | null;
-  name: string;
-  serviceScope: string;
-  status: string;
-  startDate: string;
-  endDate: string;
-  managerUserId: string | null;
-  managerName: string | null;
-  customerId: string;
-  customerName: string;
-  attachments: AttachmentSnapshot[];
-  // 项目里程碑时间线:仅文本记录(自 v0.3.1 起 percent 字段已从表与 API 中物理删除)
-  progressLogs: { id: string; projectId: string; userId: string; remark: string; at: string }[];
-  // 数字进度,由工作流任务完成度派生(Project.progressPct)
-  progressPct: number;
-};
-
 export type Payment = {
   id: string;
   paymentNo: string;

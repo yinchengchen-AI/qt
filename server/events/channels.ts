@@ -72,7 +72,6 @@ function kindToPath(link: { kind: string }): string {
     contract: `${base}/contracts`,
     invoice: `${base}/invoices`,
     payment: `${base}/payments`,
-    project: `${base}/projects`,
     customer: `${base}/customers`
   };
   return map[link.kind] ?? `${base}/messages`;

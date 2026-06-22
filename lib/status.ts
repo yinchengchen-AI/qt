@@ -3,7 +3,6 @@
 export type StatusDomain =
   | "customer"
   | "contract"
-  | "project"
   | "invoice"
   | "payment"
   | "message"
@@ -37,17 +36,6 @@ const CONTRACT: Record<string, StatusMeta> = {
   EXPIRED:          { label: "已过期",   tone: "warning" }
 };
 
-/* === Project === */
-const PROJECT: Record<string, StatusMeta> = {
-  PLANNED:     { label: "计划中",   tone: "default" },
-  IN_PROGRESS: { label: "进行中",   tone: "processing" },
-  SUSPENDED:   { label: "已暂停",   tone: "warning" },
-  DELIVERED:   { label: "已交付",   tone: "info" },
-  ACCEPTED:    { label: "已验收",   tone: "success" },
-  CLOSED:      { label: "已关闭",   tone: "default" },
-  CANCELLED:   { label: "已取消",   tone: "danger" }
-};
-
 /* === Invoice === */
 const INVOICE: Record<string, StatusMeta> = {
   DRAFT:             { label: "草稿",       tone: "default" },
@@ -75,10 +63,7 @@ const MESSAGE: Record<string, StatusMeta> = {
   CONTRACT_REJECTED:       { label: "已驳回",     tone: "danger" },
   INVOICE_OVERDUE_PAYMENT: { label: "开票超期",   tone: "danger" },
   PAYMENT_RECEIVED:        { label: "回款",       tone: "success" },
-  PROJECT_DUE:             { label: "项目到期",   tone: "warning" },
   CUSTOMER_INACTIVE:       { label: "客户静默",   tone: "default" },
-  WORKFLOW_TASK_ASSIGNED:    { label: "任务指派",   tone: "info" },
-  WORKFLOW_REVIEW_REQUESTED: { label: "审阅请求",   tone: "info" },
   ASSET_EXPIRING:            { label: "资产到期",   tone: "warning" },
 };
 
@@ -99,7 +84,6 @@ const ASSET: Record<string, StatusMeta> = {
 const DOMAIN_MAP: Record<StatusDomain, Record<string, StatusMeta>> = {
   customer: CUSTOMER,
   contract: CONTRACT,
-  project: PROJECT,
   invoice: INVOICE,
   payment: PAYMENT,
   message: MESSAGE,

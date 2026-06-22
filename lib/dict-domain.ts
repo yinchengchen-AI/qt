@@ -55,7 +55,6 @@ export const DICT_META: Record<string, DictDomainMeta> = {
   CONTRACT_STATUS: { category: "CONTRACT_STATUS", label: "合同状态", shape: "table", readonly: false, description: "合同状态机: 草稿/待审/生效/执行/完结/终止" },
   INVOICE_STATUS: { category: "INVOICE_STATUS", label: "开票状态", shape: "table", readonly: false, description: "开票状态机" },
   PAYMENT_STATUS: { category: "PAYMENT_STATUS", label: "回款状态", shape: "table", readonly: false, description: "回款状态机" },
-  PROJECT_STATUS: { category: "PROJECT_STATUS", label: "项目状态", shape: "table", readonly: false, description: "项目状态机" },
   // 区域域 (系统, 不在 16 类白名单, 由同步脚本管理)
   REGION: { category: "REGION", label: "行政区域", shape: "tree", readonly: true, description: "系统字典, 由 legacy 迁移脚本管理, UI 仅查看" }
 };
@@ -77,7 +76,7 @@ const CATEGORY_DOMAIN_MAP: Record<string, DictDomain> = {
   CONTRACT_STATUS: "状态域",
   INVOICE_STATUS: "状态域",
   PAYMENT_STATUS: "状态域",
-  PROJECT_STATUS: "状态域",
+
   REGION: "区域域"
 };
 

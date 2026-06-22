@@ -2,7 +2,7 @@
 // 每个 job 接受 prisma + now，返回统计
 import { prisma } from "@/lib/prisma";
 import { emit } from "@/server/events/bus";
-import { generateAllRecurringInstances } from "@/server/services/workflow";
+
 import { runAssetExpiryJob } from "@/server/services/asset-expiry-job";
 import { runContractExpiryJob } from "@/server/services/contract";
 export { runContractExpiryJob };
@@ -29,9 +29,7 @@ export async function runAllJobs(now = new Date()): Promise<JobResult[]> {
   return Promise.all([
     contractExpiringJob(now, admins),
     invoiceOverdueJob(now, admins),
-    projectDueJob(now, admins),
     customerInactiveJob(now),
-    recurringTasksJob(now),
     runAssetExpiryJob(now, admins),
     runContractExpiryJob(now)
   ]);
@@ -128,42 +126,6 @@ export async function invoiceOverdueJob(now: Date, admins?: { id: string }[]): P
   return { job: "invoice-overdue", created, scanned, durationMs: Date.now() - t0 };
 }
 
-// PROJECT_DUE: endDate - 7 天
-export async function projectDueJob(now: Date, admins?: { id: string }[]): Promise<JobResult> {
-  const t0 = Date.now();
-  const dayStart = new Date(now);
-  dayStart.setHours(0, 0, 0, 0);
-  const targetDay = new Date(dayStart);
-  targetDay.setDate(targetDay.getDate() + 7);
-  const dayEnd = new Date(targetDay);
-  dayEnd.setDate(dayEnd.getDate() + 1);
-  const candidates = await prisma.project.findMany({
-    where: {
-      status: { in: ["IN_PROGRESS", "PLANNED"] },
-      endDate: { gte: targetDay, lt: dayEnd }
-    },
-    include: { contract: { select: { contractNo: true, ownerUserId: true } } }
-  });
-  let created = 0;
-  const scanned = candidates.length;
-  for (const p of candidates) {
-    const todayStart = new Date(now);
-    todayStart.setHours(0, 0, 0, 0);
-    const exists = await prisma.message.findFirst({
-      where: { type: "PROJECT_DUE", receiverUserId: p.managerUserId, createdAt: { gte: todayStart }, link: { path: ["id"], equals: p.id } }
-    });
-    if (exists) continue;
-    const adminList = admins ?? await prisma.user.findMany({ where: { role: { code: "ADMIN" }, deletedAt: null, status: "ACTIVE", isSystem: false }, select: { id: true } });
-    await emit(prisma, {
-      type: "PROJECT_DUE",
-      payload: { projectId: p.id, projectNo: p.projectNo, contractNo: p.contract.contractNo, daysLeft: 7 },
-      receivers: Array.from(new Set([p.managerUserId, p.contract.ownerUserId, ...adminList.map((a) => a.id)]))
-    });
-    created++;
-  }
-  return { job: "project-due", created, scanned, durationMs: Date.now() - t0 };
-}
-
 // CUSTOMER_INACTIVE: 90 天无 FollowUp
 export async function customerInactiveJob(now: Date): Promise<JobResult> {
   const t0 = Date.now();
@@ -196,16 +158,3 @@ export async function customerInactiveJob(now: Date): Promise<JobResult> {
   return { job: "customer-inactive", created, scanned, durationMs: Date.now() - t0 };
 }
 
-// 循环任务:扫描所有 active 项目,为周期已到的循环任务生成下一个实例
-// skipped: 因 Project.endDate 止期护栏而跳过的循环任务数(仍计入审计)
-export async function recurringTasksJob(now: Date): Promise<JobResult> {
-  const t0 = Date.now();
-  const r = await generateAllRecurringInstances(now);
-  return {
-    job: "recurring-tasks",
-    created: r.generated,
-    scanned: r.scanned,
-    durationMs: Date.now() - t0,
-    ...(r.skipped ? { skipped: r.skipped } : {})
-  } as JobResult;
-}

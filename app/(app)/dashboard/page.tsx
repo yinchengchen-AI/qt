@@ -11,7 +11,6 @@ import { StatGrid, type StatItem } from "@/components/stat-grid";
 import { EmptyState } from "@/components/empty-state";
 import { formatCompact, formatCurrency, formatDate } from "@/lib/format";
 import { StatusTag } from "@/components/status-tag";
-import { MyTasksWidget } from "@/components/workflow/my-tasks-widget";
 import { useResponsive } from "@/lib/use-breakpoint";
 
 const { Text } = Typography;
@@ -23,7 +22,6 @@ type DashboardData = {
   townDistribution: { town: string | null; count: number }[];
   agingBuckets: Record<string, number>;
   customers: { total: number; newThisMonth: number };
-  projects: { total: number; byStatus: { status: string; count: number }[] };
   contracts: { byStatus: { status: string; count: number; totalAmount: number }[] };
   invoices: { total: number; byStatus: { status: string; count: number; totalAmount: number }[] };
   payments: { total: number; byStatus: { status: string; count: number; totalAmount: number }[] };
@@ -52,14 +50,14 @@ export default function DashboardPage() {
     return (
       <Page>
         <PageHeader title="业务总览" subtitle="实时经营数据快照 — 客户、合同、项目、开票、回款" />
-        <StatGrid columns={5} loading items={[{},{},{},{},{}] as StatItem[]} />
+        <StatGrid columns={4} loading items={[{},{},{},{}] as StatItem[]} />
         <div style={{ height: 24 }} />
         <StatGrid columns={3} loading items={[{},{},{}] as StatItem[]} />
       </Page>
     );
   }
 
-  const { overview: o, customers: cust, projects: proj, invoices: inv, payments: pay, contracts: cont, topCustomers: top } = data;
+  const { overview: o, customers: cust, invoices: inv, payments: pay, contracts: cont, topCustomers: top } = data;
 
   // ── 统计区间(取自 overview.range,接口默认本月) ──
   const rangeFrom = o.range?.from ? new Date(o.range.from) : null;
@@ -92,15 +90,6 @@ export default function DashboardPage() {
       description: `共 ${o.contractCount} 份有效合同`
     },
     {
-      label: "项目总数",
-      tooltip: <>项目档案的<b>实时状态分布</b>(按状态分组计数),不按时间窗口过滤。<br/>"已完成"涵盖 已交付 / 已验收 / 已关闭(对应枚举 DELIVERED / ACCEPTED / CLOSED)。<br/>{permHint}</>,
-      value: proj.total,
-      suffix: "个",
-      description: `进行中 ${proj.byStatus.find(s => s.status === "IN_PROGRESS")?.count ?? 0} 个`,
-      // 项目"已完成"包含 DELIVERED / ACCEPTED / CLOSED;project 没有 COMPLETED 状态
-      delta: { value: `${proj.byStatus.filter(s => ["DELIVERED", "ACCEPTED", "CLOSED"].includes(s.status)).reduce((sum, s) => sum + s.count, 0) / Math.max(proj.total, 1) * 100 | 0}% 完成`, direction: "flat" }
-    },
-    {
       label: "已开票额",
       tooltip: <>开票状态为 <b>已开票</b>(枚举 ISSUED),<b>实际开票日期</b>(actualIssueDate)落在统计区间内的金额合计。<br/>待财务审核、作废、红冲不计入。"开票率"= 已开票额 ÷ 合同总额。<br/>{permHint}</>,
       value: formatCompact(o.invoiceAmount),
@@ -119,9 +108,6 @@ export default function DashboardPage() {
   ];
 
   const townData = data.townDistribution;
-
-  // ── 项目状态分布 ──
-  const projectStatusData = proj.byStatus.map(x => ({ status: formatStatus(x.status, "project").label, count: x.count }));
 
   // ── 合同状态分布 ──
   const contractStatusData = cont.byStatus.map(x => ({ status: x.status, count: x.count }));
@@ -143,14 +129,12 @@ export default function DashboardPage() {
       </section>
 
       <section style={{ marginBottom: 24 }}>
-        <StatGrid items={kpiItems} columns={5} />
+        <StatGrid items={kpiItems} columns={4} />
       </section>
 
-      <MyTasksWidget />
-
-      {/*** 客户 + 项目 分布 ***/}
+      {/*** 客户 + 区域分布 ***/}
       <Row gutter={[16, 16]} style={{ marginBottom: 24 }}>
-        <Col xs={24} lg={12}>
+        <Col xs={24} lg={24}>
           <ProCard title="客户区域分布" subTitle="按镇街分组">
             {townData.length > 0 ? (
               <Column
@@ -164,20 +148,6 @@ export default function DashboardPage() {
                 xAxis={{ label: { autoRotate: true, autoHide: false } }}
               />
             ) : <EmptyState empty title="暂无区域分布数据" description="客户所在地尚未录入镇街信息" height={chartHeight} />}
-          </ProCard>
-        </Col>
-        <Col xs={24} lg={12}>
-          <ProCard title="项目状态分布">
-            {projectStatusData.length > 0 ? (
-              <Column
-                data={projectStatusData}
-                xField="status"
-                yField="count"
-                height={chartHeight}
-                colorField="status"
-                autoFit
-              />
-            ) : <EmptyState empty title="暂无项目数据" height={chartHeight} />}
           </ProCard>
         </Col>
       </Row>

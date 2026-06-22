@@ -152,26 +152,19 @@ export async function canReadAttachment(att: AttachmentForRead, userId: string):
   //   5) 都没有(tmp 上传) -> 仅上传者可读
   if (att.uploadedById === userId) return true;
 
-  // 单次并行查询: 角色 + 合同 owner + 工作流任务中的合同 owner
-  // (避免 3 次顺序往返,典型 50-150ms 节省)
-  const [u, contract, tasks] = await Promise.all([
+  // 单次并行查询: 角色 + 合同 owner (避免 2 次顺序往返,典型 30-80ms 节省)
+  const [u, contract] = await Promise.all([
     prisma.user.findUnique({ where: { id: userId }, select: { role: { select: { code: true } } } }),
     att.contractId
       ? prisma.contract.findUnique({ where: { id: att.contractId }, select: { ownerUserId: true, createdById: true } })
-      : Promise.resolve(null),
-    prisma.workflowTaskInstance.findMany({
-      where: { deletedAt: null, attachments: { path: ["items"], array_contains: [{ id: att.id }] } },
-      select: { id: true, project: { select: { contract: { select: { ownerUserId: true, createdById: true } } } } }
-    })
+      : Promise.resolve(null)
   ]);
   if (u?.role?.code === "ADMIN" || u?.role?.code === "FINANCE") return true;
   if (contract && (contract.ownerUserId === userId || contract.createdById === userId)) return true;
   if (att.invoice && (att.invoice.applicantUserId === userId || att.invoice.createdById === userId)) return true;
   const invoiceContract = att.invoice?.contract;
   if (invoiceContract && (invoiceContract.ownerUserId === userId || invoiceContract.createdById === userId)) return true;
-  return tasks.some(
-    (t) => t.project.contract?.ownerUserId === userId || t.project.contract?.createdById === userId
-  );
+  return false;
 }
 
 export async function presignDownload(input: PresignDownloadInput): Promise<PresignDownloadResult> {
@@ -234,25 +227,6 @@ export async function softDeleteAttachment(attachmentId: string, userId: string)
       } else if (att.invoice.contract) {
         const c = att.invoice.contract;
         if (c.ownerUserId === userId || c.createdById === userId) allowed = true;
-      }
-    }
-    // 工作流任务附件:无合同/发票关联时,通过 JSON 字段反查
-    if (!isAdmin && !allowed) {
-      const tasks = await prisma.workflowTaskInstance.findMany({
-        where: { deletedAt: null, attachments: { path: ["items"], array_contains: [{ id: att.id }] } },
-        select: { id: true, project: { select: { contract: { select: { ownerUserId: true, createdById: true } } } } }
-      });
-      allowed = tasks.some(
-        (t) => t.project.contract?.ownerUserId === userId || t.project.contract?.createdById === userId
-      );
-      // 项目经理 / 任务指派人 / 任务完成人 也可删
-      if (!allowed) {
-        const assignees = await prisma.workflowTaskInstance.findMany({
-          where: { deletedAt: null, OR: [{ assigneeId: userId }, { completedById: userId }] },
-          select: { id: true }
-        });
-        const myInsIds = new Set(assignees.map((x) => x.id));
-        if (tasks.some((t) => myInsIds.has(t.id))) allowed = true;
       }
     }
     if (!isAdmin && !allowed) {

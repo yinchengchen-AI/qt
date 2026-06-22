@@ -25,10 +25,8 @@ type EntityConfig = {
 const ENTITY_CONFIG: Record<string, EntityConfig> = {
   Customer: { model: "customer", nameField: "name", resource: RESOURCE.CUSTOMER, ownerFilter: (u) => ownerEq(u) },
   Contract: { model: "contract", nameField: "contractNo", resource: RESOURCE.CONTRACT, ownerFilter: (u) => ownerEq(u) },
-  Project: { model: "project", nameField: "name", resource: RESOURCE.PROJECT, ownerFilter: (u) => ownerViaContract(u) },
   Invoice: { model: "invoice", nameField: "invoiceNo", resource: RESOURCE.INVOICE, ownerFilter: (u) => ownerViaContract(u) },
   Payment: { model: "payment", nameField: "paymentNo", resource: RESOURCE.PAYMENT, ownerFilter: (u) => ownerViaContract(u) },
-  WorkflowTemplate: { model: "workflowTemplate", nameField: "name", resource: RESOURCE.WORKFLOW_TEMPLATE, ownerFilter: () => ({}) },
 };
 
 export async function getTrashList(user: SessionUser): Promise<TrashRecord[]> {

@@ -9,7 +9,6 @@ const messages: Record<Locale, Record<string, string>> = {
     "menu.dashboard": "工作台",
     "menu.customers": "客户管理",
     "menu.contracts": "合同管理",
-    "menu.projects": "项目管理",
     "menu.invoices": "开票管理",
     "menu.payments": "回款管理",
     "menu.statistics": "统计分析",
@@ -54,19 +53,12 @@ const messages: Record<Locale, Record<string, string>> = {
     "status.CONFIRMED": "已确认",
     "status.RECONCILED": "已对账",
     "status.REFUNDED": "已退款",
-    "status.CANCELLED": "已取消",
-    "status.PLANNED_PROJECT": "未启动",
-    "status.IN_PROGRESS": "进行中",
-    "status.SUSPENDED": "已暂停",
-    "status.DELIVERED": "已交付",
-    "status.ACCEPTED": "已验收",
-    "status.CLOSED": "已关闭"
+    "status.CANCELLED": "已取消"
   },
   "en-US": {
     "menu.dashboard": "Dashboard",
     "menu.customers": "Customers",
     "menu.contracts": "Contracts",
-    "menu.projects": "Projects",
     "menu.invoices": "Invoices",
     "menu.payments": "Payments",
     "menu.statistics": "Statistics",
@@ -111,13 +103,7 @@ const messages: Record<Locale, Record<string, string>> = {
     "status.CONFIRMED": "Confirmed",
     "status.RECONCILED": "Reconciled",
     "status.REFUNDED": "Refunded",
-    "status.CANCELLED": "Cancelled",
-    "status.PLANNED_PROJECT": "Planned",
-    "status.IN_PROGRESS": "In Progress",
-    "status.SUSPENDED": "Suspended",
-    "status.DELIVERED": "Delivered",
-    "status.ACCEPTED": "Accepted",
-    "status.CLOSED": "Closed"
+    "status.CANCELLED": "Cancelled"
   }
 };
 

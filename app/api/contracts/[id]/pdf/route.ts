@@ -6,15 +6,7 @@ import { requirePermission, RESOURCE, ACTION } from "@/lib/permissions";
 import { getContract, getContractOverview } from "@/server/services/contract";
 import { prisma } from "@/lib/prisma";
 import { renderPrintHtml, type PrintDoc } from "@/lib/print-html";
-import {
-  PAYMENT_METHOD_MAP,
-  SERVICE_TYPE_MAP,
-  CONTRACT_STATUS_MAP,
-  PROJECT_STATUS_MAP,
-  REVIEW_ACTION_MAP,
-  INVOICE_STATUS_MAP,
-  PAYMENT_STATUS_MAP,
-} from "@/lib/enum-maps";
+import { SERVICE_TYPE_MAP, PAYMENT_METHOD_MAP, CONTRACT_STATUS_MAP, INVOICE_STATUS_MAP, PAYMENT_STATUS_MAP, REVIEW_ACTION_MAP } from "@/lib/enum-maps";
 
 const fmtDate = (s: string | Date | null | undefined) =>
   s ? new Date(s).toLocaleDateString("zh-CN") : "—";
@@ -147,32 +139,6 @@ export async function GET(
           },
         ],
         sections: [
-          {
-            title: "拆分项目",
-            columns: [
-              "项目编号",
-              "项目名称",
-              "起期",
-              "止期",
-              "工作流完成度",
-              "状态",
-            ],
-            rows: overview.projects.map((p) => {
-              const completed = p.workflowCompleted;
-              const total = p.workflowTaskCount;
-              const pct =
-                total > 0 ? ((completed / total) * 100).toFixed(1) + "%" : "—";
-              return {
-                项目编号: p.projectNo,
-                项目名称: p.name,
-                起期: fmtDate(p.startDate),
-                止期: fmtDate(p.endDate),
-                工作流完成度: pct,
-                状态: PROJECT_STATUS_MAP[p.status] ?? p.status,
-              };
-            }),
-            emptyText: "暂无拆分项目",
-          },
           {
             title: "开票记录",
             columns: ["发票号", "申请日", "开票日", "金额", "状态"],

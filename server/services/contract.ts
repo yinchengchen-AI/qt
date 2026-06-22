@@ -501,17 +501,6 @@ export async function lifecycleContract(
 // P11: 合同 360 度视图
 // =====================================================
 export type ContractOverview = {
-  projects: Array<{
-    id: string;
-    projectNo: string;
-    name: string;
-    status: string;
-    startDate: string;
-    endDate: string;
-    managerUserId: string;
-    workflowTaskCount: number;
-    workflowCompleted: number;
-  }>;
   invoices: Array<{
     id: string;
     invoiceNo: string;
@@ -535,15 +524,12 @@ export type ContractOverview = {
     at: string;
   }>;
   totals: {
-    projectCount: number;
     invoiceCount: number;
     paymentCount: number;
     totalAmount: number;
     invoicedAmount: number;
     paidAmount: number;
     billingStatus: BillingStatus;
-    workflowTaskCount: number;
-    workflowCompleted: number;
   };
 };
 
@@ -555,12 +541,7 @@ export async function getContractOverview(
   const c = await prisma.contract.findFirst({ where: { id: contractId, deletedAt: null, ...ownerEq(user) } });
   if (!c) throw new ApiError(ERROR_CODES.NOT_FOUND, "合同不存在", 404);
 
-  const [projects, invoices, payments, reviewLogs] = await Promise.all([
-    prisma.project.findMany({
-      where: { contractId, deletedAt: null, ...(ownerViaContract(user) as Prisma.ProjectWhereInput) },
-      include: { _count: { select: { taskInstances: { where: { deletedAt: null } } } } },
-      orderBy: { createdAt: "desc" }
-    }),
+  const [invoices, payments, reviewLogs] = await Promise.all([
     prisma.invoice.findMany({
       where: { contractId, deletedAt: null, ...(ownerViaContract(user) as Prisma.InvoiceWhereInput) },
       orderBy: { applyDate: "desc" }
@@ -576,16 +557,6 @@ export async function getContractOverview(
     })
   ]);
 
-  // 对每个项目查已完成工作流任务数(二次查)
-  const projectWorkflowStats: Record<string, { completed: number; total: number }> = {};
-  for (const p of projects) {
-    const [completed, total] = await Promise.all([
-      prisma.workflowTaskInstance.count({ where: { projectId: p.id, status: "COMPLETED", deletedAt: null } }),
-      prisma.workflowTaskInstance.count({ where: { projectId: p.id, deletedAt: null } })
-    ]);
-    projectWorkflowStats[p.id] = { completed, total };
-  }
-
   // 总数(与 server/services/statistics.ts:18-30 语义一致):
   //   invoicedAmount = sum(Invoice.amount)  where status=ISSUED         (red-flush 负数已含, 自动净额)
   //   paidAmount     = sum(Payment.amount)  where status IN (CONFIRMED,RECONCILED)
@@ -595,17 +566,6 @@ export async function getContractOverview(
   for (const p of payments) if (p.status === "CONFIRMED" || p.status === "RECONCILED") paidAmount += Number(p.amount);
 
   return {
-    projects: projects.map((p) => ({
-      id: p.id,
-      projectNo: p.projectNo,
-      name: p.name,
-      status: p.status,
-      startDate: p.startDate.toISOString(),
-      endDate: p.endDate.toISOString(),
-      managerUserId: p.managerUserId,
-      workflowTaskCount: projectWorkflowStats[p.id]?.total ?? 0,
-      workflowCompleted: projectWorkflowStats[p.id]?.completed ?? 0
-    })),
     invoices: invoices.map((i) => ({
       id: i.id,
       invoiceNo: i.invoiceNo,
@@ -629,15 +589,12 @@ export async function getContractOverview(
       at: r.at.toISOString()
     })),
     totals: {
-      projectCount: projects.length,
       invoiceCount: invoices.length,
       paymentCount: payments.length,
       totalAmount: Number(c.totalAmount),
       invoicedAmount,
       paidAmount,
-      billingStatus: getBillingStatus(invoicedAmount, Number(c.totalAmount)),
-      workflowTaskCount: projects.reduce((s, p) => s + (projectWorkflowStats[p.id]?.total ?? 0), 0),
-      workflowCompleted: projects.reduce((s, p) => s + (projectWorkflowStats[p.id]?.completed ?? 0), 0)
+      billingStatus: getBillingStatus(invoicedAmount, Number(c.totalAmount))
     }
   };
 }
@@ -645,12 +602,12 @@ export async function getContractOverview(
 /**
  * 软删除合同（仅 admin 可调用）。
  * 约束：
- *   - 状态必须是 DRAFT / PENDING_REVIEW（其他状态可能已有项目/开票/回款联动，需走 terminate/complete 走完生命周期）
- *   - 不能存在未删除的子项目 / 发票 / 回款 / 附件
+ *   - 状态必须是 DRAFT / PENDING_REVIEW（其他状态可能已有开票/回款联动，需走 terminate/complete 走完生命周期）
+ *   - 不能存在未删除的子发票 / 回款 / 附件
  *   - 事务内写 deletedAt + audit log
  *
  * 隔离级别：Serializable。子数据 count 与 update 同事务, 避免以下竞态:
- *   T1 count == 0 → T2 插入 Project(contractId=id) → T1 update deletedAt
+ *   T1 count == 0 → T2 插入 Invoice(contractId=id) → T1 update deletedAt
  *   在 read committed 下 T1 写完即 commit, 把"已有子数据"的合同软删掉, 违反不变量.
  *   Serializable 会把冲突抛为 P2034 (write conflict), 由 SERIALIZABLE_RETRY 重试到干净快照.
  */
@@ -678,16 +635,15 @@ export async function softDeleteContract(user: SessionUser, id: string) {
               403
             );
           }
-          const [projectCount, invoiceCount, paymentCount, attachmentCount] = await Promise.all([
-            tx.project.count({ where: { contractId: id, deletedAt: null } }),
+          const [invoiceCount, paymentCount, attachmentCount] = await Promise.all([
             tx.invoice.count({ where: { contractId: id, deletedAt: null } }),
             tx.payment.count({ where: { contractId: id, deletedAt: null } }),
             tx.attachment.count({ where: { contractId: id, deletedAt: null } })
           ]);
-          if (projectCount + invoiceCount + paymentCount + attachmentCount > 0) {
+          if (invoiceCount + paymentCount + attachmentCount > 0) {
             throw new ApiError(
               ERROR_CODES.ENTITY_IMMUTABLE,
-              `合同存在子数据（项目 ${projectCount} / 发票 ${invoiceCount} / 回款 ${paymentCount} / 附件 ${attachmentCount}），无法删除`,
+              `合同存在子数据（发票 ${invoiceCount} / 回款 ${paymentCount} / 附件 ${attachmentCount}），无法删除`,
               403
             );
           }
@@ -726,112 +682,21 @@ export async function softDeleteContract(user: SessionUser, id: string) {
 
 
 // =====================================================
-// 合同状态机自动转换 (Q1 / Q4)
+// 合同状态机自动转换 (Q4)
 // =====================================================
 //
-// 三个 hook 都是 *静默可重入* 的: 状态不匹配 → no-op, 不抛错, 避免拖垮调用方主事务.
+// 静默可重入: 状态不匹配 → no-op, 不抛错, 避免拖垮调用方主事务.
 // 失败时写 audit log 但仍然 throw(自动转换失败应当可见), 调用方决定是否吞掉.
 //
 // 写入者统一为 SYSTEM_USER_ID ("system"). 该用户在迁移 20260621_user_is_system 中创建,
 // passwordHash 是非法 bcrypt 永远登录不了; lib/auth.ts 登录路径 / bus.ts listAdminUserIds /
-// workflow.ts reviewTask / asset-expiry-job.ts 都已过滤 isSystem=true.
+// asset-expiry-job.ts 都已过滤 isSystem=true.
 //
 // 自动转换的 audit action 串:
-//   CONTRACT_AUTO_EXECUTE   - 项目 start 触发 EFFECTIVE → EXECUTING
-//   CONTRACT_AUTO_COMPLETE  - 合同下所有项目收尾时 EFFECTIVE/EXECUTING/SUSPENDED → COMPLETED
 //   CONTRACT_AUTO_EXPIRE    - 定时任务扫到 endDate < now 时 → EXPIRED
 // ContractReviewLog.action 同步写, 详情页时间线可见.
 
 import { SYSTEM_USER_ID } from "@/lib/system";
-
-type AutoTrigger = { projectId: string; projectName: string };
-
-/**
- * 项目 start 时: 合同 EFFECTIVE → EXECUTING
- * 必须在 projectAction 同事务内调用 (tx), 以便状态切换与项目动作原子提交.
- * 合同非 EFFECTIVE (已是 EXECUTING / COMPLETED / ...) → no-op.
- */
-export async function tryAutoExecuteContract(
-  tx: Prisma.TransactionClient,
-  contractId: string,
-  trigger: AutoTrigger
-): Promise<void> {
-  // 重新读一次合同状态, 不依赖调用方的判断, 保证幂等
-  const c = await tx.contract.findFirst({ where: { id: contractId, deletedAt: null } });
-  if (!c) return;
-  if (c.status !== "EFFECTIVE") return;
-  const before = { status: c.status };
-  await tx.contract.update({ where: { id: contractId }, data: { status: "EXECUTING" } });
-  await tx.contractReviewLog.create({
-    data: { contractId, reviewerId: SYSTEM_USER_ID, action: "AUTO_EXECUTE", comment: `项目 ${trigger.projectName} 启动触发` }
-  });
-  await audit(tx, {
-    actorId: SYSTEM_USER_ID,
-    action: "CONTRACT_AUTO_EXECUTE",
-    entity: "Contract",
-    entityId: contractId,
-    before,
-    after: { status: "EXECUTING" }
-  });
-  // 通知: 合同 owner + 全部 admin (listAdminUserIds 已过滤 isSystem)
-  const admins = await listAdminUserIds(tx);
-  await emit(tx, {
-    type: "CONTRACT_AUTO_EXECUTED",
-    payload: {
-      contractId,
-      contractNo: c.contractNo,
-      projectId: trigger.projectId,
-      projectName: trigger.projectName
-    },
-    receivers: Array.from(new Set([c.ownerUserId, ...admins]))
-  });
-}
-
-/**
- * 项目 close / cancel 时: 若合同下所有项目 ∈ {CLOSED, CANCELLED} 且至少存在 1 个项目,
- * 则合同自动结清 COMPLETED.
- * 合同无项目 → no-op (合同结清应走 lifecycle 手动 COMPLETE).
- * 多项目合同部分收尾时 → no-op, 等待最后一个项目收尾.
- */
-export async function tryAutoCompleteContract(
-  tx: Prisma.TransactionClient,
-  contractId: string
-): Promise<void> {
-  const c = await tx.contract.findFirst({ where: { id: contractId, deletedAt: null } });
-  if (!c) return;
-  // 仅在合同处于"可结清"状态时考虑自动转换
-  if (!["EFFECTIVE", "EXECUTING", "SUSPENDED"].includes(c.status)) return;
-  // 软删的子项目不计入"未收尾"集合 (合同软删时 cascade 不一定清)
-  const totalProjects = await tx.project.count({ where: { contractId, deletedAt: null } });
-  if (totalProjects === 0) return;
-  const openProjects = await tx.project.count({
-    where: {
-      contractId,
-      deletedAt: null,
-      status: { notIn: ["CLOSED", "CANCELLED"] }
-    }
-  });
-  if (openProjects > 0) return;
-  const before = { status: c.status };
-  await tx.contract.update({ where: { id: contractId }, data: { status: "COMPLETED" } });
-  await tx.contractReviewLog.create({
-    data: { contractId, reviewerId: SYSTEM_USER_ID, action: "AUTO_COMPLETE", comment: `合同下 ${totalProjects} 个项目已全部收尾` }
-  });
-  await audit(tx, {
-    actorId: SYSTEM_USER_ID,
-    action: "CONTRACT_AUTO_COMPLETE",
-    entity: "Contract",
-    entityId: contractId,
-    before,
-    after: { status: "COMPLETED" }
-  });
-  const admins = await listAdminUserIds(tx);
-  await emit(tx, {
-    type: "CONTRACT_AUTO_COMPLETED",
-    payload: { contractId, contractNo: c.contractNo },
-    receivers: Array.from(new Set([c.ownerUserId, ...admins]))
-  });
-}
 
 /**
  * 单笔合同过期检查: endDate < now 且 status ∈ {EFFECTIVE, EXECUTING} → EXPIRED.

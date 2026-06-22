@@ -20,7 +20,6 @@ const RESOURCE_LIST: { value: string; label: string; group?: string }[] = [
   { value: RESOURCE.OPERATION_LOG, label: "操作日志", group: "系统" },
   { value: RESOURCE.CUSTOMER, label: "客户", group: "业务" },
   { value: RESOURCE.CONTRACT, label: "合同", group: "业务" },
-  { value: RESOURCE.PROJECT, label: "项目", group: "业务" },
   { value: RESOURCE.INVOICE, label: "开票", group: "财务" },
   { value: RESOURCE.PAYMENT, label: "回款", group: "财务" },
   { value: RESOURCE.STATISTICS, label: "统计", group: "分析" },

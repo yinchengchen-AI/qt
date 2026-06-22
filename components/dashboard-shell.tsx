@@ -23,8 +23,6 @@ import {
   MenuFoldOutlined,
   MenuUnfoldOutlined,
   DashboardOutlined,
-  TeamOutlined,
-  PlayCircleOutlined,
   AreaChartOutlined,
   SettingOutlined,
   UserOutlined,
@@ -87,12 +85,10 @@ const MENU: MenuItem[] = [
     icon: <AppstoreOutlined />,
     children: [
       { path: "/customers", name: "客户管理", permission: { resource: RESOURCE.CUSTOMER, action: ACTION.READ } },
-      { path: "/contracts", name: "合同管理", permission: { resource: RESOURCE.CONTRACT, action: ACTION.READ } },
-      { path: "/projects", name: "项目管理", permission: { resource: RESOURCE.PROJECT, action: ACTION.READ } }
+      { path: "/contracts", name: "合同管理", permission: { resource: RESOURCE.CONTRACT, action: ACTION.READ } }
     ]
   },
   { path: "/assets", name: "企业资产", icon: <DatabaseOutlined />, permission: { resource: RESOURCE.ASSET, action: ACTION.READ } },
-  { path: "/workflow", name: "我的工作流", icon: <PlayCircleOutlined />, permission: { resource: RESOURCE.PROJECT, action: ACTION.READ } },
   {
     path: "/invoices",
     name: "财务",
@@ -110,8 +106,6 @@ const MENU: MenuItem[] = [
       { path: "/statistics/overview", name: "总览", permission: { resource: RESOURCE.STATISTICS, action: ACTION.READ } },
       { path: "/statistics/aging", name: "账龄分析", permission: { resource: RESOURCE.STATISTICS, action: ACTION.READ } },
       { path: "/statistics/performance", name: "业务员业绩", permission: { resource: RESOURCE.STATISTICS, action: ACTION.READ } },
-      // 后端硬卡 ADMIN 角色, 这里用 OPERATION_LOG.READ(仅 ADMIN)做菜单隐藏
-      { path: "/statistics/workflow", name: "工作流概览", permission: { resource: RESOURCE.OPERATION_LOG, action: ACTION.READ } },
     ]
   },
   {
@@ -140,7 +134,6 @@ const MENU: MenuItem[] = [
     children: [
       { path: "/admin/dictionaries", name: "数据字典", permission: { resource: RESOURCE.DICTIONARY, action: ACTION.CREATE } },
       { path: "/admin/operation-logs", name: "操作日志", permission: { resource: RESOURCE.OPERATION_LOG, action: ACTION.READ } },
-      { path: "/admin/workflow-templates", name: "工作流模板", permission: { resource: RESOURCE.WORKFLOW_TEMPLATE, action: ACTION.CREATE } },
       // /admin/trash 走 trash 服务, 仅 ADMIN 可看全部; 用 ROLE.CREATE 代理(仅 ADMIN)
       { path: "/admin/trash", name: "回收站", permission: { resource: RESOURCE.ROLE, action: ACTION.CREATE } }
     ]
@@ -676,11 +669,6 @@ const CRUMB_LABEL: Record<string, string> = {
   dashboard: "工作台",
   customers: "客户管理",
   contracts: "合同管理",
-  projects: "项目管理",
-  workflow: "我的工作流",
-  "workflow/board": "工作流看板",
-  "statistics/workflow": "工作流概览",
-  "admin/workflow-templates": "工作流模板",
   "admin/trash": "回收站",
   invoices: "开票管理",
   payments: "回款管理",

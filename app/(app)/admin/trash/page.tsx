@@ -22,19 +22,15 @@ type TrashItem = {
 const ENTITY_LABEL: Record<string, string> = {
   Customer: "客户",
   Contract: "合同",
-  Project: "项目",
   Invoice: "发票",
-  Payment: "回款",
-  WorkflowTemplate: "工作流模板"
+  Payment: "回款"
 };
 
 const ENTITY_TONE: Record<string, string> = {
   Customer: "blue",
   Contract: "green",
-  Project: "orange",
   Invoice: "purple",
-  Payment: "gold",
-  WorkflowTemplate: "cyan"
+  Payment: "gold"
 };
 
 export default function TrashPage() {

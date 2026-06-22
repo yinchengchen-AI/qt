@@ -26,7 +26,6 @@ export function AttachmentList(props: {
   // 删除前回调(父组件先发 DELETE 请求,成功后再调 prop.onDeleted 让上层刷新)
   onDeleted?: (id: string) => void;
   // 自定义删除逻辑:返回 Promise;若提供则用它替代默认的 DELETE /api/files/{id}
-  // (例如任务抽屉需要走 /api/workflow-tasks/{taskId}/attachments/{attId})
   customDelete?: (item: AttachmentItem) => Promise<void>;
 }) {
   const { message } = AntdApp.useApp();

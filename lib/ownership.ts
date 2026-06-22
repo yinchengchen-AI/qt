@@ -11,7 +11,7 @@ export function ownerEq(user: SessionUser): { ownerUserId?: string } {
   return user.roleCode === "SALES" ? { ownerUserId: user.id } : {};
 }
 
-/** 跨一跳关系时的 ownerUserId 过滤(Project / Invoice / Payment 等经由 contract)。*/
+/** 跨一跳关系时的 ownerUserId 过滤(Invoice / Payment 等经由 contract)。*/
 export function ownerViaContract(user: SessionUser): { contract?: { ownerUserId: string } } {
   return user.roleCode === "SALES" ? { contract: { ownerUserId: user.id } } : {};
 }

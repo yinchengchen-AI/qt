@@ -43,7 +43,6 @@ export async function GET(req: Request) {
         aging,
         topCustomers,
         customerCount,
-        projectStats,
         contractSCs,
         invoiceSCs,
         paymentSCs,
@@ -56,12 +55,6 @@ export async function GET(req: Request) {
         getTopCustomers(user, "contract", 5),
         prisma.customer.count({
           where: { deletedAt: null, ...own } as Prisma.CustomerWhereInput,
-        }),
-        // project 是"当前状态快照",不按时间过滤(IN_PROGRESS / ACCEPTED 这些是当下事实)
-        prisma.project.groupBy({
-          by: ["status"],
-          where: { deletedAt: null, ...ownVia } as Prisma.ProjectWhereInput,
-          _count: { _all: true },
         }),
         // 合同按签订日期在范围内(与 overview.contractAmount 同口径)
         prisma.contract.groupBy({
@@ -128,13 +121,6 @@ export async function GET(req: Request) {
         distribution,
         agingBuckets: aging.buckets,
         customers: { total: customerCount, newThisMonth: newCusts },
-        projects: {
-          total: projectStats.reduce((s, x) => s + x._count._all, 0),
-          byStatus: projectStats.map((x) => ({
-            status: x.status,
-            count: x._count._all,
-          })),
-        },
         contracts: {
           byStatus: contractSCs.map((x) => ({
             status: x.status,
