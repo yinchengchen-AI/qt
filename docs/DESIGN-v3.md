@@ -185,8 +185,11 @@ enum MessageType { CONTRACT_PENDING_REVIEW CONTRACT_EXPIRING INVOICE_OVERDUE_PAY
 - `status ContractStatus @default(DRAFT)`
 - `ownerUserId String`、`reviewerId String?`、`reviewAt DateTime?`、`reviewComment String?`
 - `attachments Json`（`{id,name,url,mimeType,size,uploadedBy,uploadedAt}[]`）
+
 - `completionInvoiceRatio Decimal @default(0.95) @db.Decimal(4,2)`
 - 索引：`@@index([customerId])`、`@@index([status])`、`@@index([ownerUserId])`
+
+> **交付物附件**（2026-06 调整）：合同详情"交付物"tab 内直接上传实际交付文件（报告/证书/培训材料 等）作为交付物，不再使用结构化 JSON 清单。复用 `Attachment` 表 + MinIO，加 `isDeliverable Boolean @default(false)` 标记"合同交付物附件"（区别于通用"附件"tab）。上传/删除写权限仅对 **admin / 合同签订人 / 合同负责人** 开放（`server/storage/presign.ts: assertCanManageDeliverables`）。
 
 #### 4.2.6 `ContractReviewLog`
 - `contractId`、`reviewerId`、`action ReviewAction`、`comment String?`、`at DateTime @default(now()) @db.Timestamptz(6)`

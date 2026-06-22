@@ -16,6 +16,10 @@ const attachment = z.object({
   uploadedAt: z.string()
 });
 
+// 合同结构化交付物 (deliverables JSON) 已下线: 实际交付文件走 Attachment.isDeliverable
+// (合同详情"交付物"tab 内上传, 写权限仅 admin / 签订人 / 负责人)
+// 保留 DeliverableInput 类型别名避免老 import 报错; 实际 schema 不再使用
+
 export const contractCreateSchema = z.object({
   customerId: z.string().min(1, "请选择客户"),
   // 合同编号:改为手工录入,不再由系统按 Sequence 生成;
@@ -49,6 +53,7 @@ export const contractCreateSchema = z.object({
       })
     )
     .optional(),
+  // 合同结构化交付物 (deliverables JSON) 已下线; 实际交付文件走 Attachment.isDeliverable=true
   attachments: z.array(attachment).default([])
 });
 
@@ -70,5 +75,7 @@ export const lifecycleActionSchema = z.object({
 
 export type ContractCreateInput = z.infer<typeof contractCreateSchema>;
 export type ContractUpdateInput = z.infer<typeof contractUpdateSchema>;
+// 旧: 合同结构化交付物条目; 现已下线, 类型保留仅作占位以避免老 import 编译报错
+export type DeliverableInput = { id: string; name: string };
 export type ReviewActionInput = z.infer<typeof reviewActionSchema>;
 export type LifecycleActionInput = z.infer<typeof lifecycleActionSchema>;

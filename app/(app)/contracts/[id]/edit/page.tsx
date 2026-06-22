@@ -34,6 +34,7 @@ const PAYMENT_METHOD_OPTIONS = [
   { value: "BY_QUARTER", label: "按季" }
 ];
 
+
 export default function EditContractPage() {
   const { data: session } = useSession();
   const params = useParams();
@@ -112,7 +113,8 @@ export default function EditContractPage() {
             startDate: data.startDate ? new Date(data.startDate) : undefined,
             endDate: data.endDate ? new Date(data.endDate) : undefined,
             totalAmount: data.totalAmount ? Number(data.totalAmount) : undefined,
-            taxRate: data.taxRate ? Number(data.taxRate) : 0.06
+            taxRate: data.taxRate ? Number(data.taxRate) : 0.06,
+            // 合同结构化交付物 (deliverables) 已下线; 实际交付文件走 Attachment.isDeliverable
           }}
           onFinish={async (values) => {
             // 新上传的(从 ProFormUploadButton):[{ uid, name, status, response: { id, ... } }]
@@ -127,6 +129,7 @@ export default function EditContractPage() {
               signDate: toIsoDateTime(values.signDate),
               startDate: toIsoDateTime(values.startDate),
               endDate: toIsoDateTime(values.endDate),
+              // 合同结构化交付物 (deliverables) 已下线; 实际交付文件走 Attachment.isDeliverable
               attachments: merged
             };
             delete (payload as Record<string, unknown>).attachments_uploads;

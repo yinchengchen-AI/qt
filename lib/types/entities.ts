@@ -18,6 +18,19 @@ export type InstallmentPhase = {
   condition?: string;
 };
 
+// 合同交付物: 服务方承诺的成果(报告 / 证书 / 培训材料 等).
+// 列表由前端编辑器维护, 存为 Contract.deliverables (JSONB).
+// 详情页与回款"关联交付物"展示用.
+export type DeliverableItem = {
+  id: string;
+  name: string;
+  type?: string;
+  dueDate?: string;
+  quantity?: number;
+  unit?: string;
+  remark?: string;
+};
+
 export type Contract = {
   id: string;
   contractNo: string;
@@ -36,7 +49,12 @@ export type Contract = {
   status: string;
   attachments: AttachmentSnapshot[];
   installmentPlan: InstallmentPhase[] | null;
-  signerId: string | null;
+  // 合同交付物清单; 不存时为空数组 (服务层兜底)
+  deliverables: DeliverableItem[];
+  // 签订人 / 负责人: 后端 getContract 直接透出 Prisma 字段, 用于"交付物附件管理"权限判断
+  // (useCanManageContractDeliverables: admin / 签订人 / 负责人 三者之一)
+  signerId: string;
+  ownerUserId: string;
   reviewComment: string | null;
   reviewerId: string | null;
   reviewAt: string | null;
@@ -82,6 +100,18 @@ export type Invoice = {
   status: string;
   attachments: AttachmentSnapshot[];
   invoice: Invoice | null;
+  // 关联合同"上下文"(后端 getPayment / listPayments 已带出); 详情页"关联合同"展示合同号/标题/客户/服务类型/金额
+  // 列表场景合同号/标题/服务类型用于"合同"列渲染; 不含 deliverables — 交付物仅在合同管理侧展示
+  contract?: {
+    contractNo: string;
+    title?: string | null;
+    customerName?: string | null;
+    serviceType?: string | null;
+    totalAmount?: string | null;
+    status?: string | null;
+    paymentMethod?: string | null;
+    signDate?: string | null;
+  } | null;
 };
 
 export type Payment = {
@@ -106,6 +136,18 @@ export type Payment = {
   reconciledAt: string | null;
   attachments: AttachmentSnapshot[];
   invoice: Invoice | null;
+  // 关联合同"上下文"(后端 getPayment / listPayments 已带出); 详情页"关联合同"展示合同号/标题/客户/服务类型/金额
+  // 列表场景合同号/标题/服务类型用于"合同"列渲染; 不含 deliverables — 交付物仅在合同管理侧展示
+  contract?: {
+    contractNo: string;
+    title?: string | null;
+    customerName?: string | null;
+    serviceType?: string | null;
+    totalAmount?: string | null;
+    status?: string | null;
+    paymentMethod?: string | null;
+    signDate?: string | null;
+  } | null;
 };
 
 export type Customer = {

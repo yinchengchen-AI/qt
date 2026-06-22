@@ -201,6 +201,7 @@ export async function getContract(user: SessionUser, id: string) {
       reviewerId: l.reviewerId,
       reviewerName: nameById.get(l.reviewerId) ?? ""
     }))
+    // 合同结构化交付物 (JSON) 已下线, 详情 tab 内上传实际交付文件
   };
 }
 
@@ -264,6 +265,7 @@ export async function createContract(user: SessionUser, input: ContractCreateInp
         ownerUserId,
         remark: input.remark ?? null,
         installmentPlan: (input.installmentPlan ?? null) as Prisma.InputJsonValue,
+        // 合同结构化交付物 (JSON) 已下线; 实际交付文件走 Attachment.isDeliverable
         status: "DRAFT",
         attachments: [] as unknown as Prisma.InputJsonValue,
         createdById: user.id,
@@ -324,7 +326,7 @@ export async function updateContract(user: SessionUser, id: string, input: Contr
       ? await resolveAttachmentSnapshots(input.attachments, id, tx)
       : undefined;
     try {
-      return await tx.contract.update({
+      const updated = await tx.contract.update({
       where: { id },
         data: {
           ...input,
@@ -336,10 +338,12 @@ export async function updateContract(user: SessionUser, id: string, input: Contr
           taxAmount,
           amountExcludingTax,
           installmentPlan: input.installmentPlan as Prisma.InputJsonValue,
+          // 合同结构化交付物 (JSON) 已下线, PATCH 不再处理 deliverables 字段
           attachments,
           updatedById: user.id
         }
       });
+      return updated;
     } catch (e) {
       // 同 createContract: 并发把 contractNo 抢走时把 P2002 转 422
       if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === "P2002") {
@@ -501,6 +505,16 @@ export async function lifecycleContract(
 // P11: 合同 360 度视图
 // =====================================================
 export type ContractOverview = {
+  // 合同交付物清单(从 Contract.deliverables 透出)
+  deliverables: Array<{
+    id: string;
+    name: string;
+    type?: string;
+    dueDate?: string;
+    quantity?: number;
+    unit?: string;
+    remark?: string;
+  }>;
   invoices: Array<{
     id: string;
     invoiceNo: string;
@@ -523,6 +537,16 @@ export type ContractOverview = {
     comment: string | null;
     at: string;
   }>;
+  // 合同交付物附件清单 (扁平列表; 已软删的附件不出现)
+  // 来自合同详情"交付物"tab 的上传, 写权限仅 admin / 签订人 / 负责人
+  deliverableAttachments: Array<{
+    id: string;
+    name: string;
+    mimeType: string;
+    size: number;
+    uploadedBy: string;
+    uploadedAt: string;
+  }>;
   totals: {
     invoiceCount: number;
     paymentCount: number;
@@ -541,7 +565,7 @@ export async function getContractOverview(
   const c = await prisma.contract.findFirst({ where: { id: contractId, deletedAt: null, ...ownerEq(user) } });
   if (!c) throw new ApiError(ERROR_CODES.NOT_FOUND, "合同不存在", 404);
 
-  const [invoices, payments, reviewLogs] = await Promise.all([
+  const [invoices, payments, reviewLogs, deliverableAttachments] = await Promise.all([
     prisma.invoice.findMany({
       where: { contractId, deletedAt: null, ...(ownerViaContract(user) as Prisma.InvoiceWhereInput) },
       orderBy: { applyDate: "desc" }
@@ -554,6 +578,11 @@ export async function getContractOverview(
       where: { contractId },
       orderBy: { at: "desc" },
       take: 50
+    }),
+    // 交付物附件: contractId 过滤 + 软删过滤 + 仅 isDeliverable=true
+    prisma.attachment.findMany({
+      where: { contractId, deletedAt: null, isDeliverable: true },
+      orderBy: { uploadedAt: "desc" }
     })
   ]);
 
@@ -565,7 +594,21 @@ export async function getContractOverview(
   let paidAmount = 0;
   for (const p of payments) if (p.status === "CONFIRMED" || p.status === "RECONCILED") paidAmount += Number(p.amount);
 
+  // 交付物附件扁平列表 (按 uploadedAt 倒序)
+  const deliverableAttachmentList: Array<{ id: string; name: string; mimeType: string; size: number; uploadedBy: string; uploadedAt: string }> = deliverableAttachments.map((a) => ({
+    id: a.id,
+    name: a.originalName,
+    mimeType: a.mimeType,
+    size: a.size,
+    uploadedBy: a.uploadedById,
+    uploadedAt: a.uploadedAt.toISOString()
+  }));
+
   return {
+    // 合同交付物清单透出; DB null 时回退空数组, 详情页 + 回款关联展示都用得到
+    // 合同结构化交付物清单 (JSON) 已下线, 改为详情 tab 内上传实际交付文件
+    deliverables: [],
+    deliverableAttachments: deliverableAttachmentList,
     invoices: invoices.map((i) => ({
       id: i.id,
       invoiceNo: i.invoiceNo,

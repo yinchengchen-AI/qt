@@ -53,7 +53,11 @@ const messages: Record<Locale, Record<string, string>> = {
     "status.CONFIRMED": "已确认",
     "status.RECONCILED": "已对账",
     "status.REFUNDED": "已退款",
-    "status.CANCELLED": "已取消"
+    "status.CANCELLED": "已取消",
+    "contract.deliverable.attachment": "交付物附件",
+    "contract.deliverable.uploadHint": "上传",
+    "contract.deliverable.manageHint": "仅管理员 / 签订人 / 负责人可管理",
+    "contract.deliverable.emptyAttachments": "暂无上传文件"
   },
   "en-US": {
     "menu.dashboard": "Dashboard",
@@ -103,12 +107,22 @@ const messages: Record<Locale, Record<string, string>> = {
     "status.CONFIRMED": "Confirmed",
     "status.RECONCILED": "Reconciled",
     "status.REFUNDED": "Refunded",
-    "status.CANCELLED": "Cancelled"
+    "status.CANCELLED": "Cancelled",
+    "contract.deliverable.attachment": "Deliverable attachments",
+    "contract.deliverable.uploadHint": "Upload",
+    "contract.deliverable.manageHint": "Only admin / signer / owner can manage",
+    "contract.deliverable.emptyAttachments": "No files uploaded yet"
   }
 };
 
 export function getT(locale: Locale = "zh-CN") {
   return (key: string): string => messages[locale]?.[key] ?? messages["zh-CN"][key] ?? key;
+}
+
+// 客户端 hook: 当前默认 zh-CN, locale 切换留给后续 zustand 接入
+// (现阶段 i18n.ts 注释提到 zustand 但还没接, 详情页先按 zh-CN 渲染)
+export function useT(): (key: string) => string {
+  return getT("zh-CN");
 }
 
 export const SUPPORTED_LOCALES: Locale[] = ["zh-CN", "en-US"];

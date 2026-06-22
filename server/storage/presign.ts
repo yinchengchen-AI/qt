@@ -30,6 +30,9 @@ export type PresignUploadInput = {
   invoiceId?: string | null;
   uploadedById: string;
   assetId?: string | null;   // v1 标书素材库新增
+  // 合同交付物附件标记 (true = 这是合同"交付物"tab 的实际交付文件);
+  // 写权限仅 admin / 合同签订人 / 合同负责人 (assertCanManageDeliverables)
+  isDeliverable?: boolean;
 };
 
 export type PresignUploadResult = {
@@ -38,6 +41,45 @@ export type PresignUploadResult = {
   objectKey: string;
   expiresAt: string; // ISO
 };
+
+// 交付物附件写权限: 管理员 / 合同签订人 / 合同负责人 三者之一.
+// 在 presignUpload 与 softDeleteAttachment 复用, 行为集中.
+// 传 contractId 才能校验; 调用方应保证 contractId 存在 (来自 Attachment.contractId).
+async function assertCanManageDeliverables(
+  userId: string,
+  contractId: string | null
+): Promise<void> {
+  if (!contractId) {
+    throw new ApiError(
+      ERROR_CODES.VALIDATION_FAILED,
+      "交付物附件必须关联到具体合同 (contractId 缺失)",
+      422
+    );
+  }
+  const [contract, user] = await Promise.all([
+    prisma.contract.findUnique({
+      where: { id: contractId },
+      select: { ownerUserId: true, signerId: true, deletedAt: true }
+    }),
+    prisma.user.findUnique({
+      where: { id: userId },
+      select: { role: { select: { code: true } } }
+    })
+  ]);
+  if (!contract || contract.deletedAt) {
+    throw new ApiError(ERROR_CODES.NOT_FOUND, "合同不存在或已删除", 404);
+  }
+  const isAdmin = user?.role?.code === "ADMIN";
+  const isSigner = contract.signerId === userId;
+  const isOwner = contract.ownerUserId === userId;
+  if (!isAdmin && !isSigner && !isOwner) {
+    throw new ApiError(
+      ERROR_CODES.FORBIDDEN,
+      "仅管理员/签订人/负责人可管理交付物附件",
+      403
+    );
+  }
+}
 
 export async function presignUpload(input: PresignUploadInput): Promise<PresignUploadResult> {
   if (!isAllowedMimeType(input.mimeType)) {
@@ -66,6 +108,13 @@ export async function presignUpload(input: PresignUploadInput): Promise<PresignU
   // 先写 Attachment 记录,拿到 cuid 作为 objectKey 一部分
   // 这样下载时直接按 id 查即可,objectKey 永远从 DB 出,不会因前端篡改而越权
   const now = new Date();
+  // 交付物附件写权限校验: 必须在 contractId 存在的前提下, 用户是 admin / 签订人 / 负责人
+  // 非交付物附件 (isDeliverable=false) 跳过此校验, 走 ROLE_PERMISSIONS 兜底
+  const isDeliverable = input.isDeliverable === true;
+  if (isDeliverable) {
+    await assertCanManageDeliverables(input.uploadedById, input.contractId ?? null);
+  }
+
   const att = await prisma.attachment.create({
     data: {
       objectKey: "placeholder", // 下面立即覆盖
@@ -76,7 +125,8 @@ export async function presignUpload(input: PresignUploadInput): Promise<PresignU
       uploadedById: input.uploadedById,
       contractId: input.contractId ?? null,
       invoiceId: input.invoiceId ?? null,
-      assetId: input.assetId ?? null   // v1 新增
+      assetId: input.assetId ?? null,   // v1 新增
+      isDeliverable
     }
   });
   const yyyy = now.getUTCFullYear();
@@ -206,7 +256,17 @@ export async function softDeleteAttachment(attachmentId: string, userId: string)
   if (!att || att.deletedAt) {
     throw new ApiError(ERROR_CODES.NOT_FOUND, "附件不存在", 404);
   }
-  // 鉴权:上传者本人 / 合同 owner / 发票 applicant / 发票所属合同 owner / admin
+  // 交付物附件 (isDeliverable=true): admin / 合同签订人 / 合同负责人 三者之一才能删
+  // 走 assertCanManageDeliverables 复用同一份鉴权逻辑
+  if (att.isDeliverable) {
+    await assertCanManageDeliverables(userId, att.contractId);
+    await prisma.attachment.update({
+      where: { id: attachmentId },
+      data: { deletedAt: new Date() }
+    });
+    return;
+  }
+  // 非交付物附件: 沿用旧规则 — 上传者本人 / 合同 owner / 发票 applicant / 发票所属合同 owner / admin
   if (att.uploadedById !== userId) {
     const u = await prisma.user.findUnique({
       where: { id: userId },

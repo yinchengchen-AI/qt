@@ -1,6 +1,7 @@
 "use client";
 import { ProCard, ProDescriptions, ProTable } from "@ant-design/pro-components";
-import { App as AntdApp, Button, Card, Col, Empty, Row, Space, Statistic, Tabs, Tag } from "antd";
+import { Alert, App as AntdApp, Button, Card, Col, Divider, Empty, Row, Space, Statistic, Tabs, Tag, Typography } from "antd";
+import { CloudUploadOutlined, DeleteOutlined, FilePdfOutlined } from "@ant-design/icons";
 import { useParams, useRouter } from "next/navigation";
 import type { Contract as ContractEntity } from "@/lib/types/entities";
 import type { BillingStatus } from "@/types/enums";
@@ -12,14 +13,18 @@ import { PageHeader } from "@/components/page-header";
 import { DetailPageSkeleton } from "@/components/detail-page-skeleton";
 import { StatusTag } from "@/components/status-tag";
 import { useActionCall } from "@/lib/use-action-call";
-import { DeleteOutlined, FilePdfOutlined } from "@ant-design/icons";
 import { openPrintWindow } from "@/lib/print-client";
 import { CurrencyCell, DateTimeCell, PercentCell } from "@/components/table-cells";
-import { AttachmentList } from "@/components/file/attachment-list";
+import { AttachmentList, type AttachmentItem } from "@/components/file/attachment-list";
+import { PreviewableProFormUploadButton as UploadButton } from "@/components/file/pro-form-upload-button";
+import { proCustomRequest } from "@/lib/upload-client";
 import { useDict } from "@/lib/dict-client";
 import { useUserName } from "@/lib/user-lookup";
 import { PAYMENT_METHOD_MAP, SERVICE_TYPE_MAP, REVIEW_ACTION_MAP, BILLING_STATUS_MAP } from "@/lib/enum-maps";
 import { useResponsive } from "@/lib/use-breakpoint";
+import { useT } from "@/lib/i18n";
+
+const { Text } = Typography;
 
 const REVIEW_ACTION_TONE: Record<string, string> = {
   SUBMIT:    "processing",
@@ -34,12 +39,36 @@ const REVIEW_ACTION_TONE: Record<string, string> = {
 
 const DESC_COL = { xs: 1, sm: 1, md: 2, lg: 2, xl: 3 } as const;
 
+type DeliverableAttachment = {
+  id: string;
+  name: string;
+  mimeType: string;
+  size: number;
+  uploadedBy: string;
+  uploadedAt: string;
+};
+
 type Overview = {
+  // 合同结构化交付物 (JSON 清单) 已下线; 留空数组做兼容占位
+  deliverables: Array<{ id: string; name: string; type?: string; dueDate?: string; quantity?: number; unit?: string; remark?: string }>;
+  // 合同交付物附件 (扁平列表, 仅 isDeliverable=true 的附件); 详情 tab 内上传
+  deliverableAttachments: DeliverableAttachment[];
   invoices: Array<{ id: string; invoiceNo: string; status: string; amount: string; applyDate: string; actualIssueDate: string | null }>;
   payments: Array<{ id: string; paymentNo: string; status: string; amount: string; receiveDate: string }>;
   reviewLogs: Array<{ id: string; action: string; reviewerId: string; comment: string | null; at: string }>;
   totals: { invoiceCount: number; paymentCount: number; totalAmount: number; invoicedAmount: number; paidAmount: number; billingStatus: BillingStatus };
 };
+
+// 交付物附件写权限: admin / 合同签订人 / 合同负责人
+// 跟 server/storage/presign.ts: assertCanManageDeliverables 行为一致
+function useCanManageContractDeliverables(contract: ContractEntity | undefined): boolean {
+  const { data: session } = useSession();
+  const role = (session?.user as { roleCode?: string } | undefined)?.roleCode;
+  if (role === "ADMIN") return true;
+  const me = (session?.user as { id?: string } | undefined)?.id;
+  if (!me || !contract) return false;
+  return contract.signerId === me || contract.ownerUserId === me;
+}
 
 function ReviewerName({ id }: { id: string }) {
   const name = useUserName(id, "—");
@@ -49,6 +78,108 @@ function ReviewerName({ id }: { id: string }) {
 function SignerName({ id }: { id: string | null | undefined }) {
   const name = useUserName(id, "—");
   return <span>{name}</span>;
+}
+
+// 合同交付物 tab: 合同实际交付的文件 (报告 / 证书 / 培训材料 等) 全部在详情页内上传
+// 不再有结构化清单; canManage 控制上传 / 删除按钮 (admin / 合同签订人 / 合同负责人)
+function DeliverablesTab({
+  id,
+  contract,
+  overview,
+  onRefresh
+}: {
+  id: string;
+  contract: ContractEntity;
+  overview: Overview | undefined;
+  onRefresh: () => void;
+}) {
+  const t = useT();
+  const { message } = AntdApp.useApp();
+  const canManage = useCanManageContractDeliverables(contract);
+  const attachments = overview?.deliverableAttachments ?? [];
+
+  const items: AttachmentItem[] = attachments.map((a) => ({
+    id: a.id,
+    name: a.name,
+    mimeType: a.mimeType,
+    size: a.size
+  }));
+
+  const handleDelete = async (item: AttachmentItem) => {
+    const res = await fetch(`/api/files/${item.id}`, { method: "DELETE", credentials: "include" });
+    const j = await res.json();
+    if (j.code !== 0) throw new Error(j.message || "删除失败");
+    void message.success("已删除");
+    onRefresh();
+  };
+
+  // 交付物附件上传: 包一层 customRequest, 完成后调 onRefresh 刷新列表
+  // antd Upload 的 options 类型较复杂, 用 unknown 接收再窄化为最小子集; proCustomRequest 内部用 any 透传
+  const customRequest = (options: unknown): void => {
+    const opts = options as { file?: File; onSuccess?: (response: unknown) => void; onError?: (err: Error) => void };
+    const file = opts?.file;
+    if (!file) {
+      opts?.onError?.(new Error("空文件"));
+      return;
+    }
+    const inner = proCustomRequest({ contractId: id, isDeliverable: true });
+    void (async () => {
+      try {
+        await new Promise<void>((resolve, reject) => {
+          // 包装 onSuccess/onError, 走完之后调外层回调
+          inner({
+            file,
+            onSuccess: (res: unknown) => { opts?.onSuccess?.(res); resolve(); },
+            onError: (err: Error) => { opts?.onError?.(err); reject(err); }
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any -- 透传给 proCustomRequest (内部用 any options)
+          } as any);
+        });
+        void message.success("已上传");
+        onRefresh();
+      } catch (e) {
+        void message.error((e as Error).message || "上传失败");
+      }
+    })();
+  };
+
+  return (
+    <ProCard>
+      {!canManage ? (
+        <Alert
+          type="info"
+          showIcon
+          style={{ marginBottom: 12 }}
+          message={t("contract.deliverable.manageHint")}
+        />
+      ) : null}
+      <AttachmentList
+        items={items}
+        allowDelete={canManage}
+        allowPreview
+        showHeader={items.length > 0}
+        emptyText={t("contract.deliverable.emptyAttachments")}
+        customDelete={handleDelete}
+      />
+      {canManage ? (
+        <div style={{ marginTop: 12 }}>
+          <UploadButton
+            name="deliverable_upload"
+            label={
+              <Space size={4}>
+                <CloudUploadOutlined />
+                <span>{t("contract.deliverable.uploadHint")}</span>
+              </Space>
+            }
+            max={20}
+            fieldProps={{
+              name: "file",
+              customRequest
+            }}
+          />
+        </div>
+      ) : null}
+    </ProCard>
+  );
 }
 
 export default function ContractDetailPage() {
@@ -190,6 +321,11 @@ const handleDelete = () => {
           ]} />
         </ProCard>
       )
+    },
+    {
+      key: "deliverables",
+      label: <span>交付物 ({overview?.deliverableAttachments.length ?? 0})</span>,
+      children: <DeliverablesTab id={id} contract={contract} overview={overview} onRefresh={mutate} />
     },
     {
       key: "invoices",

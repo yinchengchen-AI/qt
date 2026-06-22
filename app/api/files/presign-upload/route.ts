@@ -1,5 +1,5 @@
 // POST /api/files/presign-upload
-// body: { filename, mimeType, size, contractId?, invoiceId?, assetId? }
+// body: { filename, mimeType, size, contractId?, invoiceId?, assetId?, isDeliverable? }
 // 鉴权 + 校验 + 创建 Attachment 记录 + 返回 PUT 预签名 URL
 import { ok, err } from "@/lib/api";
 import { runWithRequestContext } from "@/lib/request-context";
@@ -30,6 +30,8 @@ export async function POST(req: Request) {
         contractId: body.contractId ?? null,
         invoiceId: body.invoiceId ?? null,
         assetId: body.assetId ?? null, // v1 新增
+        // 合同交付物附件标记; 落库前 server/storage/presign.ts 校验 admin / 签订人 / 负责人
+        isDeliverable: body.isDeliverable === true,
         uploadedById: user.id,
       });
       return ok(result);

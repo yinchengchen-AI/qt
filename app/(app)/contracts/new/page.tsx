@@ -52,6 +52,9 @@ type ActiveUser = {
   name: string;
 };
 
+
+
+
 export default function NewContractPage() {
   const router = useRouter();
   const { message } = AntdApp.useApp();
@@ -98,6 +101,7 @@ export default function NewContractPage() {
               signDate: toIsoDateTime(values.signDate),
               startDate: toIsoDateTime(values.startDate),
               endDate: toIsoDateTime(values.endDate),
+              // 合同结构化交付物 (deliverables) 已下线; 实际交付文件走 Attachment.isDeliverable
               // attachments: 来自 ProFormUploadButton 的 customRequest 上传结果
               // 元素形状:{ uid, name, status, response: { id, name, mimeType, size, uploadedBy, uploadedAt } }
               attachments: (values.attachments ?? [])

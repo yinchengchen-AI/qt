@@ -157,6 +157,8 @@ model Contract {
   amountExcludingTax     Decimal   @db.Decimal(18, 2)
   paymentMethod          String // LUMP_SUM | BY_PHASE | BY_MONTH | BY_QUARTER
   installmentPlan        Json?
+  // 合同交付物不再以结构化 JSON 存; 实际交付文件走 Attachment.isDeliverable=true
+  // (admin / 签订人 / 负责人 三者之一 才能上传; 详见 server/storage/presign.ts assertCanManageDeliverables)
   status                 String    @default("DRAFT") // DRAFT | PENDING_REVIEW | EFFECTIVE | EXECUTING | COMPLETED | TERMINATED | EXPIRED
   ownerUserId            String
   signerId               String
@@ -431,6 +433,10 @@ model Attachment {
   invoice      Invoice?      @relation("InvoiceAttachments", fields: [invoiceId], references: [id], onDelete: SetNull)
   assetId      String?
   asset        CompanyAsset? @relation("AssetAttachments", fields: [assetId], references: [id], onDelete: SetNull)
+  // 合同交付物附件标记: true 表示该附件是合同详情"交付物"tab 上传的交付文件 (报告/证书/培训材料 等),
+  //   写权限仅 admin / 签订人 / 负责人 (assertCanManageDeliverables);
+  // false 表示合同通用附件 (走"附件"tab, 沿用 admin / 上传者 删除规则)
+  isDeliverable Boolean     @default(false)
   uploadedAt   DateTime      @default(now()) @db.Timestamptz(6)
   deletedAt    DateTime?     @db.Timestamptz(6)
 
@@ -438,6 +444,7 @@ model Attachment {
   @@index([invoiceId, deletedAt])
   @@index([uploadedById])
   @@index([assetId, deletedAt])
+  @@index([contractId, isDeliverable, deletedAt])
   @@index([deletedAt])
 }
 
