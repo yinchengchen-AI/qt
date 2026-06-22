@@ -13,7 +13,6 @@ import {
   WORKFLOW_PHASE_STATE_LABEL,
   WORKFLOW_PHASE_STATE_TONE,
   WORKFLOW_TASK_STATUS_SORT,
-  WORKFLOW_REVIEW_STATUS_MAP
 } from "@/lib/enum-maps";
 import { useResponsive } from "@/lib/use-breakpoint";
 
@@ -25,8 +24,6 @@ type KanbanTask = {
   code: string;
   status: "PENDING" | "IN_PROGRESS" | "COMPLETED" | "SKIPPED" | "BLOCKED";
   assigneeId: string | null;
-  requiresTwoStepReview: boolean;
-  reviewStatus: "REVIEWING" | "REVIEWED" | "APPROVED" | "REJECTED" | null;
   updatedAt: string;
 };
 
@@ -174,12 +171,6 @@ export default function WorkflowBoardPage() {
                           {WORKFLOW_TASK_STATUS_MAP[t.status]}
                         </Tag>
                         {t.code && <Tag style={{ margin: 0, fontSize: 11 }}>{t.code}</Tag>}
-                        {t.requiresTwoStepReview && (
-                          <Tag color="purple" style={{ margin: 0, fontSize: 11 }}>二审</Tag>
-                        )}
-                        {t.reviewStatus && (
-                          <Tag color="orange" style={{ margin: 0, fontSize: 11 }}>{WORKFLOW_REVIEW_STATUS_MAP[t.reviewStatus] ?? t.reviewStatus}</Tag>
-                        )}
                       </Space>
                       <Tooltip title={t.name}>
                         <div style={{ fontSize: 12, fontWeight: 500, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
