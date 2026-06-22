@@ -37,7 +37,22 @@ export async function listPayments(
     ...(ownerViaContract(user) as Prisma.PaymentWhereInput),
   };
   const [list, total] = await Promise.all([
-    prisma.payment.findMany({ where, orderBy: { receivedAt: "desc" }, skip: (page - 1) * pageSize, take: pageSize }),
+    // 关联合同只带出"上下文字段"(合同号/标题/客户/服务类型/金额), 列表"合同"列渲染用;
+    // 不带 deliverables — 交付物仅在合同管理侧展示, 回款不掺杂该业务.
+    prisma.payment.findMany({
+      where,
+      orderBy: { receivedAt: "desc" },
+      skip: (page - 1) * pageSize,
+      take: pageSize,
+      select: {
+        id: true, paymentNo: true, customerId: true, contractId: true, invoiceId: true,
+        amount: true, receivedAt: true, method: true, bankRefNo: true, bankName: true,
+        remark: true, status: true, recorderUserId: true, reconcileUserId: true,
+        reconciledAt: true, createdAt: true, updatedAt: true, createdById: true,
+        updatedById: true, deletedAt: true,
+        contract: { select: { contractNo: true, title: true, customerName: true, serviceType: true, totalAmount: true } }
+      }
+    }),
     prisma.payment.count({ where })
   ]);
   return { list, total, page, pageSize };
@@ -47,7 +62,12 @@ export async function getPayment(user: SessionUser, id: string) {
   requirePermission(user.roleCode, RESOURCE.PAYMENT, ACTION.READ);
   const p = await prisma.payment.findFirst({
     where: { id, deletedAt: null, ...(ownerViaContract(user) as Prisma.PaymentWhereInput) },
-    include: { invoice: { select: { id: true, invoiceNo: true, amount: true } } }
+    include: {
+      invoice: { select: { id: true, invoiceNo: true, amount: true } },
+      // 合同上下文(合同号/标题/客户/服务类型/金额), 详情页"关联合同"卡展示用;
+      // 不带 deliverables — 交付物属于合同管理范畴, 不在回款侧展示
+      contract: { select: { contractNo: true, title: true, customerName: true, serviceType: true, totalAmount: true, status: true, paymentMethod: true, signDate: true } }
+    }
   });
   if (!p) throw new ApiError(ERROR_CODES.NOT_FOUND, "回款不存在", 404);
   return p;

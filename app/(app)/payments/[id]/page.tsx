@@ -143,6 +143,23 @@ export default function PaymentDetailPage() {
           </ProCard>
         </>
       )}
+      <PageHeader level="section" title="关联合同" />
+      <ProCard>
+        {payment.contract ? (
+          <ProDescriptions column={DESC_COL} dataSource={payment.contract} columns={[
+            { title: "合同号", dataIndex: "contractNo" },
+            { title: "合同标题", dataIndex: "title" },
+            { title: "客户", dataIndex: "customerName" },
+            { title: "服务类型", dataIndex: "serviceType", render: (v: unknown) => (v as string) || "—" },
+            { title: "合同总额", dataIndex: "totalAmount", render: (v: unknown) => v ? <CurrencyCell value={v as string} /> : "—" },
+            { title: "付款方式", dataIndex: "paymentMethod", render: (v: unknown) => (v as string) || "—" },
+            { title: "签订日", dataIndex: "signDate", render: (v: unknown) => v ? <DateTimeCell value={v as string} /> : "—" },
+            { title: "合同状态", dataIndex: "status", render: (v: unknown) => v ? <StatusTag status={v as string} domain="contract" /> : "—" }
+          ]} />
+        ) : (
+          <div style={{ color: "#bfbfbf", padding: "12px 0" }}>—</div>
+        )}
+      </ProCard>
     </Page>
   );
 }

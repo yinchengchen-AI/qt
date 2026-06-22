@@ -18,11 +18,14 @@ import { useResponsive } from "@/lib/use-breakpoint";
 type Row = {
   id: string;
   paymentNo: string;
+  contractId: string;
   amount: string;
   method: string;
   receivedAt: string;
   bankRefNo: string;
   status: string;
+  // 关联合同"上下文"(后端 list 已带出); 仅供"合同"列渲染合同号/标题/服务类型, 不含 deliverables
+  contract?: { contractNo: string; title?: string | null; serviceType?: string | null } | null;
 };
 
 export default function PaymentsPage() {
@@ -102,6 +105,23 @@ export default function PaymentsPage() {
           },
           { title: "到账日", dataIndex: "receivedAt", search: false, valueType: "dateTime", width: 180, render: (_, r) => <DateTimeCell value={r.receivedAt} /> },
           { title: "银行流水号", dataIndex: "bankRefNo", search: false, width: 200 },
+          {
+            // 合同上下文: 合同号(可跳转) + 标题 + 服务类型; 不掺杂交付物
+            title: "合同",
+            dataIndex: ["contract", "contractNo"],
+            search: false,
+            width: 240,
+            render: (_: unknown, r: Row) => {
+              const c = r.contract;
+              if (!c) return <span style={{ color: "#bfbfbf" }}>—</span>;
+              return (
+                <div style={{ display: "flex", flexDirection: "column", lineHeight: 1.4 }}>
+                  <Link href={`/contracts/${r.contractId}`}>{c.contractNo}</Link>
+                  {c.title && <span style={{ fontSize: 12, color: "#666" }}>{c.title}</span>}
+                </div>
+              );
+            }
+          },
           {
             title: "状态",
             dataIndex: "status",
