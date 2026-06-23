@@ -8,11 +8,24 @@ export type ListRequestExtra = (params: ListParams) => Record<string, unknown> |
 export type ListResult<T> = { data: T[]; total: number; success: true };
 
 // 服务端 list 路由支持的标准过滤键;前端 ProTable 把这些键透传到 query。
-// customerType / serviceType 走 valueEnum 渲染,不在服务端过滤,故不在此清单。
-const KNOWN_KEYS = new Set([
+// 新增 key 时: (1) 确认对应 list 路由的 zod schema + service 都接受它;
+// (2) 同步加单测到 tests/lib/use-list-request.test.ts 锁住白名单, 防止回滚.
+// 已知: customerType 走 valueEnum 渲染 (code -> label), 同时也要在服务端过滤 (e.g. 客户列表),
+//      所以必须出现在此清单里.
+export const KNOWN_KEYS = new Set([
   "keyword",
   "status",
   "scale",
+  "customerType",
+  "industry",
+  // 地区级联: 前端 cascader 给的 path 拆成 4 个标量, 透传给后端
+  "province",
+  "city",
+  "district",
+  "town",
+  "ownerUserId",
+  "createdAtFrom",
+  "createdAtTo",
   "customerId",
   "contractId",
   "invoiceId"

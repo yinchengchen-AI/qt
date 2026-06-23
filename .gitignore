@@ -91,3 +91,7 @@ next-env.d.ts
 *.tmp
 *.orig
 *.rej
+# tmp_*.js / tmp_*.cjs 临时脚本 (含真实 DB 连接串, 万一被 git add . 会推到 origin)
+tmp_*.js
+tmp_*.cjs
+tmp_*.ts

@@ -14,19 +14,56 @@ import { ownerEq, ownerViaContract, parseStatusList } from "@/lib/ownership";
 
 export async function listCustomers(
   user: SessionUser,
-  params: { page: number; pageSize: number; keyword?: string; status?: string; scale?: string; customerType?: string }
+  params: {
+    page: number;
+    pageSize: number;
+    keyword?: string;
+    status?: string;
+    scale?: string;
+    customerType?: string;
+    industry?: string;
+    // 地区级联 (省/市/区/镇街), 都用 equals 精确匹配 (前端 cascader 给的就是 DB 里的 label)
+    province?: string;
+    city?: string;
+    district?: string;
+    town?: string;
+    ownerUserId?: string;
+    createdAtFrom?: string;
+    createdAtTo?: string;
+  }
 ) {
   requirePermission(user.roleCode, RESOURCE.CUSTOMER, ACTION.READ);
   const { page, pageSize, keyword } = params;
   const statusList = parseStatusList(params.status);
   const scaleList = parseStatusList(params.scale);
   const customerTypeList = parseStatusList(params.customerType);
+  const industryList = parseStatusList(params.industry);
+  // createdAt 范围: 接受 ISO 字符串或 yyyy-MM-dd; 解析失败时按 undefined 处理, 不影响其他条件
+  const fromDate = params.createdAtFrom ? new Date(params.createdAtFrom) : undefined;
+  const toDate = params.createdAtTo ? new Date(params.createdAtTo) : undefined;
+  const createdAtRange: Prisma.DateTimeFilter | undefined =
+    fromDate && !Number.isNaN(fromDate.getTime()) && toDate && !Number.isNaN(toDate.getTime())
+      ? { gte: fromDate, lte: toDate }
+      : fromDate && !Number.isNaN(fromDate.getTime())
+      ? { gte: fromDate }
+      : toDate && !Number.isNaN(toDate.getTime())
+      ? { lte: toDate }
+      : undefined;
   const where: Prisma.CustomerWhereInput = {
     ...ownerEq(user),
     deletedAt: null,
     ...(statusList ? { status: { in: statusList } } : {}),
     ...(scaleList ? { scale: { in: scaleList } } : {}),
     ...(customerTypeList ? { customerType: { in: customerTypeList } } : {}),
+    ...(industryList ? { industry: { in: industryList } } : {}),
+    // 地区级联 (省/市/区/镇街): 前端 cascader 给的就是 DB label, 精确匹配
+    ...(params.province ? { province: { equals: params.province, mode: "insensitive" } } : {}),
+    ...(params.city ? { city: { equals: params.city, mode: "insensitive" } } : {}),
+    ...(params.district ? { district: { equals: params.district, mode: "insensitive" } } : {}),
+    ...(params.town ? { town: { equals: params.town, mode: "insensitive" } } : {}),
+    // 负责人: 精确匹配 (SALES 角色受 ownerEq 限制, 传别人 id 自然返回空集, 符合预期)
+    ...(params.ownerUserId ? { ownerUserId: params.ownerUserId } : {}),
+    ...(createdAtRange ? { createdAt: createdAtRange } : {}),
     ...(keyword
       ? {
           OR: [

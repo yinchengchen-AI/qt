@@ -9,10 +9,21 @@ const listQuery = z.object({
   page: z.coerce.number().int().min(1).default(1),
   pageSize: z.coerce.number().int().min(1).max(100).default(20),
   keyword: z.string().optional(),
-  // status / scale / customerType 接受单值或逗号分隔多值,如 ?status=LEAD,SIGNED&scale=LARGE,MEDIUM
+  // status / scale / customerType / industry 接受单值或逗号分隔多值,如 ?status=LEAD,SIGNED
   status: z.string().optional(),
   scale: z.string().optional(),
   customerType: z.string().optional(),
+  industry: z.string().optional(),
+  // 地区级联 (省/市/区/镇街): 前端 cascader 给的就是 DB label, equals 匹配
+  province: z.string().optional(),
+  city: z.string().optional(),
+  district: z.string().optional(),
+  town: z.string().optional(),
+  // 负责人: 精确匹配 user id
+  ownerUserId: z.string().optional(),
+  // 创建时间范围: ISO 字符串或 yyyy-MM-dd; 单边也行 (只传 from 或只传 to)
+  createdAtFrom: z.string().optional(),
+  createdAtTo: z.string().optional(),
 });
 
 export async function GET(req: Request) {

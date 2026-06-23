@@ -29,10 +29,21 @@ async function loadDict(): Promise<Record<string, string>> {
 
 const query = z.object({
   keyword: z.string().optional(),
-  // status / scale / customerType 接受单值或逗号分隔多值
+  // status / scale / customerType / industry 接受单值或逗号分隔多值
   status: z.string().optional(),
   scale: z.string().optional(),
   customerType: z.string().optional(),
+  industry: z.string().optional(),
+  // 地区级联 (省/市/区/镇街): equals 匹配
+  province: z.string().optional(),
+  city: z.string().optional(),
+  district: z.string().optional(),
+  town: z.string().optional(),
+  // 负责人: 精确匹配
+  ownerUserId: z.string().optional(),
+  // 创建时间范围: ISO 字符串或 yyyy-MM-dd
+  createdAtFrom: z.string().optional(),
+  createdAtTo: z.string().optional(),
 });
 
 export async function GET(req: Request) {
