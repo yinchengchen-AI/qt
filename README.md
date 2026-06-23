@@ -132,7 +132,7 @@ npm run seed                # 此时会找到 ADMIN, 写入 9 份工作流模板
 | `npm run create-admin` | CLI 创建账号,首登前必跑(`--employeeNo` / `--name` / `--email` / `--password` 必填) |
 | `npm run seed:dev-users` | dev 专用: 幂等 upsert 5 个测试账号 (admin/sales/finance/ops/expert, 一个 role 一个), 密码读 `DEV_QUICK_FILL_PASSWORD` |
 
-## 当前状态:v0.2.0(2026-06-12)移动端 + 自动登录 待发布
+## 当前状态:v0.3.0(2026-06-23)合同 7→3 状态机 + 项目/工作流模块删除 + 资产管理
 
 **核心模块**
 
@@ -170,6 +170,24 @@ npm run seed                # 此时会找到 ADMIN, 写入 9 份工作流模板
 - **docs(review)**:落盘 `docs/部署前代码审查 — qt-biz v0.1.0.md`,3 P0 阻断 + 4 P1 风险全部修复
 
 ## 最近更新
+
+### v0.3.0(2026-06-23)合同 7→3 状态机 + 项目/工作流模块删除 + 资产管理
+
+- **chore(workflow)**:彻底删除项目管理和工作流引擎模块 — Project / WorkflowTemplate / WorkflowStage / WorkflowTask / WorkflowTaskInstance 五张表 DROP,5 个 dict 类别 `PROJECT_STATUS` 移除;12 个 dead 路由改 410 Gone;`action` 8→5;PR-1 + PR-2 + PR-2.1 三批共清掉 ~50 个 dead 字段/路由/文件
+- **refactor(contract)**:合同状态机 7 态 → 3 态 — DRAFT / ACTIVE / CLOSED。SQL 迁移带断言(失败会回滚)+ 备份到 `_Contract_status_simplify_bak`;`pnpm migrate:contract-status-dict` 软停用 6 旧 code + upsert 3 新 code。4668 合同一次性收敛(524 ACTIVE / 4109 CLOSED / 35 DRAFT)
+- **feat(contract)**:合同自动状态机 — `contract-auto-publish`(DRAFT 35 字段 + 客户已签 → ACTIVE)和 `contract-auto-complete`(ACTIVE 524 + 止期到 → CLOSED)两个 cron job 落地;部署后跑了 33 + 347 个自动转换
+- **feat(customer)**:客户状态机 — 字段 `status` (ACTIVE/INACTIVE/PENDING) + 服务层规则;详情页 + 列表 status 字段
+- **feat(announcement,message)**:公告详情页 + 消息未读计数 + 事件总线收敛(替换 6 个内联 `emit`)
+- **feat(invoice,payment)**:发票/回款详情页用 enum map 显示中文标签,`INVOICE_STATUS_MAP` / `PAYMENT_STATUS_MAP` 收口
+- **feat(asset)**:公司资产管理 — 资产类型 picker 加人员证书/投标模板 2 张卡片;`PERSONNEL_CERT` / `TEMPLATE` schema + seed 6 条字典;presign upload 接受 `assetId` 走 `assets/{id}/` 路径;新增 `DELETE /api/assets/attachments/[id]` 软删路由
+- **feat(file)**:Invoice.attachments JSON 快照(避免 N+1 查 Attachments);Attachment 加 `isDeliverable` + `deliverableId` 索引 + `assetId` 索引
+- **feat(jobs)**:加 `/api/jobs/contract-expiry` 单跑端点(与 `/api/jobs/run-all` 对齐鉴权)
+- **fix(invoice)**:R-08 累计开票包含 DRAFT,避免超额创建草稿
+- **test(invoice,payment,contract)**:修 4 个 pre-existing 测试 bug + 客户状态机测试 + 软删除合同服务层单测
+- **chore(refactor)**:6 月业务收紧 — 删 `Project.budgetAmount` + `PaymentAllocation` + OperationLog 审计字段;6 个 ts-nocheck 全部清退
+- **feat(data)**:旧 FineUI MySQL 数据迁移 CLI 落盘(全量 + 字典优化 / region tree);`migrate:legacy*` scripts 系列
+
+**部署期 hotfix**(`6c3cd090`):Zod v4 `.partial()` 不允许在含 `.refine()` 的 schema 上 — `lib/validators/announcement.ts` 拆出 `announcementFields` 单点真理,create 用 refine,update 显式 optional;`20260626_invoice_attachments_json` 加 `IF NOT EXISTS` 幂等。详见 `docs/部署记录 — qt-biz v0.1.0 — Aliyun ECS.md` v0.3.0 节
 
 ### v0.2.0(2026-06-22)合同/项目收紧 + 业务纯化
 

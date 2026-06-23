@@ -310,3 +310,173 @@ $ docker exec qt-postgres psql -U qitai -d qt_biz -c \
 - **PDF 路由浏览器端真实验证**:curl 烟测确认路由存在(401),详情页 PDF 按钮需要在浏览器点开,确认中文/数字/日期渲染正常。
 - **Turbopack build 输出与 `next start` 兼容性**:Next.js 16 默认 `next build` 走 Turbopack。本次成功但属于"刚好兼容",若 Next.js 后续 minor 升级打破,需关注。
 - **v0.1.0 章节 6 的安全建议**(改 SSH 密钥、加 HTTPS、加 Sentry、加 rate limit)仍未落实,优先级随业务量走。
+
+# 部署记录 — qt-biz v0.3.0 — Aliyun ECS 杭州 (含 v0.2.0 → v0.3.0 增量)
+
+> **首部署**: 2026-06-12 (v0.1.0, `46a274b`)
+> **v0.2.0**: 2026-06-14 01:24-01:40 (`cdcb872`,squash 14→1)
+> **本次更新部署**: 2026-06-23 09:55-10:04 CST(Asia/Shanghai)
+> **HEAD 起点**: `eda893ba` (服务上次部署,2026-06-22 16:58)
+> **HEAD 终点**: `6c3cd090` (含本次部署期发现的 2 个修复)
+> **commit 增量**: 40 个 + 1 个部署期 hotfix commit (`6c3cd090`)
+> **服务模式**: 日常更新,一次 systemctl restart 切到新 build
+
+## 一、本次部署内容
+
+### 1.1 服务端起点 `eda893ba` → 本地 `ccab529c` 的 39 个 commit
+
+**重大重构**:
+- `chore(workflow): 彻底删除项目管理和工作流引擎模块` (`9a87c167`) — Project / WorkflowTemplate/Stage/Task/TaskInstance 5 张表 DROP
+- `refactor(contract): 数据层基线 — 7 态 enum 缩到 3 态 (DRAFT/ACTIVE/CLOSED)` (`318f444a`) + 一系列应用层同步
+- `feat(announcement,message): 公告详情页 + 消息未读计数 + 事件总线收敛` (`dacf0e64`)
+- `feat(customer,invoice,payment,contract): 客户状态机 + 附件 JSON 快照 + 合同/回款 UI 与测试` (`18660b8a`)
+- `feat(asset): 资产类型 picker + 附件上传` (一连串 asset commit)
+- `chore(refactor): 6 月业务收紧 - 删 Project.budgetAmount + PaymentAllocation + OperationLog 审计字段` (`0d493b0d`)
+
+**新增模块**:
+- 公司资产管理(ASSET 表 + PersonnelCert / Template 子类型)
+- 客户状态机(Customer.status 字段 + 服务层规则)
+- 公告详情页 + 消息未读计数 + 事件总线
+- 资产附件 + 资产附件删除路由
+
+**业务影响**:
+- **Project 模块物理删除**:4664 行项目数据从 DB 移除(种子库 demo 项目,生产 demo)
+- **Contract 状态机简化**:4668 合同从 7 态 (DRAFT/PENDING_REVIEW/EFFECTIVE/EXECUTING/SUSPENDED/COMPLETED/TERMINATED/EXPIRED) → 3 态 (DRAFT/ACTIVE/CLOSED)
+- 旧状态映射: EFFECTIVE/EXECUTING/SUSPENDED → ACTIVE; COMPLETED/TERMINATED/EXPIRED → CLOSED; DRAFT 不变
+- 旧 status 备份到 `_Contract_status_simplify_bak` 表
+- Dictionary 表旧 6 条软停用 (isActive=false),新 3 条 upsert
+- 1 个 SQL 迁移外加 1 个独立 `pnpm migrate:contract-status-dict` 脚本
+
+**对生产数据影响**:
+- 业务表行数 100% 保留(Customer 2094 / Contract 4668 / Invoice 4926 / Payment 5170)
+- 5 张 workflow/project 表 DROP,备份里有全部数据
+- 部署后 cron run-all 跑出合同自动转换:33 个 DRAFT → ACTIVE (auto-publish),347 个 ACTIVE → CLOSED (auto-complete) — 与合同状态机新逻辑一致
+- 最终状态: 210 ACTIVE / 4456 CLOSED / 2 DRAFT (总 4668)
+
+### 1.2 部署期 hotfix commit `6c3cd090`
+
+```
+fix(announcement,migrations): v0.3.0 部署期发现两个 build/migration 阻塞
+```
+
+修复两个真实生产问题(见第三节 G1/G2)。
+
+## 二、新增/修改的部署相关文件
+
+| 路径 | 操作 | 备注 |
+|---|---|---|
+| `lib/validators/announcement.ts` | **修改(热修)** | 第三节 G1 |
+| `prisma/migrations/20260626_invoice_attachments_json/migration.sql` | **修改(热修)** | 第三节 G2 |
+| 其余仓库代码 | 39 个 commit | 业务重构(已在 1.1 列) |
+| `/opt/qt/.next/` | 重 build | BUILD_ID=`IqOJc50IOI8TParPGV-sd` |
+
+## 三、踩坑与解决(本次部署期发现)
+
+### G1. Build 在 `/api/announcements/[id]` 收集页面数据时 Zod 抛错
+
+`pnpm build` 首轮 `✓ Compiled successfully in 59s` 后,`Collecting page data` 阶段报:
+
+```
+Error: .partial() cannot be used on object schemas containing refinements
+  at module evaluation (.next/server/chunks/[root-of-the-server]__09ibr-t._.js)
+Error: Failed to collect page data for /api/announcements/[id]
+```
+
+`lib/validators/announcement.ts` 把 `.refine(生效期止期≥起期)` 加在 `baseAnnouncementSchema` 上,然后 `announcementUpdateSchema = baseAnnouncementSchema.partial()`。Zod v4 禁止在含 `.refine()` 的 schema 上调用 `.partial()`(编译期硬限制)。
+
+**修复**: 拆出 `announcementFields` 单点真理,create schema 显式 `z.object(announcementFields).refine(...)`,update schema 显式把每个字段 `.optional()`(无 refine)。语义不变,类型安全。
+
+### G2. `20260626_invoice_attachments_json` 报 42701 (列已存在)
+
+`prisma migrate deploy` 跑到该迁移时:
+
+```
+Applying migration `20260626_invoice_attachments_json`
+Error: P3018
+Database error code: 42701
+Database error:
+ERROR: column "attachments" of relation "Invoice" already exists
+```
+
+服务端 DB 的 `Invoice.attachments` 列已存在(由之前的 v0.2.0 期间手工 `db push` 加过),数据全部 `[]`(NOT NULL 缺失但语义对)。迁移 `ALTER TABLE "Invoice" ADD COLUMN "attachments" JSONB NOT NULL DEFAULT '[]'` 不幂等。
+
+**修复**:
+1. 现场执行 `UPDATE "Invoice" SET attachments = '[]'::jsonb WHERE attachments IS NULL; ALTER TABLE "Invoice" ALTER COLUMN attachments SET NOT NULL; ALTER TABLE "Invoice" ALTER COLUMN attachments SET DEFAULT '[]'::jsonb;` (0 行受影响,列已正确)
+2. `prisma migrate resolve --applied 20260626_invoice_attachments_json`(DB 终态与迁移意图一致)
+3. **改迁移 SQL** 为 `ALTER TABLE "Invoice" ADD COLUMN IF NOT EXISTS "attachments" JSONB NOT NULL DEFAULT '[]';` (Postgres 9.6+ 支持),提交进仓库 — 后续 fresh DB 不会再撞
+4. 重新 `prisma migrate deploy` 一次过完剩下 2 个 06/27 迁移
+
+### G3. 服务端起点 `eda893ba` 不是 v0.2.0 文档起点 `cdcb872`
+
+v0.2.0 文档(`部署记录 — qt-biz v0.1.0 — Aliyun ECS.md`) 记录的部署终点是 `cdcb872`(2026-06-14)。但服务端实际 HEAD 是 `eda893ba`(2026-06-22 16:58,systemd Active 时间戳),中间 40 个 commit 没在文档里。**文档滞后于实际部署**。
+
+**修复**: 本次文档一次性把 v0.2.0 → v0.3.0 整段 commit 链记下来,后续 v0.3.0 之后要保持文档与生产 HEAD 同步(可以在 `deploy.sh` 末尾加 `git log -1 --oneline` 输出,作为下次 deploy 起点核对依据)。
+
+### G4. `prisma migrate status` 在 `git pull` 之前看到的 12 迁移数会误导
+
+服务端在 `eda893ba` 时 `prisma/migrations/` 只有 12 个,`prisma migrate status` 报 "Database schema is up to date!"。但 `git pull` 后会变 17 个,新迁移就出现了。
+
+**教训**: 永远在 `git pull` 之后才做 `prisma migrate status` / `prisma migrate deploy`,不要被 `git pull` 之前的"up to date"骗到。
+
+## 四、烟测通过
+
+```
+$ systemctl restart qt-app
+$ systemctl is-active qt-app
+active
+
+# 内部 localhost:3000
+login  : 200
+dashboard: 307 (expect 307)
+api/customers: 401 (expect 401)
+api/messages: 401 (expect 401)
+api/announcements: 401 (expect 401)
+
+# cron /api/jobs/run-all
+{"code":0,"data":{"at":"2026-06-23T02:03:55.563Z","results":[
+  {"job":"contract-expiring","created":0,"scanned":0,"durationMs":47},
+  {"job":"invoice-overdue","created":0,"scanned":4906,"durationMs":10936},
+  {"job":"customer-inactive","created":0,"scanned":2094,"durationMs":351},
+  {"job":"asset-expiring","created":0,"scanned":0,"updated":0,"durationMs":601},
+  {"job":"contract-expiry","created":0,"scanned":0,"updated":0,"durationMs":146},
+  {"job":"contract-auto-publish","created":33,"scanned":35,"updated":33,"durationMs":1947},
+  {"job":"contract-auto-complete","created":347,"scanned":524,"updated":347,"durationMs":8878},
+  {"job":"customer-status-suggest","created":0,"scanned":2094,"durationMs":798}
+],"source":"cron"}}
+
+# 外部 IP(走 nginx :80 反代)
+external login: 200
+external api/customers: 401 (expect 401)
+```
+
+**关键观察**:`contract-auto-publish` 33 / `contract-auto-complete` 347 — 合同状态机自动转换在 cron 跑出 380 个合同的状态变更,3 态收尾与设计一致。
+
+## 五、迁移表终态
+
+```
+17 migrations found in prisma/migrations
+All migrations have been successfully applied.
+```
+
+DB `_prisma_migrations` 新增 8 行(20260623 → 20260627),其中 20260626_invoice_attachments_json 是手工 `resolve --applied`(DB 终态与迁移意图一致,见 G2)。
+
+## 六、最终状态
+
+| 项 | 结果 |
+|---|---|
+| 服务端 HEAD | `6c3cd090` |
+| Next.js | 16.2.7 在 127.0.0.1:3000,systemd 托管,`active`,BUILD_ID=`IqOJc50IOI8TParPGV-sd` |
+| PostgreSQL | 16-alpine Docker,17 migrations applied,合同状态 3 态,Project/Workflow 表已 DROP |
+| MinIO | latest Docker,无变化,`Up 17h+ (healthy)` |
+| 业务表行数 | 100% 保留(Customer 2094 / Contract 4668 / Invoice 4926 / Payment 5170) |
+| 合同状态分布 | ACTIVE 210 / CLOSED 4456 / DRAFT 2 (cron 跑完 auto-publish + auto-complete) |
+| 系统管理数据 | 字典 CONTRACT_STATUS = 3 active + 6 软停用,5 角色 / 5 部门保留 |
+| 内存 | 1.6 GB / 3.5 GB(46%) |
+| 盘 | 23 GB / 49 GB(49%) |
+
+## 七、未做但建议跟进
+
+- **业务数据无真实客户**:Customer 2094 / Contract 4668 等都是 seed 进来的 demo,生产 demo 环境的特征。备份 5.7M,生产前需要清库。
+- **HTTPS / Sentry / rate limit / SSH 密钥**(v0.1.0 第六节列的 6 项)仍未落实。
+- **v0.2.0 文档更新一直未补**(G3) — 本次 v0.3.0 文档把整段 6/14 → 6/22 增量补齐,但仍缺 v0.2.0 单独的"v0.2.0 部署记录"。建议下一轮把它从本文件里拆出去,保持一节一版本。
+- **deploy.sh 没处理"列已存在"类幂等失败**(G2):可加一段 `prisma migrate status` 输出 + 5xx 异常自动 `resolve --applied` 兜底,人工 review 后再继续。但这是 v0.4+ 的事,本次没动。
