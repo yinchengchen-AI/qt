@@ -2,10 +2,11 @@
 // 安全注意: 调用方必须自行限制 rows 长度, 防止单次请求拉百万行导致 OOM
 import ExcelJS from "exceljs";
 
-// 导出路由单次请求允许的最大行数 (可通过 EXPORT_MAX_ROWS 调整, 生产建议 1000-5000)
+// 导出路由单次请求允许的最大行数 (可通过 EXPORT_MAX_ROWS 调整, 硬上限 10000 防止 OOM)
+// - 默认 5000: 覆盖常见 1k-5k 量级的列表导出; 真要再大就显式设 EXPORT_MAX_ROWS=10000
 export function exportMaxRows(): number {
-  const n = Number(process.env.EXPORT_MAX_ROWS ?? "1000");
-  return Number.isFinite(n) && n > 0 ? Math.min(n, 10_000) : 1000;
+  const n = Number(process.env.EXPORT_MAX_ROWS ?? "5000");
+  return Number.isFinite(n) && n > 0 ? Math.min(n, 10_000) : 5000;
 }
 
 export type ExcelColumn<T> = {

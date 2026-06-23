@@ -1,5 +1,5 @@
 // 锁住 #1 修复: /api/assets/export 用的是 assetExportQuerySchema (不是 list 的 schema),
-// 上限放宽到 10000, 默认 1000. 旧版 list schema pageSize.max(100) 会让导出 400.
+// 上限放宽到 10000, 默认 5000. 旧版 list schema pageSize.max(100) 会让导出 400.
 import { describe, it, expect } from "vitest";
 import {
   assetListQuerySchema,
@@ -7,9 +7,9 @@ import {
 } from "@/lib/validators/asset";
 
 describe("assetExportQuerySchema (导出路由专用)", () => {
-  it("默认 pageSize = 1000 (单次可批量导出)", () => {
+  it("默认 pageSize = 5000 (单次可批量导出, 与 lib/excel.ts 的 exportMaxRows 默认对齐)", () => {
     const r = assetExportQuerySchema.parse({});
-    expect(r.pageSize).toBe(1000);
+    expect(r.pageSize).toBe(5000);
     expect(r.page).toBe(1);
   });
 
@@ -18,8 +18,8 @@ describe("assetExportQuerySchema (导出路由专用)", () => {
     expect(r.pageSize).toBe(10000);
   });
 
-  it("允许 pageSize=1000 (历史默认值, 锁住回归)", () => {
-    // 旧版: 旧 list schema max(100) 拒绝这个值, 导致 /api/assets/export 一直 400
+  it("允许 pageSize=1000 (历史下限, 锁住回归)", () => {
+    // 默认已抬到 5000, 但 1000 仍允许 (下限), 锁住不能丢
     const r = assetExportQuerySchema.parse({ pageSize: "1000" });
     expect(r.pageSize).toBe(1000);
   });
@@ -60,14 +60,14 @@ describe("assetListQuerySchema (列表路由, 锁住 max=100 不被误改)", () 
 import { exportMaxRows } from "@/lib/excel";
 
 describe("assets/export 路由的入参解析 (修复 #1 锁住)", () => {
-  it("用 exportMaxRows() 默认值 (1000) 走 assetExportQuerySchema 不再 400", () => {
+  it("用 exportMaxRows() 默认值 (5000) 走 assetExportQuerySchema 不再 400", () => {
     // 旧版: 1000 > assetListQuerySchema.max(100), parse 直接抛 "Too big"
     // 新版: assetExportQuerySchema.max(10000), 这个调用一定能过
     const params = assetExportQuerySchema.parse({
       page: 1,
       pageSize: exportMaxRows(),
     });
-    expect(params.pageSize).toBe(1000);
+    expect(params.pageSize).toBe(5000);
     expect(params.page).toBe(1);
   });
 
@@ -92,6 +92,6 @@ describe("assets/export 路由的入参解析 (修复 #1 锁住)", () => {
     expect(params.status).toBe("VALID");
     expect(params.q).toBe("iso");
     expect(params.includeArchived).toBe(true);
-    expect(params.pageSize).toBe(1000);
+    expect(params.pageSize).toBe(5000);
   });
 });

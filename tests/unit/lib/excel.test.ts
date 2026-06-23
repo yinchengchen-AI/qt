@@ -11,8 +11,8 @@ const asLegacyBuf = (b: Buffer): Parameters<ExcelJS.Workbook["xlsx"]["load"]>[0]
   b as unknown as Parameters<ExcelJS.Workbook["xlsx"]["load"]>[0];
 
 describe("exportMaxRows", () => {
-  it("默认 1000", () => {
-    expect(exportMaxRows()).toBe(1000);
+  it("默认 5000 (1k 不再是上限, 默认已抬到 5k, 需要更大再显式设 EXPORT_MAX_ROWS)", () => {
+    expect(exportMaxRows()).toBe(5000);
   });
 
   it("接受环境变量", () => {
@@ -27,9 +27,9 @@ describe("exportMaxRows", () => {
     delete process.env.EXPORT_MAX_ROWS;
   });
 
-  it("非法值回退到 1000", () => {
+  it("非法值回退到 5000", () => {
     process.env.EXPORT_MAX_ROWS = "abc";
-    expect(exportMaxRows()).toBe(1000);
+    expect(exportMaxRows()).toBe(5000);
     delete process.env.EXPORT_MAX_ROWS;
   });
 });

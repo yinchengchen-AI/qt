@@ -183,7 +183,8 @@ export type AssetUpdateInput = z.infer<typeof assetUpdateSchema>;
 export type AssetListQuery = z.infer<typeof assetListQuerySchema>;
 
 // 导出专用: 复用列表的过滤条件, pageSize 上限放宽到 10000, 与其它 export 路由对齐
+// 默认 5000: 与 lib/excel.ts 的 exportMaxRows() 默认一致, 单次可拉 5k 行, 够用
 export const assetExportQuerySchema = assetListQuerySchema.extend({
-  pageSize: z.coerce.number().int().min(1).max(10000).default(1000)
+  pageSize: z.coerce.number().int().min(1).max(10000).default(5000)
 });
 export type AssetExportQuery = z.infer<typeof assetExportQuerySchema>;
