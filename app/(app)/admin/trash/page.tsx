@@ -1,10 +1,10 @@
 "use client";
 // P13: 回收站 — 查看和恢复已软删除的记录
 import useSWR from "swr";
-import { useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { App as AntdApp, Button, Empty, Popconfirm, Skeleton, Table, Tag, Typography } from "antd";
-import type { ColumnsType } from "antd/es/table";
+import { ProTable, type ProColumns } from "@ant-design/pro-components";
+import { App as AntdApp, Button, Empty, Popconfirm, Tag, Typography } from "antd";
 import { UndoOutlined } from "@ant-design/icons";
 import { Page } from "@/components/page";
 import { PageHeader } from "@/components/page-header";
@@ -40,7 +40,7 @@ export default function TrashPage() {
   const { data, isLoading, mutate } = useSWR<TrashItem[]>("/api/admin/trash");
   const [restoring, setRestoring] = useState<string | null>(null);
 
-  const handleRestore = async (entityType: string, id: string) => {
+  const handleRestore = useCallback(async (entityType: string, id: string) => {
     setRestoring(id);
     try {
       const res = await fetch("/api/admin/trash", {
@@ -60,59 +60,53 @@ export default function TrashPage() {
     } finally {
       setRestoring(null);
     }
-  };
+  }, [message, notification, mutate]);
 
-  const columns: ColumnsType<TrashItem> = [
-    {
-      title: "类型",
-      dataIndex: "entityType",
-      width: 120,
-      render: (t: string) => <Tag color={ENTITY_TONE[t]}>{ENTITY_LABEL[t] || t}</Tag>
-    },
-    {
-      title: "名称/编号",
-      dataIndex: "name",
-      ellipsis: true
-    },
-    {
-      title: "删除时间",
-      dataIndex: "deletedAt",
-      width: 180,
-      render: (v: string) => <Text type="secondary">{new Date(v).toLocaleString("zh-CN")}</Text>
-    },
-    {
-      title: "操作",
-      key: "actions",
-      width: 120,
-      render: (_, r) => (
-        <Popconfirm
-          title={`确定要恢复「${r.name}」吗？`}
-          onConfirm={() => handleRestore(r.entityType, r.id)}
-          okText="恢复"
-          cancelText="取消"
-        >
-          <Button
-            type="link"
-            size="small"
-            icon={<UndoOutlined />}
-            loading={restoring === r.id}
-            disabled={restoring !== null}
+  const columns: ProColumns<TrashItem>[] = useMemo(
+    () => [
+      {
+        title: "类型",
+        dataIndex: "entityType",
+        width: 120,
+        render: (_, r) => <Tag color={ENTITY_TONE[r.entityType]}>{ENTITY_LABEL[r.entityType] || r.entityType}</Tag>
+      },
+      {
+        title: "名称/编号",
+        dataIndex: "name",
+        ellipsis: true
+      },
+      {
+        title: "删除时间",
+        dataIndex: "deletedAt",
+        width: 180,
+        render: (_, r) => <Text type="secondary">{new Date(r.deletedAt).toLocaleString("zh-CN")}</Text>
+      },
+      {
+        title: "操作",
+        key: "actions",
+        width: 120,
+        render: (_, r) => (
+          <Popconfirm
+            title={`确定要恢复「${r.name}」吗？`}
+            onConfirm={() => handleRestore(r.entityType, r.id)}
+            okText="恢复"
+            cancelText="取消"
           >
-            恢复
-          </Button>
-        </Popconfirm>
-      )
-    }
-  ];
-
-  if (isLoading) {
-    return (
-      <Page>
-        <PageHeader title="回收站" subtitle="恢复已删除的数据" />
-        <Skeleton active />
-      </Page>
-    );
-  }
+            <Button
+              type="link"
+              size="small"
+              icon={<UndoOutlined />}
+              loading={restoring === r.id}
+              disabled={restoring !== null}
+            >
+              恢复
+            </Button>
+          </Popconfirm>
+        )
+      }
+    ],
+    [restoring, handleRestore]
+  );
 
   return (
     <Page>
@@ -121,22 +115,25 @@ export default function TrashPage() {
         subtitle="查看和恢复已删除的数据（客户/合同/项目/发票/回款/工作流模板）"
       />
 
-      {!data || data.length === 0 ? (
-        <Empty
-          description="回收站为空,暂无已删除的记录"
-          style={{ marginTop: 40 }}
-        >
-          <Button type="primary" onClick={() => router.back()}>返回</Button>
-        </Empty>
-      ) : (
-        <Table
-          rowKey={(r) => `${r.entityType}-${r.id}`}
-          columns={columns}
-          dataSource={data}
-          size={isMobile ? "small" : "middle"}
-          pagination={{ defaultPageSize: 20, showSizeChanger: false }}
-        />
-      )}
+      <ProTable<TrashItem>
+        rowKey={(r) => `${r.entityType}-${r.id}`}
+        columns={columns}
+        dataSource={data ?? []}
+        loading={isLoading}
+        search={false}
+        options={{ reload: () => mutate(), density: !isMobile, fullScreen: !isMobile }}
+        scroll={{ x: "max-content" }}
+        cardBordered={false}
+        sticky={isMobile}
+        pagination={{ defaultPageSize: 20, showSizeChanger: !isMobile, size: isMobile ? "small" : undefined }}
+        locale={{
+          emptyText: (
+            <Empty description="回收站为空,暂无已删除的记录" style={{ marginTop: 24 }}>
+              <Button type="primary" onClick={() => router.back()}>返回</Button>
+            </Empty>
+          )
+        }}
+      />
     </Page>
   );
 }

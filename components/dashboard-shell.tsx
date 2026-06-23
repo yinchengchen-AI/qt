@@ -36,6 +36,7 @@ import type { RoleCode } from "@/types/enums";
 import { ACTION, RESOURCE, type Action, type Resource } from "@/lib/permissions";
 import { useResponsive } from "@/lib/use-breakpoint";
 import { ROLE_LABEL } from "@/lib/status";
+import { useT } from "@/lib/i18n";
 
 const { Sider, Header, Content } = Layout;
 const { Text } = Typography;
@@ -186,6 +187,7 @@ function toAntdMenu(items: MenuItem[]): MenuProps["items"] {
 }
 
 export function DashboardShell({ user, children }: Props) {
+  const t = useT();
   const router = useRouter();
   const pathname = usePathname();
   const { token } = theme.useToken();
@@ -241,7 +243,7 @@ export function DashboardShell({ user, children }: Props) {
 
   const loadUnread = async () => {
     try {
-      const r = await fetch("/api/messages?page=1&pageSize=1&unread=true", { credentials: "include" });
+      const r = await fetch("/api/messages/unread-count", { credentials: "include" });
       const j = await r.json();
       if (j.code === 0) setUnread(j.data.unreadCount);
     } catch {
@@ -577,7 +579,7 @@ export function DashboardShell({ user, children }: Props) {
       </Layout>
 
       <Drawer
-        title="消息中心"
+        title={t("messages.title")}
         open={drawerOpen}
         onClose={() => setDrawerOpen(false)}
         // 移动端:从底部弹出,占满宽度,符合拇指可达
@@ -601,12 +603,12 @@ export function DashboardShell({ user, children }: Props) {
             }}
             style={{ color: token.colorPrimary, fontSize: 13 }}
           >
-            全部已读
+            {t("messages.markAllRead")}
           </a>
         }
       >
         {messages.length === 0 ? (
-          <Empty description="暂无消息" />
+          <Empty description={t("messages.empty")} />
         ) : (
           <div>
             {messages.map((m) => (
@@ -625,8 +627,17 @@ export function DashboardShell({ user, children }: Props) {
                 }}
                 onClick={async () => {
                   if (!m.readAt) {
-                    await fetch(`/api/messages/${m.id}`, { method: "PATCH", credentials: "include" });
-                    setUnread((u) => Math.max(0, u - 1));
+                    try {
+                      const res = await fetch(`/api/messages/${m.id}`, { method: "PATCH", credentials: "include" });
+                      const j = await res.json();
+                      if (j.code === 0) {
+                        setUnread((u) => Math.max(0, u - 1));
+                      } else {
+                        throw new Error(j.message);
+                      }
+                    } catch {
+                      loadUnread();
+                    }
                   }
                   if (m.link) {
                     const href = buildMessageLinkHref(m.link);

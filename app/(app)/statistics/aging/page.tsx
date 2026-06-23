@@ -7,6 +7,7 @@ import { Page } from "@/components/page";
 import { PageHeader } from "@/components/page-header";
 import { StatGrid, type StatItem } from "@/components/stat-grid";
 import { EmptyState } from "@/components/empty-state";
+import { HintBox } from "@/components/callout";
 import { StatusTag } from "@/components/status-tag";
 import { formatCurrency } from "@/lib/format";
 import { Progress, Space, Tag, Typography, theme } from "antd";
@@ -86,7 +87,7 @@ export default function AgingPage() {
           <StatGrid items={kpiItems} columns={5} loading={loading} />
 
           {totalOverdue > 0 ? (
-            <div style={{ marginTop: 16, padding: 16, background: "#fafafa", borderRadius: 8 }}>
+            <HintBox style={{ marginTop: 16, padding: 16, display: "block" }}>
               <Text type="secondary" style={{ fontSize: 12, marginBottom: 12, display: "block" }}>账龄结构占比</Text>
               {BUCKETS.map((b) => {
                 const v = buckets[b] ?? 0;
@@ -113,7 +114,7 @@ export default function AgingPage() {
                   </div>
                 );
               })}
-            </div>
+            </HintBox>
           ) : null}
 
           <div style={{ marginTop: 32 }}>

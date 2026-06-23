@@ -185,11 +185,11 @@ export default function AssetImportPage() {
                   title: "错误详情",
                   dataIndex: "errors",
                   render: (errors: string[]) => errors.length > 0 ? (
-                    <ul style={{ margin: 0, paddingLeft: 16, color: "#cf1322" }}>
+                    <ul style={{ margin: 0, paddingLeft: 16, color: "var(--qt-bg-error-text)" }}>
                       {errors.slice(0, 3).map((e, i) => <li key={i}>{e}</li>)}
                       {errors.length > 3 && <li>... +{errors.length - 3} 条</li>}
                     </ul>
-                  ) : <span style={{ color: "#999" }}>—</span>
+                  ) : <span style={{ color: "var(--qt-text-faint)" }}>—</span>
                 }
               ]}
             />
@@ -198,7 +198,7 @@ export default function AssetImportPage() {
 
         {step === 2 && (
           <Empty
-            image={<CheckCircleOutlined style={{ fontSize: 64, color: "#52c41a" }} />}
+            image={<CheckCircleOutlined style={{ fontSize: 64, color: "var(--qt-success)" }} />}
             imageStyle={{ height: 80 }}
             description="导入完成"
           >

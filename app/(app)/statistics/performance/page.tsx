@@ -202,7 +202,7 @@ export default function PerformancePage() {
                 </table>
               </div>
               {isMobile && rows.length > TOP_N ? (
-                <div style={{ marginTop: 12, textAlign: "center", color: "#1677ff", fontSize: 13 }}>
+                <div style={{ marginTop: 12, textAlign: "center", color: "var(--qt-processing)", fontSize: 13 }}>
                   共 {rows.length} 条,完整数据请使用「导出 xlsx」
                 </div>
               ) : null}

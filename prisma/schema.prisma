@@ -50,6 +50,8 @@ model User {
 
   uploadedAttachments Attachment[]
   signedContracts     Contract[]   @relation("ContractSigner")
+  messages            Message[]
+  publishedAnnouncements Announcement[] @relation("AnnouncementPublishUser")
 
   @@index([roleId])
   @@index([status])
@@ -306,9 +308,10 @@ model Payment {
 model Message {
   id             String    @id @default(cuid())
   receiverUserId String
+  receiver       User      @relation(fields: [receiverUserId], references: [id], onDelete: Restrict)
   type           String // CONTRACT_PENDING_REVIEW | CONTRACT_EXPIRING | CONTRACT_APPROVED | CONTRACT_REJECTED | INVOICE_OVERDUE_PAYMENT | PAYMENT_RECEIVED | PROJECT_DUE | CUSTOMER_INACTIVE | CUSTOMER_STATUS_SUGGEST
-  title          String
-  content        String
+  title          String    @db.VarChar(200)
+  content        String    @db.VarChar(10000)
   link           Json?
   readAt         DateTime? @db.Timestamptz(6)
   createdAt      DateTime  @default(now()) @db.Timestamptz(6)
@@ -319,9 +322,10 @@ model Message {
 
 model Announcement {
   id            String    @id @default(cuid())
-  title         String
-  content       String
+  title         String    @db.VarChar(200)
+  content       String    @db.VarChar(10000)
   publishUserId String
+  publishUser   User      @relation("AnnouncementPublishUser", fields: [publishUserId], references: [id], onDelete: Restrict)
   publishAt     DateTime  @default(now()) @db.Timestamptz(6)
   effectiveFrom DateTime? @db.Timestamptz(6)
   effectiveTo   DateTime? @db.Timestamptz(6)

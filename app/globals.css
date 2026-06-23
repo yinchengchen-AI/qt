@@ -77,6 +77,43 @@ html, body { overflow-x: hidden; }
 .app-stagger > *:nth-child(n + 9) { animation-delay: 320ms; }
 
 /* =============================================================
+   Semantic design tokens.
+   -------------------------------------------------------------
+   用 CSS 变量把项目里到处硬编码的「灰底 / 红字 / 蓝底 / 边框 /
+   状态色」集中到 :root。引用方式: var(--qt-bg-subtle)。
+   Ant Design 主题色（primary / success / warning / error）保持
+   token.colorPrimary 等 React API 用，跨组件用 CSS 变量更稳。
+   ------------------------------------------------------------- */
+:root {
+  /* —— 中性背景 —— */
+  --qt-bg:            #ffffff;  /* 容器背景 (卡片 / 面板) */
+  --qt-bg-subtle:     #fafafa;  /* 灰底 hint 区 */
+  --qt-bg-split:      #f0f0f0;  /* 分割线 / hover */
+  --qt-bg-error:      #fff2f0;  /* 红底 error box */
+  --qt-bg-error-text: #cf1322;  /* 红字 */
+  --qt-bg-info:       #e6f4ff;  /* 蓝底 info box */
+  --qt-bg-info-text:  #003eb3;  /* 蓝字 */
+  --qt-bg-info-line:  #91caff;  /* 蓝边 */
+
+  /* —— 文本灰阶 —— */
+  --qt-text-muted:    rgba(0, 0, 0, 0.65);
+  --qt-text-hint:     #666;
+  --qt-text-faint:    #999;
+  --qt-text-disabled: #bfbfbf;
+
+  /* —— 边框 / 分割线 —— */
+  --qt-border:        rgba(0, 0, 0, 0.06);
+  --qt-border-soft:   #f0f0f0;
+  --qt-border-medium: #d9d9d9;
+
+  /* —— 状态色（与 antd 一致；用于组件内嵌场景，跨组件同步用 token） —— */
+  --qt-success:       #52c41a;
+  --qt-processing:    #1677ff;
+  --qt-warning:       #faad14;
+  --qt-danger:        #ff4d4f;
+}
+
+/* =============================================================
    Touch ergonomics
    ------------------------------------------------------------- */
 

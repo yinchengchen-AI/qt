@@ -4,6 +4,9 @@
 //
 // buildLinkHref 同时做防御性归一化: link 为 null / id 缺失 / 未知 kind
 // 一律视为无跳转目标, 避免出现 `${undefined}/...` 这种坏 URL.
+//
+// 额外字段（如 CUSTOMER_STATUS_SUGGEST 的 suggest）会作为 query string 拼回，
+// 保证通知跳转能携带业务上下文。
 
 export const MESSAGE_LINK_PATH: Record<string, string> = {
   contract: "/contracts",
@@ -14,11 +17,21 @@ export const MESSAGE_LINK_PATH: Record<string, string> = {
   asset: "/assets"
 };
 
-export type MessageLink = { kind: string; id?: string | null } | null;
+export type MessageLink = { kind: string; id?: string | null } & Record<string, unknown>;
 
-export function buildMessageLinkHref(link: MessageLink): string | null {
+export function buildMessageLinkHref(link: MessageLink | null): string | null {
   if (!link || !link.id) return null;
-  const base = MESSAGE_LINK_PATH[link.kind];
+  const { kind, id, ...rest } = link;
+  const base = MESSAGE_LINK_PATH[kind];
   if (!base) return null;
-  return `${base}/${link.id}`;
+
+  const params = new URLSearchParams();
+  for (const [k, v] of Object.entries(rest)) {
+    if (v === undefined || v === null) continue;
+    if (typeof v === "string" || typeof v === "number" || typeof v === "boolean") {
+      params.set(k, String(v));
+    }
+  }
+  const qs = params.toString();
+  return `${base}/${id}${qs ? `?${qs}` : ""}`;
 }

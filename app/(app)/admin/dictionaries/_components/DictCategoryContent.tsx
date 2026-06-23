@@ -54,7 +54,7 @@ export function DictCategoryContent({
             </Tag>
           ) : null}
           {meta?.description ? (
-            <span style={{ fontSize: 12, color: "rgba(0,0,0,0.45)" }}>{meta.description}</span>
+            <span style={{ fontSize: 12, color: "var(--qt-text-faint)" }}>{meta.description}</span>
           ) : null}
         </div>
       </div>

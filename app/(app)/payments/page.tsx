@@ -113,11 +113,11 @@ export default function PaymentsPage() {
             width: 240,
             render: (_: unknown, r: Row) => {
               const c = r.contract;
-              if (!c) return <span style={{ color: "#bfbfbf" }}>—</span>;
+              if (!c) return <span style={{ color: "var(--qt-text-disabled)" }}>—</span>;
               return (
                 <div style={{ display: "flex", flexDirection: "column", lineHeight: 1.4 }}>
                   <Link href={`/contracts/${r.contractId}`}>{c.contractNo}</Link>
-                  {c.title && <span style={{ fontSize: 12, color: "#666" }}>{c.title}</span>}
+                  {c.title && <span style={{ fontSize: 12, color: "var(--qt-text-hint)" }}>{c.title}</span>}
                 </div>
               );
             }

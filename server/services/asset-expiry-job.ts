@@ -58,7 +58,7 @@ export async function runAssetExpiryJob(now: Date, admins?: { id: string }[]): P
           type: "ASSET_EXPIRING",
           receiverUserId: a.ownerUserId,
           createdAt: { gte: todayStart },
-          link: { array_contains: [{ id: a.id, daysLeft: days }] }
+          link: { path: ["id"], equals: a.id }
         }
       });
       if (exists) continue;

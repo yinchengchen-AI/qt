@@ -47,7 +47,7 @@ export function DictCategorySider({ selected, onSelect, counts }: Props) {
           ) : (
             filtered.map((g) => (
               <div key={g.domain} style={{ marginBottom: 12 }}>
-                <div style={{ fontSize: 12, color: "rgba(0,0,0,0.45)", padding: "4px 8px" }}>
+                <div style={{ fontSize: 12, color: "var(--qt-text-faint)", padding: "4px 8px" }}>
                   {g.domain} ({g.items.length})
                 </div>
                 {g.items.map((c) => (
@@ -68,7 +68,7 @@ export function DictCategorySider({ selected, onSelect, counts }: Props) {
             if (items.length === 0) return null;
             return (
               <div key={d} style={{ marginBottom: 4 }}>
-                <div style={{ fontSize: 12, color: "rgba(0,0,0,0.45)", padding: "6px 8px 2px" }}>
+                <div style={{ fontSize: 12, color: "var(--qt-text-faint)", padding: "6px 8px 2px" }}>
                   {d} ({items.length})
                 </div>
                 {items.map((c) => (
@@ -118,7 +118,7 @@ function SiderItem({
         borderRadius: 4,
         marginBottom: 2,
         background: active ? "rgba(22, 119, 255, 0.08)" : "transparent",
-        color: active ? "#1677ff" : "inherit",
+        color: active ? "var(--qt-processing)" : "inherit",
         fontWeight: active ? 500 : 400,
         display: "flex",
         alignItems: "center",
@@ -128,7 +128,7 @@ function SiderItem({
       }}
     >
       <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-        {meta?.readonly ? <LockOutlined style={{ marginRight: 4, fontSize: 11, color: "rgba(0,0,0,0.35)" }} /> : null}
+        {meta?.readonly ? <LockOutlined style={{ marginRight: 4, fontSize: 11, color: "var(--qt-text-disabled)" }} /> : null}
         {meta?.label ?? category}
       </span>
       <Tag style={{ margin: 0, fontSize: 11, lineHeight: "16px", padding: "0 6px" }}>

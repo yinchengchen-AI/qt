@@ -846,6 +846,12 @@ export async function tryAutoPublish(tx: Prisma.TransactionClient, contractId: s
     before,
     after: { status: "ACTIVE" }
   });
+  const admins = await listAdminUserIds(tx);
+  await emit(tx, {
+    type: "CONTRACT_AUTO_EXECUTED",
+    payload: { contractId, contractNo: c.contractNo },
+    receivers: Array.from(new Set([c.ownerUserId, ...admins]))
+  });
   return "PUBLISHED" as const;
 }
 

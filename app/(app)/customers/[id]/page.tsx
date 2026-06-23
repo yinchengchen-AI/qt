@@ -1,7 +1,7 @@
 "use client";
 import { ProCard, ProDescriptions, ProTable } from "@ant-design/pro-components";
 import { App as AntdApp } from "antd";
-import { Button, Card, Col, Empty, Input, Popover, Row, Space, Statistic, Tabs } from "antd";
+import { Button, Col, Empty, Input, Popover, Row, Space, Tabs } from "antd";
 import { PlusOutlined, FilePdfOutlined } from "@ant-design/icons";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import useSWR from "swr";
@@ -9,6 +9,8 @@ import { useEffect, useState } from "react";
 import { Page } from "@/components/page";
 import { PageHeader } from "@/components/page-header";
 import { DetailPageSkeleton } from "@/components/detail-page-skeleton";
+import { ErrorBox } from "@/components/callout";
+import { StatGrid } from "@/components/stat-grid";
 import { StatusTag } from "@/components/status-tag";
 import { useDict } from "@/lib/dict-client";
 import { useUserName } from "@/lib/user-lookup";
@@ -85,9 +87,10 @@ export default function CustomerDetailPage() {
     return (
       <Page>
         <PageHeader back={() => router.push("/customers")} title="客户详情" />
-        <div style={{ marginTop: 12, padding: 16, background: "#fff2f0", color: "#cf1322", borderRadius: 8, fontSize: 13 }}>
-          加载失败: {(error as Error).message}{" "}
-          <Button size="small" type="link" onClick={() => mutate()}>重试</Button>
+        <div style={{ marginTop: 12 }}>
+          <ErrorBox title="加载失败" action={<Button size="small" onClick={() => mutate()}>重试</Button>}>
+            {(error as Error).message}
+          </ErrorBox>
         </div>
       </Page>
     );
@@ -113,22 +116,16 @@ export default function CustomerDetailPage() {
       label: <span>概览 ({overview?.totals.contractCount ?? 0} 合同)</span>,
       children: (
         <Row gutter={[16, 16]}>
-          <Col xs={12} sm={8} md={6}>
-            <Card><Statistic title="合同数" value={t?.contractCount ?? 0} suffix="份" /></Card>
-          </Col>
-          <Col xs={12} sm={8} md={6}>
-            <Card><Statistic title="合同总额" value={t ? fmtWan(t.contractTotal) : 0} suffix="万" /></Card>
-          </Col>
-          <Col xs={12} sm={8} md={6}>
-            <Card><Statistic title="开票总额" value={t ? fmtWan(t.invoicedTotal) : 0} suffix="万" /></Card>
-          </Col>
-          <Col xs={12} sm={8} md={6}>
-            <Card><Statistic title="回款总额" value={t ? fmtWan(t.paidTotal) : 0} suffix="万" /></Card>
-          </Col>
           <Col xs={24}>
-            <ProCard>
-
-            </ProCard>
+            <StatGrid
+              columns={4}
+              items={[
+                { label: "合同数", value: t?.contractCount ?? 0, suffix: "份" },
+                { label: "合同总额", value: t ? fmtWan(t.contractTotal) : 0, suffix: "万" },
+                { label: "开票总额", value: t ? fmtWan(t.invoicedTotal) : 0, suffix: "万" },
+                { label: "回款总额", value: t ? fmtWan(t.paidTotal) : 0, suffix: "万" }
+              ]}
+            />
           </Col>
         </Row>
       )
@@ -396,7 +393,7 @@ function ChangeStatusPopover(props: {
   const content = (
     <div style={{ display: "flex", flexDirection: "column", gap: 10, minWidth: 240 }}>
       {allowed.length === 0 ? (
-        <span style={{ color: "rgba(0,0,0,0.45)", fontSize: 13 }}>当前状态无可去往的目标</span>
+        <span style={{ color: "var(--qt-text-faint)", fontSize: 13 }}>当前状态无可去往的目标</span>
       ) : pending ? (
         // 二级面板: 填写原因
         <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
@@ -427,8 +424,8 @@ function ChangeStatusPopover(props: {
               data-testid="suggest-tip"
               style={{
                 fontSize: 12,
-                color: "#1677ff",
-                background: "#e6f4ff",
+                color: "var(--qt-bg-info-text)",
+                background: "var(--qt-bg-info)",
                 padding: "4px 8px",
                 borderRadius: 4
               }}

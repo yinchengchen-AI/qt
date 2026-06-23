@@ -82,7 +82,7 @@ export function DictTableView({
       dataIndex: "parentCode",
       width: 160,
       render: (v: string | null) =>
-        v ? <Tag>{v}</Tag> : <span style={{ color: "rgba(0,0,0,0.35)" }}>—</span>
+        v ? <Tag>{v}</Tag> : <span style={{ color: "var(--qt-text-disabled)" }}>—</span>
     },
     {
       title: "排序",
@@ -112,7 +112,7 @@ export function DictTableView({
       fixed: "right" as const,
       render: (_: unknown, r: DictRow) =>
         isReadonly ? (
-          <span style={{ color: "rgba(0,0,0,0.35)", fontSize: 12 }}>系统字典</span>
+          <span style={{ color: "var(--qt-text-disabled)", fontSize: 12 }}>系统字典</span>
         ) : (
           <Button type="link" size="small" onClick={() => onEdit(r)}>
             编辑

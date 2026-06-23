@@ -21,6 +21,8 @@ export type JobResult = {
   scanned: number;
   updated?: number;
   durationMs: number;
+  /** 失败时的错误信息；成功时不存在 */
+  error?: string;
 };
 
 export async function runAllJobs(now = new Date()): Promise<JobResult[]> {
@@ -28,16 +30,23 @@ export async function runAllJobs(now = new Date()): Promise<JobResult[]> {
     where: { role: { code: "ADMIN" }, deletedAt: null, status: "ACTIVE", isSystem: false },
     select: { id: true }
   });
-  return Promise.all([
-    contractExpiringJob(now, admins),
-    invoiceOverdueJob(now, admins),
-    customerInactiveJob(now),
-    runAssetExpiryJob(now, admins),
-    runContractExpiryJob(now),
-    tickPublishableDraffts(),
-    tickCompletionCandidates(now),
-    tickCustomerStatusSuggestions(now)
-  ]);
+  const jobs = [
+    { name: "contract-expiring", run: () => contractExpiringJob(now, admins) },
+    { name: "invoice-overdue", run: () => invoiceOverdueJob(now, admins) },
+    { name: "customer-inactive", run: () => customerInactiveJob(now) },
+    { name: "asset-expiring", run: () => runAssetExpiryJob(now, admins) },
+    { name: "contract-expiry", run: () => runContractExpiryJob(now) },
+    { name: "contract-auto-publish", run: () => tickPublishableDraffts() },
+    { name: "contract-auto-complete", run: () => tickCompletionCandidates(now) },
+    { name: "customer-status-suggest", run: () => tickCustomerStatusSuggestions(now) }
+  ] as const;
+  const settled = await Promise.allSettled(jobs.map((j) => j.run()));
+  return settled.map((s, i) => {
+    if (s.status === "fulfilled") return s.value;
+    const reason = s.reason instanceof Error ? s.reason.message : String(s.reason);
+    console.warn(`[runAllJobs] ${jobs[i]!.name} failed:`, reason);
+    return { job: jobs[i]!.name, created: 0, scanned: 0, durationMs: 0, error: reason };
+  });
 }
 
 // CONTRACT_EXPIRING: endDate - 30/7/1 天，每天扫一次

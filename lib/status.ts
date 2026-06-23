@@ -52,14 +52,21 @@ const PAYMENT: Record<string, StatusMeta> = {
 
 /* === Message === */
 const MESSAGE: Record<string, StatusMeta> = {
-  CONTRACT_PENDING_REVIEW: { label: "待审批",     tone: "info" },
-  CONTRACT_EXPIRING:       { label: "合同到期",   tone: "warning" },
-  CONTRACT_APPROVED:       { label: "已通过",     tone: "success" },
-  CONTRACT_REJECTED:       { label: "已驳回",     tone: "danger" },
-  INVOICE_OVERDUE_PAYMENT: { label: "开票超期",   tone: "danger" },
-  PAYMENT_RECEIVED:        { label: "回款",       tone: "success" },
-  CUSTOMER_INACTIVE:       { label: "客户静默",   tone: "default" },
-  ASSET_EXPIRING:            { label: "资产到期",   tone: "warning" },
+  CONTRACT_PENDING_REVIEW:   { label: "待审批",   tone: "info" },
+  CONTRACT_EXPIRING:         { label: "合同到期", tone: "warning" },
+  CONTRACT_APPROVED:         { label: "已通过",   tone: "success" },
+  CONTRACT_REJECTED:         { label: "已驳回",   tone: "danger" },
+  CONTRACT_AUTO_EXECUTED:    { label: "自动执行", tone: "processing" },
+  CONTRACT_AUTO_COMPLETED:   { label: "自动结清", tone: "success" },
+  CONTRACT_AUTO_EXPIRED:     { label: "自动到期", tone: "default" },
+  INVOICE_OVERDUE_PAYMENT:   { label: "开票超期", tone: "danger" },
+  PAYMENT_RECEIVED:          { label: "回款",     tone: "success" },
+  PROJECT_DUE:               { label: "项目到期", tone: "warning" },
+  CUSTOMER_INACTIVE:         { label: "客户静默", tone: "default" },
+  CUSTOMER_STATUS_SUGGEST:   { label: "状态建议", tone: "info" },
+  WORKFLOW_TASK_ASSIGNED:    { label: "任务指派", tone: "processing" },
+  WORKFLOW_REVIEW_REQUESTED: { label: "报告审核", tone: "info" },
+  ASSET_EXPIRING:            { label: "资产到期", tone: "warning" }
 };
 
 const ANNOUNCEMENT: Record<string, StatusMeta> = {
@@ -99,7 +106,8 @@ export const ROLE_LABEL: Record<string, string> = {
   ADMIN: "管理员",
   SALES: "业务",
   FINANCE: "财务",
-  OPS: "行政"
+  OPS: "行政",
+  EXPERT: "技术专家"
 };
 
 /** 形如 [{ value: 'DRAFT', label: '草稿' }] 的下拉选项;供 ProFormSelect / Select 使用 */

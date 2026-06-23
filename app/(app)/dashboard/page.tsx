@@ -8,6 +8,7 @@ import { Page } from "@/components/page";
 import { PageHeader } from "@/components/page-header";
 import { StatGrid, type StatItem } from "@/components/stat-grid";
 import { EmptyState } from "@/components/empty-state";
+import { HintBox } from "@/components/callout";
 import { formatCompact, formatCurrency, formatDate } from "@/lib/format";
 import { StatusTag } from "@/components/status-tag";
 import { useResponsive } from "@/lib/use-breakpoint";
@@ -115,8 +116,8 @@ export default function DashboardPage() {
     <Page>
       <PageHeader title="业务总览" subtitle="默认按本月统计(后端接口 monthRange 决定);鼠标悬停 KPI 标题旁的 ⓘ 可查看口径说明。" />
 
-      <section style={{ marginBottom: 12, padding: "10px 14px", background: "#fafafa", border: "1px solid #f0f0f0", borderRadius: 6, display: "flex", alignItems: "center", flexWrap: "wrap", gap: 8 }}>
-        <CalendarOutlined style={{ color: "#8c8c8c" }} />
+      <HintBox style={{ marginBottom: 12, gap: 8 }}>
+        <CalendarOutlined style={{ color: token.colorTextTertiary }} />
         <Text type="secondary" style={{ fontSize: 12 }}>统计区间</Text>
         <Text strong style={{ fontSize: 13 }}>
           {rangeFrom ? formatDate(rangeFrom) : "—"}
@@ -125,7 +126,7 @@ export default function DashboardPage() {
         </Text>
         {isThisMonth ? <Tag color="blue" style={{ marginInlineStart: 4 }}>本月</Tag> : null}
         <Text type="secondary" style={{ fontSize: 12, marginInlineStart: "auto" }}>{permHint}</Text>
-      </section>
+      </HintBox>
 
       <section style={{ marginBottom: 24 }}>
         <StatGrid items={kpiItems} columns={4} />

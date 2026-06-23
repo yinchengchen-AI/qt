@@ -185,8 +185,8 @@ export default function DepartmentsPage() {
       {view === "tree" ? (
         <div
           style={{
-            background: "#fff",
-            border: "1px solid #f0f0f0",
+            background: "var(--qt-bg)",
+            border: "1px solid var(--qt-border-soft)",
             borderRadius: 8,
             padding: 16,
             minHeight: 200

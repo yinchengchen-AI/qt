@@ -6,6 +6,7 @@ import useSWR from "swr";
 import { Page } from "@/components/page";
 import { PageHeader } from "@/components/page-header";
 import { DetailPageSkeleton } from "@/components/detail-page-skeleton";
+import { ErrorBox } from "@/components/callout";
 import { DateCell } from "@/components/table-cells";
 import { PermissionMatrix, type Permission } from "@/components/admin/permission-matrix";
 
@@ -30,20 +31,17 @@ export default function RoleDetailPage() {
     return (
       <Page>
         <PageHeader back={() => router.push("/admin/roles")} title="角色详情" />
-        <div
-          style={{
-            marginTop: 12,
-            padding: 16,
-            background: "#fff2f0",
-            color: "#cf1322",
-            borderRadius: 8,
-            fontSize: 13
-          }}
-        >
-          加载失败: {(error as Error).message}{" "}
-          <Button size="small" type="link" onClick={() => mutate()}>
-            重试
-          </Button>
+        <div style={{ marginTop: 12 }}>
+          <ErrorBox
+            title="加载失败"
+            action={
+              <Button size="small" onClick={() => mutate()}>
+                重试
+              </Button>
+            }
+          >
+            {(error as Error).message}
+          </ErrorBox>
         </div>
       </Page>
     );

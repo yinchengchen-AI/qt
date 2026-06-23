@@ -4,6 +4,7 @@ import { ApiError } from "@/lib/api";
 import { ERROR_CODES } from "@/types/errors";
 import { type SessionUser } from "@/lib/session";
 import { requirePermission, RESOURCE, ACTION } from "@/lib/permissions";
+import { audit } from "@/server/audit";
 import type { Prisma } from "@prisma/client";
 
 export async function listMessages(
@@ -41,9 +42,25 @@ export async function markAllRead(user: SessionUser) {
   return { updated: r.count };
 }
 
+export async function countUnreadMessages(user: SessionUser) {
+  requirePermission(user.roleCode, RESOURCE.MESSAGE, ACTION.READ);
+  const unreadCount = await prisma.message.count({
+    where: { receiverUserId: user.id, readAt: null }
+  });
+  return { unreadCount };
+}
+
 export async function deleteMessage(user: SessionUser, id: string) {
+  requirePermission(user.roleCode, RESOURCE.MESSAGE, ACTION.DELETE);
   // 只能删自己的
   const m = await prisma.message.findFirst({ where: { id, receiverUserId: user.id } });
   if (!m) throw new ApiError(ERROR_CODES.NOT_FOUND, "消息不存在", 404);
+  await audit(prisma, {
+    actorId: user.id,
+    action: "MESSAGE_DELETE",
+    entity: "Message",
+    entityId: id,
+    before: { title: m.title, type: m.type }
+  });
   return prisma.message.delete({ where: { id } });
 }

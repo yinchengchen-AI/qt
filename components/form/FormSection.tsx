@@ -30,7 +30,7 @@ export function FormSection({ title, description, icon, children, gap = 24 }: Pr
         }}
       >
         {icon ? (
-          <span style={{ color: "#1677ff", display: "inline-flex" }}>{icon}</span>
+          <span style={{ color: "var(--qt-processing)", display: "inline-flex" }}>{icon}</span>
         ) : (
           <span
             aria-hidden
@@ -38,7 +38,7 @@ export function FormSection({ title, description, icon, children, gap = 24 }: Pr
               display: "inline-block",
               width: 3,
               height: 14,
-              background: "#1677ff",
+              background: "var(--qt-processing)",
               borderRadius: 2,
               transform: "translateY(2px)"
             }}
@@ -164,11 +164,11 @@ export function FormCard({ children, headerHint }: FormCardProps) {
           style={{
             marginBottom: 16,
             padding: "8px 12px",
-            background: "#e6f4ff",
-            border: "1px solid #91caff",
+            background: "var(--qt-bg-info)",
+            border: "1px solid var(--qt-bg-info-line)",
             borderRadius: 6,
             fontSize: 13,
-            color: "#003eb3",
+            color: "var(--qt-bg-info-text)",
             wordBreak: "break-word"
           }}
         >

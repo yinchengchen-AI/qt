@@ -257,7 +257,7 @@ export default function OperationLogsPage() {
             return (
               <span>
                 {r.actor.name}
-                <span style={{ color: "#999", marginLeft: 6, fontSize: 12 }}>
+                <span style={{ color: "var(--qt-text-faint)", marginLeft: 6, fontSize: 12 }}>
                   {r.actor.employeeNo}
                 </span>
               </span>
@@ -322,7 +322,7 @@ export default function OperationLogsPage() {
               {r.ip}
             </span>
           ) : (
-            <span style={{ color: "#bbb" }}>—</span>
+            <span style={{ color: "var(--qt-text-disabled)" }}>—</span>
           ),
       },
       {
@@ -338,7 +338,7 @@ export default function OperationLogsPage() {
               </Tag>
             </Tooltip>
           ) : (
-            <span style={{ color: "#bbb" }}>—</span>
+            <span style={{ color: "var(--qt-text-disabled)" }}>—</span>
           ),
       },
       {
@@ -350,7 +350,7 @@ export default function OperationLogsPage() {
           const { count, sample } = diffSummary(r.diff);
           if (count === 0) {
             return (
-              <span style={{ color: "#bbb", fontSize: 12 }}>无字段变更</span>
+              <span style={{ color: "var(--qt-text-disabled)", fontSize: 12 }}>无字段变更</span>
             );
           }
           return (
@@ -362,7 +362,7 @@ export default function OperationLogsPage() {
                 <span
                   style={{
                     marginLeft: 6,
-                    color: "#666",
+                    color: "var(--qt-text-hint)",
                     fontFamily: "ui-monospace, Menlo, monospace",
                   }}
                 >

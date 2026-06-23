@@ -41,10 +41,11 @@ export async function emit(prisma: TxOrClient, ev: DomainEvent): Promise<number>
     content: m.content,
     link: (m.link ?? PrismaNS.JsonNull) as Prisma.InputJsonValue
   }));
-  // 顺序写入（避免 createMany 在某些 adapter 上不可用）
-  for (const d of data) {
-    await prisma.message.create({ data: d });
-  }
+  // P0-2: 一次性 createMany 替代原来的 for-await prisma.message.create。
+  // 项目只走 Prisma + PostgreSQL,createMany 可用;原顺序写法是 N+1 round-trip,
+  // cron 跑合同到期 30/7/1 × 全部 ACTIVE × (owner+admin) 经常 100+ 条。
+  // createMany 是单条 INSERT...VALUES (...),(...),事务回滚由调用方的 $transaction 保证。
+  await prisma.message.createMany({ data });
   // 触发外部通道（fire-and-forget；事务回滚风险可接受）
   const resolved = data.map((d, i) => ({ ...d, link: messages[i]?.link } as unknown as { receiverUserId: string; title: string; content: string; link?: Record<string, unknown> }));
   void dispatchExternalChannels(ev, resolved).catch((e) => console.warn("[bus] dispatch failed:", e));
@@ -167,8 +168,12 @@ function buildMessage(uid: string, ev: DomainEvent): ResolvedMessage {
         link: { kind: "contract", id: p.contractId }
       };
     default:
-      return { receiverUserId: uid, title: "通知", content: JSON.stringify(p) };
+      return assertNever(ev.type);
   }
+}
+
+function assertNever(value: never): never {
+  throw new Error(`[bus] unhandled event type: ${value as string}`);
 }
 
 function formatDate(d: unknown): string {

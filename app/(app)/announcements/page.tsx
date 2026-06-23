@@ -1,5 +1,8 @@
 "use client";
-import { ProTable, type ProColumns } from "@ant-design/pro-components";
+import { useRef, useState } from "react";
+import Link from "next/link";
+import dayjs from "dayjs";
+import { ProTable, type ProColumns, type ActionType } from "@ant-design/pro-components";
 import {
   ProForm,
   ProFormText,
@@ -8,17 +11,15 @@ import {
   ProFormDateRangePicker,
   ProFormSwitch
 } from "@ant-design/pro-components";
-import { App as AntdApp, Button, Space, Tag, Typography } from "antd";
-import { PlusOutlined } from "@ant-design/icons";
-import { useState } from "react";
+import { App as AntdApp, Button, Modal, Space, Tag } from "antd";
+import { PlusOutlined, EditOutlined, DeleteOutlined } from "@ant-design/icons";
 import { Page } from "@/components/page";
 import { PageHeader } from "@/components/page-header";
 import { ROLE_LABEL } from "@/lib/status";
-import { useListRequest } from "@/lib/use-list-request";
+import { makeListRequest } from "@/lib/use-list-request";
 import { DateTimeCell } from "@/components/table-cells";
 import { FormCard, FormSection, FormGrid } from "@/components/form";
-
-const { Text, Paragraph } = Typography;
+import { useT } from "@/lib/i18n";
 
 type Announcement = {
   id: string;
@@ -32,43 +33,129 @@ type Announcement = {
   publishAt: string;
 };
 
-const TARGET_ROLE_OPTIONS = [
-  { value: "ADMIN", label: ROLE_LABEL.ADMIN },
-  { value: "SALES", label: ROLE_LABEL.SALES },
-  { value: "FINANCE", label: ROLE_LABEL.FINANCE },
-  { value: "OPS", label: ROLE_LABEL.OPS }
-];
+const TARGET_ROLE_OPTIONS = Object.entries(ROLE_LABEL).map(([value, label]) => ({
+  value,
+  label
+}));
 
 export default function AnnouncementsPage() {
-  const { data, total, loading, reload } = useListRequest<Announcement>("/api/announcements");
+  const t = useT();
+  const { message, modal } = AntdApp.useApp();
+  const actionRef = useRef<ActionType>(undefined);
+  const [form] = ProForm.useForm();
   const [modalOpen, setModalOpen] = useState(false);
-  const [detail, setDetail] = useState<Announcement | null>(null);
-  const { message } = AntdApp.useApp();
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [submitting, setSubmitting] = useState(false);
+
+  const closeModal = () => {
+    setModalOpen(false);
+    setEditingId(null);
+    form.resetFields();
+  };
+
+  const openCreate = () => {
+    form.resetFields();
+    setEditingId(null);
+    setModalOpen(true);
+  };
+
+  const openEdit = (a: Announcement) => {
+    setEditingId(a.id);
+    form.setFieldsValue({
+      title: a.title,
+      content: a.content,
+      pinned: a.pinned,
+      targetRoles: a.targetRoles,
+      effectiveRange: [
+        a.effectiveFrom ? dayjs(a.effectiveFrom) : undefined,
+        a.effectiveTo ? dayjs(a.effectiveTo) : undefined
+      ]
+    });
+    setModalOpen(true);
+  };
+
+  const handleDelete = (a: Announcement) => {
+    modal.confirm({
+      title: t("announcements.deleteConfirm.title"),
+      content: t("announcements.deleteConfirm.content").replace("{title}", a.title),
+      okText: t("announcements.delete"),
+      okType: "danger",
+      cancelText: t("announcements.cancel"),
+      onOk: async () => {
+        const r = await fetch(`/api/announcements/${a.id}`, {
+          method: "DELETE",
+          credentials: "include"
+        });
+        const j = await r.json();
+        if (j.code === 0) {
+          message.success(t("announcements.toast.deleted"));
+          actionRef.current?.reload();
+        } else {
+          message.error(j.message);
+        }
+      }
+    });
+  };
+
+  const onFinish = async (values: Record<string, unknown>) => {
+    setSubmitting(true);
+    try {
+      const range = values.effectiveRange as
+        | [dayjs.Dayjs | null | undefined, dayjs.Dayjs | null | undefined]
+        | undefined;
+      const body = {
+        title: values.title,
+        content: values.content,
+        pinned: values.pinned ?? false,
+        effectiveFrom: range?.[0] ? range[0].toISOString() : null,
+        effectiveTo: range?.[1] ? range[1].toISOString() : null,
+        targetRoles: (values.targetRoles as string[] | undefined) ?? []
+      };
+      const url = editingId ? `/api/announcements/${editingId}` : "/api/announcements";
+      const r = await fetch(url, {
+        method: editingId ? "PATCH" : "POST",
+        headers: { "content-type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify(body)
+      });
+      const j = await r.json();
+      if (j.code === 0) {
+        message.success(editingId ? t("announcements.toast.saved") : t("announcements.toast.published"));
+        closeModal();
+        actionRef.current?.reload();
+        return true;
+      }
+      message.error(j.message);
+      return false;
+    } finally {
+      setSubmitting(false);
+    }
+  };
 
   const columns: ProColumns<Announcement>[] = [
     {
-      title: "标题",
+      title: t("announcements.column.title"),
       dataIndex: "title",
-      width: 280,
+      width: 260,
       render: (_, r) => (
         <Space>
-          {r.pinned && <Tag color="red">置顶</Tag>}
-          <a onClick={() => setDetail(r)}>{r.title}</a>
+          {r.pinned && <Tag color="red">{t("announcements.tag.pinned")}</Tag>}
+          <Link href={`/announcements/${r.id}`}>{r.title}</Link>
         </Space>
       )
     },
     {
-      title: "接收人",
+      title: t("announcements.column.recipients"),
       dataIndex: "targetRoles",
       width: 180,
       render: (v) => {
         const arr = (Array.isArray(v) ? v : []) as string[];
-        if (arr.length === 0) return <Tag>全员</Tag>;
+        if (arr.length === 0) return <Tag>{t("announcements.recipients.all")}</Tag>;
         return (
           <Space size={4} wrap>
             {arr.map((r) => (
               <Tag key={r} color="blue">
-                {ROLE_LABEL[r as keyof typeof ROLE_LABEL] ?? r}
+                {ROLE_LABEL[r] ?? r}
               </Tag>
             ))}
           </Space>
@@ -76,197 +163,134 @@ export default function AnnouncementsPage() {
       }
     },
     {
-      title: "生效期",
+      title: t("announcements.column.effectivePeriod"),
       dataIndex: "effectiveFrom",
       width: 240,
       render: (_, r) =>
-        `${r.effectiveFrom ? new Date(r.effectiveFrom).toLocaleDateString("zh-CN") : "—"} ~ ${r.effectiveTo ? new Date(r.effectiveTo).toLocaleDateString("zh-CN") : "长期"}`
+        `${r.effectiveFrom ? new Date(r.effectiveFrom).toLocaleDateString("zh-CN") : "—"} ~ ${r.effectiveTo ? new Date(r.effectiveTo).toLocaleDateString("zh-CN") : t("announcements.effectivePeriod.forever")}`
     },
     {
-      title: "发布时间",
+      title: t("announcements.column.publishTime"),
       dataIndex: "publishAt",
       width: 180,
       render: (_, r) => <DateTimeCell value={r.publishAt} />
+    },
+    {
+      title: t("announcements.column.actions"),
+      width: 160,
+      fixed: "right",
+      render: (_, r) => (
+        <Space>
+          <Button type="link" size="small" icon={<EditOutlined />} onClick={() => openEdit(r)}>
+            {t("announcements.edit")}
+          </Button>
+          <Button
+            type="link"
+            size="small"
+            danger
+            icon={<DeleteOutlined />}
+            onClick={() => handleDelete(r)}
+          >
+            {t("announcements.delete")}
+          </Button>
+        </Space>
+      )
     }
   ];
 
   return (
     <Page>
       <PageHeader
-        title="公告"
-        subtitle="发布全员或指定角色可见的公告,支持置顶与生效期"
+        title={t("announcements.title")}
+        subtitle={t("announcements.subtitle")}
         actions={
-          <Button key="add" type="primary" icon={<PlusOutlined />} onClick={() => setModalOpen(true)}>
-            发布公告
+          <Button key="add" type="primary" icon={<PlusOutlined />} onClick={openCreate}>
+            {t("announcements.create")}
           </Button>
         }
       />
       <ProTable<Announcement>
         rowKey="id"
         search={false}
-        loading={loading}
-        pagination={{ defaultPageSize: 20, total, onChange: () => reload() }}
-        dataSource={data}
+        actionRef={actionRef}
+        pagination={{ defaultPageSize: 20, showSizeChanger: true }}
+        request={makeListRequest<Announcement>("/api/announcements")}
         cardBordered={false}
         columns={columns}
       />
 
-      {/* 发布 modal 用 ProForm 统一风格 */}
-      {modalOpen ? (
-        <div
-          style={{
-            position: "fixed",
-            inset: 0,
-            zIndex: 1100,
-            background: "rgba(0,0,0,0.45)",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center"
-          }}
-          onClick={() => setModalOpen(false)}
-        >
-          <div
-            onClick={(e) => e.stopPropagation()}
-            style={{ width: 720, maxWidth: "92vw", maxHeight: "90vh", overflow: "auto" }}
+      <Modal
+        title={editingId ? t("announcements.edit") : t("announcements.create")}
+        open={modalOpen}
+        onCancel={closeModal}
+        destroyOnClose
+        width={760}
+        footer={
+          <Space>
+            <Button onClick={closeModal}>{t("announcements.cancel")}</Button>
+            <Button type="primary" loading={submitting} onClick={() => form.submit()}>
+              {editingId ? t("announcements.save") : t("announcements.publish")}
+            </Button>
+          </Space>
+        }
+      >
+        <FormCard headerHint={t("announcements.hint")}>
+          <ProForm
+            form={form}
+            layout="vertical"
+            submitter={false}
+            preserve={false}
+            onFinish={onFinish}
           >
-            <FormCard headerHint="置顶的公告会钉在用户消息中心顶部;生效期不填表示长期有效;接收角色留空表示全员">
-              <ProForm
-                layout="vertical"
-                submitter={false}
-                onFinish={async (values) => {
-                  const range = values.effectiveRange as
-                    | [unknown?, unknown?]
-                    | undefined;
-                  const body = {
-                    title: values.title,
-                    content: values.content,
-                    pinned: values.pinned ?? false,
-                    effectiveFrom: range?.[0]
-                      ? new Date(range[0] as string | number | Date).toISOString()
-                      : undefined,
-                    effectiveTo: range?.[1]
-                      ? new Date(range[1] as string | number | Date).toISOString()
-                      : undefined,
-                    targetRoles: values.targetRoles ?? []
-                  };
-                  const r = await fetch("/api/announcements", {
-                    method: "POST",
-                    headers: { "content-type": "application/json" },
-                    credentials: "include",
-                    body: JSON.stringify(body)
-                  });
-                  const j = await r.json();
-                  if (j.code === 0) {
-                    message.success("已发布");
-                    setModalOpen(false);
-                    reload();
-                    return true;
-                  }
-                  message.error(j.message);
-                  return false;
-                }}
-              >
-                <FormSection title="公告内容">
-                  <FormGrid columns={1}>
-                    <ProFormText
-                      name="title"
-                      label="标题"
-                      placeholder="如:2026 年春节放假安排"
-                      rules={[
-                        { required: true, min: 2, max: 200, message: "2-200 字符" }
-                      ]}
-                      fieldProps={{ size: "large", maxLength: 200, showCount: true }}
-                    />
-                    <ProFormTextArea
-                      name="content"
-                      label="正文"
-                      placeholder="详细说明..."
-                      rules={[{ required: true, min: 1, max: 10000 }]}
-                      fieldProps={{
-                        size: "large",
-                        rows: 6,
-                        maxLength: 10000,
-                        showCount: true
-                      }}
-                    />
-                  </FormGrid>
-                </FormSection>
+            <FormSection title={t("announcements.section.content")}>
+              <FormGrid columns={1}>
+                <ProFormText
+                  name="title"
+                  label={t("announcements.field.title")}
+                  placeholder={t("announcements.field.title.placeholder")}
+                  rules={[{ required: true, min: 2, max: 200, message: "2-200 字符" }]}
+                  fieldProps={{ size: "large", maxLength: 200, showCount: true }}
+                />
+                <ProFormTextArea
+                  name="content"
+                  label={t("announcements.field.content")}
+                  placeholder={t("announcements.field.content.placeholder")}
+                  rules={[{ required: true, min: 1, max: 10000 }]}
+                  fieldProps={{
+                    size: "large",
+                    rows: 6,
+                    maxLength: 10000,
+                    showCount: true
+                  }}
+                />
+              </FormGrid>
+            </FormSection>
 
-                <FormSection title="发布选项">
-                  <FormGrid columns={2}>
-                    <ProFormSwitch
-                      name="pinned"
-                      label="置顶"
-                      tooltip="置顶公告在所有公告列表最上方"
-                    />
-                    <ProFormSelect
-                      name="targetRoles"
-                      label="接收角色"
-                      placeholder="留空表示全员"
-                      options={TARGET_ROLE_OPTIONS}
-                      mode="multiple"
-                      fieldProps={{ size: "large", allowClear: true }}
-                    />
-                    <ProFormDateRangePicker
-                      name="effectiveRange"
-                      label="生效期"
-                      fieldProps={{ size: "large", style: { width: "100%" } }}
-                    />
-                  </FormGrid>
-                </FormSection>
-
-                <Space style={{ marginTop: 16 }}>
-                  <Button onClick={() => setModalOpen(false)}>取消</Button>
-                  <Button
-                    type="primary"
-                    onClick={() =>
-                      (document.querySelector("form.ant-form") as HTMLFormElement | null)?.dispatchEvent(
-                        new Event("submit", { cancelable: true, bubbles: true })
-                      )
-                    }
-                  >
-                    发布
-                  </Button>
-                </Space>
-              </ProForm>
-            </FormCard>
-          </div>
-        </div>
-      ) : null}
-
-      {detail ? (
-        <div
-          style={{
-            position: "fixed",
-            inset: 0,
-            zIndex: 1100,
-            background: "rgba(0,0,0,0.45)",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center"
-          }}
-          onClick={() => setDetail(null)}
-        >
-          <div
-            onClick={(e) => e.stopPropagation()}
-            style={{ width: 720, maxWidth: "92vw", maxHeight: "90vh", overflow: "auto" }}
-          >
-            <FormCard>
-              <Space style={{ marginBottom: 12 }}>
-                {detail.pinned && <Tag color="red">置顶</Tag>}
-                {detail.targetRoles.length === 0 ? (
-                  <Tag>全员</Tag>
-                ) : (
-                  detail.targetRoles.map((r) => <Tag key={r}>{ROLE_LABEL[r as keyof typeof ROLE_LABEL] ?? r}</Tag>)
-                )}
-                <Text type="secondary">{new Date(detail.publishAt).toLocaleString("zh-CN")}</Text>
-              </Space>
-              <Paragraph style={{ whiteSpace: "pre-wrap", fontSize: 14 }}>{detail.content}</Paragraph>
-              <Button onClick={() => setDetail(null)}>关闭</Button>
-            </FormCard>
-          </div>
-        </div>
-      ) : null}
+            <FormSection title={t("announcements.section.options")}>
+              <FormGrid columns={2}>
+                <ProFormSwitch
+                  name="pinned"
+                  label={t("announcements.field.pinned")}
+                  tooltip={t("announcements.field.pinned.tooltip")}
+                />
+                <ProFormSelect
+                  name="targetRoles"
+                  label={t("announcements.field.targetRoles")}
+                  placeholder={t("announcements.field.targetRoles.placeholder")}
+                  options={TARGET_ROLE_OPTIONS}
+                  mode="multiple"
+                  fieldProps={{ size: "large", allowClear: true }}
+                />
+                <ProFormDateRangePicker
+                  name="effectiveRange"
+                  label={t("announcements.field.effectiveRange")}
+                  fieldProps={{ size: "large", style: { width: "100%" } }}
+                />
+              </FormGrid>
+            </FormSection>
+          </ProForm>
+        </FormCard>
+      </Modal>
     </Page>
   );
 }

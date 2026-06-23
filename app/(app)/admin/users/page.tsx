@@ -231,7 +231,7 @@ export default function UsersPage() {
             label: r.status === "ACTIVE" ? "禁用" : "启用"
           },
           { type: "divider" as const },
-          { key: "delete", label: <span style={{ color: "#ff4d4f" }}>删除</span>, danger: true }
+          { key: "delete", label: <span style={{ color: "var(--qt-danger)" }}>删除</span>, danger: true }
         ];
         return (
           <Space size={4}>
@@ -336,7 +336,7 @@ export default function UsersPage() {
           }
         }}
       >
-        <p style={{ marginBottom: 12, color: "rgba(0,0,0,0.65)" }}>
+        <p style={{ marginBottom: 12, color: "var(--qt-text-muted)" }}>
           请输入新的登录密码。设置后旧密码立即失效,已登录会话会要求重新登录。
         </p>
         <Form

@@ -64,7 +64,7 @@ export default function NewRolePage() {
           <ProFormText name="name" label="名称" rules={[{ required: true, max: 40 }]} />
           <ProFormTextArea name="description" label="说明" fieldProps={{ maxLength: 200 }} />
 
-          <Card size="small" style={{ marginBottom: 16, background: "#fafafa" }}>
+          <Card size="small" style={{ marginBottom: 16, background: "var(--qt-bg-subtle)" }}>
             <Text strong>从模板复制（可选）</Text>
             <div style={{ marginTop: 8 }}>
               <Select

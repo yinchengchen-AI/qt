@@ -159,7 +159,7 @@ export default function PaymentDetailPage() {
             { title: "合同状态", dataIndex: "status", render: (v: unknown) => v ? <StatusTag status={v as string} domain="contract" /> : "—" }
           ]} />
         ) : (
-          <div style={{ color: "#bfbfbf", padding: "12px 0" }}>—</div>
+          <div style={{ color: "var(--qt-text-disabled)", padding: "12px 0" }}>—</div>
         )}
       </ProCard>
     </Page>

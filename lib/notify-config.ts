@@ -3,6 +3,7 @@
 // 仅 ADMIN 可以在 .env 维护；运行时不可改（P3 阶段）
 
 import { envBool } from "./env-bool";
+import type { DomainEventType } from "@/server/events/bus";
 
 export type NotifyChannel = "inbox" | "email" | "wechatWork";
 
@@ -26,12 +27,16 @@ export const NOTIFY_CONFIG = {
   wechatWork: {
     webhookUrl: process.env.WECHAT_WORK_WEBHOOK_URL ?? ""
   },
-  // 每个事件类型走哪些通道
+  // 每个事件类型走哪些通道；用 satisfies 强制覆盖 DomainEventType 全集，
+  // 避免新增事件后静默退化为仅 inbox。
   channelsByType: {
     CONTRACT_PENDING_REVIEW: ["inbox", "email"] as NotifyChannel[],
     CONTRACT_APPROVED: ["inbox"] as NotifyChannel[],
     CONTRACT_REJECTED: ["inbox", "email"] as NotifyChannel[],
     CONTRACT_EXPIRING: ["inbox"] as NotifyChannel[],
+    CONTRACT_AUTO_EXECUTED: ["inbox"] as NotifyChannel[],
+    CONTRACT_AUTO_COMPLETED: ["inbox"] as NotifyChannel[],
+    CONTRACT_AUTO_EXPIRED: ["inbox"] as NotifyChannel[],
     INVOICE_OVERDUE_PAYMENT: ["inbox", "email", "wechatWork"] as NotifyChannel[],
     PAYMENT_RECEIVED: ["inbox"] as NotifyChannel[],
     PROJECT_DUE: ["inbox"] as NotifyChannel[],
@@ -39,7 +44,8 @@ export const NOTIFY_CONFIG = {
     CUSTOMER_STATUS_SUGGEST: ["inbox"] as NotifyChannel[],
     WORKFLOW_TASK_ASSIGNED: ["inbox", "email", "wechatWork"] as NotifyChannel[],
     WORKFLOW_REVIEW_REQUESTED: ["inbox", "email", "wechatWork"] as NotifyChannel[],
-  } as Record<string, NotifyChannel[]>
+    ASSET_EXPIRING: ["inbox", "email"] as NotifyChannel[]
+  } satisfies Record<DomainEventType, NotifyChannel[]>
 };
 
 export function isChannelEnabled(channel: NotifyChannel): boolean {

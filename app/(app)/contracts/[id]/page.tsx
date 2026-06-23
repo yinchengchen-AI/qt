@@ -1,6 +1,6 @@
 "use client";
 import { ProCard, ProDescriptions, ProTable } from "@ant-design/pro-components";
-import { Alert, App as AntdApp, Button, Card, Col, Empty, Radio, Row, Space, Statistic, Tabs, Tag } from "antd";
+import { Alert, App as AntdApp, Button, Col, Empty, Radio, Row, Space, Tabs, Tag } from "antd";
 import { CloudUploadOutlined, DeleteOutlined, FilePdfOutlined } from "@ant-design/icons";
 import { useParams, useRouter } from "next/navigation";
 import type { Contract as ContractEntity } from "@/lib/types/entities";
@@ -11,6 +11,8 @@ import { useState } from "react";
 import { Page } from "@/components/page";
 import { PageHeader } from "@/components/page-header";
 import { DetailPageSkeleton } from "@/components/detail-page-skeleton";
+import { ErrorBox } from "@/components/callout";
+import { StatGrid } from "@/components/stat-grid";
 import { StatusTag } from "@/components/status-tag";
 import { useActionCall } from "@/lib/use-action-call";
 import { openPrintWindow } from "@/lib/print-client";
@@ -229,9 +231,17 @@ const handleDelete = () => {
     return (
       <Page>
         <PageHeader back={() => router.push("/contracts")} title="合同详情" />
-        <div style={{ marginTop: 12, padding: 16, background: "#fff2f0", color: "#cf1322", borderRadius: 8, fontSize: 13 }}>
-          加载失败: {(error as Error).message}{" "}
-          <Button size="small" type="link" onClick={() => mutate()}>重试</Button>
+        <div style={{ marginTop: 12 }}>
+          <ErrorBox
+            title="加载失败"
+            action={
+              <Button size="small" onClick={() => mutate()}>
+                重试
+              </Button>
+            }
+          >
+            {(error as Error).message}
+          </ErrorBox>
         </div>
       </Page>
     );
@@ -302,38 +312,40 @@ const handleDelete = () => {
       label: <span>概览</span>,
       children: (
         <Row gutter={[16, 16]}>
-          <Col xs={12} sm={8} md={6}>
-            <Card><Statistic title="合同总额" value={t ? fmtWan(t.totalAmount) : 0} suffix="万" /></Card>
-          </Col>
-          <Col xs={12} sm={8} md={6}>
-            <Card><Statistic title="已开票" value={t ? fmtWan(t.invoicedAmount) : 0} suffix="万" /></Card>
-          </Col>
-          <Col xs={12} sm={8} md={6}>
-            <Card><Statistic title="已回款" value={t ? fmtWan(t.paidAmount) : 0} suffix="万" /></Card>
+          <Col xs={24}>
+            <StatGrid
+              columns={3}
+              items={[
+                { label: "合同总额", value: t ? fmtWan(t.totalAmount) : 0, suffix: "万" },
+                { label: "已开票", value: t ? fmtWan(t.invoicedAmount) : 0, suffix: "万" },
+                { label: "已回款", value: t ? fmtWan(t.paidAmount) : 0, suffix: "万" }
+              ]}
+            />
           </Col>
           <Col xs={24}>
-            <Card>
+            <ProCard>
               <div style={{ display: "flex", alignItems: "center", gap: 16, flexWrap: "wrap" }}>
-                <span style={{ fontSize: 13, color: "#666" }}>开票状态</span>
+                <span style={{ fontSize: 13, color: "var(--qt-text-hint)" }}>开票状态</span>
                 <Tag
                   color={t?.billingStatus === "COMPLETED" ? "success" : t?.billingStatus === "IN_PROGRESS" ? "processing" : "default"}
                   style={{ fontSize: 14, padding: "4px 12px" }}
                 >
                   {BILLING_STATUS_MAP[t?.billingStatus ?? "NOT_STARTED"] ?? t?.billingStatus}
                 </Tag>
-                <span style={{ fontSize: 13, color: "#999" }}>
+                <span style={{ fontSize: 13, color: "var(--qt-text-faint)" }}>
                   已开票 {t ? fmtWan(t.invoicedAmount) : 0} 万 / 合同总额 {t ? fmtWan(t.totalAmount) : 0} 万
                 </span>
               </div>
-            </Card>
+            </ProCard>
           </Col>
           <Col xs={24}>
-            <ProCard>
-              <Row gutter={16}>
-                <Col xs={12}><Statistic title="开票数" value={t?.invoiceCount ?? 0} /></Col>
-                <Col xs={12}><Statistic title="回款数" value={t?.paymentCount ?? 0} /></Col>
-              </Row>
-            </ProCard>
+            <StatGrid
+              columns={2}
+              items={[
+                { label: "开票数", value: t?.invoiceCount ?? 0 },
+                { label: "回款数", value: t?.paymentCount ?? 0 }
+              ]}
+            />
           </Col>
         </Row>
       )

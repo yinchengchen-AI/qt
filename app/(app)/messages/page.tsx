@@ -8,6 +8,7 @@ import { PageHeader } from "@/components/page-header";
 import { StatusTag } from "@/components/status-tag";
 import { makeListRequest } from "@/lib/use-list-request";
 import { DateTimeCell } from "@/components/table-cells";
+import { useT } from "@/lib/i18n";
 
 type Message = {
   id: string;
@@ -23,14 +24,15 @@ type Message = {
 import { buildMessageLinkHref as buildLinkHref } from "@/lib/message-link";
 
 export default function MessagesPage() {
-  const { message: msg } = AntdApp.useApp();
+  const t = useT();
+  const { message: msg, modal } = AntdApp.useApp();
   const actionRef = useRef<ActionType>(undefined);
 
   return (
     <Page>
       <PageHeader
-        title="消息中心"
-        subtitle="业务事件通知(待审批 / 合同到期 / 项目到期 / 回款 / 客户静默 等)"
+        title={t("messages.title")}
+        subtitle={t("messages.subtitle")}
         actions={
           <Button
             key="all"
@@ -43,11 +45,12 @@ export default function MessagesPage() {
               } else msg.error(j.message);
             }}
           >
-            全部标记已读
+            {t("messages.markAllRead")}
           </Button>
         }
       />
-      <ProTable<Message> actionRef={actionRef}
+      <ProTable<Message>
+        actionRef={actionRef}
         rowKey="id"
         search={false}
         pagination={{ defaultPageSize: 20, showSizeChanger: true }}
@@ -55,27 +58,27 @@ export default function MessagesPage() {
         request={makeListRequest<Message>("/api/messages")}
         columns={[
           {
-            title: "状态",
+            title: t("messages.column.status"),
             dataIndex: "readAt",
             width: 80,
-            render: (_, r) => (r.readAt ? <Tag>已读</Tag> : <Tag color="red">未读</Tag>)
+            render: (_, r) => (r.readAt ? <Tag>{t("messages.tag.read")}</Tag> : <Tag color="red">{t("messages.tag.unread")}</Tag>)
           },
           {
-            title: "类型",
+            title: t("messages.column.type"),
             dataIndex: "type",
             width: 110,
             render: (_, r) => <StatusTag status={r.type} domain="message" />
           },
-          { title: "标题", dataIndex: "title", width: 320 },
-          { title: "内容", dataIndex: "content", ellipsis: true },
+          { title: t("messages.column.title"), dataIndex: "title", width: 320 },
+          { title: t("messages.column.content"), dataIndex: "content", ellipsis: true },
           {
-            title: "时间",
+            title: t("messages.column.time"),
             dataIndex: "createdAt",
             width: 180,
             render: (_, r) => <DateTimeCell value={r.createdAt} />
           },
           {
-            title: "操作",
+            title: t("messages.column.actions"),
             width: 220,
             render: (_, r) => (
               <Space>
@@ -84,7 +87,7 @@ export default function MessagesPage() {
                   if (!href) return null;
                   return (
                     <Link href={href}>
-                      <Button type="link" size="small">查看</Button>
+                      <Button type="link" size="small">{t("messages.action.view")}</Button>
                     </Link>
                   );
                 })()}
@@ -98,20 +101,29 @@ export default function MessagesPage() {
                       if (j.code === 0) actionRef.current?.reloadAndRest?.();
                     }}
                   >
-                    标记已读
+                    {t("messages.action.markRead")}
                   </Button>
                 )}
                 <Button
                   type="link"
                   size="small"
                   danger
-                  onClick={async () => {
-                    const res = await fetch(`/api/messages/${r.id}`, { method: "DELETE", credentials: "include" });
-                    const j = await res.json();
-                    if (j.code === 0) actionRef.current?.reloadAndRest?.();
+                  onClick={() => {
+                    modal.confirm({
+                      title: t("messages.deleteConfirm.title"),
+                      content: t("messages.deleteConfirm.content"),
+                      okText: t("messages.action.delete"),
+                      okType: "danger",
+                      cancelText: t("announcements.cancel"),
+                      onOk: async () => {
+                        const res = await fetch(`/api/messages/${r.id}`, { method: "DELETE", credentials: "include" });
+                        const j = await res.json();
+                        if (j.code === 0) actionRef.current?.reloadAndRest?.();
+                      }
+                    });
                   }}
                 >
-                  删除
+                  {t("messages.action.delete")}
                 </Button>
               </Space>
             )
