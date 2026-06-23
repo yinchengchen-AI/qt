@@ -320,18 +320,25 @@ async function main() {
   );
   console.log(`==> 备份 ${count} 条`);
 
-  // 写库
-  console.log(`==> 开始 UPDATE (单事务)...`);
+  // 写库 — 按字段批量 UPDATE (每字段 1 条 SQL, 避免 8000+ 次往返)
+  const writeFields = Array.from(new Set(allChanges.map((c) => c.field)));
+  console.log(`==> 开始 UPDATE (按字段批量, ${writeFields.length} 条 SQL, 事务 timeout 60s)...`);
   await prisma.$transaction(async (tx) => {
-    for (const c of allChanges) {
-      const setExpr = `${c.field} = $2`;
-      await tx.$executeRawUnsafe(
-        `UPDATE "Customer" SET ${setExpr}, "updatedAt" = NOW() WHERE id = $1 AND "deletedAt" IS NULL;`,
-        c.id,
-        c.after
-      );
+    for (const f of writeFields) {
+      const rows = allChanges.filter((c) => c.field === f);
+      if (rows.length === 0) continue;
+      const placeholders = rows.map((_, i) => `($${i * 2 + 1}::text, $${i * 2 + 2}::text)`).join(",");
+      const params = rows.flatMap((r) => [r.id, r.after]);
+      const sql = `
+        UPDATE "Customer" AS c
+        SET "${f}" = v.new, "updatedAt" = NOW()
+        FROM (VALUES ${placeholders}) AS v(id, new)
+        WHERE c.id = v.id AND c."deletedAt" IS NULL
+      `;
+      const r = await tx.$executeRawUnsafe(sql, ...params);
+      console.log(`    [${f}] updated ${r} (expected ${rows.length})`);
     }
-  });
+  }, { timeout: 60_000 });
 
   console.log(`==> 完成. 备份表 "${backup}" 保留, 不要立刻 drop, 出问题回滚用:`);
   console.log(`   INSERT INTO "Customer" SELECT * FROM "${backup}" WHERE id = ...;`);
