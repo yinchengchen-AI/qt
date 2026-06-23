@@ -49,7 +49,7 @@ test.describe.serial("场景 3: FINANCE 财务全链路", () => {
     await expect(page.locator(".ant-pro-card").first()).toBeVisible({ timeout: 10000 });
   });
 
-  test("03.6 FINANCE 访问业务员业绩", async ({ page }) => {
+  test("03.6 FINANCE 访问员工业绩", async ({ page }) => {
     await ensureLoggedIn(page, "finance", DEV_PASSWORD);
     await page.goto("/statistics/performance");
     await page.waitForLoadState("networkidle");

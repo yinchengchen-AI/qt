@@ -580,8 +580,8 @@ GET /api/dashboard/summary                # 工作台 4 卡片 + 账龄
 GET /api/statistics/overview?from&to      # 总览 + 时间序列
 GET /api/statistics/invoice-aging         # 应收账款账龄
 GET /api/statistics/top-customers?metric=contract|payment&limit=10
-GET /api/statistics/sales-performance?userId=&from=&to=
-GET /api/statistics/export?type=overview|top-customers|sales-performance   # xlsx 下载
+GET /api/statistics/employee-performance?userId=&from=&to=
+GET /api/statistics/export?type=overview|top-customers|employee-performance   # xlsx 下载
 ```
 
 ### 端到端测试结果
@@ -599,7 +599,7 @@ GET /api/statistics/export?type=overview|top-customers|sales-performance   # xls
 ✅ 时间序列长度
 ✅ 账龄分析
 ✅ Top 客户
-✅ 业务员业绩
+✅ 员工业绩
 ✅ xlsx 导出 overview
 ✅ xlsx 导出 top-customers
 ✅ SALES 调 export overview 被拒（设计: SALES STATISTICS=R 无 EXPORT）

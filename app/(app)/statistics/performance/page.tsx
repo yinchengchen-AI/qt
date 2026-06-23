@@ -44,7 +44,7 @@ export default function PerformancePage() {
     try {
       const qs = new URLSearchParams();
       if (range) { qs.set("from", range[0].toISOString()); qs.set("to", range[1].toISOString()); }
-      const r = await fetch(`/api/statistics/sales-performance?${qs}`, { credentials: "include" });
+      const r = await fetch(`/api/statistics/employee-performance?${qs}`, { credentials: "include" });
       const j = await r.json();
       if (j.code !== 0) throw new Error(j.message);
       setRows(j.data);
@@ -56,14 +56,14 @@ export default function PerformancePage() {
   useEffect(() => { load(); }, [load]);
 
   const download = async () => {
-    const qs = new URLSearchParams({ type: "sales-performance" });
+    const qs = new URLSearchParams({ type: "employee-performance" });
     if (range) { qs.set("from", range[0].toISOString()); qs.set("to", range[1].toISOString()); }
     const r = await fetch(`/api/statistics/export?${qs}`, { credentials: "include" });
     if (!r.ok) { const j = await r.json(); message.error(j.message); return; }
     const blob = await r.blob();
     const a = document.createElement("a");
     a.href = URL.createObjectURL(blob);
-    a.download = `业务员业绩_${new Date().toISOString().slice(0, 10)}.xlsx`;
+    a.download = `员工业绩_${new Date().toISOString().slice(0, 10)}.xlsx`;
     a.click();
   };
 
@@ -78,7 +78,7 @@ export default function PerformancePage() {
     { label: "合同总额", value: formatCompact(totals.contract), suffix: "", description: `共 ${totals.count} 份` },
     { label: "已开票总额", value: formatCompact(totals.invoice), suffix: "", description: `开票率 ${totals.contract > 0 ? ((totals.invoice / totals.contract) * 100).toFixed(1) : 0}%` },
     { label: "已回款总额", value: formatCompact(totals.payment), suffix: "", description: `回款率 ${totals.invoice > 0 ? ((totals.payment / totals.invoice) * 100).toFixed(1) : 0}%` },
-    { label: "业务人数", value: rows.length, suffix: "人", description: `人均 ${formatCompact(totals.contract / Math.max(rows.length, 1))} 元` },
+    { label: "员工人数", value: rows.length, suffix: "人", description: `人均 ${formatCompact(totals.contract / Math.max(rows.length, 1))} 元` },
   ];
 
   // 图表用 Top N 数据
@@ -89,8 +89,8 @@ export default function PerformancePage() {
   return (
     <Page>
       <PageHeader
-        title="业务员业绩"
-        subtitle="按业务员汇总合同、开票、回款，支持时间范围筛选"
+        title="员工业绩"
+        subtitle="按员工汇总合同、开票、回款，支持时间范围筛选"
         actions={
           <Space wrap>
             <DatePicker.RangePicker
@@ -162,7 +162,7 @@ export default function PerformancePage() {
                   <thead>
                     <tr style={{ borderBottom: "2px solid #f0f0f0", textAlign: "left" }}>
                       <th style={{ padding: "10px 8px", width: 50 }}>#</th>
-                      <th style={{ padding: "10px 8px" }}>业务员</th>
+                      <th style={{ padding: "10px 8px" }}>员工</th>
                       <th style={{ padding: "10px 8px", textAlign: "right" }}>合同数</th>
                       <th style={{ padding: "10px 8px", textAlign: "right" }}>合同额</th>
                       <th style={{ padding: "10px 8px", textAlign: "right" }}>已开票</th>

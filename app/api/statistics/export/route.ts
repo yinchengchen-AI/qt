@@ -5,13 +5,13 @@ import { requireSession } from "@/lib/session";
 import { requirePermission, RESOURCE, ACTION } from "@/lib/permissions";
 import {
   getTopCustomers,
-  getSalesPerformance,
+  getEmployeePerformance,
   getOverview,
 } from "@/server/services/statistics";
 import { exportToXlsx } from "@/lib/excel";
 
 const query = z.object({
-  type: z.enum(["overview", "top-customers", "sales-performance"]),
+  type: z.enum(["overview", "top-customers", "employee-performance"]),
   metric: z.enum(["contract", "payment"]).optional(),
   from: z.string().optional(),
   to: z.string().optional(),
@@ -78,8 +78,8 @@ export async function GET(req: Request) {
           },
         });
       }
-      // sales-performance
-      const data = await getSalesPerformance(user, undefined, { from, to });
+      // employee-performance
+      const data = await getEmployeePerformance(user, undefined, { from, to });
       const buf = await exportToXlsx(data, [
         { header: "工号", key: "employeeNo", width: 12 },
         { header: "姓名", key: "name", width: 14 },
@@ -92,7 +92,7 @@ export async function GET(req: Request) {
         headers: {
           "Content-Type":
             "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-          "Content-Disposition": `attachment; filename="sales-performance-${ts}.xlsx"`,
+          "Content-Disposition": `attachment; filename="employee-performance-${ts}.xlsx"`,
           "Cache-Control": "no-store",
         },
       });

@@ -572,7 +572,7 @@ PLANNED ─confirm─▶ CONFIRMED ─reconcile─▶ RECONCILED
 
 ### 11.3 业绩(Performance)
 
-- **业务员业绩**:
+- **员工业绩**:
   - SALES 只能看自己;ADMIN / FINANCE 看全员
 - 指标:合同金额、开票金额、回款金额、客户数、新签客户数
 - 时间区间可配

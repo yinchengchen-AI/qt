@@ -162,9 +162,9 @@ try {
   const top = await admin.req("/api/statistics/top-customers?metric=contract&limit=5");
   log("Top 客户", top.status === 200 && Array.isArray(top.body?.data), `count=${top.body?.data?.length}`);
 
-  // 10. 统计：业务员业绩
-  const perf = await admin.req("/api/statistics/sales-performance");
-  log("业务员业绩", perf.status === 200 && Array.isArray(perf.body?.data), `count=${perf.body?.data?.length}`);
+  // 10. 统计：员工业绩
+  const perf = await admin.req("/api/statistics/employee-performance");
+  log("员工业绩", perf.status === 200 && Array.isArray(perf.body?.data), `count=${perf.body?.data?.length}`);
 
   // 11. xlsx 导出：overview
   const exp1 = await admin.req("/api/statistics/export?type=overview");

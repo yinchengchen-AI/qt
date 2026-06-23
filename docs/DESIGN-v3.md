@@ -360,7 +360,7 @@ PLANNED ─confirm(finance)─▶ CONFIRMED ─reconcile(finance)─▶ RECONCIL
 | 应收账款账龄 | `0-30 / 31-60 / 61-90 / 90+` 分桶 | 截止时点 |
 
 ### 8.2 看板 / 导出
-- 管理员/财务：合同/开票/回款总览、账龄、客户 Top10、业务员 Top10。
+- 管理员/财务：合同/开票/回款总览、账龄、客户 Top10、员工 Top10。
 - 业务人员：本人业绩 + 我的客户/合同/回款进度。
 - 行政人员：基础信息统计（金额字段隐藏）。
 - 导出：`exceljs@4.4.0` 流式生成；权限跟随 `EXPORT`；文件名 `统计报表_{from}_{to}.xlsx`。
@@ -401,7 +401,7 @@ PLANNED ─confirm(finance)─▶ CONFIRMED ─reconcile(finance)─▶ RECONCIL
 - `GET /api/statistics/overview?from&to&groupBy=month|customer|sales`
 - `GET /api/statistics/invoice-aging`
 - `GET /api/statistics/top-customers?metric=contract|payment&limit=10`
-- `GET /api/statistics/sales-performance?userId=&from=&to=`
+- `GET /api/statistics/employee-performance?userId=&from=&to=`
 
 ### 9.8 消息/公告
 - `GET /api/messages?unread=true`、`PATCH /api/messages/:id`、`POST /api/messages/mark-all-read`

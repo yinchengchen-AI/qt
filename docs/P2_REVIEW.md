@@ -27,7 +27,7 @@
 - 时间序列：JS 端分桶（避免 PG `generate_series` 复杂度）
 - 账龄：4 桶（0-30 / 31-60 / 61-90 / 90+）
 - Top10：可配置 metric（contract / payment）
-- 业务员业绩：按 SALES 角色自动行级隔离
+- 员工业绩：按 SALES 角色行级隔离; ADMIN/FINANCE 看全员 (排除 admin + system)
 
 ### 4. xlsx 导出
 - 路由层鉴权（需 STATISTICS EXPORT 权限）

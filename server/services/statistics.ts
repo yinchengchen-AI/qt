@@ -315,7 +315,7 @@ async function aggregatePerformance(owners: { id: string; name: string; employee
   return out;
 }
 
-export async function getSalesPerformance(user: SessionUser, targetUserId?: string, range?: DateRange) {
+export async function getEmployeePerformance(user: SessionUser, targetUserId?: string, range?: DateRange) {
   requirePermission(user.roleCode, RESOURCE.STATISTICS, ACTION.READ);
   // SALES 角色：只能看自己,直接 short-circuit (避免下面循环把别人全填 0)
   if (user.roleCode === "SALES") {
@@ -324,15 +324,19 @@ export async function getSalesPerformance(user: SessionUser, targetUserId?: stri
       range
     );
   }
-  // ADMIN / FINANCE: 可看全员(或指定 targetUserId 单人)
+  // 其它角色: 统计所有非系统、非管理员的 ACTIVE 员工 (或指定 targetUserId 单人)
+  // - isSystem=false 排除合同状态机等内部用的 system actor
+  // - role.code != "ADMIN" 排除管理员 (管理员不背业绩, 不进排行)
   const owners = await prisma.user.findMany({
     where: {
       deletedAt: null,
       status: "ACTIVE",
-      role: { code: "SALES" },
+      isSystem: false,
+      role: { code: { not: "ADMIN" } },
       ...(targetUserId ? { id: targetUserId } : {})
     },
-    select: { id: true, name: true, employeeNo: true }
+    select: { id: true, name: true, employeeNo: true },
+    orderBy: { employeeNo: "asc" }
   });
   return aggregatePerformance(owners, range);
 }

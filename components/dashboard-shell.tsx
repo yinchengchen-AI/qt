@@ -106,7 +106,7 @@ const MENU: MenuItem[] = [
     children: [
       { path: "/statistics/overview", name: "总览", permission: { resource: RESOURCE.STATISTICS, action: ACTION.READ } },
       { path: "/statistics/aging", name: "账龄分析", permission: { resource: RESOURCE.STATISTICS, action: ACTION.READ } },
-      { path: "/statistics/performance", name: "业务员业绩", permission: { resource: RESOURCE.STATISTICS, action: ACTION.READ } },
+      { path: "/statistics/performance", name: "员工业绩", permission: { resource: RESOURCE.STATISTICS, action: ACTION.READ } },
     ]
   },
   {
@@ -686,7 +686,7 @@ const CRUMB_LABEL: Record<string, string> = {
   statistics: "统计分析",
   overview: "总览",
   aging: "账龄分析",
-  performance: "业务员业绩",
+  performance: "员工业绩",
   messages: "消息中心",
   announcements: "公告",
   admin: "系统管理",
