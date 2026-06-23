@@ -15,7 +15,7 @@ import { useActionCall } from "@/lib/use-action-call";
 import { openPrintWindow } from "@/lib/print-client";
 import { useUserName } from "@/lib/user-lookup";
 import { CurrencyCell, DateTimeCell } from "@/components/table-cells";
-import { METHOD_MAP } from "@/lib/enum-maps";
+import { METHOD_MAP, SERVICE_TYPE_MAP, PAYMENT_METHOD_MAP } from "@/lib/enum-maps";
 import { useResponsive } from "@/lib/use-breakpoint";
 
 const DESC_COL = { xs: 1, sm: 1, md: 2, lg: 2, xl: 3 } as const;
@@ -152,9 +152,9 @@ export default function PaymentDetailPage() {
             { title: "合同号", dataIndex: "contractNo" },
             { title: "合同标题", dataIndex: "title" },
             { title: "客户", dataIndex: "customerName" },
-            { title: "服务类型", dataIndex: "serviceType", render: (v: unknown) => (v as string) || "—" },
+            { title: "服务类型", dataIndex: "serviceType", render: (v: unknown) => SERVICE_TYPE_MAP[v as string] ?? (v as string) ?? "—" },
             { title: "合同总额", dataIndex: "totalAmount", render: (v: unknown) => v ? <CurrencyCell value={v as string} /> : "—" },
-            { title: "付款方式", dataIndex: "paymentMethod", render: (v: unknown) => (v as string) || "—" },
+            { title: "付款方式", dataIndex: "paymentMethod", render: (v: unknown) => PAYMENT_METHOD_MAP[v as string] ?? (v as string) ?? "—" },
             { title: "签订日", dataIndex: "signDate", render: (v: unknown) => v ? <DateTimeCell value={v as string} /> : "—" },
             { title: "合同状态", dataIndex: "status", render: (v: unknown) => v ? <StatusTag status={v as string} domain="contract" /> : "—" }
           ]} />

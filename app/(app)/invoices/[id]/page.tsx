@@ -75,7 +75,7 @@ export default function InvoiceDetailPage() {
       <PageHeader
         back={() => router.push("/invoices")}
         title={`${invoice.customerName} · ${invoice.invoiceNo}`}
-        subtitle={`发票类型: ${invoice.invoiceType ?? "-"}`}
+        subtitle={`发票类型: ${INVOICE_TYPE_MAP[invoice.invoiceType as string] ?? invoice.invoiceType ?? "-"}`}
         meta={<StatusTag status={invoice.status} domain="invoice" />}
         actions={
           <Space wrap>
