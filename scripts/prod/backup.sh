@@ -70,15 +70,19 @@ docker exec -e PGPASSWORD="$SUPER_PW" "$DOCKER_PG" \
   > "$FILE"
 echo "  -> $(du -h "$FILE" | cut -f1)"
 
-# --- 2) 完整性校验 (走容器内 pg_restore 16,避免 host 客户端版本太老读不动) ---
+# --- 2) 完整性校验 (走容器内 pg_restore 16,host 客户端太老读不动 -F c 格式;
+#         通过 docker cp 临时把 dump 拷到容器 /tmp 后再 list,验完即删) ---
 echo "[$(date +%FT%T)] pg_restore --list (integrity check, via $DOCKER_PG)"
-if docker exec "$DOCKER_PG" pg_restore --list "$FILE" >/dev/null 2>&1; then
-  ENTRIES=$(docker exec "$DOCKER_PG" pg_restore --list "$FILE" 2>/dev/null | wc -l | tr -d ' ')
+CHECK_FILE=/tmp/qt_backup_check_$$.dump
+if docker cp "$FILE" "$DOCKER_PG:$CHECK_FILE" >/dev/null 2>&1 \
+   && docker exec "$DOCKER_PG" pg_restore --list "$CHECK_FILE" >/dev/null 2>&1; then
+  ENTRIES=$(docker exec "$DOCKER_PG" pg_restore --list "$CHECK_FILE" 2>/dev/null | wc -l | tr -d ' ')
   echo "  -> OK ($ENTRIES entries)"
 else
   # 不让单次校验失败炸掉整个备份 (dump 仍然可用,只是没做校验)
   echo "  -> WARN: integrity check failed,但 dump 文件已落地,继续后续 MinIO 镜像" >&2
 fi
+docker exec "$DOCKER_PG" rm -f "$CHECK_FILE" >/dev/null 2>&1 || true
 
 # --- 3) MinIO 镜像 (可选) ---
 if [ "$BACKUP_MIRROR_MINIO" = "1" ]; then
