@@ -6,11 +6,12 @@ import { nextBusinessNo } from "@/lib/sequence";
 import { requirePermission, RESOURCE, ACTION } from "@/lib/permissions";
 import type { CustomerCreateInput, CustomerUpdateInput, FollowUpCreateInput } from "@/lib/validators/customer";
 import { buildCustomerUpdateData } from "@/lib/customer-update";
-import { assertCanTransition } from "@/server/services/customer-status";
 import { Prisma } from "@prisma/client";
 import { audit } from "@/server/audit";
 import { rlsTransaction } from "@/lib/rls";
 import { ownerEq, ownerViaContract, parseStatusList } from "@/lib/ownership";
+import { runTransitionInTx } from "@/lib/status-machine";
+import { ALLOWED_TRANSITIONS_BY_TARGET, isCustomerStatus } from "@/lib/customer-status-transitions";
 
 export async function listCustomers(
   user: SessionUser,
@@ -140,8 +141,9 @@ export async function updateCustomer(user: SessionUser, id: string, input: Custo
 }
 
 // 客户状态机迁移入口
-// 顺序: 行锁 + assertCanTransition + R-02 / R-13 业务校验 + 写库 + audit
+// 顺序: 行锁 + runTransitionInTx (loadInTx + from 检查 + precondition R-02/R-13 + update + audit)
 // 事务隔离级别: Serializable (R-16); 行锁: SELECT ... FOR UPDATE 防止并发 PATCH 丢更新
+// 状态不匹配时保留原 CUSTOMER_STATUS_TRANSITION_INVALID 错误码 (mismatchError 覆写抽象默认的 ENTITY_IMMUTABLE)
 export async function changeCustomerStatus(
   user: SessionUser,
   id: string,
@@ -163,61 +165,84 @@ export async function changeCustomerStatus(
       if (locked.length === 0) {
         throw new ApiError(ERROR_CODES.NOT_FOUND, "客户不存在", 404);
       }
-      const existing = await tx.customer.findFirst({
-        where: { id, deletedAt: null, ...ownerEq(user) },
-        select: { id: true, status: true, name: true, ownerUserId: true }
-      });
-      if (!existing) throw new ApiError(ERROR_CODES.NOT_FOUND, "客户不存在", 404);
-      // 1) 迁移合法性 (from -> to 是否在迁移表内)
-      assertCanTransition(existing.status, status);
-      // 1.5) 终态变更必填 reason: LOST / FROZEN 涉及"为什么"信息, 不允许无原因写入
-      //  给报表统计和审计追溯用; 前端 Popover/编辑页会在用户点击这两个目标时弹出原因输入
-      if ((status === "LOST" || status === "FROZEN") && !reason) {
+      // 校验目标状态是合法枚举 (防御性兜底, 与原 assertCanTransition 的 isCustomerStatus 检查一致)
+      if (!isCustomerStatus(status)) {
         throw new ApiError(
-          ERROR_CODES.CUSTOMER_STATUS_REASON_REQUIRED,
-          `客户状态变更为 ${status} 需要填写原因`,
-          422
+          ERROR_CODES.CUSTOMER_STATUS_TRANSITION_INVALID,
+          `客户状态变更目标非法: ${status}`,
+          422,
         );
       }
-      // 2) R-02: SIGNED 需至少 1 份生效中(ACTIVE)合同
-      if (status === "SIGNED") {
-        const cnt = await tx.contract.count({
-          where: { customerId: id, status: "ACTIVE" }
-        });
-        if (cnt === 0) {
-          throw new ApiError(ERROR_CODES.CUSTOMER_STATUS_INVALID, "客户需至少一份生效中的合同", 422);
-        }
+      // 走 runTransitionInTx 做 from 检查 + precondition (业务校验) + update + audit
+      const result = await runTransitionInTx(
+        tx,
+        {
+          entity: "Customer",
+          loadInTx: (t) => t.customer.findFirst({
+            where: { id, deletedAt: null, ...ownerEq(user) },
+            select: { id: true, status: true, name: true, ownerUserId: true },
+          }),
+          from: ALLOWED_TRANSITIONS_BY_TARGET[status] as readonly string[],
+          to: status,
+          // 1) 终态变更必填 reason: LOST / FROZEN 涉及"为什么"信息, 不允许无原因写入
+          // 2) R-02: SIGNED 需至少 1 份生效中(ACTIVE)合同
+          // 3) R-13: FROZEN 检查 — 先看活跃合同, 再看未对账回款 (顺序对应错误码提示)
+          precondition: async (current, t) => {
+            if ((status === "LOST" || status === "FROZEN") && !reason) {
+              throw new ApiError(
+                ERROR_CODES.CUSTOMER_STATUS_REASON_REQUIRED,
+                `客户状态变更为 ${status} 需要填写原因`,
+                422,
+              );
+            }
+            if (status === "SIGNED") {
+              const cnt = await t.contract.count({
+                where: { customerId: id, status: "ACTIVE" },
+              });
+              if (cnt === 0) {
+                throw new ApiError(ERROR_CODES.CUSTOMER_STATUS_INVALID, "客户需至少一份生效中的合同", 422);
+              }
+            }
+            if (status === "FROZEN") {
+              const activeContract = await t.contract.count({
+                where: { customerId: id, status: { in: ["ACTIVE"] } },
+              });
+              if (activeContract > 0) {
+                throw new ApiError(ERROR_CODES.CUSTOMER_HAS_ACTIVE_CONTRACT, "客户存在进行中合同,无法冻结", 422);
+              }
+              const activePayment = await t.payment.count({
+                where: { customerId: id, status: { in: ["PLANNED", "CONFIRMED"] }, deletedAt: null },
+              });
+              if (activePayment > 0) {
+                throw new ApiError(ERROR_CODES.CUSTOMER_FROZEN_ACTIVE_PAYMENT, "客户存在未对账回款,无法冻结", 422);
+              }
+            }
+          },
+          audit: (current) => ({
+            actorId: user.id,
+            action: "CUSTOMER_STATUS_CHANGE",
+            before: { status: current.status },
+            after: { status, ...(reason ? { reason } : {}) },
+          }),
+          // 状态不匹配时保留原 errorCode (CUSTOMER_STATUS_TRANSITION_INVALID, 422) — 与原 assertCanTransition 一致
+          mismatchError: {
+            code: ERROR_CODES.CUSTOMER_STATUS_TRANSITION_INVALID,
+            status: 422,
+            message: (current, to) => `客户状态 ${current.status} → ${to} 不允许`,
+          },
+        },
+      );
+      if (result.result === "SKIPPED") {
+        throw new ApiError(
+          ERROR_CODES.CUSTOMER_STATUS_TRANSITION_INVALID,
+          `客户状态 ${status} 不允许`,
+          422,
+        );
       }
-      // 3) R-13: FROZEN 检查 — 先看活跃合同, 再看未对账回款 (顺序对应错误码提示)
-      if (status === "FROZEN") {
-        const activeContract = await tx.contract.count({
-          where: { customerId: id, status: { in: ["ACTIVE"] } }
-        });
-        if (activeContract > 0) {
-          throw new ApiError(ERROR_CODES.CUSTOMER_HAS_ACTIVE_CONTRACT, "客户存在进行中合同，无法冻结", 422);
-        }
-        // 补齐设计文档: 冻结前需无 PLANNED/CONFIRMED 回款
-        const activePayment = await tx.payment.count({
-          where: { customerId: id, status: { in: ["PLANNED", "CONFIRMED"] }, deletedAt: null }
-        });
-        if (activePayment > 0) {
-          throw new ApiError(ERROR_CODES.CUSTOMER_FROZEN_ACTIVE_PAYMENT, "客户存在未对账回款，无法冻结", 422);
-        }
-      }
-      // 4) 写库
-      const updated = await tx.customer.update({ where: { id }, data: { status, updatedById: user.id } });
-      // 5) 审计
-      await audit(tx, {
-        actorId: user.id,
-        action: "CUSTOMER_STATUS_CHANGE",
-        entity: "Customer",
-        entityId: id,
-        before: { status: existing.status },
-        after: { status, ...(reason ? { reason } : {}) }
-      });
-      return updated;
+      // 拿回更新后的记录返回
+      return result.updated ?? null;
     },
-    { isolationLevel: Prisma.TransactionIsolationLevel.Serializable, timeout: 10_000 }
+    { isolationLevel: Prisma.TransactionIsolationLevel.Serializable, timeout: 10_000 },
   );
 }
 

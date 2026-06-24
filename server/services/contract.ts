@@ -9,7 +9,8 @@ import { getBillingStatus } from "@/lib/contract-billing";
 import type { BillingStatus } from "@/types/enums";
 import { Prisma } from "@prisma/client";
 import { audit } from "@/server/audit";
-import { emit, listAdminUserIds } from "@/server/events/bus";
+import { listAdminUserIds } from "@/server/events/bus";
+import { runTransition, runTransitionInTx, SkipTransition } from "@/lib/status-machine";
 import { SYSTEM_USER_ID } from "@/lib/system";
 import { env } from "@/lib/env";
 
@@ -700,50 +701,41 @@ export async function softDeleteContract(user: SessionUser, id: string) {
  * 跑在 /api/jobs/run-all, 每天 1 次, 调用方传入 now.
  */
 export async function tryAutoCloseOnExpiry(contractId: string, now: Date): Promise<"CLOSED" | "SKIPPED"> {
-  for (let attempt = 1; attempt <= SERIALIZABLE_RETRY; attempt++) {
-    try {
-      return await prisma.$transaction(
-        async (tx) => {
-          const c = await tx.contract.findFirst({ where: { id: contractId, deletedAt: null } });
-          if (!c) return "SKIPPED" as const;
-          if (c.status !== "ACTIVE") return "SKIPPED" as const;
-          if (new Date(c.endDate) >= now) return "SKIPPED" as const;
-          const before = { status: c.status };
-          await tx.contract.update({ where: { id: contractId }, data: { status: "CLOSED", reviewComment: "expired" } });
-          await tx.contractReviewLog.create({
-            data: { contractId, reviewerId: SYSTEM_USER_ID, action: "AUTO_CLOSE_EXPIRED", comment: "合同已过到期日,系统自动置为已完结" }
-          });
-          await audit(tx, {
-            actorId: SYSTEM_USER_ID,
-            action: "CONTRACT_AUTO_CLOSE_EXPIRED",
-            entity: "Contract",
-            entityId: contractId,
-            before,
-            after: { status: "CLOSED", reason: "expired" }
-          });
-          const admins = await listAdminUserIds(tx);
-          await emit(tx, {
-            type: "CONTRACT_AUTO_EXPIRED",
-            payload: { contractId, contractNo: c.contractNo, endDate: c.endDate },
-            receivers: Array.from(new Set([c.ownerUserId, ...admins]))
-          });
-          return "CLOSED" as const;
-        },
-        { isolationLevel: Prisma.TransactionIsolationLevel.Serializable }
-      );
-    } catch (e) {
-      if (
-        e instanceof Prisma.PrismaClientKnownRequestError &&
-        e.code === "P2034" &&
-        attempt < SERIALIZABLE_RETRY
-      ) {
-        continue;
-      }
-      throw e;
-    }
-  }
-  // 不可达: 上面内层 catch 已 throw e
-  throw new Error("unreachable: SERIALIZABLE_RETRY exhausted");
+  const result = await runTransition({
+    entity: "Contract",
+    id: contractId,
+    loadInTx: (tx) => tx.contract.findFirst({
+      where: { id: contractId, deletedAt: null },
+      select: { id: true, status: true, contractNo: true, endDate: true, ownerUserId: true },
+    }),
+    from: ["ACTIVE"],
+    to: "CLOSED",
+    precondition: (c) => {
+      if (new Date(c.endDate as unknown as Date) >= now) throw new SkipTransition();
+    },
+    extraData: () => ({ reviewComment: "expired" }),
+    audit: (c) => ({
+      actorId: SYSTEM_USER_ID,
+      action: "CONTRACT_AUTO_CLOSE_EXPIRED",
+      before: { status: c.status },
+      after: { status: "CLOSED", reason: "expired" },
+    }),
+    reviewLog: () => ({
+      reviewerId: SYSTEM_USER_ID,
+      action: "AUTO_CLOSE_EXPIRED",
+      comment: "合同已过到期日,系统自动置为已完结",
+    }),
+    event: async (c, tx) => {
+      const admins = await listAdminUserIds(tx);
+      return {
+        type: "CONTRACT_AUTO_EXPIRED",
+        payload: { contractId: c.id, contractNo: c.contractNo, endDate: c.endDate },
+        receivers: Array.from(new Set([c.ownerUserId, ...admins])),
+      };
+    },
+    silentSkip: true,
+  });
+  return result.result === "DONE" ? "CLOSED" : "SKIPPED";
 }
 
 /**
@@ -836,30 +828,43 @@ export function isPublishable(c: {
  * 写入 ContractReviewLog + audit + emit 通知. SYSTEM_USER_ID 作为 actor.
  */
 export async function tryAutoPublish(tx: Prisma.TransactionClient, contractId: string): Promise<"PUBLISHED" | "SKIPPED"> {
-  const c = await tx.contract.findFirst({ where: { id: contractId, deletedAt: null } });
-  if (!c) return "SKIPPED" as const;
-  if (c.status !== "DRAFT") return "SKIPPED" as const;
-  if (!isPublishable(c)) return "SKIPPED" as const;
-  const before = { status: c.status };
-  await tx.contract.update({ where: { id: contractId }, data: { status: "ACTIVE" } });
-  await tx.contractReviewLog.create({
-    data: { contractId, reviewerId: SYSTEM_USER_ID, action: "AUTO_PUBLISH", comment: "字段完整 + 附件就位, 系统自动发布" }
-  });
-  await audit(tx, {
-    actorId: SYSTEM_USER_ID,
-    action: "CONTRACT_AUTO_PUBLISH",
-    entity: "Contract",
-    entityId: contractId,
-    before,
-    after: { status: "ACTIVE" }
-  });
-  const admins = await listAdminUserIds(tx);
-  await emit(tx, {
-    type: "CONTRACT_AUTO_EXECUTED",
-    payload: { contractId, contractNo: c.contractNo },
-    receivers: Array.from(new Set([c.ownerUserId, ...admins]))
-  });
-  return "PUBLISHED" as const;
+  const result = await runTransitionInTx(
+    tx,
+    {
+      entity: "Contract",
+      loadInTx: (t) => t.contract.findFirst({
+        where: { id: contractId, deletedAt: null },
+        select: { id: true, status: true, contractNo: true, ownerUserId: true, signerId: true, customerId: true, title: true, serviceType: true, signDate: true, startDate: true, endDate: true, totalAmount: true, taxRate: true, attachments: true },
+      }),
+      from: ["DRAFT"],
+      to: "ACTIVE",
+      precondition: (c) => {
+        // 字段不全视作 SKIPPED 静默跳过, 由后续 PATCH 重新评估
+        if (!isPublishable(c)) throw new SkipTransition();
+      },
+      audit: (c) => ({
+        actorId: SYSTEM_USER_ID,
+        action: "CONTRACT_AUTO_PUBLISH",
+        before: { status: c.status },
+        after: { status: "ACTIVE" },
+      }),
+      reviewLog: () => ({
+        reviewerId: SYSTEM_USER_ID,
+        action: "AUTO_PUBLISH",
+        comment: "字段完整 + 附件就位, 系统自动发布",
+      }),
+      event: async (c, t) => {
+        const admins = await listAdminUserIds(t);
+        return {
+          type: "CONTRACT_AUTO_EXECUTED",
+          payload: { contractId: c.id, contractNo: c.contractNo },
+          receivers: Array.from(new Set([c.ownerUserId, ...admins])),
+        };
+      },
+      silentSkip: true,
+    },
+  );
+  return result.result === "DONE" ? "PUBLISHED" : "SKIPPED";
 }
 
 /**
@@ -872,57 +877,48 @@ export async function tryAutoComplete(contractId: string, now: Date): Promise<"C
   // now 当前未使用, 保留参数便于将来加"开票时效"等条件
   void now;
   const ratio = env.CONTRACT_COMPLETION_INVOICE_RATIO;
-  for (let attempt = 1; attempt <= SERIALIZABLE_RETRY; attempt++) {
-    try {
-      return await prisma.$transaction(
-        async (tx) => {
-          const c = await tx.contract.findFirst({ where: { id: contractId, deletedAt: null } });
-          if (!c) return "SKIPPED" as const;
-          if (c.status !== "ACTIVE") return "SKIPPED" as const;
-          // 完结条件: 开票已足额 (>= totalAmount * ratio)
-          // 注: DESIGN-v3.md R-07 提到的"项目全 ACCEPTED/CLOSED"在当前 schema 下无 Project 子表支撑,
-          //     简化为仅校验开票; 验收环节由 admin 在前端操作中体现 (人工确认后手动调 closeContract).
-          const invoiced = await tx.invoice.aggregate({
-            where: { contractId, status: "ISSUED", deletedAt: null },
-            _sum: { amount: true }
-          });
-          const invoicedAmount = Number(invoiced._sum.amount ?? 0);
-          const total = Number(c.totalAmount);
-          if (invoicedAmount < total * ratio) return "SKIPPED" as const;
-          // 3) 推 CLOSED
-          const before = { status: c.status };
-          await tx.contract.update({ where: { id: contractId }, data: { status: "CLOSED", reviewComment: "completed" } });
-          await tx.contractReviewLog.create({
-            data: { contractId, reviewerId: SYSTEM_USER_ID, action: "AUTO_CLOSE_COMPLETED", comment: `项目已验收, 开票达到 ${(ratio * 100).toFixed(0)}%, 系统自动完结` }
-          });
-          await audit(tx, {
-            actorId: SYSTEM_USER_ID,
-            action: "CONTRACT_AUTO_CLOSE_COMPLETED",
-            entity: "Contract",
-            entityId: contractId,
-            before,
-            after: { status: "CLOSED", reason: "completed" }
-          });
-          const admins = await listAdminUserIds(tx);
-          await emit(tx, {
-            type: "CONTRACT_AUTO_COMPLETED",
-            payload: { contractId, contractNo: c.contractNo, reason: "completed" },
-            receivers: Array.from(new Set([c.ownerUserId, ...admins]))
-          });
-          return "CLOSED" as const;
-        },
-        { isolationLevel: Prisma.TransactionIsolationLevel.Serializable }
-      );
-    } catch (e) {
-      if (
-        e instanceof Prisma.PrismaClientKnownRequestError &&
-        e.code === "P2034" &&
-        attempt < SERIALIZABLE_RETRY
-      ) {
-        continue;
-      }
-      throw e;
-    }
-  }
-  throw new Error("unreachable: SERIALIZABLE_RETRY exhausted");
+  const result = await runTransition({
+    entity: "Contract",
+    id: contractId,
+    loadInTx: (tx) => tx.contract.findFirst({
+      where: { id: contractId, deletedAt: null },
+      select: { id: true, status: true, contractNo: true, totalAmount: true, ownerUserId: true },
+    }),
+    from: ["ACTIVE"],
+    to: "CLOSED",
+    // R-07: 完结条件 — 开票已足额 (>= totalAmount * ratio)
+    // 注: DESIGN-v3.md R-07 提到的"项目全 ACCEPTED/CLOSED"在当前 schema 下无 Project 子表支撑,
+    //     简化为仅校验开票; 验收环节由 admin 在前端操作中体现 (人工确认后手动调 closeContract).
+    precondition: async (c, tx) => {
+      const invoiced = await tx.invoice.aggregate({
+        where: { contractId, status: "ISSUED", deletedAt: null },
+        _sum: { amount: true },
+      });
+      const invoicedAmount = Number(invoiced._sum.amount ?? 0);
+      const total = Number(c.totalAmount);
+      if (invoicedAmount < total * ratio) throw new SkipTransition();
+    },
+    extraData: () => ({ reviewComment: "completed" }),
+    audit: (c) => ({
+      actorId: SYSTEM_USER_ID,
+      action: "CONTRACT_AUTO_CLOSE_COMPLETED",
+      before: { status: c.status },
+      after: { status: "CLOSED", reason: "completed" },
+    }),
+    reviewLog: () => ({
+      reviewerId: SYSTEM_USER_ID,
+      action: "AUTO_CLOSE_COMPLETED",
+      comment: `项目已验收, 开票达到 ${(ratio * 100).toFixed(0)}%, 系统自动完结`,
+    }),
+    event: async (c, tx) => {
+      const admins = await listAdminUserIds(tx);
+      return {
+        type: "CONTRACT_AUTO_COMPLETED",
+        payload: { contractId: c.id, contractNo: c.contractNo, reason: "completed" },
+        receivers: Array.from(new Set([c.ownerUserId, ...admins])),
+      };
+    },
+    silentSkip: true,
+  });
+  return result.result === "DONE" ? "CLOSED" : "SKIPPED";
 }

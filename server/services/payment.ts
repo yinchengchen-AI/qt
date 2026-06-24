@@ -6,9 +6,9 @@ import { nextBusinessNo } from "@/lib/sequence";
 import { requirePermission, RESOURCE, ACTION } from "@/lib/permissions";
 import type { PaymentCreateInput, PaymentActionInput } from "@/lib/validators/payment";
 import { Prisma } from "@prisma/client";
-import { audit } from "@/server/audit";
-import { emit, listAdminUserIds } from "@/server/events/bus";
+import { listAdminUserIds } from "@/server/events/bus";
 import { ownerEq, ownerViaContract, parseStatusList } from "@/lib/ownership";
+import { runTransitionInTx } from "@/lib/status-machine";
 
 export async function listPayments(
   user: SessionUser,
@@ -138,104 +138,142 @@ export async function createPayment(user: SessionUser, input: PaymentCreateInput
   });
 }
 
-export async function paymentAction(user: SessionUser, id: string, input: PaymentActionInput) {
+// 状态机：confirm / reconcile / refund / cancel
+// 主体改走 lib/status-machine.ts:runTransitionInTx, 4 个 arm 共用 mismatchError 覆写
+// ENTITY_IMMUTABLE 403, 角色校验 (FINANCE/ADMIN) 留在 caller.
+export async function paymentAction(user: SessionUser, id: string, input: PaymentActionInput): Promise<Record<string, unknown>> {
   requirePermission(user.roleCode, RESOURCE.PAYMENT, ACTION.UPDATE);
   return prisma.$transaction(async (tx) => {
-    const p = await tx.payment.findFirst({ where: { id, deletedAt: null, ...(ownerViaContract(user) as Prisma.PaymentWhereInput) } });
-    if (!p) throw new ApiError(ERROR_CODES.NOT_FOUND, "回款不存在", 404);
+    const commonLoad = (t: typeof tx) => t.payment.findFirst({
+      where: { id, deletedAt: null, ...(ownerViaContract(user) as Prisma.PaymentWhereInput) },
+    });
+    const requireFinance = () => {
+      if (user.roleCode !== "FINANCE" && user.roleCode !== "ADMIN") {
+        throw new ApiError(ERROR_CODES.FORBIDDEN, `仅财务可${input.action === "confirm" ? "确认" : input.action === "reconcile" ? "对账" : "退款"}`, 403);
+      }
+    };
+    const mismatch = { code: ERROR_CODES.ENTITY_IMMUTABLE, status: 403 } as const;
+    const TOL = new Prisma.Decimal("0.01");
 
     if (input.action === "confirm") {
-      if (user.roleCode !== "FINANCE" && user.roleCode !== "ADMIN") throw new ApiError(ERROR_CODES.FORBIDDEN, "仅财务可确认", 403);
-      if (p.status !== "PLANNED") throw new ApiError(ERROR_CODES.ENTITY_IMMUTABLE, "仅 PLANNED 可确认", 403);
-      const ref = input.bankRefNo ?? p.bankRefNo;
-      if (!ref) throw new ApiError(ERROR_CODES.VALIDATION_FAILED, "请填写银行流水号", 400);
-      // R-10 (P1-4: 与 schema 注释"PLANNED 允许重复"一致, 仅在已生效的记录里去重)
-      const dup = await tx.payment.findFirst({
-        where: { bankRefNo: ref, status: { in: ["CONFIRMED", "RECONCILED"] }, NOT: { id: p.id } }
+      requireFinance();
+      const result = await runTransitionInTx(tx, {
+        entity: "Payment",
+        loadInTx: commonLoad,
+        from: ["PLANNED"],
+        to: "CONFIRMED",
+        precondition: async (current, t) => {
+          const ref = input.bankRefNo ?? current.bankRefNo;
+          if (!ref) throw new ApiError(ERROR_CODES.VALIDATION_FAILED, "请填写银行流水号", 400);
+          // R-10: 流水号唯一 (在 CONFIRMED/RECONCILED 池里)
+          const dup = await t.payment.findFirst({
+            where: { bankRefNo: ref, status: { in: ["CONFIRMED", "RECONCILED"] }, NOT: { id: current.id } },
+          });
+          if (dup) throw new ApiError(ERROR_CODES.PAYMENT_DUPLICATE_REF, `流水号 ${ref} 已存在`, 409);
+          // R-11 (若挂发票): 累计回款 ≤ 发票金额
+          if (current.invoiceId) {
+            const inv = await t.invoice.findUniqueOrThrow({ where: { id: current.invoiceId } });
+            const sum = await t.payment.aggregate({
+              where: { invoiceId: current.invoiceId, status: { in: ["CONFIRMED", "RECONCILED"] }, NOT: { id: current.id } },
+              _sum: { amount: true },
+            });
+            const sumAmt = new Prisma.Decimal(sum._sum.amount?.toString() ?? "0");
+            const invAmt = new Prisma.Decimal(inv.amount.toString());
+            if (sumAmt.plus(current.amount.toString()).greaterThan(invAmt.plus(TOL))) {
+              throw new ApiError(ERROR_CODES.PAYMENT_OVER_INVOICE, "该发票累计回款将超过发票金额", 422);
+            }
+          }
+          // R-12: 累计回款 ≤ 合同总额
+          const sumC = await t.payment.aggregate({
+            where: { contractId: current.contractId, status: { in: ["CONFIRMED", "RECONCILED"] }, NOT: { id: current.id } },
+            _sum: { amount: true },
+          });
+          const contract = await t.contract.findUniqueOrThrow({ where: { id: current.contractId } });
+          const sumCAmt = new Prisma.Decimal(sumC._sum.amount?.toString() ?? "0");
+          const contractAmt = new Prisma.Decimal(contract.totalAmount.toString());
+          if (sumCAmt.plus(current.amount.toString()).greaterThan(contractAmt.plus(TOL))) {
+            throw new ApiError(ERROR_CODES.PAYMENT_OVER_CONTRACT, "该合同累计回款将超过合同总额", 422);
+          }
+        },
+        extraData: (current) => ({ bankRefNo: input.bankRefNo ?? current.bankRefNo }),
+        audit: (current) => {
+          const ref = input.bankRefNo ?? current.bankRefNo;
+          return {
+            actorId: user.id,
+            action: "PAYMENT_CONFIRM",
+            before: { status: current.status, bankRefNo: current.bankRefNo },
+            after: { status: "CONFIRMED", bankRefNo: ref },
+          };
+        },
+        event: async (current, t) => {
+          const ct = await t.contract.findUniqueOrThrow({ where: { id: current.contractId }, select: { ownerUserId: true } });
+          const admins = await listAdminUserIds(t);
+          const customer = await t.customer.findUniqueOrThrow({ where: { id: current.customerId }, select: { name: true } });
+          return {
+            type: "PAYMENT_RECEIVED",
+            payload: { paymentId: current.id, paymentNo: current.paymentNo, amount: Number(current.amount), customerName: customer.name },
+            receivers: Array.from(new Set([ct.ownerUserId, ...admins])),
+          };
+        },
+        mismatchError: { ...mismatch, message: (_c, to) => `仅 PLANNED 可确认(目标: ${to})` },
       });
-      if (dup) throw new ApiError(ERROR_CODES.PAYMENT_DUPLICATE_REF, `流水号 ${ref} 已存在`, 409);
-      // R-11（若挂发票）: Decimal 累加 + 0.01 容差
-      const TOL = new Prisma.Decimal("0.01");
-      if (p.invoiceId) {
-        const inv = await tx.invoice.findUniqueOrThrow({ where: { id: p.invoiceId } });
-        const sum = await tx.payment.aggregate({
-          where: { invoiceId: p.invoiceId, status: { in: ["CONFIRMED", "RECONCILED"] }, NOT: { id: p.id } },
-          _sum: { amount: true }
-        });
-        const sumAmt = new Prisma.Decimal(sum._sum.amount?.toString() ?? "0");
-        const invAmt = new Prisma.Decimal(inv.amount.toString());
-        if (sumAmt.plus(p.amount.toString()).greaterThan(invAmt.plus(TOL))) {
-          throw new ApiError(ERROR_CODES.PAYMENT_OVER_INVOICE, "该发票累计回款将超过发票金额", 422);
-        }
-      }
-      // R-12: 合同累计, 同样 Decimal + 0.01 容差
-      const sumC = await tx.payment.aggregate({
-        where: { contractId: p.contractId, status: { in: ["CONFIRMED", "RECONCILED"] }, NOT: { id: p.id } },
-        _sum: { amount: true }
-      });
-      const contract = await tx.contract.findUniqueOrThrow({ where: { id: p.contractId } });
-      const sumCAmt = new Prisma.Decimal(sumC._sum.amount?.toString() ?? "0");
-      const contractAmt = new Prisma.Decimal(contract.totalAmount.toString());
-      if (sumCAmt.plus(p.amount.toString()).greaterThan(contractAmt.plus(TOL))) {
-        throw new ApiError(ERROR_CODES.PAYMENT_OVER_CONTRACT, "该合同累计回款将超过合同总额", 422);
-      }
-      const before = { status: p.status, bankRefNo: p.bankRefNo };
-      const updated = await tx.payment.update({ where: { id }, data: { status: "CONFIRMED", bankRefNo: ref } });
-      await audit(tx, { actorId: user.id, action: "PAYMENT_CONFIRM", entity: "Payment", entityId: id, before, after: { status: "CONFIRMED", bankRefNo: ref } });
-      // 通知 contract owner + admins
-      const ct = await tx.contract.findUniqueOrThrow({ where: { id: p.contractId }, select: { ownerUserId: true } });
-      const admins = await listAdminUserIds(tx);
-      const customer = await tx.customer.findUniqueOrThrow({ where: { id: p.customerId }, select: { name: true } });
-      await emit(tx, {
-        type: "PAYMENT_RECEIVED",
-        payload: { paymentId: id, paymentNo: p.paymentNo, amount: Number(p.amount), customerName: customer.name },
-        receivers: Array.from(new Set([ct.ownerUserId, ...admins]))
-      });
-      return updated;
+      return result.updated!;
     }
 
     if (input.action === "reconcile") {
-      if (user.roleCode !== "FINANCE" && user.roleCode !== "ADMIN") throw new ApiError(ERROR_CODES.FORBIDDEN, "仅财务可对账", 403);
-      if (p.status !== "CONFIRMED") throw new ApiError(ERROR_CODES.ENTITY_IMMUTABLE, "仅 CONFIRMED 可对账", 403);
-      const before = { status: p.status };
-      const updated = await tx.payment.update({ where: { id }, data: { status: "RECONCILED", reconcileUserId: user.id, reconciledAt: new Date() } });
-      await audit(tx, { actorId: user.id, action: "PAYMENT_RECONCILE", entity: "Payment", entityId: id, before, after: { status: "RECONCILED" } });
-      return updated;
+      requireFinance();
+      const result = await runTransitionInTx(tx, {
+        entity: "Payment",
+        loadInTx: commonLoad,
+        from: ["CONFIRMED"],
+        to: "RECONCILED",
+        extraData: () => ({ reconcileUserId: user.id, reconciledAt: new Date() }),
+        audit: () => ({ actorId: user.id, action: "PAYMENT_RECONCILE", before: { status: "CONFIRMED" }, after: { status: "RECONCILED" } }),
+        mismatchError: { ...mismatch, message: (_c, to) => `仅 CONFIRMED 可对账(目标: ${to})` },
+      });
+      return result.updated!;
     }
 
     if (input.action === "refund") {
-      if (user.roleCode !== "FINANCE" && user.roleCode !== "ADMIN") throw new ApiError(ERROR_CODES.FORBIDDEN, "仅财务可退款", 403);
-      if (!["CONFIRMED", "RECONCILED"].includes(p.status)) throw new ApiError(ERROR_CODES.ENTITY_IMMUTABLE, "当前状态不可退款", 403);
+      requireFinance();
       const reason = (input.reason ?? "").trim();
       if (!reason) throw new ApiError(ERROR_CODES.VALIDATION_FAILED, "退款需填写原因", 400);
-      // P1-2: 把原 payment 翻为 REFUNDED, 累计和 (R-11/R-12) 自动从 CONFIRMED/RECONCILED 池里掉出来;
-      // 不再创建负数补偿记录 (避免双记风险)
-      const newRemark = `退款：${reason}${p.remark ? ` | 原备注：${p.remark}` : ""}`;
-      const before = { status: p.status, amount: Number(p.amount) };
-      const updated = await tx.payment.update({
-        where: { id },
-        data: { status: "REFUNDED", remark: newRemark, updatedById: user.id }
-      });
-      await audit(tx, {
-        actorId: user.id,
-        action: "PAYMENT_REFUND",
+      const result = await runTransitionInTx(tx, {
         entity: "Payment",
-        entityId: id,
-        before,
-        after: { status: "REFUNDED", reason }
+        loadInTx: commonLoad,
+        from: ["CONFIRMED", "RECONCILED"],
+        to: "REFUNDED",
+        // P1-2: 把原 payment 翻为 REFUNDED, 累计和 (R-11/R-12) 自动从 CONFIRMED/RECONCILED 池里掉出来
+        extraData: (current) => ({
+          remark: `退款:${reason}${current.remark ? ` | 原备注:${current.remark}` : ""}`,
+          updatedById: user.id,
+        }),
+        audit: (current) => ({
+          actorId: user.id,
+          action: "PAYMENT_REFUND",
+          before: { status: current.status, amount: Number(current.amount) },
+          after: { status: "REFUNDED", reason },
+        }),
+        mismatchError: { ...mismatch, message: (_c, to) => `当前状态不可退款(目标: ${to})` },
       });
-      return updated;
+      return result.updated!;
     }
 
     if (input.action === "cancel") {
-      if (p.status !== "PLANNED") throw new ApiError(ERROR_CODES.ENTITY_IMMUTABLE, "仅 PLANNED 可取消", 403);
-      if (p.recorderUserId !== user.id && user.roleCode !== "ADMIN" && user.roleCode !== "FINANCE") {
-        throw new ApiError(ERROR_CODES.FORBIDDEN, "仅创建人或财务可取消", 403);
-      }
-      const before = { status: p.status };
-      const updated = await tx.payment.update({ where: { id }, data: { status: "CANCELLED" } });
-      await audit(tx, { actorId: user.id, action: "PAYMENT_CANCEL", entity: "Payment", entityId: id, before, after: { status: "CANCELLED" } });
-      return updated;
+      const result = await runTransitionInTx(tx, {
+        entity: "Payment",
+        loadInTx: commonLoad,
+        from: ["PLANNED"],
+        to: "CANCELLED",
+        precondition: (current) => {
+          if (current.recorderUserId !== user.id && user.roleCode !== "ADMIN" && user.roleCode !== "FINANCE") {
+            throw new ApiError(ERROR_CODES.FORBIDDEN, "仅创建人或财务可取消", 403);
+          }
+        },
+        audit: () => ({ actorId: user.id, action: "PAYMENT_CANCEL", before: { status: "PLANNED" }, after: { status: "CANCELLED" } }),
+        mismatchError: { ...mismatch, message: (_c, to) => `仅 PLANNED 可取消(目标: ${to})` },
+      });
+      return result.updated!;
     }
 
     throw new ApiError(ERROR_CODES.VALIDATION_FAILED, "未知动作", 400);
