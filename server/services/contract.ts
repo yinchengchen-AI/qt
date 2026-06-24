@@ -735,7 +735,7 @@ export async function tryAutoCloseOnExpiry(contractId: string, now: Date): Promi
     },
     silentSkip: true,
   });
-  return result === "DONE" ? "CLOSED" : "SKIPPED";
+  return result.result === "DONE" ? "CLOSED" : "SKIPPED";
 }
 
 /**
@@ -864,7 +864,7 @@ export async function tryAutoPublish(tx: Prisma.TransactionClient, contractId: s
       silentSkip: true,
     },
   );
-  return result === "DONE" ? "PUBLISHED" : "SKIPPED";
+  return result.result === "DONE" ? "PUBLISHED" : "SKIPPED";
 }
 
 /**
@@ -920,5 +920,5 @@ export async function tryAutoComplete(contractId: string, now: Date): Promise<"C
     },
     silentSkip: true,
   });
-  return result === "DONE" ? "CLOSED" : "SKIPPED";
+  return result.result === "DONE" ? "CLOSED" : "SKIPPED";
 }

@@ -40,3 +40,18 @@ export function getDisallowedTransitions(from: CustomerStatus): CustomerStatus[]
 export function isCustomerStatus(value: unknown): value is CustomerStatus {
   return typeof value === "string" && (CUSTOMER_STATUS as readonly string[]).includes(value);
 }
+
+/**
+ * 给定目标状态, 返回所有允许的起点状态 (from 集合的倒排索引).
+ * 用于 lib/status-machine.ts:runTransitionInTx 的 from 字段.
+ *
+ * 注意: assertCanTransition 拒绝同状态写入 (NEGOTIATING -> NEGOTIATING), 所以这里
+ * 每个 to 的 from 集合都不包含 to 自身.
+ */
+export const ALLOWED_TRANSITIONS_BY_TARGET: Record<CustomerStatus, readonly CustomerStatus[]> = {
+  LEAD:        [],
+  NEGOTIATING: ["LEAD", "LOST", "FROZEN"],
+  SIGNED:      ["LEAD", "NEGOTIATING"],
+  LOST:        ["LEAD", "NEGOTIATING", "SIGNED"],
+  FROZEN:      ["NEGOTIATING", "SIGNED"],
+};

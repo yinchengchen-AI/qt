@@ -49,11 +49,13 @@ export type TransitionInput<C extends { id: string; status: string }> = {
     current: C,
     tx: PrismaNS.TransactionClient,
   ) => Promise<{ type: DomainEventType; payload: Record<string, unknown>; receivers: string[] } | undefined>;
-  /** 状态不匹配时静默跳过(自动迁移)还是抛 ENTITY_IMMUTABLE(管理员手动迁移) */
+  /** 状态不匹配时静默跳过(自动迁移)还是抛错(管理员手动迁移) */
   silentSkip?: boolean;
+  /** 状态不匹配时抛的错误; 默认 ENTITY_IMMUTABLE 403; customer.status 等业务用 CUSTOMER_STATUS_TRANSITION_INVALID 422 */
+  mismatchError?: { code: typeof ERROR_CODES[keyof typeof ERROR_CODES]; status?: number; message?: (current: C, to: string) => string };
 };
 
-export type TransitionResult = "DONE" | "SKIPPED";
+export type TransitionResult = { result: "DONE" | "SKIPPED"; updated?: Record<string, unknown> };
 
 // 嵌在外层事务内使用
 export async function runTransitionInTx<C extends { id: string; status: string }>(
@@ -62,21 +64,22 @@ export async function runTransitionInTx<C extends { id: string; status: string }
 ): Promise<TransitionResult> {
   const current = await input.loadInTx(tx);
   if (!current) {
-    if (input.silentSkip) return "SKIPPED";
+    if (input.silentSkip) return { result: "SKIPPED" as const };
     throw new ApiError(ERROR_CODES.NOT_FOUND, `${input.entity}不存在`, 404);
   }
   if (!input.from.includes(current.status)) {
-    if (input.silentSkip) return "SKIPPED";
+    if (input.silentSkip) return { result: "SKIPPED" as const };
+    const me = input.mismatchError;
     throw new ApiError(
-      ERROR_CODES.ENTITY_IMMUTABLE,
-      `当前状态 ${current.status} 不可迁移到 ${input.to}(须 ${input.from.join("/")})`,
-      403,
+      me?.code ?? ERROR_CODES.ENTITY_IMMUTABLE,
+      me?.message ? me.message(current, input.to) : `当前状态 ${current.status} 不可迁移到 ${input.to}(须 ${input.from.join("/")})`,
+      me?.status ?? 403,
     );
   }
   try {
     if (input.precondition) await input.precondition(current, tx);
   } catch (e) {
-    if (e instanceof SkipTransition) return "SKIPPED";
+    if (e instanceof SkipTransition) return { result: "SKIPPED" as const };
     throw e;
   }
   const data: Record<string, unknown> = { status: input.to, ...(input.extraData?.(current) ?? {}) };
@@ -100,7 +103,7 @@ export async function runTransitionInTx<C extends { id: string; status: string }
   if (ev) {
     await emit(tx, { type: ev.type, payload: ev.payload, receivers: ev.receivers });
   }
-  return "DONE";
+return { result: "DONE" as const, updated: { ...current, status: input.to, ...(input.extraData?.(current) ?? {}) } };
 }
 
 // 单独事务跑 (自动迁移) — Serializable + P2034 重试 3 次
