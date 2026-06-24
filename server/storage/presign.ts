@@ -29,6 +29,7 @@ export type PresignUploadInput = {
   size: number;
   contractId?: string | null;
   invoiceId?: string | null;
+  employeeProfileId?: string | null;
   uploadedById: string;
   // 合同交付物附件标记 (true = 这是合同"交付物"tab 的实际交付文件);
   // 写权限仅 admin / 合同签订人 / 合同负责人 (assertCanManageDeliverables)
@@ -125,6 +126,7 @@ export async function presignUpload(input: PresignUploadInput): Promise<PresignU
       uploadedById: input.uploadedById,
       contractId: input.contractId ?? null,
       invoiceId: input.invoiceId ?? null,
+      employeeProfileId: input.employeeProfileId ?? null,
       isDeliverable
     }
   });
@@ -133,12 +135,15 @@ export async function presignUpload(input: PresignUploadInput): Promise<PresignU
   // 路径规则:
   //   合同关联: contracts/{contractId}/{yyyy}/{mm}/{cuid}-{name}.{ext}
   //   发票关联: invoices/{invoiceId}/{yyyy}/{mm}/{cuid}-{name}.{ext}
+  //   员工档案关联: employee-profiles/{employeeProfileId}/{yyyy}/{mm}/{cuid}-{name}.{ext}
   //   暂未绑定: tmp/{yyyy}/{mm}/{cuid}-{name}.{ext}
   const objectKey = input.contractId
     ? `contracts/${input.contractId}/${yyyy}/${mm}/${att.id}-${safeName}.${ext}`
     : input.invoiceId
       ? `invoices/${input.invoiceId}/${yyyy}/${mm}/${att.id}-${safeName}.${ext}`
-      : `tmp/${yyyy}/${mm}/${att.id}-${safeName}.${ext}`;
+      : input.employeeProfileId
+        ? `employee-profiles/${input.employeeProfileId}/${yyyy}/${mm}/${att.id}-${safeName}.${ext}`
+        : `tmp/${yyyy}/${mm}/${att.id}-${safeName}.${ext}`;
 
   await prisma.attachment.update({
     where: { id: att.id },
@@ -195,7 +200,8 @@ export async function canReadAttachment(att: AttachmentForRead, userId: string):
   //   2) ADMIN / FINANCE 角色
   //   3) 关联合同: 合同的 ownerUserId / createdById
   //   4) 关联发票: 发票的 applicantUserId / createdById,或发票所属合同的 owner/createdBy
-  //   5) 都没有(tmp 上传) -> 仅上传者可读
+  //   5) 关联员工档案: 全员可读基础信息；敏感字段已在 service 层过滤
+  //   6) 都没有(tmp 上传) -> 仅上传者可读
   if (att.uploadedById === userId) return true;
 
   // 单次并行查询: 角色 + 合同 owner (避免 2 次顺序往返,典型 30-80ms 节省)
@@ -210,6 +216,7 @@ export async function canReadAttachment(att: AttachmentForRead, userId: string):
   if (att.invoice && (att.invoice.applicantUserId === userId || att.invoice.createdById === userId)) return true;
   const invoiceContract = att.invoice?.contract;
   if (invoiceContract && (invoiceContract.ownerUserId === userId || invoiceContract.createdById === userId)) return true;
+  if (att.employeeProfileId) return true;
   return false;
 }
 
@@ -263,12 +270,16 @@ export async function softDeleteAttachment(attachmentId: string, userId: string)
     return;
   }
   // 非交付物附件: 沿用旧规则 — 上传者本人 / 合同 owner / 发票 applicant / 发票所属合同 owner / admin
+  // 员工档案附件: 仅 ADMIN 可删除
   if (att.uploadedById !== userId) {
     const u = await prisma.user.findUnique({
       where: { id: userId },
       select: { role: { select: { code: true } } }
     });
     const isAdmin = u?.role?.code === "ADMIN";
+    if (att.employeeProfileId && !isAdmin) {
+      throw new ApiError(ERROR_CODES.FORBIDDEN, "无权删除此附件", 403);
+    }
     let allowed = false;
     if (att.contractId) {
       const c = await prisma.contract.findUnique({
