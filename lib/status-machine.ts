@@ -11,7 +11,7 @@ import { Prisma } from "@prisma/client";
 import { Prisma as PrismaNS } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { audit } from "@/server/audit";
-import { emit, listAdminUserIds, type DomainEventType } from "@/server/events/bus";
+import { emit, type DomainEventType } from "@/server/events/bus";
 import { ApiError } from "@/lib/api";
 import { ERROR_CODES } from "@/types/errors";
 
@@ -48,7 +48,7 @@ export type TransitionInput<C extends { id: string; status: string }> = {
   event?: (
     current: C,
     tx: PrismaNS.TransactionClient,
-  ) => { type: DomainEventType; payload: Record<string, unknown>; receivers: string[] } | undefined;
+  ) => Promise<{ type: DomainEventType; payload: Record<string, unknown>; receivers: string[] } | undefined>;
   /** 状态不匹配时静默跳过(自动迁移)还是抛 ENTITY_IMMUTABLE(管理员手动迁移) */
   silentSkip?: boolean;
 };
@@ -59,7 +59,6 @@ export type TransitionResult = "DONE" | "SKIPPED";
 export async function runTransitionInTx<C extends { id: string; status: string }>(
   tx: PrismaNS.TransactionClient,
   input: TransitionInput<C>,
-  id: string,
 ): Promise<TransitionResult> {
   const current = await input.loadInTx(tx);
   if (!current) {
@@ -97,7 +96,7 @@ export async function runTransitionInTx<C extends { id: string; status: string }
       data: { contractId: current.id, reviewerId: rl.reviewerId, action: rl.action, comment: rl.comment ?? null },
     });
   }
-  const ev = input.event?.(current, tx);
+  const ev = input.event ? await input.event(current, tx) : undefined;
   if (ev) {
     await emit(tx, { type: ev.type, payload: ev.payload, receivers: ev.receivers });
   }
@@ -111,7 +110,7 @@ export async function runTransition<C extends { id: string; status: string }>(
   for (let attempt = 1; attempt <= SERIALIZABLE_RETRY; attempt++) {
     try {
       return await prisma.$transaction(
-        async (tx) => runTransitionInTx(tx, input, input.id),
+        async (tx) => runTransitionInTx(tx, input),
         { isolationLevel: PrismaNS.TransactionIsolationLevel.Serializable, timeout: TX_TIMEOUT_MS },
       );
     } catch (e) {
