@@ -178,6 +178,16 @@ npm run seed                # 此时会找到 ADMIN, 写入 9 份工作流模板
 - **chore(asset)**:下线企业资产库模块 — `CompanyAsset` 表 + `Attachment.assetId/isPrimary` 列 DROP,`RESOURCE.ASSET` 与 5 角色 ASSET 权限矩阵回收,`asset-expiring` 定时任务 / `ASSET_EXPIRING` 消息链路拆除;`app/(app)/assets/` 与 `app/api/assets/` 整目录移除,`components/assets/` 整目录移除,`server/services/asset{,-stats,-expiry-job}.ts` 移除,`lib/{assets,validators/asset}.ts` 移除,`prisma/seed-assets.ts` / `scripts/migrate/asset-primary-attachments.ts` 移除;`ASSET_TYPE` / `ASSET_STATUS` / `ASSET_TYPE_MAP` / `ASSET_STATUS_MAP` / `ASSET_*` 错误码 / `menu.assets` 与 `asset.*` i18n 全部清掉,`Attachment.primaryBadge` Tag 与合同详情"业绩证明库"提示移除;3 个 `seed:assets` / `migrate:asset-primary-attachments[:dry]` npm script 移除;`ASSET_TAG` 字典白名单与 seed 同步清掉
 - **test**:`tsc --noEmit` 0 错,`vitest run` 49 files / 434 tests 全绿
 
+### v0.3.0(2026-06-24)统计分析 round-2 收尾
+
+> 上一轮 round-2 代码审查 11 个 finding (H1×H3×H4×H5 / M1-M4 / L1-L3、L6) 的 service / 路由 / 页面代码此前已落到 commit `3fae05fc` 与工作树。本轮把 WIP 里的工具 / 测试 / 脚本随本 commit 收口。详见 `docs/P2_REVIEW.md` 末尾 Round-2 修复节、`docs/DESIGN-v3.md` §8 / §9.7、`docs/USER_MANUAL.md` §11。
+
+- **chore(statistics)**:round-2 工具与脚本入库 — `lib/date-range.ts` 统一前后端日期范围处理 (避免 dayjs 本地时区偏移);`lib/draft.ts` 通用表单草稿 localStorage 包装;`scripts/dev/seed-customers-contracts.ts` 创建客户/合同 dev 测试数据;`scripts/shared/cleanup-minio-objects.ts` 清理 MinIO bucket 业务附件
+- **test(statistics)**:新建 `tests/api/statistics-aggregation.test.ts` 4 条真实 DB 集成断言 (账龄 total、REFUNDED 抵消、unpaidAmount clamp、SALES short-circuit) + `tests/api/statistics-ownership.test.ts` 18 条行级隔离结构断言;`tests/unit/lib/draft.test.ts` 覆盖 `lib/draft.ts` 的 SSR / 浏览器两条路径
+- **fix(statistics)**:修复 `statistics-aggregation.test.ts` 中 `unpaidAmount === 0` 断言 — DB 已有其它合同/发票/回款时该断言不成立,改用 delta 法验证 clamp 行为:invoiceAmount +100 / paymentAmount +500 时 unpaidAmount 不为负、且满足 `unpaidAmount = max(0, baseline - 400)`
+- **chore**:删除临时调试 `tests/e2e/99-debug-spacing.spec.ts` (引用已下线的 `/assets/new?type=PERFORMANCE` 路由, 跑会 404)
+- **test**:`tsc --noEmit` 0 错,`vitest run` 44 files / 376 tests 全绿
+
 ### v0.3.0(2026-06-23)合同 7→3 状态机 + 项目/工作流模块删除 + 资产管理
 
 - **chore(workflow)**:彻底删除项目管理和工作流引擎模块 — Project / WorkflowTemplate / WorkflowStage / WorkflowTask / WorkflowTaskInstance 五张表 DROP,5 个 dict 类别 `PROJECT_STATUS` 移除;12 个 dead 路由改 410 Gone;`action` 8→5;PR-1 + PR-2 + PR-2.1 三批共清掉 ~50 个 dead 字段/路由/文件
