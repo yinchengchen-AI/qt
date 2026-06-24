@@ -7,14 +7,10 @@ SHELL=/bin/bash
 PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 
 # 01:00 - 触发业务定时任务 (合同逾期/回款提醒/附件清理 等, 走 Next API)
-0 1 * * * root curl -fsS -X POST -H "Authorization: Bearer ${CRON_SECRET}" \
-    http://127.0.0.1:3000/api/jobs/run-all >> /var/log/qt-cron.log 2>&1
+0 1 * * * root curl -fsS -X POST -H "Authorization: Bearer ${CRON_SECRET}" http://127.0.0.1:3000/api/jobs/run-all >> /var/log/qt-cron.log 2>&1
 
 # 03:00 - 数据库每日备份 (本地 + MinIO qt-backups 桶镜像)
-0 3 * * * root cd /opt/qt && set -a && . /opt/qt/.env && set +a && \
-    DOCKER_PG=qt-postgres BACKUP_DIR=/opt/qt/backups BACKUP_MIRROR_MINIO=1 \
-    /opt/qt/scripts/prod/backup.sh >> /var/log/qt-cron.log 2>&1
+0 3 * * * root cd /opt/qt && set -a && . /opt/qt/.env && set +a && DOCKER_PG=qt-postgres BACKUP_DIR=/opt/qt/backups BACKUP_MIRROR_MINIO=1 /opt/qt/scripts/prod/backup.sh >> /var/log/qt-cron.log 2>&1
 
 # 04:00 (每月 1 号) - 审计日志清理,默认保留 5 年
-0 4 1 * * root cd /opt/qt && set -a && . /opt/qt/.env && set +a && \
-    DOCKER_PG=qt-postgres /opt/qt/scripts/prod/audit-cleanup.sh 5 >> /var/log/qt-cron.log 2>&1
+0 4 1 * * root cd /opt/qt && set -a && . /opt/qt/.env && set +a && DOCKER_PG=qt-postgres /opt/qt/scripts/prod/audit-cleanup.sh 5 >> /var/log/qt-cron.log 2>&1
