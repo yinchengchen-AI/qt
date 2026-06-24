@@ -171,6 +171,13 @@ npm run seed                # 此时会找到 ADMIN, 写入 9 份工作流模板
 
 ## 最近更新
 
+### v0.3.0(2026-06-24)企业资产库模块下线
+
+> 沿用 `20260623_drop_project_and_workflow` 的硬下线模式:删表 + 删代码 + 删权限 + 删菜单。详见 `prisma/migrations/20260628_drop_company_assets/`、`lib/permissions.ts`、`components/dashboard-shell.tsx`。
+
+- **chore(asset)**:下线企业资产库模块 — `CompanyAsset` 表 + `Attachment.assetId/isPrimary` 列 DROP,`RESOURCE.ASSET` 与 5 角色 ASSET 权限矩阵回收,`asset-expiring` 定时任务 / `ASSET_EXPIRING` 消息链路拆除;`app/(app)/assets/` 与 `app/api/assets/` 整目录移除,`components/assets/` 整目录移除,`server/services/asset{,-stats,-expiry-job}.ts` 移除,`lib/{assets,validators/asset}.ts` 移除,`prisma/seed-assets.ts` / `scripts/migrate/asset-primary-attachments.ts` 移除;`ASSET_TYPE` / `ASSET_STATUS` / `ASSET_TYPE_MAP` / `ASSET_STATUS_MAP` / `ASSET_*` 错误码 / `menu.assets` 与 `asset.*` i18n 全部清掉,`Attachment.primaryBadge` Tag 与合同详情"业绩证明库"提示移除;3 个 `seed:assets` / `migrate:asset-primary-attachments[:dry]` npm script 移除;`ASSET_TAG` 字典白名单与 seed 同步清掉
+- **test**:`tsc --noEmit` 0 错,`vitest run` 49 files / 434 tests 全绿
+
 ### v0.3.0(2026-06-23)合同 7→3 状态机 + 项目/工作流模块删除 + 资产管理
 
 - **chore(workflow)**:彻底删除项目管理和工作流引擎模块 — Project / WorkflowTemplate / WorkflowStage / WorkflowTask / WorkflowTaskInstance 五张表 DROP,5 个 dict 类别 `PROJECT_STATUS` 移除;12 个 dead 路由改 410 Gone;`action` 8→5;PR-1 + PR-2 + PR-2.1 三批共清掉 ~50 个 dead 字段/路由/文件

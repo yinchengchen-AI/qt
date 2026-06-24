@@ -19,7 +19,6 @@ export type DomainEventType =
   | "CUSTOMER_STATUS_SUGGEST"
   | "WORKFLOW_TASK_ASSIGNED"
   | "WORKFLOW_REVIEW_REQUESTED"
-  | "ASSET_EXPIRING";
 
 export type DomainEvent = {
   type: DomainEventType;
@@ -138,13 +137,6 @@ function buildMessage(uid: string, ev: DomainEvent): ResolvedMessage {
         title: `报告「${p.taskName}」等待您校核/审核`,
         content: `项目: ${p.projectNo ?? "-"}\n提交人: ${p.submittedByName ?? "-"}`,
         link: { kind: "project", id: p.projectId }
-      };
-    case "ASSET_EXPIRING":
-      return {
-        receiverUserId: uid,
-        title: `资产「${p.assetName}」将于 ${p.daysLeft} 天后到期`,
-        content: `资产编号: ${p.assetCode ?? "-"}\n到期日: ${formatDate(p.validTo)}`,
-        link: { kind: "asset", id: p.assetId }
       };
     case "CONTRACT_AUTO_EXECUTED":
       return {

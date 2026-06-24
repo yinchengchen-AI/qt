@@ -11,16 +11,17 @@ import { StatGrid, type StatItem } from "@/components/stat-grid";
 import { EmptyState } from "@/components/empty-state";
 import { formatCurrency } from "@/lib/format";
 import { useResponsive } from "@/lib/use-breakpoint";
+import { toDateRangeQuery } from "@/lib/date-range";
 
 type Series = { month: string; contractAmount: number; invoiceAmount: number; paymentAmount: number }[];
 type Overview = {
   contractAmount: number; invoiceAmount: number; paymentAmount: number; unpaidAmount: number;
   invoiceRate: number; paymentRate: number; contractCount: number; invoiceCount: number; paymentCount: number;
 };
-type DistItem = { key: string; count: number };
+type DistItem = { key: string; label?: string; count: number };
 type Resp = {
   overview: Overview; series: Series;
-  customers: { total: number; newThisMonth: number };
+  customers: { total: number; newInRange: number };
   townDistribution: { town: string | null; count: number }[];
   distribution: { byScale: DistItem[]; byType: DistItem[]; byStatus: DistItem[] };
 };
@@ -41,7 +42,9 @@ export default function OverviewPage() {
     setLoading(true); setError(null);
     try {
       const qs = new URLSearchParams();
-      if (range) { qs.set("from", range[0].toISOString()); qs.set("to", range[1].toISOString()); }
+      const { from, to } = toDateRangeQuery(range);
+      if (from) qs.set("from", from);
+      if (to) qs.set("to", to);
       const r = await fetch(`/api/statistics/overview?${qs}`, { credentials: "include" });
       const j = await r.json();
       if (j.code !== 0) throw new Error(j.message);
@@ -55,14 +58,18 @@ export default function OverviewPage() {
 
   const download = async () => {
     const qs = new URLSearchParams({ type: "overview" });
-    if (range) { qs.set("from", range[0].toISOString()); qs.set("to", range[1].toISOString()); }
+    const { from, to } = toDateRangeQuery(range);
+    if (from) qs.set("from", from);
+    if (to) qs.set("to", to);
     const r = await fetch(`/api/statistics/export?${qs}`, { credentials: "include" });
     if (!r.ok) { const j = await r.json(); message.error(j.message); return; }
     const blob = await r.blob();
+    const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
-    a.href = URL.createObjectURL(blob);
+    a.href = url;
     a.download = `总览_${new Date().toISOString().slice(0, 10)}.xlsx`;
     a.click();
+    URL.revokeObjectURL(url);
   };
 
   const o = data?.overview;
@@ -76,7 +83,7 @@ export default function OverviewPage() {
   ]);
 
   const kpis: StatItem[] = [
-    { label: "客户总数", value: cust?.total ?? 0, suffix: "家", description: `${cust?.newThisMonth ?? 0} 家新增` },
+    { label: "客户总数", value: cust?.total ?? 0, suffix: "家", description: `${cust?.newInRange ?? 0} 家新增` },
     { label: "合同额", value: formatCurrency(o?.contractAmount ?? 0), prefix: "¥", description: `共 ${o?.contractCount ?? 0} 份` },
     { label: "已开票额", value: formatCurrency(o?.invoiceAmount ?? 0), prefix: "¥", description: `开票率 ${o?.invoiceRate ?? 0}%` },
     { label: "已回款额", value: formatCurrency(o?.paymentAmount ?? 0), prefix: "¥", description: `回款率 ${o?.paymentRate ?? 0}%` }

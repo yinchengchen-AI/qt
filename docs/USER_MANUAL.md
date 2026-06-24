@@ -558,14 +558,21 @@ PLANNED ─confirm─▶ CONFIRMED ─reconcile─▶ RECONCILED
 ### 11.1 总览(Overview)
 
 - 时间区间选择(默认本月)
-- **KPI 卡片**:合同金额、开票金额、回款金额、毛利率
+- **KPI 卡片**:客户总数(含区间内新增数)、合同金额、开票金额、回款金额
 - **时间序列图**:按日 / 周 / 月的合同 / 开票 / 回款趋势(用 `@ant-design/charts`)
+- **客户区域分布**:按镇街 groupBy 的柱状图,空时给出「暂无区域分布数据」空态
+- **客户结构分布**:按规模 / 类型 / 状态三组展示,标签已翻译为中文(企业/政府/其他、大型/中型/小型/微型、线索/洽谈中/已签约/已流失/已冻结)
 - **导出**:右上「导出 Excel」,仅 ADMIN / FINANCE 可用(满足 `STATISTICS:EXPORT` 权限)
+- **未回款额**:`MAX(0, 已开票额 − 已回款额)`,预付款(invoiceId 为空)不参与挂账时,`未回款额` 自动 clamp 到 0
 
 ### 11.2 账龄(Aging)
 
 - **应收账款账龄分布**:
   - `0-30 天` / `31-60 天` / `61-90 天` / `90+ 天` 四档
+  - `actualIssueDate` 在未来(系统时钟漂移/录错)统一归入 `90+`
+- **明细表**:
+  - 显示前 100 条按逾期天数降序;表头「共 N 条」展示 **真实超期总数**(可能 > 100),与底部「查看全部 N 条 →」链接一致
+- **已退款处理**:已 `refund` 的回款视为从未入账,`remaining` 按发票金额回弹;若该发票随后又有新的 `CONFIRMED` 回款,`remaining` 仍按累计生效回款扣减
 - **客户维度**:按客户聚合
 - **移动端**:图表高度压缩到 240px;明细折叠到 Top 5,点开看完整列表
 - **导出**:同总览
@@ -573,16 +580,20 @@ PLANNED ─confirm─▶ CONFIRMED ─reconcile─▶ RECONCILED
 ### 11.3 业绩(Performance)
 
 - **员工业绩**:
-  - SALES 只能看自己;ADMIN / FINANCE 看全员
-- 指标:合同金额、开票金额、回款金额、客户数、新签客户数
-- 时间区间可配
+  - SALES 只能看自己(短路径 short-circuit,只返回自己一行)
+  - ADMIN / FINANCE / OPS / EXPERT 看全员:排除 `isSystem=true` 的内部 actor 与 `role.code = "ADMIN"` 的管理员
+  - 顶部支持单人筛选(`?userId=xxx`),后端在 `owners` 上加 `id = userId` 过滤
+- 指标:合同金额、开票金额、回款金额、合同数,以及每个员工的「开票率 / 回款率」Tag
+- 时间区间可配(`from / to` 同时作用于合同签订日 / 发票开具日 / 回款到账日)
 - 移动端同上
 
 ### 11.4 Top 客户
 
-- 独立 API,通常被总览 / 账龄页引用
-- 维度:合同金额 / 回款金额,Top N(默认 10)
-- 导出支持 `top-customers` 模式
+- 独立 API(`/api/statistics/top-customers`),通常被总览 / 账龄页引用
+- 维度:合同金额(`metric=contract`) / 回款金额(`metric=payment`),Top N(默认 10,上限 50)
+- 维度过滤:`metric=contract` 时只列 `total > 0` 的客户;`metric=payment` 时只列 `paymentTotal > 0` 的客户
+- 时间区间:`from / to` 同时作用于合同签订日 / 发票开具日 / 回款到账日
+- 导出支持 `top-customers` 模式(单次最多 `EXPORT_MAX_ROWS` 行)
 
 ---
 

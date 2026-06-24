@@ -9,6 +9,8 @@ import {
 } from "@/server/services/statistics";
 import { prisma } from "@/lib/prisma";
 import { ownerEq } from "@/lib/ownership";
+import { parseDateRangeQuery } from "@/lib/date-range";
+import { lookup, CUSTOMER_STATUS_MAP, CUSTOMER_TYPE_MAP, CUSTOMER_SCALE_MAP } from "@/lib/enum-maps";
 import type { Prisma } from "@prisma/client";
 
 const query = z.object({
@@ -22,9 +24,7 @@ export async function GET(req: Request) {
       const user = await requireSession();
       const url = new URL(req.url);
       const parsed = query.parse(Object.fromEntries(url.searchParams));
-      const from = parsed.from ? new Date(parsed.from) : undefined;
-      const to = parsed.to ? new Date(parsed.to) : undefined;
-      const range = { from, to };
+      const range = parseDateRangeQuery(parsed);
       const own = ownerEq(user);
 
       const [
@@ -44,10 +44,9 @@ export async function GET(req: Request) {
           where: {
             deletedAt: null,
             ...own,
-            createdAt: {
-              ...(from ? { gte: from } : {}),
-              ...(to ? { lte: to } : {}),
-            },
+            ...(range.from || range.to
+              ? { createdAt: { ...(range.from ? { gte: range.from } : {}), ...(range.to ? { lte: range.to } : {}) } }
+              : {})
           } as Prisma.CustomerWhereInput,
         }),
       ]);
@@ -56,6 +55,7 @@ export async function GET(req: Request) {
         where: {
           deletedAt: null,
           town: { not: null },
+          ...own,
         } as Prisma.CustomerWhereInput,
         select: { town: true },
       });
@@ -68,11 +68,18 @@ export async function GET(req: Request) {
         .map(([town, count]) => ({ town, count }))
         .sort((a, b) => b.count - a.count);
 
+      // 把分布的原始枚举 key(code)翻译成中文 label;null 表示未填写
+      const labelDistribution = {
+        byScale: distribution.byScale.map((x) => ({ key: x.key, label: lookup(CUSTOMER_SCALE_MAP, x.key) || "未填写", count: x.count })),
+        byType: distribution.byType.map((x) => ({ key: x.key, label: lookup(CUSTOMER_TYPE_MAP, x.key) || "未填写", count: x.count })),
+        byStatus: distribution.byStatus.map((x) => ({ key: x.key, label: lookup(CUSTOMER_STATUS_MAP, x.key) || "未填写", count: x.count }))
+      };
+
       return ok({
         overview,
         series,
-        distribution,
-        customers: { total: customerCount, newThisMonth: newCustomers },
+        distribution: labelDistribution,
+        customers: { total: customerCount, newInRange: newCustomers },
         townDistribution,
       });
     } catch (e) {

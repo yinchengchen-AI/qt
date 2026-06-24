@@ -3,7 +3,6 @@
 import { prisma } from "@/lib/prisma";
 import { emit } from "@/server/events/bus";
 
-import { runAssetExpiryJob } from "@/server/services/asset-expiry-job";
 import { runContractExpiryJob } from "@/server/services/contract";
 import { tickPublishableDraffts, tickCompletionCandidates } from "@/server/jobs/contract-automation";
 import { tickCustomerStatusSuggestions } from "@/server/jobs/customer-status-suggest";
@@ -34,7 +33,6 @@ export async function runAllJobs(now = new Date()): Promise<JobResult[]> {
     { name: "contract-expiring", run: () => contractExpiringJob(now, admins) },
     { name: "invoice-overdue", run: () => invoiceOverdueJob(now, admins) },
     { name: "customer-inactive", run: () => customerInactiveJob(now) },
-    { name: "asset-expiring", run: () => runAssetExpiryJob(now, admins) },
     { name: "contract-expiry", run: () => runContractExpiryJob(now) },
     { name: "contract-auto-publish", run: () => tickPublishableDraffts() },
     { name: "contract-auto-complete", run: () => tickCompletionCandidates(now) },

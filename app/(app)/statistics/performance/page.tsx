@@ -11,8 +11,13 @@ import { StatGrid, type StatItem } from "@/components/stat-grid";
 import { EmptyState } from "@/components/empty-state";
 import { formatCompact, formatCurrency } from "@/lib/format";
 import { useResponsive } from "@/lib/use-breakpoint";
+import { toDateRangeQuery } from "@/lib/date-range";
 
 const { Text } = Typography;
+
+// 业绩明细中开票率/回款率的 Tag 颜色阈值（百分比）
+const INVOICE_RATE_THRESHOLDS = { green: 70, blue: 40 } as const;
+const PAYMENT_RATE_THRESHOLDS = { green: 80, blue: 50 } as const;
 
 type Row = {
   userId: string; name: string; employeeNo: string;
@@ -43,7 +48,9 @@ export default function PerformancePage() {
     setLoading(true); setError(null);
     try {
       const qs = new URLSearchParams();
-      if (range) { qs.set("from", range[0].toISOString()); qs.set("to", range[1].toISOString()); }
+      const { from, to } = toDateRangeQuery(range);
+      if (from) qs.set("from", from);
+      if (to) qs.set("to", to);
       const r = await fetch(`/api/statistics/employee-performance?${qs}`, { credentials: "include" });
       const j = await r.json();
       if (j.code !== 0) throw new Error(j.message);
@@ -57,14 +64,18 @@ export default function PerformancePage() {
 
   const download = async () => {
     const qs = new URLSearchParams({ type: "employee-performance" });
-    if (range) { qs.set("from", range[0].toISOString()); qs.set("to", range[1].toISOString()); }
+    const { from, to } = toDateRangeQuery(range);
+    if (from) qs.set("from", from);
+    if (to) qs.set("to", to);
     const r = await fetch(`/api/statistics/export?${qs}`, { credentials: "include" });
     if (!r.ok) { const j = await r.json(); message.error(j.message); return; }
     const blob = await r.blob();
+    const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
-    a.href = URL.createObjectURL(blob);
+    a.href = url;
     a.download = `员工业绩_${new Date().toISOString().slice(0, 10)}.xlsx`;
     a.click();
+    URL.revokeObjectURL(url);
   };
 
   const totals = useMemo(() => ({
@@ -186,14 +197,14 @@ export default function PerformancePage() {
                             <Text type="secondary" style={{ fontSize: 12 }}>{r.employeeNo}</Text>
                           </td>
                           <td style={{ padding: "10px 8px", textAlign: "right" }}>{r.contractCount}</td>
-                          <td style={{ padding: "10px 8px", textAlign: "right" }}>{formatCurrency(r.contractAmount).replace("¥", "¥")}</td>
-                          <td style={{ padding: "10px 8px", textAlign: "right" }}>{formatCurrency(r.invoiceAmount).replace("¥", "¥")}</td>
-                          <td style={{ padding: "10px 8px", textAlign: "right" }}>{formatCurrency(r.paymentAmount).replace("¥", "¥")}</td>
+                          <td style={{ padding: "10px 8px", textAlign: "right" }}>{formatCurrency(r.contractAmount)}</td>
+                          <td style={{ padding: "10px 8px", textAlign: "right" }}>{formatCurrency(r.invoiceAmount)}</td>
+                          <td style={{ padding: "10px 8px", textAlign: "right" }}>{formatCurrency(r.paymentAmount)}</td>
                           <td style={{ padding: "10px 8px", textAlign: "right" }}>
-                            <Tag color={invRate >= 70 ? "green" : invRate >= 40 ? "blue" : "orange"}>{invRate.toFixed(1)}%</Tag>
+                            <Tag color={invRate >= INVOICE_RATE_THRESHOLDS.green ? "green" : invRate >= INVOICE_RATE_THRESHOLDS.blue ? "blue" : "orange"}>{invRate.toFixed(1)}%</Tag>
                           </td>
                           <td style={{ padding: "10px 8px", textAlign: "right" }}>
-                            <Tag color={payRate >= 80 ? "green" : payRate >= 50 ? "blue" : "orange"}>{payRate.toFixed(1)}%</Tag>
+                            <Tag color={payRate >= PAYMENT_RATE_THRESHOLDS.green ? "green" : payRate >= PAYMENT_RATE_THRESHOLDS.blue ? "blue" : "orange"}>{payRate.toFixed(1)}%</Tag>
                           </td>
                         </tr>
                       );

@@ -14,7 +14,6 @@ export const MESSAGE_LINK_PATH: Record<string, string> = {
   payment: "/payments",
   project: "/projects",
   customer: "/customers",
-  asset: "/assets"
 };
 
 export type MessageLink = { kind: string; id?: string | null } & Record<string, unknown>;

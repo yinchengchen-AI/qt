@@ -94,6 +94,19 @@ export const TITLE_TYPE_MAP: Record<string, string> = {
   PERSONAL:  "个人"
 };
 
+export const CUSTOMER_TYPE_MAP: Record<string, string> = {
+  ENTERPRISE: "企业",
+  GOV:        "政府",
+  OTHER:      "其他"
+};
+
+export const CUSTOMER_SCALE_MAP: Record<string, string> = {
+  LARGE:  "大型",
+  MEDIUM: "中型",
+  SMALL:  "小型",
+  MICRO:  "微型"
+};
+
 export const CUSTOMER_STATUS_MAP: Record<string, string> = {
   LEAD:        "线索",
   NEGOTIATING: "洽谈中",
@@ -141,29 +154,11 @@ export const PAYMENT_STATUS_MAP: Record<string, string> = {
   CANCELLED:  "已取消"
 };
 
-export const ASSET_TYPE_MAP: Record<string, string> = {
-  LICENSE:        "营业执照",
-  CERTIFICATE:    "资质证书",
-  QUALIFICATION:  "认证体系",
-  PERFORMANCE:    "业绩证明",
-  TEAM_MEMBER:    "团队成员",
-  CASE:           "项目案例",
-  PATENT:         "专利软著",
-  OTHER:          "其他",
-  PERSONNEL_CERT: "人员证书",
-  TEMPLATE:       "投标模板"
-};
 
 /** SERVICE_TYPE_MAP 的 Select options 形式(供 ProFormSelect 直接用) */
 export const SERVICE_TYPE_OPTIONS: { value: string; label: string }[] =
   Object.entries(SERVICE_TYPE_MAP).map(([value, label]) => ({ value, label }));
 
-export const ASSET_STATUS_MAP: Record<string, string> = {
-  VALID:         "有效",
-  EXPIRING_SOON: "即将到期",
-  EXPIRED:       "已过期",
-  ARCHIVED:      "已归档"
-};
 
 /* === 合同开票状态(列表/详情/导出共用中文标签) === */
 export const BILLING_STATUS_MAP: Record<string, string> = {

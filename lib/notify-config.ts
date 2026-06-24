@@ -44,7 +44,6 @@ export const NOTIFY_CONFIG = {
     CUSTOMER_STATUS_SUGGEST: ["inbox"] as NotifyChannel[],
     WORKFLOW_TASK_ASSIGNED: ["inbox", "email", "wechatWork"] as NotifyChannel[],
     WORKFLOW_REVIEW_REQUESTED: ["inbox", "email", "wechatWork"] as NotifyChannel[],
-    ASSET_EXPIRING: ["inbox", "email"] as NotifyChannel[]
   } satisfies Record<DomainEventType, NotifyChannel[]>
 };
 

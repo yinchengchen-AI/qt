@@ -1,7 +1,7 @@
 "use client";
 import { ProCard } from "@ant-design/pro-components";
 import { Column } from "@ant-design/charts";
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { Page } from "@/components/page";
 import { PageHeader } from "@/components/page-header";
@@ -42,27 +42,34 @@ export default function AgingPage() {
   const { isMobile } = useResponsive();
   const [buckets, setBuckets] = useState<Record<string, number>>({});
   const [rows, setRows] = useState<AgingRow[]>([]);
+  const [totalOverdueInvoices, setTotalOverdueInvoices] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const { token } = useToken();
 
-  useEffect(() => {
+  const load = useCallback(async () => {
     setLoading(true);
-    fetch("/api/statistics/invoice-aging", { credentials: "include" })
-      .then((r) => r.json())
-      .then((j) => {
-        if (j.code !== 0) throw new Error(j.message);
-        setBuckets(j.data.buckets);
-        setRows(j.data.rows);
-      })
-      .catch((e) => setError((e as Error).message))
-      .finally(() => setLoading(false));
+    setError(null);
+    try {
+      const r = await fetch("/api/statistics/invoice-aging", { credentials: "include" });
+      const j = await r.json();
+      if (j.code !== 0) throw new Error(j.message);
+      setBuckets(j.data.buckets);
+      setRows(j.data.rows);
+      setTotalOverdueInvoices(typeof j.data.total === "number" ? j.data.total : j.data.rows.length);
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setLoading(false);
+    }
   }, []);
+
+  useEffect(() => { load(); }, [load]);
 
   const totalOverdue = useMemo(() => BUCKETS.reduce((s, b) => s + (buckets[b] ?? 0), 0), [buckets]);
 
   const kpiItems: StatItem[] = [
-    { label: "应收总额", value: formatCurrency(totalOverdue), prefix: "¥", description: `共 ${rows.length} 张超期发票`, delta: { value: `最高风险 ${formatCurrency(buckets["90+"] ?? 0)}`, direction: (buckets["90+"] ?? 0) > 0 ? "down" : "up" } },
+    { label: "应收总额", value: formatCurrency(totalOverdue), prefix: "¥", description: `共 ${totalOverdueInvoices} 张超期发票`, delta: { value: `最高风险 ${formatCurrency(buckets["90+"] ?? 0)}`, direction: (buckets["90+"] ?? 0) > 0 ? "down" : "up" } },
     ...BUCKETS.map((b) => ({
       label: BUCKET_META[b].label,
       value: formatCurrency(buckets[b] ?? 0),
@@ -81,7 +88,7 @@ export default function AgingPage() {
     <Page>
       <PageHeader title="应收账龄分析" subtitle="按发票逾期天数分段监控回款风险，重点关注 90+ 段" />
       {error ? (
-        <EmptyState error={{ message: error, onRetry: () => location.reload() }} title="加载失败" />
+        <EmptyState error={{ message: error, onRetry: load }} title="加载失败" />
       ) : (
         <>
           <StatGrid items={kpiItems} columns={5} loading={loading} />
@@ -101,7 +108,7 @@ export default function AgingPage() {
                       </Space>
                       <Space size={12} wrap>
                         <Text style={{ fontSize: 13 }}>{pct.toFixed(1)}%</Text>
-                        <Text type="secondary" style={{ fontSize: 12 }}>{formatCurrency(v).replace("¥", "¥")}</Text>
+                        <Text type="secondary" style={{ fontSize: 12 }}>{formatCurrency(v)}</Text>
                       </Space>
                     </div>
                     <Progress
@@ -129,7 +136,7 @@ export default function AgingPage() {
                   colorField="bucket"
                   autoFit
                   scale={{ color: { range: ["#52c41a", "#1677ff", "#faad14", "#ff4d4f"] } }}
-                  label={{ text: (d: Record<string, unknown>) => formatCurrency(d.amount as number).replace("¥", "¥"), style: { fontSize: 11 } }}
+                  label={{ text: (d: Record<string, unknown>) => formatCurrency(d.amount as number), style: { fontSize: 11 } }}
                 />
               ) : (
                 <EmptyState empty title="暂无数据" description="当前没有待回款发票" height="tall" />
@@ -140,7 +147,7 @@ export default function AgingPage() {
           <div style={{ marginTop: 32 }}>
             <PageHeader
               level="section"
-              title={`超期明细（共 ${rows.length} 条${isMobile && rows.length > TOP_N ? `, 仅显示前 ${TOP_N} 条` : ""}）`}
+              title={`超期明细（共 ${totalOverdueInvoices} 条${isMobile && totalOverdueInvoices > TOP_N ? `, 仅显示前 ${TOP_N} 条` : ""}）`}
             />
             <ProCard>
               {visibleRows.length > 0 ? (
@@ -169,7 +176,7 @@ export default function AgingPage() {
                             <Tag color={daysColor(r.daysOverdue)}>{r.daysOverdue} 天</Tag>
                           </td>
                           <td style={{ padding: "10px 8px", textAlign: "right" }}>
-                            <Text strong>{formatCurrency(r.remaining).replace("¥", "¥")}</Text>
+                            <Text strong>{formatCurrency(r.remaining)}</Text>
                           </td>
                           <td style={{ padding: "10px 8px" }}>
                             <Tag color={BUCKET_META[r.bucket as Bucket]?.color}>{r.bucket}</Tag>
@@ -188,7 +195,7 @@ export default function AgingPage() {
               {isMobile && rows.length > TOP_N ? (
                 <div style={{ marginTop: 12, textAlign: "center" }}>
                   <Link href="/invoices" style={{ color: token.colorPrimary, fontSize: 13 }}>
-                    查看全部 {rows.length} 条 →
+                    查看全部 {totalOverdueInvoices} 条 →
                   </Link>
                 </div>
               ) : null}

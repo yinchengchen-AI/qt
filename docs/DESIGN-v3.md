@@ -352,18 +352,29 @@ PLANNED ─confirm(finance)─▶ CONFIRMED ─reconcile(finance)─▶ RECONCIL
 | 合同额 | `SUM(Contract.totalAmount where status ∈ {ACTIVE,CLOSED})` | 月/季/年/任意区间 |
 | 已开票额 | `SUM(Invoice.amount where status=ISSUED and actualIssueDate ∈ 区间)` | 同上 |
 | 已回款额 | `SUM(Payment.amount where status ∈ {CONFIRMED,RECONCILED} and receivedAt ∈ 区间)` | 同上 |
-| 未回款额 | 已开票额 − 已回款额 | 截止时点 |
+| 未回款额 | `MAX(0, 已开票额 − 已回款额)` | 截止时点 |
 | 开票率 | 已开票额 / 合同额 | 按合同/客户 |
 | 回款率 | 已回款额 / 已开票额 | 按合同/客户 |
 | 业务人员业绩 | 同上 + `ownerUserId=自己` | 月/季/年 |
-| 客户分布 | `level/customerType/industry` 聚合 | 截止时点 |
+| 客户分布 | `scale/customerType/status` 三组 groupBy,服务端 label 翻译 | 截止时点 |
 | 应收账款账龄 | `0-30 / 31-60 / 61-90 / 90+` 分桶 | 截止时点 |
+
+**口径备注(round-2 锁定)**
+
+- **未回款额 clamp**:`paymentAmount` 包含 `invoiceId IS NULL` 的预付款,可能大于 `invoiceAmount`,`unpaidAmount` 实际计算为 `Math.max(0, invoiceAmount − paymentAmount)`,避免出现 `-¥X`。
+- **账龄 REFUNDED 处理**:schema 的 `refund` 动作把原 `Payment.status` 翻为 `REFUNDED`(amount 不变)。账龄 paidMap 只聚合 `status ∈ {CONFIRMED, RECONCILED}`——已退款的回款视为从未生效,**不**用符号抵消(否则会从负的净额里错误高估应收)。`getInvoiceAging` 同时返回 `total`(全部超期数)与 `rows`(`rows.length ≤ 100`,按 daysOverdue 降序),前端用 `total` 渲染「共 N 条」与「查看全部 N 条 →」的真实总数。
+- **daysOverdue 计算**:走 `Date.UTC` 归一日历日差(不是 `ms / 86_400_000`),避免 DST/时区边界差一天。`actualIssueDate` 在未来(时钟漂移/录错)统一归入 `90+` 段。
+- **客户分布 label**:`byScale / byType / byStatus` 在路由层用 `lib/enum-maps.ts` 的 `CUSTOMER_SCALE_MAP / CUSTOMER_TYPE_MAP / CUSTOMER_STATUS_MAP` 翻译成中文,前端 `valueEnum` 不必再维护;`key` 仍保留原始 code 供筛选/导出。
+- **业务人员业绩行级隔离**:SALES 角色 short-circuit,只返回自己一行;其它角色查 `isSystem=false AND role.code != "ADMIN" AND status=ACTIVE` 的用户。
+- **Top 客户 metric**:`metric=contract` 时筛 `total > 0`,`metric=payment` 时筛 `paymentTotal > 0`,避免按所选维度无数据的客户出现在榜上。
 
 ### 8.2 看板 / 导出
 - 管理员/财务：合同/开票/回款总览、账龄、客户 Top10、员工 Top10。
 - 业务人员：本人业绩 + 我的客户/合同/回款进度。
 - 行政人员：基础信息统计（金额字段隐藏）。
 - 导出：`exceljs@4.4.0` 流式生成；权限跟随 `EXPORT`；文件名 `统计报表_{from}_{to}.xlsx`。
+- **导出行数兜底**:路由统一调用 `exportMaxRows()`(env `EXPORT_MAX_ROWS`,默认 5000,硬上限 10000)切到 `rows.slice(0, MAX_ROWS)`,防止员工/客户全量导出 OOM。
+- **总览「新增客户」字段**:响应里叫 `customers.newInRange`,在已选时间区间内 `createdAt ∈ [from, to]` 计数;无区间时退化为全量(并非"本月")——文案/字段名一致标注区间语义。
 
 ---
 
@@ -399,9 +410,17 @@ PLANNED ─confirm(finance)─▶ CONFIRMED ─reconcile(finance)─▶ RECONCIL
 
 ### 9.7 统计
 - `GET /api/statistics/overview?from&to&groupBy=month|customer|sales`
+  - 响应 `customers: { total, newInRange }`(旧字段 `newThisMonth` 已废弃)
+  - 响应 `distribution: { byScale, byType, byStatus }`,每项含 `{ key, label, count }`
 - `GET /api/statistics/invoice-aging`
-- `GET /api/statistics/top-customers?metric=contract|payment&limit=10`
+  - 响应 `{ buckets, total, rows }`:`total` 为全部超期数(可能 > `rows.length`);`rows` 按 daysOverdue 降序,默认截到 100
+- `GET /api/statistics/top-customers?metric=contract|payment&limit=10&from=&to=`
+  - `from/to` 同时作用于 `Contract.signDate` / `Invoice.actualIssueDate` / `Payment.receivedAt`
 - `GET /api/statistics/employee-performance?userId=&from=&to=`
+  - `userId` 不传时全员(非系统、非 admin、ACTIVE);SALES 强制只看自己
+- `GET /api/statistics/export?type=overview|top-customers|employee-performance&metric=&from=&to=&userId=`
+  - 需 `STATISTICS:EXPORT` 权限;单次最多 `exportMaxRows()` 行
+
 
 ### 9.8 消息/公告
 - `GET /api/messages?unread=true`、`PATCH /api/messages/:id`、`POST /api/messages/mark-all-read`
@@ -482,7 +501,7 @@ PLANNED ─confirm(finance)─▶ CONFIRMED ─reconcile(finance)─▶ RECONCIL
 5. **回款**：`bankRefNo` 重复 → 409 `PAYMENT_DUPLICATE_REF`；同一发票累计回款超过发票金额 → 422；`RECONCILED` 记录尝试修改 → 403 `ENTITY_IMMUTABLE`；预收款无 invoiceId 时可入账并通过 `allocate` 拆分配。
 6. **权限**：SALES 访问他人 `customerId` 详情 → 404；FINANCE 尝试改客户金额相关字段 → 403；OPS 在开票列表看不到任何记录；SALES 收件箱收不到非自己的 `MESSAGE`。
 7. **消息**：`INVOICE_OVERDUE_PAYMENT` 在开票 +30 天自动创建对应 Message；标记已读后 `unreadCount` 正确。
-8. **统计**：构造 1 个月数据，统计接口 `groupBy=month` 的「已开票额/已回款额」与 SQL 聚合一致（误差 0.01）；账龄分桶口径正确。
+8. **统计**：构造 1 个月数据，统计接口 `groupBy=month` 的「已开票额/已回款额」与 SQL 聚合一致（误差 0.01）；账龄分桶口径正确；`unpaidAmount` 不为负（预付款场景下 clamp 到 0）；`getInvoiceAging.total` 等于全部超期数（可能 > 100）；`getTopCustomers` 接受 `from/to` 时合同/开票/回款聚合同步收窄；SALES 访问 `getEmployeePerformance` 只返回自己一行。
 9. **审计**：所有状态机迁移在 `OperationLog` / `*AuditLog` 中留痕，含 `actorId` 与 `before/after diff`；密码/敏感字段永不入日志。
 10. **前端 antd 6**：ProTable 分页/排序/筛选参数正确传递；按钮权限按 `<Authority>` 隐藏；金额格式 `¥1,234,567.00` 一致；`AntdRegistry` SSR 样式无首屏闪烁。
 

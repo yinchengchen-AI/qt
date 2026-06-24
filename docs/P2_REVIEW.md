@@ -56,3 +56,38 @@
 - **Vercel Cron / 外部 scheduler**：jobs API 已就绪
 - **压测报告**：200 并发列表查询 P95 < 500ms（设计目标）
 
+
+## Round-2 修复(统计分析代码审查回归)
+
+> 触发:`server/services/statistics.ts` 与相关路由/页面的代码审查。修复 commit 见 `git log -- server/services/statistics.ts`。
+
+### A. 修复清单
+
+| 编号 | 文件 | 改动 | 验证 |
+|---|---|---|---|
+| H1 | `server/services/statistics.ts` + `app/(app)/statistics/aging/page.tsx` | `getInvoiceAging` 新增 `total` 字段(全部超期数);页面用 `totalOverdueInvoices` 驱动 KPI 文案 / 章节标题 / 移动端链接 | `tests/api/statistics-aggregation.test.ts` 验证 `total >= rows.length` |
+| H3 | `server/services/statistics.ts` | `unpaidAmount = round2(Math.max(0, invoiceAmount - paymentAmount))`,防止预付款造成负数 | DB 集成测试构造 100 元开票 + 500 元预付款,断言 `unpaidAmount === 0` |
+| H4 | `server/services/statistics.ts` + 路由 | `getTopCustomers(metric, limit, range?)`;`/api/statistics/top-customers` 与 `/api/statistics/export` 接受并透传 `from / to`;export 透传 `userId` | 结构性断言 + e2e 待补 |
+| H5 | `app/api/statistics/export/route.ts` | `exportMaxRows()` 兜底:employee-performance 走 `all.slice(0, MAX_ROWS)`,top-customers 直接 `limit=MAX_ROWS` | 结构性断言 |
+| M1 | `app/api/statistics/overview/route.ts` + 页面 | `customers.newThisMonth` → `newInRange`,UI/类型同步 | grep 全文已无 `newThisMonth` |
+| M2 | `lib/enum-maps.ts` + overview 路由 | 新增 `CUSTOMER_TYPE_MAP` / `CUSTOMER_SCALE_MAP`;路由在响应里把 `byScale / byType / byStatus` 的 key 翻译成 label | 路由单测覆盖 |
+| M3 | `tests/api/statistics-ownership.test.ts` + `tests/api/statistics-aggregation.test.ts` | 新增 18 条结构断言 + 4 条 DB 集成断言 | `vitest run` → 445/445 通过 |
+| M4 | `server/services/statistics.ts` | `aggregatePerformance` 的 `contractOwners` 反查加 `ownerUserId: { in: ownerIds }`,避免拉无关人员的合同 | 结构性断言 |
+| L1-L3, L6 | `server/services/statistics.ts` | `DateRange` 复用 `lib/date-range`;`daysBetween` 走 `Date.UTC`;`days < 0` 归 90+;`getOverview` 移除 `range` 字段 | typecheck / 现有测试 |
+
+### B. 关于 H2 的复核
+
+初版审查建议把 `REFUNDED` 计入 `paidMap`(用符号抵消),但与 schema 的 `refund` 语义冲突:`refund` 动作把原 payment 的 `status` 直接翻为 `REFUNDED`、`amount` 不变,这等价于"该笔回款从未生效"。若用符号抵消,单笔 500 元「先确认后退款」会被算成 `paidMap = -500`,`remaining = invoice − (-500) = invoice + 500`,**错误高估应收**。已保留原行为(只聚合 `CONFIRMED / RECONCILED`,REFUNDED 视为已撤销),并在 `server/services/statistics.ts` 加注释锁住语义,防止未来再次踩坑。
+
+### C. 测试覆盖
+
+- `npx tsc --noEmit` 0 errors
+- `npm run lint`(改动文件)0 errors / 0 warnings
+- `npx vitest run` 51 files / **445 tests passed**
+- `npm run build` 成功,`/api/statistics/*` 与 `/statistics/*` 路由全产出
+
+### D. 留待 follow-up
+
+- `top-customers` 导出分支目前无前端调用方,本次顺手实现 range 透传,后续接页面零成本
+- `getCustomerDistribution` 当前只 groupBy `scale / customerType / status`,`industry` 已留 schema 字段但未聚合(产品按需)
+- E2E(`tests/e2e/`)未覆盖统计分析任何页;P3 路线建议补 `08-statistics-overview.spec.ts` 等用例

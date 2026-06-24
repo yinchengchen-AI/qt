@@ -27,7 +27,6 @@ import {
   SettingOutlined,
   UserOutlined,
   DownOutlined,
-  DatabaseOutlined,
   AppstoreOutlined,
   AccountBookOutlined,
   IdcardOutlined,
@@ -89,7 +88,6 @@ const MENU: MenuItem[] = [
       { path: "/contracts", name: "合同管理", permission: { resource: RESOURCE.CONTRACT, action: ACTION.READ } }
     ]
   },
-  { path: "/assets", name: "企业资产", icon: <DatabaseOutlined />, permission: { resource: RESOURCE.ASSET, action: ACTION.READ } },
   {
     path: "/invoices",
     name: "财务",

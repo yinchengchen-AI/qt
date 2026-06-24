@@ -8,8 +8,6 @@ export const presignUploadBodySchema = z.object({
   size: z.number().int().positive(),
   contractId: z.string().optional().nullable(),
   invoiceId: z.string().optional().nullable(),
-  // v1 标书素材库新增
-  assetId: z.string().optional().nullable(),
   // 合同交付物附件标记 (true 表示这是合同详情"交付物"tab 上传的交付文件, 写权限仅 admin / 签订人 / 负责人)
   isDeliverable: z.boolean().optional().default(false)
 });

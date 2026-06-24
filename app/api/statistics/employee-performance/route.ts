@@ -3,6 +3,7 @@ import { runWithRequestContext } from "@/lib/request-context";
 import { ok, err } from "@/lib/api";
 import { requireSession } from "@/lib/session";
 import { getEmployeePerformance } from "@/server/services/statistics";
+import { parseDateRangeQuery } from "@/lib/date-range";
 
 const query = z.object({
   userId: z.string().optional(),
@@ -16,9 +17,8 @@ export async function GET(req: Request) {
       const user = await requireSession();
       const url = new URL(req.url);
       const parsed = query.parse(Object.fromEntries(url.searchParams));
-      const from = parsed.from ? new Date(parsed.from) : undefined;
-      const to = parsed.to ? new Date(parsed.to) : undefined;
-      const data = await getEmployeePerformance(user, parsed.userId, { from, to });
+      const range = parseDateRangeQuery(parsed);
+      const data = await getEmployeePerformance(user, parsed.userId, range);
       return ok(data);
     } catch (e) {
       return err(e);

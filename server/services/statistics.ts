@@ -4,14 +4,24 @@ import { type SessionUser } from "@/lib/session";
 import { requirePermission, RESOURCE, ACTION } from "@/lib/permissions";
 import type { Prisma } from "@prisma/client";
 import { ownerEq, ownerViaContract } from "@/lib/ownership";
+import type { DateRange } from "@/lib/date-range";
 
-type DateRange = { from?: Date; to?: Date };
-
-function dateWhere(range: DateRange, _field: "actualIssueDate" | "receivedAt" | "signDate" = "signDate"): Prisma.DateTimeFilter {
+/**
+ * 构造 Prisma DateTimeFilter。fieldName 仅用于在调用处自注释作用字段,
+ * 函数本身不依赖字段名（所有日期字段的 filter 结构相同）。
+ */
+function dateWhere(range: DateRange, _fieldName: "actualIssueDate" | "receivedAt" | "signDate" = "signDate"): Prisma.DateTimeFilter {
   const w: Prisma.DateTimeFilter = {};
   if (range.from) w.gte = range.from;
   if (range.to) w.lte = range.to;
   return w;
+}
+
+/** 按 UTC 日历日计算两个 Date 之间的整数天数,避免 86400_000 ms 法在 DST/时区边界差一天 */
+function daysBetween(later: Date, earlier: Date): number {
+  const a = Date.UTC(later.getUTCFullYear(), later.getUTCMonth(), later.getUTCDate());
+  const b = Date.UTC(earlier.getUTCFullYear(), earlier.getUTCMonth(), earlier.getUTCDate());
+  return Math.floor((a - b) / 86_400_000);
 }
 
 // 1. 总览：合同额 / 已开票额 / 已回款额 / 未回款额
@@ -45,17 +55,19 @@ export async function getOverview(user: SessionUser, range: DateRange) {
   const contractAmount = Number(contractAgg._sum.totalAmount ?? 0);
   const invoiceAmount = Number(invoiceAgg._sum.amount ?? 0);
   const paymentAmount = Number(paymentAgg._sum.amount ?? 0);
+  // 未回款 = 已开票 - 已回款。paymentAmount 包含未挂账到发票的预付款,
+  // 可能大于 invoiceAmount(此时算出的"未回款"为负),clamp 到 0 防止出现 -¥X
+  const unpaidRaw = invoiceAmount - paymentAmount;
   return {
     contractAmount: round2(contractAmount),
     invoiceAmount: round2(invoiceAmount),
     paymentAmount: round2(paymentAmount),
-    unpaidAmount: round2(invoiceAmount - paymentAmount),
+    unpaidAmount: round2(Math.max(0, unpaidRaw)),
     invoiceRate: contractAmount > 0 ? round2((invoiceAmount / contractAmount) * 100) : 0,
     paymentRate: invoiceAmount > 0 ? round2((paymentAmount / invoiceAmount) * 100) : 0,
     contractCount: contractAgg._count._all,
     invoiceCount: invoiceAgg._count._all,
-    paymentCount: paymentAgg._count._all,
-    range
+    paymentCount: paymentAgg._count._all
   };
 }
 
@@ -109,18 +121,21 @@ export async function getTimeSeries(user: SessionUser, range: DateRange) {
   for (const m of months) buckets.set(m, { contract: 0, invoice: 0, payment: 0 });
 
   for (const c of contracts) {
-    const k = `${new Date(c.signDate).getFullYear()}-${String(new Date(c.signDate).getMonth() + 1).padStart(2, "0")}`;
+    const d = new Date(c.signDate);
+    const k = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
     const b = buckets.get(k);
     if (b) b.contract += Number(c.totalAmount);
   }
   for (const i of invoices) {
     if (!i.actualIssueDate) continue;
-    const k = `${new Date(i.actualIssueDate).getFullYear()}-${String(new Date(i.actualIssueDate).getMonth() + 1).padStart(2, "0")}`;
+    const d = new Date(i.actualIssueDate);
+    const k = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
     const b = buckets.get(k);
     if (b) b.invoice += Number(i.amount);
   }
   for (const p of payments) {
-    const k = `${new Date(p.receivedAt).getFullYear()}-${String(new Date(p.receivedAt).getMonth() + 1).padStart(2, "0")}`;
+    const d = new Date(p.receivedAt);
+    const k = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
     const b = buckets.get(k);
     if (b) b.payment += Number(p.amount);
   }
@@ -134,6 +149,10 @@ export async function getTimeSeries(user: SessionUser, range: DateRange) {
 }
 
 // 3. 应收账款账龄
+// 返回: { buckets, rows, total }
+//   - buckets: 各账龄段总未收金额
+//   - rows: 逐张超期发票,按 daysOverdue 降序
+//   - total: 全部超期发票数(可能大于 rows.length,前端用于显示真实总数)
 export async function getInvoiceAging(user: SessionUser) {
   requirePermission(user.roleCode, RESOURCE.STATISTICS, ACTION.READ);
   const now = new Date();
@@ -145,10 +164,17 @@ export async function getInvoiceAging(user: SessionUser) {
     },
     select: { id: true, invoiceNo: true, amount: true, actualIssueDate: true, customerId: true, customerName: true, contractId: true }
   });
-  // 拉每张发票的已收金额
+  // 拉每张发票的"仍生效"回款:只算 CONFIRMED/RECONCILED,REFUNDED 视为已撤销
+  // (注意:仅聚合与发票挂账的回款;invoiceId 为 null 的预付款不影响本张发票)
+  // schema 的 refund 动作是直接把原 payment 的 status 翻成 REFUNDED(amount 不变),
+  // 所以"已退款的回款"靠排除该 status 实现,不引入符号抵消(否则会高估应收)
   const paid = await prisma.payment.groupBy({
     by: ["invoiceId"],
-    where: { invoiceId: { in: invoices.map((i) => i.id) }, status: { in: ["CONFIRMED", "RECONCILED"] }, deletedAt: null },
+    where: {
+      invoiceId: { in: invoices.map((i) => i.id) },
+      status: { in: ["CONFIRMED", "RECONCILED"] },
+      deletedAt: null
+    },
     _sum: { amount: true }
   });
   const paidMap = new Map<string, number>();
@@ -158,11 +184,13 @@ export async function getInvoiceAging(user: SessionUser) {
   const rows: Array<{ invoiceId: string; invoiceNo: string; customerName: string; daysOverdue: number; remaining: number; bucket: string }> = [];
   for (const inv of invoices) {
     if (!inv.actualIssueDate) continue;
-    const days = Math.floor((now.getTime() - new Date(inv.actualIssueDate).getTime()) / 86400_000);
+    const days = daysBetween(now, new Date(inv.actualIssueDate));
+    // 0.01 容差,refunded 多于 confirmed 时 remain 不会变成显著负数影响分桶
     const remain = Number(inv.amount) - (paidMap.get(inv.id) ?? 0);
     if (remain <= 0.01) continue;
     let bucket: keyof typeof buckets;
-    if (days <= 30) bucket = "0-30";
+    if (days < 0) bucket = "90+"; // 开票日在未来(时钟漂移/录错)归最高风险段
+    else if (days <= 30) bucket = "0-30";
     else if (days <= 60) bucket = "31-60";
     else if (days <= 90) bucket = "61-90";
     else bucket = "90+";
@@ -170,33 +198,37 @@ export async function getInvoiceAging(user: SessionUser) {
     rows.push({ invoiceId: inv.id, invoiceNo: inv.invoiceNo, customerName: inv.customerName, daysOverdue: days, remaining: round2(remain), bucket });
   }
   rows.sort((a, b) => b.daysOverdue - a.daysOverdue);
-  return { buckets, rows: rows.slice(0, 100) };
+  return { buckets, total: rows.length, rows: rows.slice(0, 100) };
 }
 
 // 4. Top 客户（按合同额 / 回款额）
 // 实现:用 groupBy by customerId 一次拿全部客户的合同/开票/回款汇总,
 // 把 1 + N×4 的 N+1 拍平为常数次(4)查询。
-export async function getTopCustomers(user: SessionUser, metric: "contract" | "payment" = "contract", limit = 10) {
+// range 可选:不传则全量,传则按 signDate / actualIssueDate / receivedAt 同时过滤。
+export async function getTopCustomers(user: SessionUser, metric: "contract" | "payment" = "contract", limit = 10, range?: DateRange) {
   requirePermission(user.roleCode, RESOURCE.STATISTICS, ACTION.READ);
+  const signWhere = { deletedAt: null, status: { in: ["ACTIVE", "CLOSED"] }, ...(range ? { signDate: dateWhere(range) } : {}), ...ownerEq(user) };
+  const invoiceWhere = { deletedAt: null, status: "ISSUED", ...(range ? { actualIssueDate: dateWhere(range, "actualIssueDate") } : {}), ...(ownerViaContract(user) as Prisma.InvoiceWhereInput) };
+  const paymentWhere = { deletedAt: null, status: { in: ["CONFIRMED", "RECONCILED"] }, ...(range ? { receivedAt: dateWhere(range, "receivedAt") } : {}), ...(ownerViaContract(user) as Prisma.PaymentWhereInput) };
   const [customers, contractRows, invoiceRows, paymentRows] = await Promise.all([
     prisma.customer.findMany({
-      where: { deletedAt: null },
+      where: { deletedAt: null, ...ownerEq(user) } as Prisma.CustomerWhereInput,
       select: { id: true, name: true, code: true, scale: true, customerType: true }
     }),
     prisma.contract.groupBy({
       by: ["customerId"],
-      where: { deletedAt: null, status: { in: ["ACTIVE", "CLOSED"] } },
+      where: signWhere as Prisma.ContractWhereInput,
       _sum: { totalAmount: true },
       _count: { _all: true }
     }),
     prisma.invoice.groupBy({
       by: ["customerId"],
-      where: { deletedAt: null, status: "ISSUED" },
+      where: invoiceWhere,
       _sum: { amount: true }
     }),
     prisma.payment.groupBy({
       by: ["customerId"],
-      where: { deletedAt: null, status: { in: ["CONFIRMED", "RECONCILED"] } },
+      where: paymentWhere,
       _sum: { amount: true }
     })
   ]);
@@ -209,8 +241,10 @@ export async function getTopCustomers(user: SessionUser, metric: "contract" | "p
       const cr = contractByCustomer.get(c.id);
       const total = Number(cr?._sum.totalAmount ?? 0);
       const paymentTotal = paymentByCustomer.get(c.id) ?? 0;
-      // 过滤掉无合同无回款的客户,减少噪声
-      if (total === 0 && paymentTotal === 0) return null;
+      // 按所选 metric 过滤:合同模式下没有合同额的客户不进榜;
+      // 回款模式下没有回款的客户不进榜;但 invoiceTotal 仍然返回,供前端展示
+      if (metric === "contract" && total === 0) return null;
+      if (metric === "payment" && paymentTotal === 0) return null;
       return {
         id: c.id,
         name: c.name,
@@ -276,10 +310,14 @@ async function aggregatePerformance(owners: { id: string; name: string; employee
     })
   ]);
   // 2) contractId -> ownerUserId 反查,累加到对应 owner
-  const contractOwners = await prisma.contract.findMany({
-    where: { id: { in: [...new Set([...invoiceRows.map((r) => r.contractId), ...paymentRows.map((r) => r.contractId)].filter(Boolean) as string[])] } },
-    select: { id: true, ownerUserId: true }
-  });
+  // 只反查在 ownerIds 内的合同,避免拉取不相关人员的合同(性能 + 内存)
+  const contractIds = [...new Set([...invoiceRows.map((r) => r.contractId), ...paymentRows.map((r) => r.contractId)].filter(Boolean) as string[])];
+  const contractOwners = contractIds.length > 0
+    ? await prisma.contract.findMany({
+        where: { id: { in: contractIds }, ownerUserId: { in: ownerIds } },
+        select: { id: true, ownerUserId: true }
+      })
+    : [];
   const contractOwnerMap = new Map(contractOwners.map((c) => [c.id, c.ownerUserId]));
 
   const sumByOwner = new Map<string, { invoice: number; payment: number }>();
@@ -344,10 +382,11 @@ export async function getEmployeePerformance(user: SessionUser, targetUserId?: s
 // 6. 客户分布
 export async function getCustomerDistribution(user: SessionUser) {
   requirePermission(user.roleCode, RESOURCE.STATISTICS, ACTION.READ);
+  const customerWhere = { deletedAt: null, ...ownerEq(user) } as Prisma.CustomerWhereInput;
   const [byScale, byType, byStatus] = await Promise.all([
-    prisma.customer.groupBy({ by: ["scale"], where: { deletedAt: null }, _count: { _all: true } }),
-    prisma.customer.groupBy({ by: ["customerType"], where: { deletedAt: null }, _count: { _all: true } }),
-    prisma.customer.groupBy({ by: ["status"], where: { deletedAt: null }, _count: { _all: true } })
+    prisma.customer.groupBy({ by: ["scale"], where: customerWhere, _count: { _all: true } }),
+    prisma.customer.groupBy({ by: ["customerType"], where: customerWhere, _count: { _all: true } }),
+    prisma.customer.groupBy({ by: ["status"], where: customerWhere, _count: { _all: true } })
   ]);
   return {
     byScale: byScale.map((x) => ({ key: x.scale, count: x._count._all })),

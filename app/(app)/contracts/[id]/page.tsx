@@ -223,8 +223,8 @@ const handleDelete = () => {
     }
   });
 };
-  const [activeTab, setActiveTab] = useState("info");
   // 强制完结弹窗: admin 选 reason (completed / terminated / expired)
+  const [activeTab, setActiveTab] = useState("info");
   const [closeReason, setCloseReason] = useState<"completed" | "terminated" | "expired">("completed");
 
   if (error) {
@@ -266,6 +266,7 @@ const handleDelete = () => {
     if (s === "ACTIVE") return ["close"];
     return [];
   })();
+
   const handleClose = async () => {
     try {
       const res = await fetch(`/api/contracts/${id}/close`, {

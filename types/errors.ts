@@ -28,10 +28,6 @@ export const ERROR_CODES = {
   // 通用
   ENTITY_IMMUTABLE: "ENTITY_IMMUTABLE",
   USER_HAS_ACTIVE_OWNERSHIP: "USER_HAS_ACTIVE_OWNERSHIP",
-  // 标书素材库 (v1)
-  ASSET_ATTACHMENT_REQUIRED: "ASSET_ATTACHMENT_REQUIRED",
-  ASSET_USER_INVALID: "ASSET_USER_INVALID",
-  ASSET_SERVICE_TYPE_INVALID: "ASSET_SERVICE_TYPE_INVALID",
 } as const;
 export type ErrorCode = (typeof ERROR_CODES)[keyof typeof ERROR_CODES];
 
@@ -58,8 +54,4 @@ export const ERROR_MESSAGES: Record<ErrorCode, string> = {
   PAYMENT_OVER_CONTRACT: "该合同累计回款已超出合同总额",
   ENTITY_IMMUTABLE: "终态记录不可修改/删除",
   USER_HAS_ACTIVE_OWNERSHIP: "该用户仍有进行中合同，请先转移负责人",
-  // 标书素材库 (v1)
-  ASSET_ATTACHMENT_REQUIRED: "请上传证书扫描件或模板文件",
-  ASSET_USER_INVALID: "员工不存在或已停用",
-  ASSET_SERVICE_TYPE_INVALID: "服务类型无效",
 };

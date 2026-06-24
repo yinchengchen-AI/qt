@@ -35,7 +35,7 @@ async function resolveAttachmentSnapshots(
     const ids = [...new Set(realEntries.map((r) => r.id))];
     const found = await tx.attachment.findMany({
       where: { id: { in: ids }, deletedAt: null },
-      select: { id: true, originalName: true, mimeType: true, size: true, uploadedById: true, uploadedAt: true, contractId: true, invoiceId: true, assetId: true }
+      select: { id: true, originalName: true, mimeType: true, size: true, uploadedById: true, uploadedAt: true, contractId: true, invoiceId: true }
     });
     if (found.length !== ids.length) {
       throw new ApiError(ERROR_CODES.VALIDATION_FAILED, "附件 id 无效或已删除", 400);
@@ -51,9 +51,9 @@ async function resolveAttachmentSnapshots(
         data: { contractId }
       });
     }
-    // 已绑本 contract:放过;已绑其它 contract / 任意 invoice / 任意 asset:拒绝
+    // 已绑本 contract:放过;已绑其它 contract / 任意 invoice:拒绝
     const others = found.filter((a) =>
-      (a.contractId && a.contractId !== contractId) || a.invoiceId || a.assetId
+      (a.contractId && a.contractId !== contractId) || a.invoiceId
     );
     if (others.length > 0) {
       throw new ApiError(ERROR_CODES.FORBIDDEN, "部分附件已绑定到其它合同/发票/资产", 403);
@@ -178,6 +178,9 @@ export async function getContract(user: SessionUser, id: string) {
   const c = await prisma.contract.findFirst({
     where: { id, deletedAt: null, ...ownerEq(user) },
     include: {
+      customer: {
+        select: { contactName: true, contactPhone: true }
+      },
       reviewLogs: {
         orderBy: { at: "asc" },
         include: {
@@ -202,8 +205,12 @@ export async function getContract(user: SessionUser, id: string) {
       })
     : [];
   const nameById = new Map(reviewers.map((u) => [u.id, u.name]));
+  const customerContact = c.customer?.contactPhone
+    ? `${c.customer.contactName ?? ""} ${c.customer.contactPhone}`.trim()
+    : "";
   return {
     ...c,
+    customerContact,
     ownerName: owner?.name ?? "",
     ownerEmployeeNo: owner?.employeeNo ?? "",
     reviewLogs: c.reviewLogs.map((l) => ({
@@ -680,7 +687,7 @@ export async function softDeleteContract(user: SessionUser, id: string) {
 //
 // 写入者统一为 SYSTEM_USER_ID ("system"). 该用户在迁移 20260621_user_is_system 中创建,
 // passwordHash 是非法 bcrypt 永远登录不了; lib/auth.ts 登录路径 / bus.ts listAdminUserIds /
-// asset-expiry-job.ts 都已过滤 isSystem=true.
+// workflow 都已过滤 isSystem=true.
 //
 // 自动转换的 audit action 串:
 //   CONTRACT_AUTO_EXPIRE    - 定时任务扫到 endDate < now 时 → EXPIRED
@@ -744,7 +751,7 @@ export async function tryAutoCloseOnExpiry(contractId: string, now: Date): Promi
  * 逐笔调 tryAutoExpireContract. 每笔独立事务, 某笔 P2034 重试耗尽或别处报错不影响其它合同.
  *
  * 返回 JobResult { job, created=转 EXPIRED 数, scanned=候选数, updated=created, durationMs }.
- * runAllJobs 把它注册到与 runAssetExpiryJob 同一组, cron 每日 1:00 触发.
+ * runAllJobs 把它注册到与 contract-expiring / contract-expiry 同一组, cron 每日 1:00 触发.
  */
 export async function runContractExpiryJob(now: Date): Promise<{
   job: string;

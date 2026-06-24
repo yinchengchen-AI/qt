@@ -4,8 +4,8 @@ Contributor guide for **qt-biz** — Next.js 16 (App Router) + React 19 + TypeSc
 
 ## Project Structure & Module Organization
 
-- `app/(app)/<feature>/` — App Router pages per business module (admin, assets, contracts, customers, dashboard, invoices, payments, projects, statistics, workflow). `app/api/<feature>/` holds the route handlers; `app/login/` handles auth.
-- `components/` — shared UI plus feature folders (`admin/`, `assets/`, `file/`, `form/`, `workflow/`).
+- `app/(app)/<feature>/` — App Router pages per business module (admin, contracts, customers, dashboard, invoices, payments, statistics). `app/api/<feature>/` holds the route handlers; `app/login/` handles auth.
+- `components/` — shared UI plus feature folders (`admin/`, `customers/`, `file/`, `form/`).
 - `lib/` — `prisma.ts`, `auth.ts`, `permissions.ts`, `env.ts`, `i18n.ts`, `format.ts`, `upload-client.ts`, zustand stores, `validators/`, `types/`. `server/` adds `services/`, `jobs/`, `events/`, `storage/` for backend logic.
 - `prisma/`, `tests/`, `scripts/{dev,prod,shared,migrate}/`, `ops/`, `docs/` — schema, Vitest + Playwright suites, ops scripts, systemd/cron, and design docs. `@/*` aliases to the repo root.
 
@@ -35,7 +35,7 @@ Node `>=20.9.0`. Use `npm`; `pnpm-lock.yaml` is kept in sync.
 
 ## Commit & Pull Request Guidelines
 
-- Conventional Commits: `feat(scope): …`, `fix(scope): …`, `chore(scope): …`, `refactor(scope): …`, `docs(scope): …`. Common scopes: `asset`, `workflow`, `deploy`, `i18n`, `layout`, `payment`. Bodies may be in Chinese.
+- Conventional Commits: `feat(scope): …`, `fix(scope): …`, `chore(scope): …`, `refactor(scope): …`, `docs(scope): …`. Common scopes: `workflow`, `deploy`, `i18n`, `layout`, `payment`, `statistics`. Bodies may be in Chinese.
 - One logical change per commit; squash WIP locally before pushing.
 - PRs cover motivation, change summary, and validation (commands run, screenshots for UI). Link the issue or `docs/` runbook. Call out schema/migration, auth, and storage-affecting changes explicitly.
 - Never commit `.env`, `docker-data/`, `backups/`, or `docs/*部署记录*.md` (see `.gitignore`).

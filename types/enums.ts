@@ -102,30 +102,3 @@ export type MessageType = (typeof MESSAGE_TYPE)[number];
 export const ROLE_CODES = ["ADMIN", "SALES", "FINANCE", "OPS", "EXPERT"] as const;
 export type RoleCode = (typeof ROLE_CODES)[number];
 
-// =====================================================
-// 企业资产库 (v1)
-// =====================================================
-
-// asset.type 10 种 (v1 标书素材库 +PERSONNEL_CERT+TEMPLATE)
-export const ASSET_TYPE = [
-  "LICENSE",
-  "CERTIFICATE",
-  "QUALIFICATION",
-  "PERFORMANCE",
-  "TEAM_MEMBER",
-  "CASE",
-  "PATENT",
-  "OTHER",
-  "PERSONNEL_CERT",
-  "TEMPLATE"
-] as const;
-export type AssetType = (typeof ASSET_TYPE)[number];
-
-// asset.status
-export const ASSET_STATUS = [
-  "VALID",
-  "EXPIRING_SOON",
-  "EXPIRED",
-  "ARCHIVED"
-] as const;
-export type AssetStatus = (typeof ASSET_STATUS)[number];

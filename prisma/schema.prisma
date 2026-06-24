@@ -424,61 +424,28 @@ model Sequence {
 // - soft delete: deletedAt 不为 null 视为已删,MinIO 对象保留
 // =====================================================
 model Attachment {
-  id           String        @id @default(cuid())
-  objectKey    String        @unique
-  bucket       String
-  originalName String
-  mimeType     String
-  size         Int
-  uploadedById String
-  uploadedBy   User          @relation(fields: [uploadedById], references: [id])
-  contractId   String?
-  contract     Contract?     @relation("ContractAttachments", fields: [contractId], references: [id], onDelete: SetNull)
-  invoiceId    String?
-  invoice      Invoice?      @relation("InvoiceAttachments", fields: [invoiceId], references: [id], onDelete: SetNull)
-  assetId      String?
-  asset        CompanyAsset? @relation("AssetAttachments", fields: [assetId], references: [id], onDelete: SetNull)
+  id            String    @id @default(cuid())
+  objectKey     String    @unique
+  bucket        String
+  originalName  String
+  mimeType      String
+  size          Int
+  uploadedById  String
+  uploadedBy    User      @relation(fields: [uploadedById], references: [id])
+  contractId    String?
+  contract      Contract? @relation("ContractAttachments", fields: [contractId], references: [id], onDelete: SetNull)
+  invoiceId     String?
+  invoice       Invoice?  @relation("InvoiceAttachments", fields: [invoiceId], references: [id], onDelete: SetNull)
   // 合同交付物附件标记: true 表示该附件是合同详情"交付物"tab 上传的交付文件 (报告/证书/培训材料 等),
   //   写权限仅 admin / 签订人 / 负责人 (assertCanManageDeliverables);
   // false 表示合同通用附件 (走"附件"tab, 沿用 admin / 上传者 删除规则)
-  isDeliverable Boolean     @default(false)
-  uploadedAt   DateTime      @default(now()) @db.Timestamptz(6)
-  deletedAt    DateTime?     @db.Timestamptz(6)
+  isDeliverable Boolean   @default(false)
+  uploadedAt    DateTime  @default(now()) @db.Timestamptz(6)
+  deletedAt     DateTime? @db.Timestamptz(6)
 
   @@index([contractId, deletedAt])
   @@index([invoiceId, deletedAt])
   @@index([uploadedById])
-  @@index([assetId, deletedAt])
   @@index([contractId, isDeliverable, deletedAt])
   @@index([deletedAt])
-}
-
-// =====================================================
-// Company Assets (企业资产库 v1)
-// - 8 种 type:LICENSE|CERTIFICATE|QUALIFICATION|PERFORMANCE|TEAM_MEMBER|CASE|PATENT|OTHER
-// - attributes 为类型特定字段的 JSON 容器,由 Zod 校验
-// - tags 用 PG 数组列(支持 hasEvery 查询)
-// - status 字段冗余存,读时由 computeAssetStatus() 重算
-// =====================================================
-model CompanyAsset {
-  id          String    @id @default(cuid())
-  code        String    @unique
-  type        String
-  name        String
-  description String?
-  attributes  Json
-  tags        String[]  @default([])
-  status      String    @default("VALID")
-  validFrom   DateTime? @db.Timestamptz(6)
-  validTo     DateTime? @db.Timestamptz(6)
-  ownerUserId String
-  createdAt   DateTime  @default(now()) @db.Timestamptz(6)
-  updatedAt   DateTime  @updatedAt @db.Timestamptz(6)
-  deletedAt   DateTime? @db.Timestamptz(6)
-
-  attachments Attachment[] @relation("AssetAttachments")
-
-  @@index([type, status, deletedAt])
-  @@index([validTo, deletedAt])
-  @@index([ownerUserId])
 }
