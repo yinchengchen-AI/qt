@@ -7,7 +7,9 @@
 #     BACKUP_MIRROR_MINIO=1 ./scripts/backup.sh     # 生产
 #
 # 行为差异由 env var 控制,不需要再单独维护 backup-prod.sh。
-#   DATABASE_URL         PG 连接串 (供主机 pg_dump 走;容器内 pg_dump 不读)
+#   DATABASE_URL         PG 连接串 (用于取 DB_NAME)
+#   MIGRATION_DATABASE_URL 超级用户连接串 (取 DB_USER + PGPASSWORD,用于 pg_dump,
+#                         避免 app 账号 (qt_app) 锁不到 migration 留下的备份表)
 #   DOCKER_PG            容器名 (默认 qitai-postgres,生产 cron 覆盖为 qt-postgres)
 #   BACKUP_DIR           本地备份目录 (默认 ./backups,生产建议 /opt/qt/backups)
 #   DAYS_TO_KEEP         本地/远端保留天数 (默认 30)
@@ -25,8 +27,11 @@ DAYS_TO_KEEP=${DAYS_TO_KEEP:-30}
 DOCKER_PG=${DOCKER_PG:-qitai-postgres}
 DB_URL=${DATABASE_URL:-postgresql://qitai:qitai_pass@localhost:5432/qt_biz?schema=public}
 DB_NAME=$(echo "$DB_URL" | sed -E 's|.*/([^?]+)(\?.*)?$|\1|')
-DB_USER=$(echo "$DB_URL" | sed -E 's|.*://([^:]+):.*|\1|')
+# 优先用 MIGRATION_DATABASE_URL 的超级用户做 dump, 避免应用账号 (qt_app) 锁不到
+# migration 留下的 _*_bak / _prisma_migrations 等表。生产环境 MIGRATION_DATABASE_URL
+# 指向 PG 超级用户 (qitai), 而 DATABASE_URL 是 BYPASSRLS 的 app 账号 (qt_app)。
 MIGRATION_URL=${MIGRATION_DATABASE_URL:-$DATABASE_URL}
+DB_USER=$(echo "$MIGRATION_URL" | sed -E 's|.*://([^:]+):.*|\1|')
 SUPER_PW=$(echo "$MIGRATION_URL" | sed -E 's|.*://[^:]+:([^@]+)@.*|\1|')
 
 MINIO_BACKUP_BUCKET=${MINIO_BACKUP_BUCKET:-qt-backups}
