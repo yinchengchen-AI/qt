@@ -11,82 +11,10 @@ import { Prisma } from "@prisma/client";
 import { audit } from "@/server/audit";
 import { listAdminUserIds } from "@/server/events/bus";
 import { runTransition, runTransitionInTx, SkipTransition } from "@/lib/status-machine";
+import { calcTaxBreakdown } from "@/lib/money";
+import { resolveAttachmentSnapshots } from "@/lib/attachment-snapshot";
 import { SYSTEM_USER_ID } from "@/lib/system";
 import { env } from "@/lib/env";
-
-// 把前端传的 attachment 快照(id+name+...)用 DB 真实记录重写一遍,防 spoofing
-// 同时在事务内把 presign 时落 tmp/ 的附件绑到新合同 contractId
-async function resolveAttachmentSnapshots(
-  raw: { id: string; name: string; url?: string; mimeType: string; size: number; uploadedBy: string; uploadedAt: string }[],
-  contractId: string,
-  tx: Prisma.TransactionClient
-): Promise<Prisma.InputJsonValue> {
-  if (raw.length === 0) return [] as unknown as Prisma.InputJsonValue;
-  if (raw.length > 5) {
-    throw new ApiError(ERROR_CODES.VALIDATION_FAILED, "附件最多 5 个", 400);
-  }
-  // 老系统迁移数据: id 以 legacy- 开头, 仅作为历史元数据展示, 实际对象不在 Attachment 表
-  // 直接原样保留, 不走 DB 校验 / 绑定流程
-  const LEGACY_PREFIX = "legacy-";
-  const legacyEntries = raw.filter((r) => r.id.startsWith(LEGACY_PREFIX));
-  const realEntries = raw.filter((r) => !r.id.startsWith(LEGACY_PREFIX));
-
-  const resolvedFromDb: Array<{ id: string; name: string; mimeType: string; size: number; uploadedBy: string; uploadedAt: string; url?: string }> = [];
-  if (realEntries.length > 0) {
-    const ids = [...new Set(realEntries.map((r) => r.id))];
-    const found = await tx.attachment.findMany({
-      where: { id: { in: ids }, deletedAt: null },
-      select: { id: true, originalName: true, mimeType: true, size: true, uploadedById: true, uploadedAt: true, contractId: true, invoiceId: true }
-    });
-    if (found.length !== ids.length) {
-      throw new ApiError(ERROR_CODES.VALIDATION_FAILED, "附件 id 无效或已删除", 400);
-    }
-    // 绑定到当前合同:
-    //   - 没绑任何东西(presign 时 contractId/invoiceId 都为 null -> 落 tmp):绑定到本 contract
-    //   - 已绑本 contract:放过
-    //   - 已绑别的合同 / 发票:拒绝(防越权)
-    const toBind = found.filter((a) => !a.contractId && !a.invoiceId);
-    if (toBind.length > 0) {
-      await tx.attachment.updateMany({
-        where: { id: { in: toBind.map((a) => a.id) }, contractId: null, invoiceId: null },
-        data: { contractId }
-      });
-    }
-    // 已绑本 contract:放过;已绑其它 contract / 任意 invoice:拒绝
-    const others = found.filter((a) =>
-      (a.contractId && a.contractId !== contractId) || a.invoiceId
-    );
-    if (others.length > 0) {
-      throw new ApiError(ERROR_CODES.FORBIDDEN, "部分附件已绑定到其它合同/发票/资产", 403);
-    }
-    resolvedFromDb.push(...found.map((a) => ({
-      id: a.id,
-      name: a.originalName,
-      mimeType: a.mimeType,
-      size: a.size,
-      uploadedBy: a.uploadedById,
-      uploadedAt: a.uploadedAt.toISOString()
-    })));
-  }
-
-  // 保持原顺序: legacy 也按 raw 提交时的顺序保留 (在它被提交的位置)
-  const byId = new Map<string, { id: string; name?: string; mimeType?: string; size?: number; uploadedBy?: string; uploadedAt?: string; url?: string }>();
-  for (const e of legacyEntries) byId.set(e.id, e as { id: string; name?: string; mimeType?: string; size?: number; uploadedBy?: string; uploadedAt?: string; url?: string });
-  for (const e of resolvedFromDb) byId.set(e.id, e);
-  return raw.map((r) => byId.get(r.id) as { id: string; name?: string; mimeType?: string; size?: number; uploadedBy?: string; uploadedAt?: string; url?: string }) as unknown as Prisma.InputJsonValue;
-}
-
-
-
-function calcTotals(totalAmount: number, taxRate: number) {
-  const taxAmount = round2((totalAmount * taxRate) / (1 + taxRate));
-  const amountExcludingTax = round2(totalAmount - taxAmount);
-  return { taxAmount, amountExcludingTax };
-}
-
-function round2(v: number) {
-  return Math.round(v * 100) / 100;
-}
 
 // 校验起止日期:结束日期必须严格晚于开始日期
 function assertDateOrder(start?: string | Date | null, end?: string | Date | null, label = "服务"): void {
@@ -262,7 +190,7 @@ export async function createContract(user: SessionUser, input: ContractCreateInp
     throw new ApiError(ERROR_CODES.VALIDATION_FAILED, `合同编号 ${input.contractNo} 已被使用`, 422);
   }
   return prisma.$transaction(async (tx) => {
-    const { taxAmount, amountExcludingTax } = calcTotals(input.totalAmount, input.taxRate);
+    const { taxAmount, amountExcludingTax } = calcTaxBreakdown(input.totalAmount, input.taxRate);
     let created;
     try {
       created = await tx.contract.create({
@@ -300,7 +228,7 @@ export async function createContract(user: SessionUser, input: ContractCreateInp
     }
     // 解析附件并绑定(tmp -> contractId),把真实记录写回 JSON 快照
     if ((input.attachments ?? []).length > 0) {
-      const attachments = await resolveAttachmentSnapshots(input.attachments ?? [], created.id, tx);
+      const attachments = await resolveAttachmentSnapshots(input.attachments ?? [], "Contract", created.id, tx);
       await tx.contract.update({ where: { id: created.id }, data: { attachments } });
     }
     // 自动化: 字段完整 + 至少 1 附件 → DRAFT 自动升 ACTIVE (在事务内, 失败时回滚)
@@ -345,14 +273,14 @@ export async function updateContract(user: SessionUser, id: string, input: Contr
   if (input.totalAmount !== undefined || input.taxRate !== undefined) {
     const ta = input.totalAmount ?? Number(existing.totalAmount);
     const tr = input.taxRate ?? Number(existing.taxRate);
-    const r = calcTotals(ta, tr);
-    taxAmount = new Prisma.Decimal(r.taxAmount);
-    amountExcludingTax = new Prisma.Decimal(r.amountExcludingTax);
+    const r = calcTaxBreakdown(ta, tr);
+    taxAmount = r.taxAmount;
+    amountExcludingTax = r.amountExcludingTax;
   }
   const wasDraft = existing.status === "DRAFT";
   return prisma.$transaction(async (tx) => {
     const attachments = input.attachments
-      ? await resolveAttachmentSnapshots(input.attachments, id, tx)
+      ? await resolveAttachmentSnapshots(input.attachments, "Contract", id, tx)
       : undefined;
     try {
       const updated = await tx.contract.update({

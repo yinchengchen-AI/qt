@@ -9,8 +9,9 @@
 // 不容忍浮点误差:用 0.01 元容差,避免 decimal 转 number 后产生 0.0000001 的余项
 // 让 100.00 元的合同被 99.9999999 元判定为未完成。
 import type { BillingStatus } from "@/types/enums";
+import { MONEY_TOLERANCE } from "@/lib/money-tolerance";
 
-const TOLERANCE = 0.01;
+const TOLERANCE = MONEY_TOLERANCE.toNumber();
 
 export function getBillingStatus(invoicedAmount: number, totalAmount: number): BillingStatus {
   const total = Number(totalAmount) || 0;
