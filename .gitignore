@@ -78,6 +78,9 @@ ops/legacy/*-inspect.json
 docs/superpowers/.transcripts/
 docs/superpowers/.cache/
 
+# superpowers 工具在仓库根目录生成的 session/状态产物(brainstorm 内容、server.pid 等)
+.superpowers/
+
 # 但保留 ops/legacy/ 下的 README 和 reports/ (重要的文档/报告)
 !ops/legacy/README.md
 !ops/legacy/reports/
