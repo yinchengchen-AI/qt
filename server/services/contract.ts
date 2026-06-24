@@ -13,6 +13,7 @@ import { listAdminUserIds } from "@/server/events/bus";
 import { runTransition, runTransitionInTx, SkipTransition } from "@/lib/status-machine";
 import { calcTaxBreakdown } from "@/lib/money";
 import { resolveAttachmentSnapshots } from "@/lib/attachment-snapshot";
+import { softDelete } from "@/lib/soft-delete";
 import { SYSTEM_USER_ID } from "@/lib/system";
 import { env } from "@/lib/env";
 
@@ -533,77 +534,57 @@ export async function getContractOverview(
 
 /**
  * 软删除合同（仅 admin 可调用）。
- * 约束：
+ * 约束:
  *   - admin 任意状态可删; 实际能否删除由子数据兜底 (发票/回款/附件)
  *   - 不能存在未删除的子发票 / 回款 / 附件
  *   - 事务内写 deletedAt + audit log
  *
- * 隔离级别：Serializable。子数据 count 与 update 同事务, 避免以下竞态:
- *   T1 count == 0 → T2 插入 Invoice(contractId=id) → T1 update deletedAt
- *   在 read committed 下 T1 写完即 commit, 把"已有子数据"的合同软删掉, 违反不变量.
- *   Serializable 会把冲突抛为 P2034 (write conflict), 由 SERIALIZABLE_RETRY 重试到干净快照.
+ * 隔离级别 + P2034 重试由 lib/soft-delete.ts 统一提供.
  */
-const SERIALIZABLE_RETRY = 3;
-
 export async function softDeleteContract(user: SessionUser, id: string) {
   requirePermission(user.roleCode, RESOURCE.CONTRACT, ACTION.DELETE);
-  // 权限矩阵只给 ADMIN 配了 CONTRACT.DELETE, 这里再显式断言一次:
-  // 防止以后误改 ROLE_PERMISSIONS 表 (例如给 SALES 加了 DELETE) 而悄悄放权.
-  // 合同软删是 admin-only 的高敏操作, 双检兜底更稳.
+  // 显式双检: 防止以后误改 ROLE_PERMISSIONS 表 (例如给 SALES 加了 DELETE) 而悄悄放权.
+  // 合同软删是 admin-only 的高敏操作.
   if (user.roleCode !== "ADMIN") {
     throw new ApiError(ERROR_CODES.FORBIDDEN, "仅管理员可删除合同", 403);
   }
-
-  for (let attempt = 1; attempt <= SERIALIZABLE_RETRY; attempt++) {
-    try {
-      return await prisma.$transaction(
-        async (tx) => {
-          const existing = await tx.contract.findFirst({ where: { id, deletedAt: null } });
-          if (!existing) throw new ApiError(ERROR_CODES.NOT_FOUND, "合同不存在", 404);
-          // admin 任意态可删; 实际能否删除由子数据兜底 (发票/回款/附件)
-          const [invoiceCount, paymentCount, attachmentCount] = await Promise.all([
-            tx.invoice.count({ where: { contractId: id, deletedAt: null } }),
-            tx.payment.count({ where: { contractId: id, deletedAt: null } }),
-            tx.attachment.count({ where: { contractId: id, deletedAt: null } })
-          ]);
-          if (invoiceCount + paymentCount + attachmentCount > 0) {
-            throw new ApiError(
-              ERROR_CODES.ENTITY_IMMUTABLE,
-              `合同存在子数据（发票 ${invoiceCount} / 回款 ${paymentCount} / 附件 ${attachmentCount}），无法删除`,
-              403
-            );
-          }
-          const before = { status: existing.status, contractNo: existing.contractNo };
-          const r = await tx.contract.update({
-            where: { id },
-            data: { deletedAt: new Date(), updatedById: user.id }
-          });
-          await audit(tx, {
-            actorId: user.id,
-            action: "CONTRACT_SOFT_DELETE",
-            entity: "Contract",
-            entityId: id,
-            before,
-            after: { deleted: true }
-          });
-          return r;
-        },
-        { isolationLevel: Prisma.TransactionIsolationLevel.Serializable }
-      );
-    } catch (e) {
-      // P2034 = write conflict / serialization failure, 重试; 其他错误直接外抛
-      if (
-        e instanceof Prisma.PrismaClientKnownRequestError &&
-        e.code === "P2034" &&
-        attempt < SERIALIZABLE_RETRY
-      ) {
-        continue;
+  // 加载 preDelete 所需的 existing 状态(必须在事务外,因为 softDelete 内部不再读它)
+  const existing = await prisma.contract.findFirst({
+    where: { id, deletedAt: null },
+    select: { id: true, status: true, contractNo: true },
+  });
+  if (!existing) throw new ApiError(ERROR_CODES.NOT_FOUND, "合同不存在", 404);
+  return softDelete(user, {
+    entity: "Contract",
+    id,
+    findInTx: (tx, contractId) => tx.contract.findFirst({
+      where: { id: contractId, deletedAt: null },
+      select: { id: true, deletedAt: true },
+    }),
+    updateInTx: (tx, contractId, deletedAt, actorId) => tx.contract.update({
+      where: { id: contractId },
+      data: { deletedAt, updatedById: actorId },
+      select: { id: true, deletedAt: true },
+    }),
+    preDeleteCheck: async (tx) => {
+      const [invoiceCount, paymentCount, attachmentCount] = await Promise.all([
+        tx.invoice.count({ where: { contractId: id, deletedAt: null } }),
+        tx.payment.count({ where: { contractId: id, deletedAt: null } }),
+        tx.attachment.count({ where: { contractId: id, deletedAt: null } }),
+      ]);
+      if (invoiceCount + paymentCount + attachmentCount > 0) {
+        throw new ApiError(
+          ERROR_CODES.ENTITY_IMMUTABLE,
+          `合同存在子数据(发票 ${invoiceCount} / 回款 ${paymentCount} / 附件 ${attachmentCount}), 无法删除`,
+          403,
+        );
       }
-      throw e;
-    }
-  }
-  // 不可达: 上面内层 catch 已 throw e
-  throw new Error("unreachable: SERIALIZABLE_RETRY exhausted");
+    },
+    audit: {
+      actorId: user.id,
+      before: { status: existing.status, contractNo: existing.contractNo },
+    },
+  });
 }
 
 

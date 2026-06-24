@@ -7,10 +7,10 @@ import { requirePermission, RESOURCE, ACTION } from "@/lib/permissions";
 import type { CustomerCreateInput, CustomerUpdateInput, FollowUpCreateInput } from "@/lib/validators/customer";
 import { buildCustomerUpdateData } from "@/lib/customer-update";
 import { Prisma } from "@prisma/client";
-import { audit } from "@/server/audit";
 import { rlsTransaction } from "@/lib/rls";
 import { ownerEq, ownerViaContract, parseStatusList } from "@/lib/ownership";
 import { runTransitionInTx } from "@/lib/status-machine";
+import { softDelete } from "@/lib/soft-delete";
 import { ALLOWED_TRANSITIONS_BY_TARGET, isCustomerStatus } from "@/lib/customer-status-transitions";
 
 export async function listCustomers(
@@ -281,16 +281,36 @@ export async function listCustomerContracts(user: SessionUser, customerId: strin
 
 export async function softDeleteCustomer(user: SessionUser, id: string) {
   requirePermission(user.roleCode, RESOURCE.CUSTOMER, ACTION.DELETE);
-  return prisma.$transaction(async (tx) => {
-    const existing = await tx.customer.findFirst({ where: { id, deletedAt: null, ...ownerEq(user) } });
-    if (!existing) throw new ApiError(ERROR_CODES.NOT_FOUND, "客户不存在", 404);
-    // R-14: 若有 ACTIVE 合同 (含历史 CLOSED 不在禁删范围) 禁止删除
-    const active = await tx.contract.count({ where: { customerId: id, status: { in: ["ACTIVE"] }, deletedAt: null } });
-    if (active > 0) throw new ApiError(ERROR_CODES.ENTITY_IMMUTABLE, "客户存在进行中合同，不可删除", 403);
-    const before = { status: existing.status };
-    const r = await tx.customer.update({ where: { id }, data: { deletedAt: new Date(), updatedById: user.id } });
-    await audit(tx, { actorId: user.id, action: "CUSTOMER_SOFT_DELETE", entity: "Customer", entityId: id, before, after: { deleted: true } });
-    return r;
+  const existing = await prisma.customer.findFirst({
+    where: { id, deletedAt: null, ...ownerEq(user) },
+    select: { id: true, status: true },
+  });
+  if (!existing) throw new ApiError(ERROR_CODES.NOT_FOUND, "客户不存在", 404);
+  return softDelete(user, {
+    entity: "Customer",
+    id,
+    findInTx: (tx, customerId) => tx.customer.findFirst({
+      where: { id: customerId, deletedAt: null, ...ownerEq(user) },
+      select: { id: true, deletedAt: true },
+    }),
+    updateInTx: (tx, customerId, deletedAt, actorId) => tx.customer.update({
+      where: { id: customerId },
+      data: { deletedAt, updatedById: actorId },
+      select: { id: true, deletedAt: true },
+    }),
+    preDeleteCheck: async (tx) => {
+      // R-14: 若有 ACTIVE 合同禁止删除
+      const active = await tx.contract.count({
+        where: { customerId: id, status: { in: ["ACTIVE"] }, deletedAt: null },
+      });
+      if (active > 0) {
+        throw new ApiError(ERROR_CODES.ENTITY_IMMUTABLE, "客户存在进行中合同，不可删除", 403);
+      }
+    },
+    audit: {
+      actorId: user.id,
+      before: { status: existing.status },
+    },
   });
 }
 
