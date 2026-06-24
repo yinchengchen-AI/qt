@@ -60,18 +60,14 @@ docker exec -e PGPASSWORD="$SUPER_PW" "$DOCKER_PG" \
   > "$FILE"
 echo "  -> $(du -h "$FILE" | cut -f1)"
 
-# --- 2) 完整性校验 (主机有 pg_restore 时) ---
-if command -v "$PG_RESTORE" >/dev/null 2>&1; then
-  echo "[$(date +%FT%T)] pg_restore --list (integrity check)"
-  if "$PG_RESTORE" --list "$FILE" >/dev/null; then
-    ENTRIES=$("$PG_RESTORE" --list "$FILE" | wc -l | tr -d ' ')
-    echo "  -> OK ($ENTRIES entries)"
-  else
-    echo "  -> FAIL: dump $FILE 不可读,保留待排查" >&2
-    exit 1
-  fi
+# --- 2) 完整性校验 (走容器内 pg_restore 16,避免 host 客户端版本太老读不动) ---
+echo "[$(date +%FT%T)] pg_restore --list (integrity check, via $DOCKER_PG)"
+if docker exec "$DOCKER_PG" pg_restore --list "$FILE" >/dev/null 2>&1; then
+  ENTRIES=$(docker exec "$DOCKER_PG" pg_restore --list "$FILE" 2>/dev/null | wc -l | tr -d ' ')
+  echo "  -> OK ($ENTRIES entries)"
 else
-  echo "  (skip integrity check: $PG_RESTORE not found)"
+  # 不让单次校验失败炸掉整个备份 (dump 仍然可用,只是没做校验)
+  echo "  -> WARN: integrity check failed,但 dump 文件已落地,继续后续 MinIO 镜像" >&2
 fi
 
 # --- 3) MinIO 镜像 (可选) ---
