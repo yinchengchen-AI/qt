@@ -1,4 +1,4 @@
-﻿// 用户管理服务（仅 ADMIN）
+// 用户管理服务（仅 ADMIN）
 // 护栏：
 //   - 不能改/禁/删自己
 //   - 不能改/禁/删最后一位 ACTIVE 的 ADMIN
@@ -12,6 +12,8 @@ import { requirePermission, RESOURCE, ACTION } from "@/lib/permissions";
 import { audit } from "@/server/audit";
 import { invalidateAuthCache } from "@/lib/auth";
 import type { Prisma } from "@prisma/client";
+import type { EmployeeProfileUpdateInput } from "@/lib/validators/employee-profile";
+import { buildProfileUpdateData, decryptProfile, redactForAudit, linkAttachmentsToProfile } from "@/server/services/employee-profile";
 
 // OWASP 建议 ≥ 12;兼顾登录延迟
 const PASSWORD_SALT_ROUNDS = 12;
@@ -219,6 +221,108 @@ export async function updateUser(actor: SessionUser, id: string, input: UserUpda
     after: { name: updated.name, status: updated.status, roleId: updated.roleId }
   });
   return updated;
+}
+
+export async function updateUserWithProfile(
+  actor: SessionUser,
+  id: string,
+  userInput: UserUpdateInput,
+  profileInput?: EmployeeProfileUpdateInput,
+  attachmentIds?: string[]
+) {
+  requirePermission(actor.roleCode, RESOURCE.USER, ACTION.UPDATE);
+  const existing = await prisma.user.findFirst({
+    where: { id, deletedAt: null },
+    include: { role: true, profile: true }
+  });
+  if (!existing) throw new ApiError(ERROR_CODES.NOT_FOUND, "用户不存在", 404);
+
+  // 复用 User 更新护栏
+  if (userInput.roleId && userInput.roleId !== existing.roleId) {
+    const newRole = await prisma.role.findUnique({ where: { id: userInput.roleId } });
+    if (!newRole) throw new ApiError(ERROR_CODES.VALIDATION_FAILED, "角色不存在", 400);
+    if (newRole.code !== "ADMIN" && existing.role.code === "ADMIN") {
+      await assertNotSelfAndNotLastAdmin(actor, existing.id, "ADMIN");
+    }
+  }
+  if (userInput.status === "DISABLED" && existing.status !== "DISABLED") {
+    await assertNotSelfAndNotLastAdmin(actor, existing.id, existing.role.code);
+  }
+
+  const profileData = profileInput ? buildProfileUpdateData(profileInput) : null;
+
+  const result = await prisma.$transaction(async (tx) => {
+    const updatedUser = await tx.user.update({
+      where: { id },
+      data: {
+        ...(userInput.name !== undefined ? { name: userInput.name } : {}),
+        ...(userInput.email !== undefined ? { email: userInput.email } : {}),
+        ...(userInput.phone !== undefined ? { phone: userInput.phone } : {}),
+        ...(userInput.roleId !== undefined ? { roleId: userInput.roleId } : {}),
+        ...(userInput.departmentId !== undefined ? { departmentId: userInput.departmentId } : {}),
+        ...(userInput.status !== undefined ? { status: userInput.status } : {})
+      }
+    });
+
+    let updatedProfile: Record<string, unknown> | null = null;
+    const hasProfileData = profileData && Object.keys(profileData).length > 0;
+    const hasAttachmentIds = attachmentIds && attachmentIds.length > 0;
+    if (hasProfileData || hasAttachmentIds) {
+      updatedProfile = await tx.employeeProfile.upsert({
+        where: { userId: id },
+        create: { userId: id, ...(profileData ?? {}) },
+        update: profileData ?? {}
+      });
+      if (hasAttachmentIds && updatedProfile) {
+        await linkAttachmentsToProfile(tx, String(updatedProfile.id), attachmentIds!);
+      }
+    }
+
+    await audit(tx, {
+      actorId: actor.id,
+      action: "USER_UPDATE",
+      entity: "User",
+      entityId: id,
+      before: { name: existing.name, status: existing.status, roleId: existing.roleId },
+      after: { name: updatedUser.name, status: updatedUser.status, roleId: updatedUser.roleId }
+    });
+
+    if (updatedProfile) {
+      await audit(tx, {
+        actorId: actor.id,
+        action: "EMPLOYEE_PROFILE_UPDATE",
+        entity: "EmployeeProfile",
+        entityId: String(updatedProfile.id),
+        before: existing.profile
+          ? Object.fromEntries(Object.keys(profileData!).map((k) => [k, (existing.profile as unknown as Record<string, unknown>)[k] ?? null]))
+          : null,
+        after: redactForAudit(profileData!)
+      });
+    }
+
+    return { user: updatedUser, profile: updatedProfile };
+  });
+
+  invalidateAuthCache(id);
+
+  let profileWithAttachments: Record<string, unknown> | null = null;
+  if (result.profile) {
+    const refreshed = await prisma.employeeProfile.findUnique({
+      where: { id: String(result.profile.id) },
+      include: {
+        attachments: {
+          where: { deletedAt: null },
+          orderBy: { uploadedAt: "desc" }
+        }
+      }
+    });
+    profileWithAttachments = refreshed as unknown as Record<string, unknown>;
+  }
+
+  return {
+    user: result.user,
+    profile: profileWithAttachments ? decryptProfile(profileWithAttachments) : null
+  };
 }
 
 export async function softDeleteUser(actor: SessionUser, id: string) {
