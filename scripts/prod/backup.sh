@@ -36,8 +36,18 @@ SUPER_PW=$(echo "$MIGRATION_URL" | sed -E 's|.*://[^:]+:([^@]+)@.*|\1|')
 
 MINIO_BACKUP_BUCKET=${MINIO_BACKUP_BUCKET:-qt-backups}
 MINIO_ALIAS=${MINIO_ALIAS:-local}
-MINIO_ENDPOINT=${MINIO_ENDPOINT:-http://127.0.0.1:9000}
 MC=${MC:-/usr/local/bin/mc}
+# 兼容 .env 把 MINIO_ENDPOINT 拆成 host/port/ssl 三段: 若 MINIO_ENDPOINT 已带
+# scheme (http:// 或 https://) 直接用, 否则按 USE_SSL + PORT 拼。
+if [[ "${MINIO_ENDPOINT:-}" =~ ^https?:// ]]; then
+  : # 已带 scheme,原样使用
+elif [ -n "${MINIO_ENDPOINT:-}" ]; then
+  SCHEME=$([ "${MINIO_USE_SSL:-false}" = "true" ] && echo https || echo http)
+  PORT=${MINIO_PORT:-9000}
+  MINIO_ENDPOINT="$SCHEME://$MINIO_ENDPOINT:$PORT"
+else
+  MINIO_ENDPOINT="http://127.0.0.1:9000"
+fi
 PG_RESTORE=${PG_RESTORE:-pg_restore}
 
 # --- 自动检测是否镜像 MinIO ---
