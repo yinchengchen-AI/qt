@@ -117,7 +117,7 @@ export async function GET(req: Request) {
         .sort((a, b) => b.count - a.count);
 
       return ok({
-        overview,
+        overview: { ...overview, range },
         distribution,
         agingBuckets: aging.buckets,
         customers: { total: customerCount, newThisMonth: newCusts },
