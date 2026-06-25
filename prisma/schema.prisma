@@ -217,6 +217,19 @@ model EmployeeSkill {
   @@index([profileId])
 }
 
+// PR9:证书到期提醒的去重表(替代 Redis 缓存)
+// 每条记录表示"某证书某阈值已发过一次通知",@@unique 防重复
+model CertificateExpiryNotice {
+  id            String   @id @default(cuid())
+  certificateId String
+  threshold     Int
+  sentAt        DateTime @default(now()) @db.Timestamptz(6)
+
+  @@unique([certificateId, threshold])
+  @@index([certificateId])
+  @@index([sentAt])
+}
+
 model EmployeeEmergencyContact {
   id           String          @id @default(cuid())
   profileId    String
