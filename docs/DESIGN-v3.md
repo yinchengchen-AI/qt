@@ -34,7 +34,7 @@
 | 状态 | `zustand` | **5.0.14** | 客户端轻量状态 |
 | 数据请求 | `swr` | **2.4.1** | RSC 之外的客户端数据获取 |
 | 导入导出 | `exceljs` | **4.4.0** | xlsx 流式生成 |
-| 邮件 | `nodemailer` | **8.0.10** | P3 邮件通道（默认关闭） |
+| 邮件 | — | — | P3 邮件通道（已下线，事件通知统一走站内信） |
 | 加密 | `bcrypt` | **6.0.0** | 密码哈希 |
 | 国际化 | `next-intl` | **4.13.0** | zh-CN；预留 en-US |
 | 环境变量 | `@t3-oss/env-nextjs` | **0.13.11** | 强类型 env |
@@ -150,7 +150,7 @@ enum TitleType { COMPANY PERSONAL }
 enum InvoiceStatus { DRAFT PENDING_FINANCE ISSUED REJECTED VOIDED RED_FLUSHED }
 enum PaymentReceiveMethod { BANK_TRANSFER CHECK CASH WECHAT ALIPAY OTHER }
 enum PaymentStatus { PLANNED CONFIRMED RECONCILED REFUNDED CANCELLED }
-enum MessageType { CONTRACT_PENDING_REVIEW CONTRACT_EXPIRING INVOICE_OVERDUE_PAYMENT PAYMENT_RECEIVED PROJECT_DUE CUSTOMER_INACTIVE }
+enum MessageType { CONTRACT_EXPIRING INVOICE_OVERDUE_PAYMENT PAYMENT_RECEIVED CUSTOMER_STATUS_SUGGEST CONTRACT_AUTO_EXECUTED CONTRACT_AUTO_COMPLETED CONTRACT_AUTO_EXPIRED }
 ```
 
 #### 4.2.1 `User`
@@ -336,10 +336,9 @@ PLANNED ─confirm(finance)─▶ CONFIRMED ─reconcile(finance)─▶ RECONCIL
 | `INVOICE_OVERDUE_PAYMENT` | 定时任务：`actualIssueDate + 30` 天未全额回款 | 业务负责人 + 财务 | 「发票 `{invoiceNo}` 已开票 {n} 天，剩余未回款 ¥{amount}」 |
 | `PAYMENT_RECEIVED` | 回款 `→ CONFIRMED` | 业务负责人 | 「客户 {customerName} 回款 ¥{amount} 已确认」 |
 | `PROJECT_DUE` | 定时任务：项目 `endDate − 7` 天 | 项目负责人 + 业务负责人 | 「项目 `{projectNo}` 将于 {n} 天后计划完成」 |
-| `CUSTOMER_INACTIVE` | 客户 90 天无 `FollowUp` 记录 | 业务负责人 | 「客户 {customerName} 已 90 天未跟进」 |
 | `CUSTOMER_STATUS_SUGGEST` | 定时任务: 客户满足状态机联动规则 | 业务负责人 | 「建议将客户 {customerName} 状态变更为 {suggestedStatus}」 |
 
-**实现**：领域事件总线（`src/server/events/bus.ts`）→ 消息 Worker（Next.js Route Handler + Vercel Cron / 外部 scheduler）→ 写 `Message` → 站内信（默认）/ 邮件 / 企业微信三通道（`config.notifications.{email,wechatWork}` 开关，默认关闭）。
+**实现**：领域事件总线（`src/server/events/bus.ts`）→ 写 `Message` 表 → 站内信（顶栏铃铛 + `/messages`）。邮件 / 企业微信通道已下线，运维侧不再持有任何凭据。
 
 ---
 
@@ -474,7 +473,7 @@ PLANNED ─confirm(finance)─▶ CONFIRMED ─reconcile(finance)─▶ RECONCIL
   /domain/{customer,contract,project,invoice,payment}/rules.ts
   /services/*
   /events/bus.ts
-  /jobs/{contract-expiring,invoice-overdue,project-due,customer-inactive}.ts
+  /jobs/{contract-expiring,invoice-overdue,contract-expiry,customer-status-suggest}.ts
 /prisma
   schema.prisma migrations/ seed.ts
 /types
@@ -514,7 +513,7 @@ PLANNED ─confirm(finance)─▶ CONFIRMED ─reconcile(finance)─▶ RECONCIL
 | **P0 脚手架** | Next.js 16 + TS 6 strict + Prisma 7 + NextAuth v4 + antd 6 + pro 3 + AntdRegistry；4 角色/字典种子；ESLint/Prettier/Typecheck/Test CI | `pnpm dev` 启动；4 角色可登录；首页 ProLayout 正常渲染；样式无闪烁 |
 | **P1 主链路** | 客户/合同/项目/开票/回款 五大模块 CRUD + 状态机 + 关键校验 + ProTable/ProForm 页面 | §11 用例 1-6 全部通过；E2E 主链路 Playwright 全绿 |
 | **P2 支撑** | 消息提醒（Vercel Cron + 站内信）、统计看板、xlsx 导出、操作日志 | §11 用例 7-9 全部通过；导出 1 万行统计 P95 < 2s |
-| **P3 完善** | 通知三通道（邮件/企业微信，开关）、SSO 接入、备份脚本、压测报告 | 200 并发列表查询 P95 < 500ms |
+| **P3 完善** | SSO 接入、备份脚本、压测报告（原通知三通道已并入站内信） | 200 并发列表查询 P95 < 500ms |
 
 ---
 

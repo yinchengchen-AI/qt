@@ -629,7 +629,12 @@ export function DashboardShell({ user, children }: Props) {
                       const res = await fetch(`/api/messages/${m.id}`, { method: "PATCH", credentials: "include" });
                       const j = await res.json();
                       if (j.code === 0) {
+                        const readAt = j.data.readAt ?? new Date().toISOString();
+                        // 同步本地状态:减红点 + 把这条消息的 readAt 标上,蓝色高亮立刻消失
                         setUnread((u) => Math.max(0, u - 1));
+                        setMessages((prev) =>
+                          prev.map((x) => (x.id === m.id ? { ...x, readAt } : x))
+                        );
                       } else {
                         throw new Error(j.message);
                       }

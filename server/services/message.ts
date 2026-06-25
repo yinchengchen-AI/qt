@@ -39,6 +39,16 @@ export async function markAllRead(user: SessionUser) {
     where: { receiverUserId: user.id, readAt: null },
     data: { readAt: new Date() }
   });
+  // 单条审计:不写每条被标已读的消息(title/content 含客户/合同号属 PII),只留一条"用户清空"的痕迹
+  if (r.count > 0) {
+    await audit(prisma, {
+      actorId: user.id,
+      action: "MESSAGE_MARK_ALL_READ",
+      entity: "Message",
+      entityId: user.id,
+      after: { count: r.count }
+    });
+  }
   return { updated: r.count };
 }
 

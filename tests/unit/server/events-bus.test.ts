@@ -4,13 +4,11 @@
 //   - emit 一次性 createMany 写入消息
 //   - buildMessage 各分支 title/content/link 正确
 //   - link 额外字段（如 suggest）透传
-//   - dispatchExternalChannels fire-and-forget 触发
 //   - 未处理事件类型抛错
 import { describe, it, expect, beforeEach, vi } from "vitest";
 
 const mockState = vi.hoisted(() => ({
-  createManyCalls: [] as Array<{ data: Array<Record<string, unknown>> }>,
-  dispatchCalls: [] as Array<{ type: string; messages: Array<Record<string, unknown>> }>
+  createManyCalls: [] as Array<{ data: Array<Record<string, unknown>> }>
 }));
 
 vi.mock("@/lib/prisma", () => ({
@@ -25,18 +23,10 @@ vi.mock("@/lib/prisma", () => ({
 }));
 
 import { prisma } from "@/lib/prisma";
-
-vi.mock("@/server/events/dispatcher", () => ({
-  dispatchExternalChannels: vi.fn(async (_event: unknown, messages: Array<Record<string, unknown>>) => {
-    mockState.dispatchCalls.push({ type: (messages[0]?.type as string) ?? "unknown", messages });
-  })
-}));
-
 import { emit, type DomainEvent } from "@/server/events/bus";
 
 beforeEach(() => {
   mockState.createManyCalls = [];
-  mockState.dispatchCalls = [];
 });
 
 const makeEvent = (type: DomainEvent["type"], payload: Record<string, unknown>, receivers: string[]): DomainEvent => ({
@@ -52,7 +42,7 @@ describe("emit", () => {
     expect(mockState.createManyCalls).toHaveLength(0);
   });
 
-  it("createMany 批量写入并触发外部通道", async () => {
+  it("createMany 批量写入 inbox 消息", async () => {
     const ev = makeEvent("PAYMENT_RECEIVED", { paymentId: "p-1", paymentNo: "PN-1", amount: 100, customerName: "客户 A" }, ["u-1", "u-2"]);
     const r = await emit(prisma, ev);
     expect(r).toBe(2);
@@ -62,8 +52,6 @@ describe("emit", () => {
       receiverUserId: "u-1",
       type: "PAYMENT_RECEIVED"
     });
-    // 外部通道被 fire-and-forget 调用（测试中是同步 mock）
-    expect(mockState.dispatchCalls).toHaveLength(1);
   });
 
   it("CUSTOMER_STATUS_SUGGEST 消息保留 suggest 字段", async () => {

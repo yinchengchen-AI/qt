@@ -5,13 +5,12 @@
 //   建议 FROZEN: status ∈ {NEGOTIATING, SIGNED} 且 所有合同 CLOSED ≥ 30 天 且 60 天无 FollowUp 且 无未对账回款
 //
 // 行为:
-//   - 每客户每天最多 1 条 (与 customerInactiveJob 同款去重: type+entityId+今日)
+//   - 每客户每天最多 1 条 (type+suggest+entityId+今日)
 //   - 只发建议不发直接写; "启用自动写" 是 v2 的话题
 //   - 用户点击后跳 /customers/<id>?suggest=<status> 走完整 changeCustomerStatus 校验 + 审计
 import { prisma } from "@/lib/prisma";
 import { emit } from "@/server/events/bus";
 import { getAllowedTransitions, isCustomerStatus } from "@/lib/customer-status-transitions";
-import type { CustomerStatus } from "@/types/enums";
 import type { JobResult } from "./runner";
 
 const DAY_MS = 86_400_000;
@@ -92,29 +91,6 @@ async function loadCandidates(now: Date): Promise<Candidate[]> {
   });
 }
 
-async function alreadySuggestedToday(
-  customerId: string,
-  ownerUserId: string,
-  suggestedStatus: CustomerStatus,
-  now: Date
-): Promise<boolean> {
-  const todayStart = new Date(now);
-  todayStart.setHours(0, 0, 0, 0);
-  const exists = await prisma.message.findFirst({
-    where: {
-      type: "CUSTOMER_STATUS_SUGGEST",
-      receiverUserId: ownerUserId,
-      createdAt: { gte: todayStart },
-      // Prisma JSON 路径查询: AND 两条 path/equals 分别匹配 id 与 suggest
-      AND: [
-        { link: { path: ["id"], equals: customerId } },
-        { link: { path: ["suggest"], equals: suggestedStatus } }
-      ]
-    }
-  });
-  return exists !== null;
-}
-
 /**
  * 每天扫一次: 对满足规则的非终态客户, 发 CUSTOMER_STATUS_SUGGEST 站内信.
  * 同一客户同一种建议当日最多 1 条.
@@ -124,6 +100,30 @@ export async function tickCustomerStatusSuggestions(now: Date = new Date()): Pro
   const candidates = await loadCandidates(now);
   let created = 0;
   const scanned = candidates.length;
+  // 批量化去重:一次 findMany 拉今天所有 CUSTOMER_STATUS_SUGGEST 消息,
+  // 在 JS 里按 `${customerId}:${suggest}` 二元组查表(代替 N 次 findFirst)
+  const todayStart = new Date(now);
+  todayStart.setHours(0, 0, 0, 0);
+  const candidateIds = new Set(candidates.map((c) => c.id));
+  const ownerIds = Array.from(new Set(candidates.map((c) => c.ownerUserId)));
+  const alreadySent = await prisma.message.findMany({
+    where: {
+      type: "CUSTOMER_STATUS_SUGGEST",
+      receiverUserId: { in: ownerIds },
+      createdAt: { gte: todayStart }
+    },
+    select: { link: true }
+  });
+  const sentKey = new Set(
+    alreadySent
+      .map((m) => {
+        const link = m.link as { id?: string; suggest?: string } | null;
+        if (!link?.id || !link.suggest || !candidateIds.has(link.id)) return null;
+        return `${link.id}:${link.suggest}`;
+      })
+      .filter((k): k is string => k !== null)
+  );
+
   for (const c of candidates) {
     if (!isCustomerStatus(c.status)) continue;
     const allowed = getAllowedTransitions(c.status);
@@ -133,7 +133,7 @@ export async function tickCustomerStatusSuggestions(now: Date = new Date()): Pro
 
     // 规则 1: 建议 LOST
     if (allowed.includes("LOST") && lastFollowAgeDays >= INACTIVE_DAYS && !c.hasActiveContract) {
-      if (await alreadySuggestedToday(c.id, c.ownerUserId, "LOST", now)) continue;
+      if (sentKey.has(`${c.id}:LOST`)) continue;
       await emit(prisma, {
         type: "CUSTOMER_STATUS_SUGGEST",
         payload: {
@@ -155,7 +155,7 @@ export async function tickCustomerStatusSuggestions(now: Date = new Date()): Pro
       c.allClosedOverGrace &&
       !c.hasPlannedOrConfirmedPayment
     ) {
-      if (await alreadySuggestedToday(c.id, c.ownerUserId, "FROZEN", now)) continue;
+      if (sentKey.has(`${c.id}:FROZEN`)) continue;
       await emit(prisma, {
         type: "CUSTOMER_STATUS_SUGGEST",
         payload: {

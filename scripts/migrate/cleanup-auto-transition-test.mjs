@@ -13,7 +13,7 @@
  *      且 actorId = 'system'
  *   4) Message type IN ('CONTRACT_AUTO_EXECUTED','CONTRACT_AUTO_COMPLETED','CONTRACT_AUTO_EXPIRED'):
  *      这三类消息类型是新增的, 唯一来源是自动转换, 全删
- *   5) Message type IN ('INVOICE_OVERDUE_PAYMENT','CUSTOMER_INACTIVE'):
+ *   5) Message type IN ('INVOICE_OVERDUE_PAYMENT','PAYMENT_RECEIVED','CUSTOMER_STATUS_SUGGEST','CONTRACT_AUTO_EXECUTED','CONTRACT_AUTO_COMPLETED','CONTRACT_AUTO_EXPIRED','CONTRACT_EXPIRING'):
  *      按 createdAt 落在 test window (OperationLog 系统条目的最早/最晚时间) 内的删,
  *      这些是 runAllJobs 在 fake-now=2030 下扫出来的假数据
  *
@@ -124,7 +124,7 @@ async function plan() {
   if (window) {
     oldTypeMsgs = await prisma.message.findMany({
       where: {
-        type: { in: ["INVOICE_OVERDUE_PAYMENT", "CUSTOMER_INACTIVE"] },
+        type: { in: ["INVOICE_OVERDUE_PAYMENT", "PAYMENT_RECEIVED", "CUSTOMER_STATUS_SUGGEST", "CONTRACT_AUTO_EXECUTED", "CONTRACT_AUTO_COMPLETED", "CONTRACT_AUTO_EXPIRED", "CONTRACT_EXPIRING"] },
         createdAt: { gte: window.from, lte: window.to }
       },
       select: { id: true, type: true, receiverUserId: true, createdAt: true }

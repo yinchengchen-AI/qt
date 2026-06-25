@@ -29,6 +29,20 @@ model Role {
   @@index([code])
 }
 
+// 通知事件类型:与 server/events/bus.ts 的 DomainEventType 一一对应
+//   - bus.emit 写入的 type 必须落在这里
+//   - cron 任务的去重查询也按这些值匹配
+// 增减需要同步修改 server/events/bus.ts (并跑 prisma migrate)
+enum MessageType {
+  CONTRACT_EXPIRING
+  INVOICE_OVERDUE_PAYMENT
+  PAYMENT_RECEIVED
+  CUSTOMER_STATUS_SUGGEST
+  CONTRACT_AUTO_EXECUTED
+  CONTRACT_AUTO_COMPLETED
+  CONTRACT_AUTO_EXPIRED
+}
+
 model User {
   id           String      @id @default(cuid())
   employeeNo   String      @unique
@@ -359,7 +373,7 @@ model Message {
   id             String    @id @default(cuid())
   receiverUserId String
   receiver       User      @relation(fields: [receiverUserId], references: [id], onDelete: Restrict)
-  type           String // CONTRACT_PENDING_REVIEW | CONTRACT_EXPIRING | CONTRACT_APPROVED | CONTRACT_REJECTED | INVOICE_OVERDUE_PAYMENT | PAYMENT_RECEIVED | PROJECT_DUE | CUSTOMER_INACTIVE | CUSTOMER_STATUS_SUGGEST
+  type           MessageType
   title          String    @db.VarChar(200)
   content        String    @db.VarChar(10000)
   link           Json?
@@ -367,7 +381,9 @@ model Message {
   createdAt      DateTime  @default(now()) @db.Timestamptz(6)
 
   @@index([receiverUserId, readAt])
-  @@index([type])
+  // 去重查询:`type + receiverUserId + createdAt + JSON link.id`
+  // 这个复合索引把扫描收敛到"今天 + 该用户 + 该类型"的小窗口,JSON 路径再二次过滤
+  @@index([type, receiverUserId, createdAt])
 }
 
 model Announcement {

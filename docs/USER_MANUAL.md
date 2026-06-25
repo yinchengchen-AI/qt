@@ -524,13 +524,12 @@ PLANNED ─confirm─▶ CONFIRMED ─reconcile─▶ RECONCILED
 | `PAYMENT_RECEIVED` | 回款 confirm | 合同负责人 + 全部管理员 |
 | `INVOICE_OVERDUE_PAYMENT` | 实际开票日后 30 天仍未回款 | 负责人 + 管理员 + 财务 |
 | `PROJECT_DUE` | 项目 endDate 前 7 天 | 项目经理 + 负责人 + 管理员 |
-| `CUSTOMER_INACTIVE` | 客户 90 天无跟进 | 负责人 |
 
 **操作**:
 - 点击单条 → 跳转到对应业务页面
 - 「全部已读」一键清空红点
 - **多通道通知**(可选,需在 `.env` 开启):
-  - 邮件(配 SMTP)
+  - 站内信（顶栏铃铛 + 消息中心）
   - 企业微信 Webhook
   - **站内信**始终可用
 
@@ -547,7 +546,7 @@ PLANNED ─confirm─▶ CONFIRMED ─reconcile─▶ RECONCILED
 - **生效时间**:`effectiveFrom` ~ `effectiveTo`,到期自动隐藏
 - **置顶**:`pinned=true` 时在公告列表顶部
 - **靶向角色**:`targetRoles` 数组,仅推送给指定角色
-- 发布后 **站内信 + 邮件** 同步推送(若邮件通道已开启)
+- 发布后通过站内信推送给目标角色的全部用户
 
 ---
 

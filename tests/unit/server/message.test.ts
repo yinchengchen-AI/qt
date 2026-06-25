@@ -174,12 +174,37 @@ describe("markAllRead", () => {
       { id: "m-1", receiverUserId: "u-1", type: "PAYMENT_RECEIVED", title: "t1", content: "c1", readAt: null, createdAt: new Date() },
       { id: "m-2", receiverUserId: "u-1", type: "CONTRACT_EXPIRING", title: "t2", content: "c2", readAt: null, createdAt: new Date() },
       { id: "m-3", receiverUserId: "u-2", type: "PAYMENT_RECEIVED", title: "t3", content: "c3", readAt: null, createdAt: new Date() },
-      { id: "m-4", receiverUserId: "u-1", type: "CUSTOMER_INACTIVE", title: "t4", content: "c4", readAt: new Date(), createdAt: new Date() }
+      { id: "m-4", receiverUserId: "u-1", type: "CUSTOMER_STATUS_SUGGEST", title: "t4", content: "c4", readAt: new Date(), createdAt: new Date() }
     ];
     const r = await markAllRead(makeUser("SALES", "u-1"));
     expect(r.updated).toBe(2);
     expect(mockState.messages.filter((m) => m.receiverUserId === "u-1" && m.readAt === null)).toHaveLength(0);
     expect(mockState.messages.find((m) => m.id === "m-3")!.readAt).toBeNull();
+  });
+
+  it("有未读被标记时写 MESSAGE_MARK_ALL_READ 审计", async () => {
+    mockState.messages = [
+      { id: "m-1", receiverUserId: "u-1", type: "PAYMENT_RECEIVED", title: "t1", content: "c1", readAt: null, createdAt: new Date() },
+      { id: "m-2", receiverUserId: "u-1", type: "CONTRACT_EXPIRING", title: "t2", content: "c2", readAt: null, createdAt: new Date() }
+    ];
+    const r = await markAllRead(makeUser("SALES", "u-1"));
+    expect(r.updated).toBe(2);
+    expect(mockState.audits).toHaveLength(1);
+    expect(mockState.audits[0]).toMatchObject({
+      action: "MESSAGE_MARK_ALL_READ",
+      entity: "Message",
+      entityId: "u-1",
+      after: { count: 2 }
+    });
+  });
+
+  it("没有未读时不写审计 (避免噪音)", async () => {
+    mockState.messages = [
+      { id: "m-1", receiverUserId: "u-1", type: "PAYMENT_RECEIVED", title: "t1", content: "c1", readAt: new Date(), createdAt: new Date() }
+    ];
+    const r = await markAllRead(makeUser("SALES", "u-1"));
+    expect(r.updated).toBe(0);
+    expect(mockState.audits).toHaveLength(0);
   });
 });
 

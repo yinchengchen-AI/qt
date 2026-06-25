@@ -148,7 +148,7 @@ docker-compose.minio.yml
 
 ### 支撑模块
 
-- **消息中心** — `server/services/message.ts` + `server/events/bus.ts`,站内信 + 邮件/企微三通道
+- **消息中心** — `server/services/message.ts` + `server/events/bus.ts`,事件→站内信
 - **公告** — `server/services/announcement.ts`
 - **统计分析** — 总览/账龄/业绩/Top 客户,xlsx 导出
 - **操作日志** — `server/audit.ts` + `lib/request-context.ts` 自动注入 IP/UA/requestId
@@ -271,19 +271,7 @@ docker compose -f docker-compose.minio.yml up -d
 
 ## 消息与通知
 
-**三通道通知**
-
-```env
-NOTIFY_EMAIL_ENABLED="true"
-SMTP_HOST="smtp.example.com"
-SMTP_USER="..."
-SMTP_PASS="..."
-
-NOTIFY_WECHAT_WORK_ENABLED="true"
-WECHAT_WORK_WEBHOOK_URL="https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=..."
-```
-
-默认全部关闭,关闭时无副作用。
+通知统一走站内信（顶栏铃铛 + `/messages`）。邮件 / 企业微信通道已下线，运维侧不再需要 SMTP 或 webhook 凭据。
 
 **领域事件触发矩阵**(`server/events/bus.ts`)
 
@@ -295,7 +283,6 @@ WECHAT_WORK_WEBHOOK_URL="https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=..
 | PAYMENT_RECEIVED | 回款 confirm | owner + 全部 ADMIN |
 | INVOICE_OVERDUE_PAYMENT | 定时任务(issue + 30 天) | owner + admin + finance |
 | CONTRACT_EXPIRING | 定时任务(endDate - 30/7/1) | owner + admin |
-| CUSTOMER_INACTIVE | 定时任务(90 天无跟进) | owner |
 | CONTRACT_AUTO_EXECUTED | 项目 start 触发 | owner + 全部 ADMIN |
 | CONTRACT_AUTO_COMPLETED | 合同下所有项目收尾 | owner + 全部 ADMIN |
 | CONTRACT_AUTO_EXPIRED | 定时任务(endDate < now) | owner + 全部 ADMIN |
@@ -312,7 +299,6 @@ curl -X POST -b cookie.txt http://localhost:3000/api/jobs/run-all
 curl -X POST -b cookie.txt http://localhost:3000/api/jobs/contract-expiring
 curl -X POST -b cookie.txt http://localhost:3000/api/jobs/invoice-overdue
 curl -X POST -b cookie.txt http://localhost:3000/api/jobs/contract-expiry
-curl -X POST -b cookie.txt http://localhost:3000/api/jobs/customer-inactive
 ```
 
 生产建议 Vercel Cron 每小时触发一次 `/api/jobs/run-all`:
@@ -466,7 +452,7 @@ xlsx 导出走 `lib/excel.ts` + `exceljs`,带 BOM 支持中文。
 - **v0.2.0(2026-06-22)**:合同/项目收紧 + 业务纯化
 - **v0.1.0(2026-06-11)**:上线前清理 — 清空 136 个 lint warnings,登录页 + 顶部导航品牌化,统一仓库 `core.autocrlf=false`
 - **v0.1.0-rc.1**:MinIO 接入(presign upload/download + Attachment 表 + CORS);Docker 合并为单 image;合同/发票上传/预览/下载/删除端到端打通
-- **P3**:通知三通道(邮件/企微)+ RLS 策略 + 备份脚本 + Vercel Cron
+- **P3**:RLS 策略 + 备份脚本 + Vercel Cron(原通知三通道已合并到站内信)
 - **P2**:领域事件总线 + 4 个定时任务 + 统计分析 + xlsx 导出 + 软删除
 - **P1**:五大模块 CRUD + 16 条跨模块校验 + 27/27 e2e
 - **P0**:项目脚手架 + 登录 + 字典种子 + 4 角色权限

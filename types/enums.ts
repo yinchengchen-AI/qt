@@ -91,18 +91,17 @@ export type PaymentStatus = (typeof PAYMENT_STATUS)[number];
 export const BILLING_STATUS = ["NOT_STARTED", "IN_PROGRESS", "COMPLETED"] as const;
 export type BillingStatus = (typeof BILLING_STATUS)[number];
 
+// 通知事件类型:与 prisma schema 的 enum MessageType 一一对应
+// (bus.ts 的 DomainEventType 直接派生自这里,确保运行时与编译期一致)
 export const MESSAGE_TYPE = [
-  "CONTRACT_PENDING_REVIEW",
   "CONTRACT_EXPIRING",
-  "CONTRACT_APPROVED",
-  "CONTRACT_REJECTED",
   "INVOICE_OVERDUE_PAYMENT",
   "PAYMENT_RECEIVED",
-  "PROJECT_DUE",
-  "CUSTOMER_INACTIVE",
-  "CUSTOMER_STATUS_SUGGEST"
+  "CUSTOMER_STATUS_SUGGEST",
+  "CONTRACT_AUTO_EXECUTED",
+  "CONTRACT_AUTO_COMPLETED",
+  "CONTRACT_AUTO_EXPIRED"
 ] as const;
-export type MessageType = (typeof MESSAGE_TYPE)[number];
 
 // 5 个内置角色
 export const ROLE_CODES = ["ADMIN", "SALES", "FINANCE", "OPS", "EXPERT"] as const;

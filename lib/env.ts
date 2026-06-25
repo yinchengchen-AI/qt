@@ -7,7 +7,7 @@ export const env = createEnv({
     NEXTAUTH_SECRET: z.string().min(32),
     NEXTAUTH_URL: z.string().url().optional(),
     APP_ENC_KEY_HEX: z.string().regex(/^[0-9a-fA-F]{64}$/).default("0".repeat(64)),
-    // 对外可访问的 base URL；用于邮件/企微通知里的"查看详情"链接
+    // 对外可访问的 base URL；用于站内信"查看详情"链接
     // - 开发环境:可省略,默认回落到 NEXTAUTH_URL 或 http://localhost:3000
     // - 生产环境:必须显式配置(启动时 fail-fast)
     APP_PUBLIC_URL: z.string().url().optional(),
@@ -86,7 +86,7 @@ export function assertProductionConfig(): void {
   }
 }
 
-// 解析最终对外 base URL(供邮件/企微通知链接使用)
+// 解析最终对外 base URL(供站内信"查看详情"链接使用)
 export function getPublicBaseUrl(): string {
   assertProductionConfig();
   return (env.APP_PUBLIC_URL ?? env.NEXTAUTH_URL ?? "http://localhost:3000").replace(/\/+$/, "");

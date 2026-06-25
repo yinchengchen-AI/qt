@@ -31,22 +31,17 @@ vi.mock("@/lib/prisma", () => {
         findMany: vi.fn(async () => mockState.payments)
       },
       message: {
-        // 镜像 Prisma JSON path 查询: link.id === c-1 AND link.suggest === 传入的 suggest
-        findFirst: vi.fn(async (args: { where: { AND?: Array<{ link: { path: string[]; equals: string } }> } }) => {
-          const today = new Date();
-          today.setHours(0, 0, 0, 0);
-          // 从 where.AND 提取 requested suggest (path 第二个元素是 "suggest")
-          let requestedId: string | null = null;
-          let requestedSuggest: string | null = null;
-          for (const cond of args.where.AND ?? []) {
-            if (cond.link.path[0] === "id") requestedId = cond.link.equals;
-            if (cond.link.path[0] === "suggest") requestedSuggest = cond.link.equals;
-          }
-          return mockState.messages.find((m) => {
+        // 镜像 job 的批量化去重查询:
+        //   where: { type, receiverUserId: { in }, createdAt: { gte today } }
+        // 业务侧在 JS 里按 link.id + link.suggest 做二次过滤
+        findMany: vi.fn(async (args: { where: { type?: string; receiverUserId?: { in: string[] }; createdAt?: { gte: Date } } }) => {
+          const today = args.where.createdAt?.gte ?? new Date(0);
+          return mockState.messages.filter((m) => {
+            if (args.where.type && m.type !== args.where.type) return false;
+            if (args.where.receiverUserId && !args.where.receiverUserId.in.includes(m.receiverUserId)) return false;
             if (m.createdAt < today) return false;
-            const link = m.link as { id?: string; suggest?: string } | null;
-            return !!link && link.id === requestedId && link.suggest === requestedSuggest;
-          }) ?? null;
+            return true;
+          });
         })
       }
     }
