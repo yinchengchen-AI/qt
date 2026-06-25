@@ -1,6 +1,6 @@
 "use client";
 import { ProForm, ProFormText, ProFormSelect, ProCard } from "@ant-design/pro-components";
-import { App as AntdApp, Button, Alert, Form, Space } from "antd";
+import { App as AntdApp, Button, Alert, Space } from "antd";
 import { EditOutlined } from "@ant-design/icons";
 import { useParams, useRouter } from "next/navigation";
 import useSWR from "swr";
@@ -34,10 +34,9 @@ export default function EditUserPage() {
   const router = useRouter();
   const { message } = AntdApp.useApp();
 
-  const { data: userResp, error, isLoading } = useSWR<{ data: User }>(`/api/users/${id}`);
-  const { data: rolesResp } = useSWR<{ data: Role[] }>("/api/roles");
-  const { data: deptResp } = useSWR<{ data: Array<{ id: string; code: string; name: string; parentId: string | null }> }>("/api/departments?pageSize=500");
-
+  const { data: userResp, error, isLoading } = useSWR<User>(`/api/users/${id}`);
+  const { data: rolesResp } = useSWR<{ list: Role[] }>("/api/roles?pageSize=100");
+  
   if (error) {
     return (
       <Page>
@@ -55,8 +54,8 @@ export default function EditUserPage() {
     );
   }
 
-  const user = userResp.data;
-  const roleOptions = (rolesResp?.data ?? []).map((r) => ({ value: r.id, label: `${r.name} (${r.code})` }));
+  const user = userResp;
+  const roleOptions = (rolesResp?.list ?? []).map((r) => ({ value: r.id, label: `${r.name} (${r.code})` }));
 
   return (
     <Page>
@@ -88,8 +87,13 @@ export default function EditUserPage() {
 
       <ProForm
         layout="vertical"
+        submitter={{
+          searchConfig: { resetText: "重置", submitText: "保存" },
+          resetButtonProps: { style: { display: "none" } }
+        }}
         initialValues={{
           name: user.name,
+          employeeNo: user.employeeNo,
           email: user.email,
           phone: user.phone ?? undefined,
           roleId: user.roleId,
@@ -162,15 +166,7 @@ export default function EditUserPage() {
               options={roleOptions}
               rules={[{ required: true, message: "请选择角色" }]}
             />
-            <Form.Item name="departmentId" label="部门">
-              <DepartmentTreeSelect
-                value={user.departmentId ?? undefined}
-                onChange={(v) => {
-                  // 用 ProForm 的 setFieldsValue 通过 formRef
-                  // 这里简化处理:DepartmentTreeSelect 内部已封装好 form 集成
-                }}
-              />
-            </Form.Item>
+            <DepartmentTreeSelect label="部门" placeholder="不选 = 无部门" />
           </FormGrid>
         </ProCard>
 
