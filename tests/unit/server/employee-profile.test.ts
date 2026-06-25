@@ -188,6 +188,41 @@ describe("updateUserFullProfile (PR3)", () => {
     })).rejects.toMatchObject({ status: 409, errorCode: ERROR_CODES.CONFLICT });
   });
 
+  itDb("新档案 (user.profile 为空) → upsert 创建 profile,正常落库", async () => {
+    if (!dbReachable || !adminUser) return;
+    // 找一个还没建档案的 user
+    const userNoProfile = await prisma.user.findFirst({
+      where: { deletedAt: null, profile: null },
+      select: { id: true, employeeNo: true, name: true, email: true }
+    });
+    if (!userNoProfile) {
+      // 临时建一个无 profile 的 user
+      const ts = Date.now();
+      const temp = await prisma.user.create({
+        data: {
+          employeeNo: `E2E_${ts}`,
+          name: "PR01-无档案",
+          email: `e2e_pr01_${ts}@qt.local`,
+          passwordHash: "x",
+          roleId: (await prisma.user.findFirst({ where: { role: { code: "ADMIN" } } }))!.roleId
+        }
+      });
+      try {
+        const out = await updateUserFullProfile(getAdminActor(), temp.id, {
+          profile: { position: "P0-1 测试岗位" },
+          educations: [{ school: "PR0-1 校", startDate: "2020-09-01T00:00:00Z", isFullTime: true }]
+        });
+        expect(out.profile.position).toBe("P0-1 测试岗位");
+        expect(out.educations.length).toBe(1);
+        expect(out.educations[0]?.school).toBe("PR0-1 校");
+      } finally {
+        // 清理
+        await prisma.employeeProfile.deleteMany({ where: { userId: temp.id } });
+        await prisma.user.delete({ where: { id: temp.id } });
+      }
+    }
+  });
+
   itDb("expectedUpdatedAt 一致 → 全删全插 5 张子表,profile 字段更新", async () => {
     if (!adminUser) return;
     const out = await getUserFullProfile(getAdminActor(), adminUser.id);

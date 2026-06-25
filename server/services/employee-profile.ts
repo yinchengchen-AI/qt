@@ -196,22 +196,20 @@ export async function getUserFullProfile(actor: SessionUser, userId: string): Pr
       profile: {
         include: {
           avatarAttachment: { where: { deletedAt: null } },
-          attachments: { where: { deletedAt: null, category: { in: ["GENERAL", "ID_CARD_FRONT", "ID_CARD_BACK"] } } }
+          // P0-5: 非 ADMIN 不返回 ID_CARD_FRONT/BACK(身份证正反面照, PII)
+          attachments: { where: { deletedAt: null, category: { in: ["GENERAL"] } } }
         }
       }
     }
   });
   if (!user?.profile) return null;
 
-  const profile = decryptProfile(user.profile as unknown as Record<string, unknown>);
-  if (!hasPermission(actor.roleCode, RESOURCE.USER, ACTION.UPDATE)) {
-    // 非 ADMIN 过滤敏感字段
-    profile.salary = null;
-    profile.bankAccount = null;
-    profile.bankName = null;
-    profile.socialSecurityAccount = null;
-    profile.providentFundAccount = null;
-  }
+  const decrypted = decryptProfile(user.profile as unknown as Record<string, unknown>);
+  // P0-5: 复用 stripAdminOnlyFields(已含 idCard / salary / bank 等),
+  // 避免新旧两套过滤行为不一致
+  const profile = !hasPermission(actor.roleCode, RESOURCE.USER, ACTION.UPDATE)
+    ? stripAdminOnlyFields(decrypted)
+    : decrypted;
 
   const [educations, workExperiences, certificates, skills, emergencyContacts] = await Promise.all([
     listEmployeeEducations(actor, user.profile.id),
@@ -232,7 +230,9 @@ export async function getUserFullProfile(actor: SessionUser, userId: string): Pr
       id: user.profile.avatarAttachment.id,
       name: user.profile.avatarAttachment.originalName,
       mimeType: user.profile.avatarAttachment.mimeType,
-      size: user.profile.avatarAttachment.size
+      size: user.profile.avatarAttachment.size,
+      // P0-3: 头像详情页用 /api/files/raw/[id] 代理下载(走 session cookie 鉴权)
+      url: `/api/files/raw/${user.profile.avatarAttachment.id}`
     } : null
   };
 }
@@ -261,10 +261,10 @@ export async function updateUserFullProfile(
     include: { profile: true }
   });
   if (!user) throw new ApiError(ERROR_CODES.NOT_FOUND, "用户不存在", 404);
-  if (!user.profile) throw new ApiError(ERROR_CODES.NOT_FOUND, "档案不存在,请先创建账号并补充档案", 404);
-
-  // 2. 并发检测(409)
-  if (input.expectedUpdatedAt) {
+  // P0-1: 新用户走 PR7 两段式 Modal 时 user.profile 还不存在,允许创建
+  // 老档案走 expectedUpdatedAt 并发检测,新档案没有 updatedAt,跳过
+  const isNewProfile = !user.profile;
+  if (input.expectedUpdatedAt && user.profile) {
     const expected = new Date(input.expectedUpdatedAt).getTime();
     const actual = user.profile.updatedAt.getTime();
     if (Math.abs(expected - actual) > 1) {
@@ -286,14 +286,22 @@ export async function updateUserFullProfile(
       } as EmployeeProfileUpdateInput)
     : {};
 
-  const profileId = user.profile.id;
+  // P0-1: 新档案先 upsert,拿到 profileId 再走子表全删全插
+  let profileId: string;
+  if (isNewProfile) {
+    const created = await prisma.employeeProfile.create({ data: { userId, ...profileData } });
+    profileId = created.id;
+  } else {
+    profileId = user.profile!.id;
+  }
+
   await prisma.$transaction(async (tx) => {
     // user 字段更新
     if (input.user && Object.keys(input.user).length > 0) {
       await tx.user.update({ where: { id: userId }, data: input.user });
     }
-    // profile 字段更新
-    if (Object.keys(profileData).length > 0) {
+    // 老档案才走 update(新档案已经 create 过了)
+    if (!isNewProfile && Object.keys(profileData).length > 0) {
       await tx.employeeProfile.update({ where: { id: profileId }, data: profileData });
     }
     // 5 张子表全删全插(只有 payload 里有这个 key 才动)
@@ -382,7 +390,7 @@ export async function updateUserFullProfile(
       action: "EMPLOYEE_PROFILE_REPLACE",
       entity: "EmployeeProfile",
       entityId: profileId,
-      before: { updatedAt: user.profile!.updatedAt },
+      before: isNewProfile ? null : { updatedAt: user.profile!.updatedAt },
       after: { updatedAt: new Date() }
     });
   });

@@ -148,7 +148,7 @@ export default function UserDetailPage() {
           {/* 基础 */}
           <ProCard id="basic" title="基础" style={{ marginBottom: 16 }}>
             <Space size="large" align="start" style={{ marginBottom: 16 }}>
-              <Avatar src={avatar ? undefined : undefined} size={80} style={{ backgroundColor: "#1677ff" }}>
+              <Avatar src={avatar?.url} size={80} style={{ backgroundColor: "#1677ff" }}>
                 {user.name?.[0]}
               </Avatar>
               <ProDescriptions column={2} dataSource={profile} columns={[

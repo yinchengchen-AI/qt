@@ -67,5 +67,5 @@ export type FullEmployeeProfileDto = {
   certificates: EmployeeCertificateDto[];
   skills: EmployeeSkillDto[];
   emergencyContacts: EmployeeEmergencyContactDto[];
-  avatar: { id: string; name: string; mimeType: string; size: number } | null;
+  avatar: { id: string; name: string; mimeType: string; size: number; url: string } | null;
 };

@@ -146,8 +146,11 @@ export function ProfileWizard({ userId, initial, isAdmin }: Props) {
             name: "file",
             listType: "picture",
             customRequest: async (options) => {
-              const att = await uploadFileToMinIO(options.file as File);
-              options.onSuccess?.(att);
+              // P0-10: 传 category: "AVATAR" 落库分类
+              const att = await uploadFileToMinIO(options.file as File, { category: "AVATAR" });
+              // P0-9: antd Upload 期望 onSuccess(response, xhr),ProForm 通过
+              // response.id 拿到上传后的 attachment id
+              options.onSuccess?.(att, new XMLHttpRequest());
             }
           }}
         />
