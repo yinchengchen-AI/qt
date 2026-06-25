@@ -1,8 +1,7 @@
 import { ok, err } from "@/lib/api";
 import { runWithRequestContext } from "@/lib/request-context";
 import { requireSession } from "@/lib/session";
-import { getEmployeeProfile, updateEmployeeProfile } from "@/server/services/employee-profile";
-import { employeeProfileUpdateSchema } from "@/lib/validators/employee-profile";
+import { getUserFullProfile } from "@/server/services/employee-profile";
 
 export async function GET(
   req: Request,
@@ -10,28 +9,12 @@ export async function GET(
 ) {
   return runWithRequestContext(req, async () => {
     try {
-      const user = await requireSession();
+      const actor = await requireSession();
       const { id } = await params;
-      const data = await getEmployeeProfile(user, id);
-      return ok({ data });
-    } catch (e) {
-      return err(e);
-    }
-  });
-}
-
-export async function PATCH(
-  req: Request,
-  { params }: { params: Promise<{ id: string }> }
-) {
-  return runWithRequestContext(req, async () => {
-    try {
-      const user = await requireSession();
-      const { id } = await params;
-      const body = await req.json();
-      const input = employeeProfileUpdateSchema.parse(body);
-      const data = await updateEmployeeProfile(user, id, input);
-      return ok({ data });
+      // PR3:走 getUserFullProfile 拿全部数据(包含 5 张子表 + 头像),
+      // 但只返回 profile 部分保持旧 API 兼容
+      const full = await getUserFullProfile(actor, id);
+      return ok({ data: full?.profile ?? null });
     } catch (e) {
       return err(e);
     }

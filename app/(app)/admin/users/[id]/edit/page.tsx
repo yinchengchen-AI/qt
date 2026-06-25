@@ -193,9 +193,10 @@ export default function EditUserPage() {
     idCard: profile?.idCard ?? undefined,
     education: profile?.education ?? undefined,
     entryDate: profile?.entryDate ?? undefined,
-    address: profile?.address ?? undefined,
-    emergencyContactName: profile?.emergencyContactName ?? undefined,
-    emergencyContactPhone: profile?.emergencyContactPhone ?? undefined,
+    province: profile?.province ?? undefined,
+    city: profile?.city ?? undefined,
+    district: profile?.district ?? undefined,
+    addressDetail: profile?.addressDetail ?? undefined,
     position: profile?.position ?? undefined,
     jobLevel: profile?.jobLevel ?? undefined,
     employmentType: profile?.employmentType ?? undefined,
@@ -210,9 +211,9 @@ export default function EditUserPage() {
     bankName: profile?.bankName ?? undefined,
     socialSecurityAccount: profile?.socialSecurityAccount ?? undefined,
     providentFundAccount: profile?.providentFundAccount ?? undefined,
-    workExperience: profile?.workExperience ?? undefined,
-    educationHistory: profile?.educationHistory ?? undefined,
-    certificates: profile?.certificates ?? undefined,
+    // PR3:workExperience/educationHistory/certificates 已迁到子表,不再出现在主 DTO
+    // PR4 的 edit-profile 页会用 FullEmployeeProfileDto 接管档案编辑
+    avatarAttachmentId: profile?.avatarAttachmentId ?? undefined,
     remark: profile?.remark ?? undefined
   };
 
