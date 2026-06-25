@@ -41,6 +41,8 @@ enum MessageType {
   CONTRACT_AUTO_EXECUTED
   CONTRACT_AUTO_COMPLETED
   CONTRACT_AUTO_EXPIRED
+  // 证书 N 天内到期 (30/15/7 三档阈值各发一次)
+  CERTIFICATE_EXPIRING
 }
 
 model User {
@@ -62,11 +64,11 @@ model User {
   updatedAt    DateTime    @updatedAt @db.Timestamptz(6)
   deletedAt    DateTime?   @db.Timestamptz(6)
 
-  uploadedAttachments Attachment[]
-  signedContracts     Contract[]   @relation("ContractSigner")
-  messages            Message[]
-  publishedAnnouncements Announcement[] @relation("AnnouncementPublishUser")
-  profile             EmployeeProfile?
+  uploadedAttachments    Attachment[]
+  signedContracts        Contract[]       @relation("ContractSigner")
+  messages               Message[]
+  publishedAnnouncements Announcement[]   @relation("AnnouncementPublishUser")
+  profile                EmployeeProfile?
 
   @@index([roleId])
   @@index([status])
@@ -74,52 +76,161 @@ model User {
 }
 
 model EmployeeProfile {
-  id                    String    @id @default(cuid())
-  userId                String    @unique
-  user                  User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  id     String @id @default(cuid())
+  userId String @unique
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   // 基础档案
-  gender                String?   // MALE | FEMALE | OTHER
-  birthday              DateTime? @db.Timestamptz(6)
-  idCard                String?   @unique // 身份证号（敏感，加密存储）
-  education             String?   // 学历字典值
-  entryDate             DateTime? @db.Timestamptz(6)
-  address               String?
-  emergencyContactName  String?
-  emergencyContactPhone String?
+  gender        String? // MALE | FEMALE | OTHER
+  birthday      DateTime? @db.Timestamptz(6)
+  idCard        String?   @unique // 身份证号（敏感，加密存储）
+  education     String? // 学历字典值
+  entryDate     DateTime? @db.Timestamptz(6)
+  // 地址：结构化为省/市/区 + 详细地址,省市区走 lib/china-divisions.ts 三级联动
+  province      String?
+  city          String?
+  district      String?
+  addressDetail String?
 
   // 人事/岗位
-  position              String?
-  jobLevel              String?
-  employmentType        String?   @default("FULL_TIME") // FULL_TIME | PART_TIME | INTERN | CONTRACTOR
-  probationEndDate      DateTime? @db.Timestamptz(6)
-  formalDate            DateTime? @db.Timestamptz(6)
-  resignationDate       DateTime? @db.Timestamptz(6)
+  position         String?
+  jobLevel         String?
+  employmentType   String?   @default("FULL_TIME") // FULL_TIME | PART_TIME | INTERN | CONTRACTOR
+  probationEndDate DateTime? @db.Timestamptz(6)
+  formalDate       DateTime? @db.Timestamptz(6)
+  resignationDate  DateTime? @db.Timestamptz(6)
 
   // 合同
-  contractType          String?   // 合同类型字典值
-  contractStartDate     DateTime? @db.Timestamptz(6)
-  contractEndDate       DateTime? @db.Timestamptz(6)
+  contractType      String? // 合同类型字典值
+  contractStartDate DateTime? @db.Timestamptz(6)
+  contractEndDate   DateTime? @db.Timestamptz(6)
+
+  // 头像（1:1 引用 Attachment；走 avatarAttachment 反向 relation）
+  avatarAttachmentId String?     @unique
+  avatarAttachment   Attachment? @relation("EmployeeProfileAvatar", fields: [avatarAttachmentId], references: [id], onDelete: SetNull)
 
   // 敏感信息（仅 ADMIN 可见）
-  salary                Decimal?  @db.Decimal(14, 2)
-  bankAccount           String?   // 银行卡号（敏感，加密存储）
+  salary                Decimal? @db.Decimal(14, 2)
+  bankAccount           String? // 银行卡号（敏感，加密存储）
   bankName              String?
-  socialSecurityAccount String?   // 社保账号（敏感，加密存储）
-  providentFundAccount  String?   // 公积金账号（敏感，加密存储）
+  socialSecurityAccount String? // 社保账号（敏感，加密存储）
+  providentFundAccount  String? // 公积金账号（敏感，加密存储）
 
-  // 履历/备注
-  workExperience        String?   @db.VarChar(5000)
-  educationHistory      String?   @db.VarChar(5000)
-  certificates          String?   @db.VarChar(5000)
-  remark                String?   @db.VarChar(5000)
+  // 履历/备注（workExperience / educationHistory / certificates 长文本已迁到子表）
+  remark String? @db.VarChar(5000)
 
-  createdAt             DateTime  @default(now()) @db.Timestamptz(6)
-  updatedAt             DateTime  @updatedAt @db.Timestamptz(6)
+  createdAt DateTime  @default(now()) @db.Timestamptz(6)
+  updatedAt DateTime  @updatedAt @db.Timestamptz(6)
+  deletedAt DateTime? @db.Timestamptz(6)
 
-  attachments           Attachment[] @relation("EmployeeProfileAttachments")
+  // 5 张子表
+  educations        EmployeeEducation[]
+  workExperiences   EmployeeWorkExperience[]
+  certificates      EmployeeCertificate[]
+  skills            EmployeeSkill[]
+  emergencyContacts EmployeeEmergencyContact[]
+
+  // 通用附件 (身份证照 / 证书附件 / 其他) — 多对多挂在 Attachment.employeeProfileId
+  attachments Attachment[] @relation("EmployeeProfileAttachments")
 
   @@index([userId])
+}
+
+// =====================================================
+// 员工档案 5 张子表 (PR1 of employee-profile-redesign)
+// - 全部 onDelete: Cascade 到 EmployeeProfile
+// - 全部带 deletedAt 支持软删 (与现有 EmployeeProfile 模式一致)
+// - certificate.attachmentId 是 0..1 引用,允许无附件的证书
+// - 详情页 / 列表 / 排序: createdAt asc / 各种日期 desc
+// =====================================================
+model EmployeeEducation {
+  id         String          @id @default(cuid())
+  profileId  String
+  profile    EmployeeProfile @relation(fields: [profileId], references: [id], onDelete: Cascade)
+  school     String
+  major      String?
+  // 学历字典值 (EDUCATION_LEVEL: HIGH_SCHOOL / JUNIOR_COLLEGE / BACHELOR / MASTER / DOCTORATE / OTHER)
+  degree     String?
+  startDate  DateTime        @db.Timestamptz(6)
+  endDate    DateTime?       @db.Timestamptz(6)
+  isFullTime Boolean         @default(true)
+  remark     String?         @db.VarChar(2000)
+  createdAt  DateTime        @default(now()) @db.Timestamptz(6)
+  updatedAt  DateTime        @updatedAt @db.Timestamptz(6)
+  deletedAt  DateTime?       @db.Timestamptz(6)
+
+  @@index([profileId])
+}
+
+model EmployeeWorkExperience {
+  id          String          @id @default(cuid())
+  profileId   String
+  profile     EmployeeProfile @relation(fields: [profileId], references: [id], onDelete: Cascade)
+  company     String
+  position    String?
+  startDate   DateTime        @db.Timestamptz(6)
+  endDate     DateTime?       @db.Timestamptz(6)
+  leaveReason String?
+  referrer    String?
+  remark      String?         @db.VarChar(2000)
+  createdAt   DateTime        @default(now()) @db.Timestamptz(6)
+  updatedAt   DateTime        @updatedAt @db.Timestamptz(6)
+  deletedAt   DateTime?       @db.Timestamptz(6)
+
+  @@index([profileId])
+}
+
+model EmployeeCertificate {
+  id           String          @id @default(cuid())
+  profileId    String
+  profile      EmployeeProfile @relation(fields: [profileId], references: [id], onDelete: Cascade)
+  name         String
+  number       String?
+  issuer       String?
+  issueDate    DateTime?       @db.Timestamptz(6)
+  // expiryDate 索引给证书到期 cron 用 (server/jobs/certificate-expiry-check)
+  expiryDate   DateTime?       @db.Timestamptz(6)
+  attachmentId String?
+  attachment   Attachment?     @relation("CertificateAttachment", fields: [attachmentId], references: [id], onDelete: SetNull)
+  remark       String?         @db.VarChar(2000)
+  createdAt    DateTime        @default(now()) @db.Timestamptz(6)
+  updatedAt    DateTime        @updatedAt @db.Timestamptz(6)
+  deletedAt    DateTime?       @db.Timestamptz(6)
+
+  @@index([profileId])
+  @@index([expiryDate])
+}
+
+model EmployeeSkill {
+  id         String          @id @default(cuid())
+  profileId  String
+  profile    EmployeeProfile @relation(fields: [profileId], references: [id], onDelete: Cascade)
+  name       String
+  // BEGINNER | INTERMEDIATE | ADVANCED
+  level      String          @default("INTERMEDIATE")
+  obtainDate DateTime?       @db.Timestamptz(6)
+  remark     String?         @db.VarChar(2000)
+  createdAt  DateTime        @default(now()) @db.Timestamptz(6)
+  updatedAt  DateTime        @updatedAt @db.Timestamptz(6)
+  deletedAt  DateTime?       @db.Timestamptz(6)
+
+  @@index([profileId])
+}
+
+model EmployeeEmergencyContact {
+  id           String          @id @default(cuid())
+  profileId    String
+  profile      EmployeeProfile @relation(fields: [profileId], references: [id], onDelete: Cascade)
+  name         String
+  // 关系: 父母/配偶/兄弟姐妹/子女/其他
+  relationship String
+  phone        String
+  remark       String?         @db.VarChar(500)
+  createdAt    DateTime        @default(now()) @db.Timestamptz(6)
+  updatedAt    DateTime        @updatedAt @db.Timestamptz(6)
+  deletedAt    DateTime?       @db.Timestamptz(6)
+
+  @@index([profileId])
 }
 
 // =====================================================
@@ -370,15 +481,15 @@ model Payment {
 // Messages / Announcements
 // =====================================================
 model Message {
-  id             String    @id @default(cuid())
+  id             String      @id @default(cuid())
   receiverUserId String
-  receiver       User      @relation(fields: [receiverUserId], references: [id], onDelete: Restrict)
+  receiver       User        @relation(fields: [receiverUserId], references: [id], onDelete: Restrict)
   type           MessageType
-  title          String    @db.VarChar(200)
-  content        String    @db.VarChar(10000)
+  title          String      @db.VarChar(200)
+  content        String      @db.VarChar(10000)
   link           Json?
-  readAt         DateTime? @db.Timestamptz(6)
-  createdAt      DateTime  @default(now()) @db.Timestamptz(6)
+  readAt         DateTime?   @db.Timestamptz(6)
+  createdAt      DateTime    @default(now()) @db.Timestamptz(6)
 
   @@index([receiverUserId, readAt])
   // 去重查询:`type + receiverUserId + createdAt + JSON link.id`
@@ -490,26 +601,33 @@ model Sequence {
 // - soft delete: deletedAt 不为 null 视为已删,MinIO 对象保留
 // =====================================================
 model Attachment {
-  id            String    @id @default(cuid())
-  objectKey     String    @unique
-  bucket        String
-  originalName  String
-  mimeType      String
-  size          Int
-  uploadedById  String
-  uploadedBy    User      @relation(fields: [uploadedById], references: [id])
-  contractId    String?
-  contract      Contract? @relation("ContractAttachments", fields: [contractId], references: [id], onDelete: SetNull)
-  invoiceId     String?
-  invoice       Invoice?  @relation("InvoiceAttachments", fields: [invoiceId], references: [id], onDelete: SetNull)
-  employeeProfileId String?
-  employeeProfile   EmployeeProfile? @relation("EmployeeProfileAttachments", fields: [employeeProfileId], references: [id], onDelete: SetNull)
+  id                     String                @id @default(cuid())
+  objectKey              String                @unique
+  bucket                 String
+  originalName           String
+  mimeType               String
+  size                   Int
+  uploadedById           String
+  uploadedBy             User                  @relation(fields: [uploadedById], references: [id])
+  contractId             String?
+  contract               Contract?             @relation("ContractAttachments", fields: [contractId], references: [id], onDelete: SetNull)
+  invoiceId              String?
+  invoice                Invoice?              @relation("InvoiceAttachments", fields: [invoiceId], references: [id], onDelete: SetNull)
+  employeeProfileId      String?
+  employeeProfile        EmployeeProfile?      @relation("EmployeeProfileAttachments", fields: [employeeProfileId], references: [id], onDelete: SetNull)
+  // 反向：员工头像 (1:1)
+  avatarOfProfile        EmployeeProfile?      @relation("EmployeeProfileAvatar")
+  // 反向：证书附件 (1:N)
+  certificateAttachments EmployeeCertificate[] @relation("CertificateAttachment")
   // 合同交付物附件标记: true 表示该附件是合同详情"交付物"tab 上传的交付文件 (报告/证书/培训材料 等),
   //   写权限仅 admin / 签订人 / 负责人 (assertCanManageDeliverables);
   // false 表示合同通用附件 (走"附件"tab, 沿用 admin / 上传者 删除规则)
-  isDeliverable Boolean   @default(false)
-  uploadedAt    DateTime  @default(now()) @db.Timestamptz(6)
-  deletedAt     DateTime? @db.Timestamptz(6)
+  isDeliverable          Boolean               @default(false)
+  // 附件分类: GENERAL(默认通用) / AVATAR(头像) / ID_CARD_FRONT/BACK(身份证正反面) / CERTIFICATE(证书扫描件)
+  // 写入由 /api/files/presign-upload 的 body.category 决定;读取按 category 过滤
+  category               String                @default("GENERAL")
+  uploadedAt             DateTime              @default(now()) @db.Timestamptz(6)
+  deletedAt              DateTime?             @db.Timestamptz(6)
 
   @@index([contractId, deletedAt])
   @@index([invoiceId, deletedAt])

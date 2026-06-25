@@ -3,7 +3,7 @@
 // - 敏感字段（身份证、银行卡、社保/公积金账号）写入前加密，读取时解密
 // - 非 ADMIN 角色读取时过滤掉敏感字段
 import { prisma } from "@/lib/prisma";
-import type { Prisma } from "@prisma/client";
+import { Prisma } from "@prisma/client";
 import { ApiError } from "@/lib/api";
 import { ERROR_CODES } from "@/types/errors";
 import type { SessionUser } from "@/lib/session";
@@ -77,10 +77,21 @@ export async function linkAttachmentsToProfile(
   });
 }
 
+// 临时安全网 (PR1 only): 用 Prisma 生成的字段枚举做白名单,
+// 防止旧前端提交已删字段 (workExperience / educationHistory / certificates /
+// emergencyContactName / emergencyContactPhone / address) 走到 Prisma 时报
+// "Unknown argument" 错误。PR3 清理 validator/DTO 后移除此 allowlist。
+const EMPLOYEE_PROFILE_WRITABLE_FIELDS = new Set<string>(
+  Object.values(Prisma.EmployeeProfileScalarFieldEnum).filter(
+    (f) => !["id", "userId", "createdAt", "updatedAt", "deletedAt"].includes(f)
+  )
+);
+
 export function buildProfileUpdateData(input: EmployeeProfileUpdateInput): Record<string, unknown> {
   const data: Record<string, unknown> = {};
   for (const [key, value] of Object.entries(input)) {
     if (value === undefined) continue;
+    if (!EMPLOYEE_PROFILE_WRITABLE_FIELDS.has(key)) continue; // 临时 allowlist
     if (ENCRYPTED_FIELDS.includes(key as (typeof ENCRYPTED_FIELDS)[number]) && typeof value === "string" && value.length > 0) {
       data[key] = encrypt(value);
     } else {

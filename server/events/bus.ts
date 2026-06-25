@@ -103,6 +103,16 @@ function buildMessage(uid: string, ev: DomainEvent): ResolvedMessage {
         content: `合同到期日：${formatDate(p.endDate)}`,
         link: { kind: "contract", id: p.contractId }
       };
+    case "CERTIFICATE_EXPIRING":
+      // 证书到期提醒 (server/jobs/certificate-expiry-check 触发)
+      // payload 字段: certificateId, userId, certName, expiryDate, daysLeft
+      // 完整文案在 PR9 接入 cron 时精修;这里先做最小可用版本,确保 typecheck 通过
+      return {
+        receiverUserId: uid,
+        title: `证书 ${String(p.certName ?? "-")} 将于 ${Number(p.daysLeft ?? 0)} 天后到期`,
+        content: `到期日：${formatDate(p.expiryDate)}`,
+        link: { kind: "employee-profile", id: p.userId, certificateId: p.certificateId }
+      };
     default:
       return assertNever(ev.type);
   }

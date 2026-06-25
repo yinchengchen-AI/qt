@@ -100,7 +100,9 @@ export const MESSAGE_TYPE = [
   "CUSTOMER_STATUS_SUGGEST",
   "CONTRACT_AUTO_EXECUTED",
   "CONTRACT_AUTO_COMPLETED",
-  "CONTRACT_AUTO_EXPIRED"
+  "CONTRACT_AUTO_EXPIRED",
+  // 证书 N 天内到期提醒 (server/jobs/certificate-expiry-check 触发)
+  "CERTIFICATE_EXPIRING"
 ] as const;
 
 // 5 个内置角色
