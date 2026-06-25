@@ -16,7 +16,7 @@ type Role = { id: string; code: string; name: string };
 
 export default function NewUserPage() {
   const router = useRouter();
-  const { message } = AntdApp.useApp();
+  const { message, modal } = AntdApp.useApp();
   const { data: rolesResp } = useSWR<{ list: Role[] }>("/api/roles?pageSize=100");
   const roleOptions = (rolesResp?.list ?? []).map((r) => ({
     value: r.id,
@@ -73,11 +73,29 @@ export default function NewUserPage() {
                     </Input.Group>
                   </div>
                 ),
-                onOk: () => router.push(`/admin/users/${j.data.id}`)
+                onOk: () => {
+                  // PR7:密码弹窗关掉后,引导补全档案
+                  modal.confirm({
+                    title: `账号 ${j.data.name} (${j.data.employeeNo}) 创建成功`,
+                    content: "要现在补全员工档案吗?",
+                    okText: "现在补全档案",
+                    cancelText: "稍后再说",
+                    onOk: () => router.push(`/admin/users/${j.data.id}/edit-profile`),
+                    onCancel: () => router.push(`/admin/users/${j.data.id}`)
+                  });
+                }
               });
               return true;
             }
-            router.push(`/admin/users/${j.data.id}`);
+            // 无初始密码场景(理论上不应发生,但兜底):也引导补全档案
+            modal.confirm({
+              title: `账号 ${j.data.name} (${j.data.employeeNo}) 创建成功`,
+              content: "要现在补全员工档案吗?",
+              okText: "现在补全档案",
+              cancelText: "稍后再说",
+              onOk: () => router.push(`/admin/users/${j.data.id}/edit-profile`),
+              onCancel: () => router.push(`/admin/users/${j.data.id}`)
+            });
             return true;
           }}
         >
