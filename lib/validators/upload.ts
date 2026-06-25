@@ -10,7 +10,9 @@ export const presignUploadBodySchema = z.object({
   invoiceId: z.string().optional().nullable(),
   employeeProfileId: z.string().optional().nullable(),
   // 合同交付物附件标记 (true 表示这是合同详情"交付物"tab 上传的交付文件, 写权限仅 admin / 签订人 / 负责人)
-  isDeliverable: z.boolean().optional().default(false)
+  isDeliverable: z.boolean().optional().default(false),
+  // PR6:附件分类。GENERAL(默认)/ AVATAR / ID_CARD_FRONT / ID_CARD_BACK / CERTIFICATE
+  category: z.enum(["GENERAL", "AVATAR", "ID_CARD_FRONT", "ID_CARD_BACK", "CERTIFICATE"]).optional().default("GENERAL")
 });
 
 export type PresignUploadBody = z.infer<typeof presignUploadBodySchema>;

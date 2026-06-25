@@ -32,6 +32,8 @@ export async function POST(req: Request) {
         employeeProfileId: body.employeeProfileId ?? null,
         // 合同交付物附件标记; 落库前 server/storage/presign.ts 校验 admin / 签订人 / 负责人
         isDeliverable: body.isDeliverable === true,
+        // PR6:附件分类(头像/身份证正反/证书/通用)
+        category: body.category,
         uploadedById: user.id,
       });
       return ok(result);
