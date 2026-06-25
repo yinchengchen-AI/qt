@@ -1,7 +1,7 @@
 "use client";
 import { ProTable, type ActionType, type ProColumns, type ProFormInstance } from "@ant-design/pro-components";
 import { MoreOutlined } from "@ant-design/icons";
-import { App as AntdApp, Button, Tag, Modal, Space, Dropdown, Form, Input } from "antd";
+import { App as AntdApp, Button, Tag, Modal, Space, Dropdown, Form, Input, Badge } from "antd";
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
 import useSWR from "swr";
@@ -70,6 +70,14 @@ export default function UsersPage() {
       formRef.current?.submit?.();
     }, 400);
   };
+
+  // 到期证书数量(顶部 badge)
+  const { data: expiringResp } = useSWR<{ data: unknown[] }>("/api/certificates/expiring?days=60", async (url: string) => {
+    const r = await fetch(url, { credentials: "include" });
+    const j = await r.json();
+    return j;
+  });
+  const expiringCount = expiringResp?.data?.length ?? 0;
 
   // 部门列表(树)用于搜索表单的"部门"下拉
   const { data: deptResp } = useSWR<{ tree: Dept[] }>(
@@ -268,9 +276,17 @@ export default function UsersPage() {
         title="员工管理"
         subtitle="员工账号、角色与部门;支持按工号/姓名/邮箱/部门/状态搜索"
         actions={
-          <Button key="add" type="primary" onClick={() => router.push("/admin/users/new")}>
-            新建员工
-          </Button>
+          <Space>
+            <Button key="certs" onClick={() => router.push("/admin/certificates/expiring")}>
+              到期证书
+              {expiringCount > 0 && (
+                <Badge count={expiringCount} offset={[8, -4]} style={{ backgroundColor: "#ff4d4f" }} />
+              )}
+            </Button>
+            <Button key="add" type="primary" onClick={() => router.push("/admin/users/new")}>
+              新建员工
+            </Button>
+          </Space>
         }
       />
       <ProTable<User> actionRef={actionRef} formRef={formRef}
