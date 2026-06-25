@@ -104,7 +104,7 @@ export default function NewPaymentPage() {
                 fieldProps={{ size: "large", optionFilterProp: "label" }}
                 request={async (params: { keyWords?: string }) => {
                   const qs = new URLSearchParams();
-                  qs.set("pageSize", "50");
+                  qs.set("pageSize", "1000");
                   qs.set("keyword", params.keyWords ?? "");
                   const r = await fetch(`/api/contracts?${qs}`, { credentials: "include" });
                   const j = await r.json();
@@ -141,7 +141,7 @@ export default function NewPaymentPage() {
                   const cid = presetContract ?? pickedContract?.id;
                   if (!cid) return [];
                   const qs = new URLSearchParams();
-                  qs.set("pageSize", "50");
+                  qs.set("pageSize", "1000");
                   qs.set("contractId", cid);
                   qs.set("keyword", params.keyWords ?? "");
                   const r = await fetch(`/api/invoices?${qs}`, { credentials: "include" });

@@ -144,7 +144,7 @@ export default function NewInvoicePage() {
               }}
               request={async (params: { keyWords?: string }) => {
                 const qs = new URLSearchParams();
-                qs.set("pageSize", "50");
+                qs.set("pageSize", "1000");
                 qs.set("keyword", params.keyWords ?? "");
                 qs.set("status", "ACTIVE");
                 const r = await fetch(`/api/contracts?${qs}`, { credentials: "include" });

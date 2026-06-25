@@ -44,9 +44,7 @@ export async function invoiceAction(user: SessionUser, id: string, input: Invoic
       if ((inv.invoiceType === "VAT_ELECTRONIC" || inv.invoiceType === "ELEC_NORMAL") && !/^\d{20}$/.test(invoiceNo)) {
         throw new ApiError(ERROR_CODES.INVOICE_INFO_INVALID, "电子发票号必须 20 位数字", 422);
       }
-      if (inv.titleType === "COMPANY" && !inv.taxNo) {
-        throw new ApiError(ERROR_CODES.INVOICE_INFO_INVALID, "公司抬头需填写税号", 422);
-      }
+
       const data: Record<string, unknown> = {
         actualIssueDate: input.actualIssueDate ? new Date(input.actualIssueDate) : new Date(),
         financeUserId: user.id,
