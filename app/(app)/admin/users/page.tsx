@@ -1,6 +1,6 @@
 "use client";
 import { ProTable, type ActionType, type ProColumns, type ProFormInstance } from "@ant-design/pro-components";
-import { MoreOutlined } from "@ant-design/icons";
+import { MoreOutlined, ExportOutlined, DeleteOutlined, StopOutlined, CheckCircleOutlined, TeamOutlined } from "@ant-design/icons";
 import { App as AntdApp, Button, Tag, Modal, Space, Dropdown, Form, Input, Badge } from "antd";
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -9,6 +9,7 @@ import { Page } from "@/components/page";
 import { useResponsive } from "@/lib/use-breakpoint";
 import { PageHeader } from "@/components/page-header";
 import { DateTimeCell } from "@/components/table-cells";
+import { DepartmentTreeSelect } from "@/components/admin/department-tree-select";
 
 type Role = { id: string; code: string; name: string };
 type User = {
@@ -33,7 +34,6 @@ type Dept = {
   children?: Dept[];
 };
 
-// 把部门树展平成"上级 / 下级"路径形式,供 ProTable valueEnum 用
 function flattenDepts(tree: Dept[]): { id: string; label: string }[] {
   const out: { id: string; label: string }[] = [];
   function walk(nodes: Dept[], path: string[]) {
@@ -53,17 +53,19 @@ export default function UsersPage() {
   const [resetting, setResetting] = useState<{ id: string; name: string } | null>(null);
   const [resetForm] = Form.useForm<{ password: string; confirm: string }>();
   const [resetSubmitting, setResetSubmitting] = useState(false);
+  const [selectedRowKeys, setSelectedRowKeys] = useState<React.Key[]>([]);
+  const [batchDeptOpen, setBatchDeptOpen] = useState(false);
+  const [batchDeptId, setBatchDeptId] = useState<string | undefined>(undefined);
+  const [batchLoading, setBatchLoading] = useState(false);
   const actionRef = useRef<ActionType>(undefined);
-  // formRef 用于在 onChange 中触发 form.submit(),以同步 formSearch(参见 pro-table typing.d.ts 说明)
   const formRef = useRef<ProFormInstance>(undefined);
   const searchDebounceRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const { isMobile } = useResponsive();
+
   useEffect(() => () => {
     if (searchDebounceRef.current) clearTimeout(searchDebounceRef.current);
   }, []);
-  // 输入变化 -> debounce -> form.submit():
-  // form.submit() 会触发 onFinish,更新内部 formSearch,然后自动重新请求数据。
-  // 仅 actionRef.reload() 不会更新 formSearch,关键字不会进 request(参见 pro-table typing.d.ts)。
+
   const handleSearchValuesChange = () => {
     if (searchDebounceRef.current) clearTimeout(searchDebounceRef.current);
     searchDebounceRef.current = setTimeout(() => {
@@ -71,7 +73,6 @@ export default function UsersPage() {
     }, 400);
   };
 
-  // 到期证书数量(顶部 badge)
   const { data: expiringResp } = useSWR<{ data: unknown[] }>("/api/certificates/expiring?days=60", async (url: string) => {
     const r = await fetch(url, { credentials: "include" });
     const j = await r.json();
@@ -79,7 +80,6 @@ export default function UsersPage() {
   });
   const expiringCount = expiringResp?.data?.length ?? 0;
 
-  // 部门列表(树)用于搜索表单的"部门"下拉
   const { data: deptResp } = useSWR<{ tree: Dept[] }>(
     "/api/departments?pageSize=500&tree=true&includeInactive=true",
     async (url: string) => {
@@ -89,19 +89,12 @@ export default function UsersPage() {
       return j.data ?? { tree: [] };
     }
   );
-  const departmentOptions = useMemo(
-    () => flattenDepts(deptResp?.tree ?? []),
-    [deptResp]
-  );
+  const departmentOptions = useMemo(() => flattenDepts(deptResp?.tree ?? []), [deptResp]);
   const departmentValueEnum = useMemo(
-    () =>
-      Object.fromEntries(
-        departmentOptions.map((d) => [d.id, { text: d.label }] as const)
-      ),
+    () => Object.fromEntries(departmentOptions.map((d) => [d.id, { text: d.label }] as const)),
     [departmentOptions]
   );
 
-  // 状态枚举(搜索表单下拉 + 与 Tag 颜色对应)
   const statusValueEnum: Record<string, { text: string; status: string }> = {
     ACTIVE: { text: "启用", status: "Success" },
     DISABLED: { text: "禁用", status: "Default" }
@@ -148,13 +141,113 @@ export default function UsersPage() {
     });
   }
 
-  // 列定义:
-  //   - 显式 search: false 的列: 角色 / 部门 / 状态(Tag) / 最近登录 / 操作 → 不进搜索表单
-  //   - hideInTable 的列: 关键词 / 状态(搜索用) / 部门(搜索用) → 只在搜索表单出现
-  //   - 这样 ProTable 搜索表单的字段名 = dataIndex = keyword / status / departmentId,
-  //     与后端 userListQuerySchema / listUsers 的 where 拼装完全对齐
+  // ----- 导出 -----
+  async function exportUsersToCsv() {
+    const values = formRef.current?.getFieldsValue?.() ?? {};
+    const qs = new URLSearchParams();
+    qs.set("page", "1");
+    qs.set("pageSize", "1000");
+    if (values.keyword) qs.set("keyword", String(values.keyword));
+    if (values.status) qs.set("status", String(values.status));
+    if (values.departmentId) qs.set("departmentId", String(values.departmentId));
+    const res = await fetch(`/api/users?${qs}`, { credentials: "include" });
+    const j = await res.json();
+    if (j.code !== 0) throw new Error(j.message);
+    const list = (j.data?.list ?? []) as User[];
+    const headers = ["工号", "姓名", "邮箱", "角色", "部门", "状态", "最近登录", "创建时间"];
+    const escape = (v: unknown) => {
+      const s = v == null ? "" : String(v);
+      return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+    };
+    const rows = list.map((u) => [
+      u.employeeNo,
+      u.name,
+      u.email,
+      u.role?.name ?? "",
+      u.department?.name ?? "",
+      u.status === "ACTIVE" ? "启用" : "禁用",
+      u.lastLoginAt ? new Date(u.lastLoginAt).toLocaleString("zh-CN") : "",
+      new Date(u.createdAt).toLocaleString("zh-CN")
+    ]);
+    const csv = "\uFEFF" + [headers, ...rows].map((r) => r.map(escape).join(",")).join("\n");
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `users-${new Date().toISOString().slice(0, 10)}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
+  // ----- 批量操作 -----
+  async function batchToggleStatus(targetStatus: "ACTIVE" | "DISABLED") {
+    const action = targetStatus === "DISABLED" ? "禁用" : "启用";
+    setBatchLoading(true);
+    let ok = 0;
+    let fail = 0;
+    for (const id of selectedRowKeys) {
+      try {
+        const r = await fetch(`/api/users/${id}/toggle-status`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          credentials: "include",
+          body: JSON.stringify({ status: targetStatus })
+        });
+        const j = await r.json();
+        if (j.code === 0) ok++; else fail++;
+      } catch { fail++; }
+    }
+    setBatchLoading(false);
+    setSelectedRowKeys([]);
+    if (fail > 0) message.warning(`${action}完成: ${ok} 成功, ${fail} 失败`);
+    else message.success(`${action} ${ok} 个账号`);
+    actionRef.current?.reloadAndRest?.();
+  }
+
+  async function batchDelete() {
+    setBatchLoading(true);
+    let ok = 0;
+    let fail = 0;
+    for (const id of selectedRowKeys) {
+      try {
+        const r = await fetch(`/api/users/${id}`, { method: "DELETE", credentials: "include" });
+        const j = await r.json();
+        if (j.code === 0) ok++; else fail++;
+      } catch { fail++; }
+    }
+    setBatchLoading(false);
+    setSelectedRowKeys([]);
+    if (fail > 0) message.warning(`删除完成: ${ok} 成功, ${fail} 失败`);
+    else message.success(`已删除 ${ok} 个账号`);
+    actionRef.current?.reloadAndRest?.();
+  }
+
+  async function batchChangeDepartment() {
+    if (!batchDeptId) return;
+    setBatchLoading(true);
+    let ok = 0;
+    let fail = 0;
+    for (const id of selectedRowKeys) {
+      try {
+        const r = await fetch(`/api/users/${id}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          credentials: "include",
+          body: JSON.stringify({ departmentId: batchDeptId })
+        });
+        const j = await r.json();
+        if (j.code === 0) ok++; else fail++;
+      } catch { fail++; }
+    }
+    setBatchLoading(false);
+    setBatchDeptOpen(false);
+    setSelectedRowKeys([]);
+    if (fail > 0) message.warning(`调整部门完成: ${ok} 成功, ${fail} 失败`);
+    else message.success(`已调整 ${ok} 个账号的部门`);
+    actionRef.current?.reloadAndRest?.();
+  }
+
   const columns: ProColumns<User>[] = [
-    // ----- 搜索专列(不进表格) -----
     {
       title: "关键词",
       dataIndex: "keyword",
@@ -170,11 +263,7 @@ export default function UsersPage() {
       hideInTable: true,
       valueType: "select",
       valueEnum: statusValueEnum,
-      fieldProps: {
-        allowClear: true,
-        placeholder: "全部",
-        onChange: handleSearchValuesChange
-      }
+      fieldProps: { allowClear: true, placeholder: "全部", onChange: handleSearchValuesChange }
     },
     {
       title: "部门",
@@ -182,15 +271,8 @@ export default function UsersPage() {
       hideInTable: true,
       valueType: "select",
       valueEnum: departmentValueEnum,
-      fieldProps: {
-        allowClear: true,
-        placeholder: "全部",
-        showSearch: true,
-        optionFilterProp: "label",
-        onChange: handleSearchValuesChange
-      }
+      fieldProps: { allowClear: true, placeholder: "全部", showSearch: true, optionFilterProp: "label", onChange: handleSearchValuesChange }
     },
-    // ----- 表格列 -----
     { title: "工号", dataIndex: "employeeNo", width: 100, search: false },
     { title: "姓名", dataIndex: "name", width: 100, search: false },
     { title: "邮箱", dataIndex: "email", width: 200, ellipsis: true, search: false },
@@ -213,11 +295,7 @@ export default function UsersPage() {
       dataIndex: "status",
       width: 100,
       search: false,
-      render: (_, r) => (
-        <Tag color={r.status === "ACTIVE" ? "green" : "default"}>
-          {r.status === "ACTIVE" ? "启用" : "禁用"}
-        </Tag>
-      )
+      render: (_, r) => <Tag color={r.status === "ACTIVE" ? "green" : "default"}>{r.status === "ACTIVE" ? "启用" : "禁用"}</Tag>
     },
     {
       title: "最近登录",
@@ -234,31 +312,16 @@ export default function UsersPage() {
       render: (_, r) => {
         const moreItems = [
           { key: "reset", label: "重置密码" },
-          {
-            key: "toggle",
-            label: r.status === "ACTIVE" ? "禁用" : "启用"
-          },
+          { key: "toggle", label: r.status === "ACTIVE" ? "禁用" : "启用" },
           { type: "divider" as const },
           { key: "delete", label: <span style={{ color: "var(--qt-danger)" }}>删除</span>, danger: true }
         ];
         return (
           <Space size={4}>
-            <Button type="link" size="small" onClick={() => router.push(`/admin/users/${r.id}`)}>
-              详情
-            </Button>
-            <Button type="link" size="small" onClick={() => router.push(`/admin/users/${r.id}/edit`)}>
-              编辑
-            </Button>
+            <Button type="link" size="small" onClick={() => router.push(`/admin/users/${r.id}`)}>详情</Button>
+            <Button type="link" size="small" onClick={() => router.push(`/admin/users/${r.id}/edit`)}>编辑</Button>
             <Dropdown
-              menu={{
-                items: moreItems,
-                onClick: ({ key, domEvent }) => {
-                  domEvent.stopPropagation();
-                  if (key === "reset") onResetPassword(r);
-                  else if (key === "toggle") onToggleStatus(r);
-                  else if (key === "delete") onDelete(r);
-                }
-              }}
+              menu={{ items: moreItems, onClick: ({ key, domEvent }) => { domEvent.stopPropagation(); if (key === "reset") onResetPassword(r); else if (key === "toggle") onToggleStatus(r); else if (key === "delete") onDelete(r); } }}
               trigger={["click"]}
               placement="bottomRight"
             >
@@ -270,6 +333,8 @@ export default function UsersPage() {
     }
   ];
 
+  const selectedCount = selectedRowKeys.length;
+
   return (
     <Page>
       <PageHeader
@@ -277,11 +342,12 @@ export default function UsersPage() {
         subtitle="员工账号、角色与部门;支持按工号/姓名/邮箱/部门/状态搜索"
         actions={
           <Space>
+            <Button key="export" icon={<ExportOutlined />} onClick={exportUsersToCsv}>
+              导出
+            </Button>
             <Button key="certs" onClick={() => router.push("/admin/certificates/expiring")}>
               到期证书
-              {expiringCount > 0 && (
-                <Badge count={expiringCount} offset={[8, -4]} style={{ backgroundColor: "#ff4d4f" }} />
-              )}
+              {expiringCount > 0 && <Badge count={expiringCount} offset={[8, -4]} style={{ backgroundColor: "#ff4d4f" }} />}
             </Button>
             <Button key="add" type="primary" onClick={() => router.push("/admin/users/new")}>
               新建员工
@@ -289,13 +355,45 @@ export default function UsersPage() {
           </Space>
         }
       />
-      <ProTable<User> actionRef={actionRef} formRef={formRef}
+
+      {/* 批量操作栏 */}
+      {selectedCount > 0 && (
+        <div style={{ marginBottom: 12, padding: "8px 16px", background: "var(--qt-bg-subtle)", borderRadius: 8, display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+          <Tag color="blue">已选 {selectedCount} 人</Tag>
+          <Button size="small" icon={<StopOutlined />} loading={batchLoading} onClick={() => batchToggleStatus("DISABLED")}>
+            批量禁用
+          </Button>
+          <Button size="small" icon={<CheckCircleOutlined />} loading={batchLoading} onClick={() => batchToggleStatus("ACTIVE")}>
+            批量启用
+          </Button>
+          <Button size="small" icon={<TeamOutlined />} loading={batchLoading} onClick={() => { setBatchDeptId(undefined); setBatchDeptOpen(true); }}>
+            批量调整部门
+          </Button>
+          <Button size="small" danger icon={<DeleteOutlined />} loading={batchLoading} onClick={() => {
+            modal.confirm({
+              title: `确定删除 ${selectedCount} 个账号?`,
+              content: "软删:账号将从列表移除,但保留审计日志关联。",
+              okType: "danger",
+              onOk: batchDelete
+            });
+          }}>
+            批量删除
+          </Button>
+          <Button size="small" type="link" onClick={() => setSelectedRowKeys([])}>取消选择</Button>
+        </div>
+      )}
+
+      <ProTable<User>
+        actionRef={actionRef}
+        formRef={formRef}
         rowKey="id"
         columns={columns}
-        search={{ labelWidth: "auto", defaultCollapsed: isMobile, layout: isMobile ? "vertical" : undefined, collapsed: isMobile ? false : undefined }} debounceTime={400}
-        scroll={{ x: 'max-content' }}
+        search={{ labelWidth: "auto", defaultCollapsed: isMobile, layout: isMobile ? "vertical" : undefined, collapsed: isMobile ? false : undefined }}
+        debounceTime={400}
+        scroll={{ x: "max-content" }}
         cardBordered={false}
         sticky={isMobile}
+        rowSelection={{ selectedRowKeys, onChange: (keys) => setSelectedRowKeys(keys) }}
         options={{ reload: () => actionRef.current?.reload?.(), density: !isMobile, fullScreen: !isMobile }}
         pagination={{ defaultPageSize: 20, showSizeChanger: !isMobile, size: isMobile ? "small" : undefined }}
         request={async (params) => {
@@ -320,10 +418,7 @@ export default function UsersPage() {
         okButtonProps={{ danger: true, loading: resetSubmitting }}
         destroyOnClose
         maskClosable={false}
-        onCancel={() => {
-          if (resetSubmitting) return;
-          setResetting(null);
-        }}
+        onCancel={() => { if (resetSubmitting) return; setResetting(null); }}
         onOk={async () => {
           try {
             const values = await resetForm.validateFields();
@@ -335,67 +430,59 @@ export default function UsersPage() {
               body: JSON.stringify({ password: values.password })
             });
             const j = await r.json();
-            if (j.code !== 0) {
-              message.error(j.message);
-              return;
-            }
+            if (j.code !== 0) { message.error(j.message); return; }
             message.success(`已重置 ${resetting!.name} 的密码`);
             setResetting(null);
             actionRef.current?.reloadAndRest?.();
           } catch (e) {
-            // antd validateFields 失败时会 reject { errorFields },这里交给 Form 自己显示红字
             if (e && typeof e === "object" && "errorFields" in e) return;
-            const msg = e instanceof Error ? e.message : "重置失败";
-            message.error(msg);
-          } finally {
-            setResetSubmitting(false);
-          }
+            message.error(e instanceof Error ? e.message : "重置失败");
+          } finally { setResetSubmitting(false); }
         }}
       >
         <p style={{ marginBottom: 12, color: "var(--qt-text-muted)" }}>
           请输入新的登录密码。设置后旧密码立即失效,已登录会话会要求重新登录。
         </p>
-        <Form
-          form={resetForm}
-          layout="vertical"
-          preserve={false}
-          requiredMark={false}
-        >
-          <Form.Item
-            name="password"
-            label="新密码"
-            rules={[
-              { required: true, message: "请输入新密码" },
-              { min: 8, message: "密码至少 8 个字符" },
-              { max: 72, message: "密码不能超过 72 个字符" }
-            ]}
-          >
-            <Input.Password
-              autoFocus
-              placeholder="8 ~ 72 个字符,建议使用密码管理器生成"
-              size="large"
-              maxLength={72}
-            />
+        <Form form={resetForm} layout="vertical" preserve={false} requiredMark={false}>
+          <Form.Item name="password" label="新密码" rules={[
+            { required: true, message: "请输入新密码" },
+            { min: 8, message: "密码至少 8 个字符" },
+            { max: 72, message: "密码不能超过 72 个字符" }
+          ]}>
+            <Input.Password autoFocus placeholder="8 ~ 72 个字符,建议使用密码管理器生成" size="large" maxLength={72} />
           </Form.Item>
-          <Form.Item
-            name="confirm"
-            label="确认新密码"
-            dependencies={["password"]}
-            rules={[
-              { required: true, message: "请再次输入新密码" },
-              ({ getFieldValue }) => ({
-                validator(_, value) {
-                  if (!value || getFieldValue("password") === value) {
-                    return Promise.resolve();
-                  }
-                  return Promise.reject(new Error("两次输入的密码不一致"));
-                }
-              })
-            ]}
-          >
+          <Form.Item name="confirm" label="确认新密码" dependencies={["password"]} rules={[
+            { required: true, message: "请再次输入新密码" },
+            ({ getFieldValue }) => ({
+              validator(_, value) {
+                if (!value || getFieldValue("password") === value) return Promise.resolve();
+                return Promise.reject(new Error("两次输入的密码不一致"));
+              }
+            })
+          ]}>
             <Input.Password placeholder="再输入一次" size="large" />
           </Form.Item>
         </Form>
+      </Modal>
+
+      {/* 批量调整部门 Modal */}
+      <Modal
+        open={batchDeptOpen}
+        title={`批量调整部门 (${selectedCount} 人)`}
+        okText="确认调整"
+        cancelText="取消"
+        okButtonProps={{ loading: batchLoading }}
+        onCancel={() => { if (!batchLoading) setBatchDeptOpen(false); }}
+        onOk={batchChangeDepartment}
+        destroyOnClose
+      >
+        <p style={{ marginBottom: 12, color: "var(--qt-text-muted)" }}>选择目标部门:</p>
+        <DepartmentTreeSelect
+          label=""
+          placeholder="请选择部门"
+          value={batchDeptId}
+          onChange={(v) => setBatchDeptId(v)}
+        />
       </Modal>
     </Page>
   );

@@ -120,7 +120,19 @@ const DICT_DEFS: readonly DictDef[] = [
   { category: "REVIEW_ACTION", code: "EXECUTE", label: "开始执行", sort: 5 },
   { category: "REVIEW_ACTION", code: "SUSPEND", label: "暂停", sort: 6 },
   { category: "REVIEW_ACTION", code: "RESUME", label: "恢复", sort: 7 },
-  { category: "REVIEW_ACTION", code: "COMPLETE", label: "结清", sort: 8 }
+  { category: "REVIEW_ACTION", code: "COMPLETE", label: "结清", sort: 8 },
+  // 员工档案 - 最高学历 / 教育经历-学历
+  { category: "EDUCATION_LEVEL", code: "HIGH_SCHOOL", label: "高中", sort: 1 },
+  { category: "EDUCATION_LEVEL", code: "JUNIOR_COLLEGE", label: "大专", sort: 2 },
+  { category: "EDUCATION_LEVEL", code: "BACHELOR", label: "本科", sort: 3 },
+  { category: "EDUCATION_LEVEL", code: "MASTER", label: "硕士", sort: 4 },
+  { category: "EDUCATION_LEVEL", code: "DOCTORATE", label: "博士", sort: 5 },
+  { category: "EDUCATION_LEVEL", code: "OTHER", label: "其他", sort: 99 },
+  // 员工档案 - 合同类型
+  { category: "CONTRACT_TYPE", code: "LABOR", label: "劳动合同", sort: 1 },
+  { category: "CONTRACT_TYPE", code: "SERVICE", label: "劳务合同", sort: 2 },
+  { category: "CONTRACT_TYPE", code: "INTERNSHIP", label: "实习协议", sort: 3 },
+  { category: "CONTRACT_TYPE", code: "OTHER", label: "其他", sort: 99 }
 ];
 
 async function main(): Promise<void> {

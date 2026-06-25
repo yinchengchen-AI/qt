@@ -50,8 +50,15 @@ describe("employeeEducationCreateSchema", () => {
     expect(() => employeeEducationCreateSchema.parse({ profileId: "p1", school: "PKU" })).toThrow();
   });
 
-  it("defaults isFullTime to true", () => {
+  it("isFullTime is optional (undefined when not provided)", () => {
     const out = employeeEducationCreateSchema.parse({ profileId: "p1", school: "PKU", startDate: "2020-09-01T00:00:00Z" });
-    expect(out.isFullTime).toBe(true);
+    expect(out.isFullTime).toBeUndefined();
+  });
+
+  it("isFullTime accepts explicit true/false", () => {
+    const a = employeeEducationCreateSchema.parse({ profileId: "p1", school: "PKU", startDate: "2020-09-01T00:00:00Z", isFullTime: true });
+    const b = employeeEducationCreateSchema.parse({ profileId: "p1", school: "PKU", startDate: "2020-09-01T00:00:00Z", isFullTime: false });
+    expect(a.isFullTime).toBe(true);
+    expect(b.isFullTime).toBe(false);
   });
 });

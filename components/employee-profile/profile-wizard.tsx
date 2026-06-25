@@ -64,7 +64,15 @@ export function ProfileWizard({ userId, initial, isAdmin }: Props) {
     profile: initial?.profile ?? {},
     educations: initial?.educations ?? [],
     workExperiences: initial?.workExperiences ?? [],
-    certificates: initial?.certificates ?? [],
+    certificates: (initial?.certificates ?? []).map((c) => {
+      const cert = c as Record<string, unknown>;
+      return {
+        ...cert,
+        attachmentUpload: cert.attachmentId
+          ? [{ uid: String(cert.attachmentId), name: "已上传证书", status: "done", url: `/api/files/raw/${String(cert.attachmentId)}`, response: { id: String(cert.attachmentId) } }]
+          : []
+      };
+    }),
     skills: initial?.skills ?? [],
     emergencyContacts: initial?.emergencyContacts ?? []
   };
@@ -78,6 +86,20 @@ export function ProfileWizard({ userId, initial, isAdmin }: Props) {
         (values.profile as Record<string, unknown>).avatarAttachmentId = avatarList[0].id;
       }
       delete (values.profile as Record<string, unknown>)?.avatarUpload;
+
+      // 把证书附件 upload 转换为 attachmentId（保留已有未上传的）
+      const certs = (values.certificates as Array<Record<string, unknown>> | undefined) ?? [];
+      for (const c of certs) {
+        const uploadList = c.attachmentUpload as Array<{ response?: { id?: string }; id?: string }> | undefined;
+        if (Array.isArray(uploadList) && uploadList.length > 0) {
+          const item = uploadList[0];
+          const id = item?.response?.id ?? item?.id;
+          if (id) {
+            c.attachmentId = id;
+          }
+        }
+        delete c.attachmentUpload;
+      }
 
       const body = {
         ...values,
@@ -130,7 +152,10 @@ export function ProfileWizard({ userId, initial, isAdmin }: Props) {
       formRef={formRef as never}
       onFinish={handleFinish}
       stepsFormRender={(dom, submitter) => (
-        <ProCard>{dom}</ProCard>
+        <ProCard>
+          {dom}
+          {submitter}
+        </ProCard>
       )}
     >
       {/* Step 1: 基础 */}
@@ -276,13 +301,13 @@ export function ProfileWizard({ userId, initial, isAdmin }: Props) {
             { name: "issuer", label: "颁发机构", valueType: "text" },
             { name: "issueDate", label: "颁发日", valueType: "date" },
             { name: "expiryDate", label: "到期日", valueType: "date" },
-            { name: "attachmentId", label: "附件 ID(上传后填)", valueType: "text" },
+            { name: "attachmentUpload", label: "证书扫描件", valueType: "upload", uploadCategory: "CERTIFICATE" },
             { name: "remark", label: "备注", valueType: "textarea" }
           ]}
         />
         <Alert
-          message="证书附件上传提示"
-          description="PR6 接入完整附件上传链后,可在每个证书行内上传对应扫描件。当前先用 attachmentId 字符串占位。"
+          message="证书附件上传"
+          description="每个证书可上传对应扫描件(PDF/图片),保存后自动关联到该证书。"
           type="info"
           showIcon
           style={{ marginTop: 16 }}

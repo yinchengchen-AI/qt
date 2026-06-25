@@ -6,7 +6,11 @@ export function optionalString(max: number) {
 }
 
 export function optionalDate() {
-  return z.iso.datetime().optional().or(z.literal("").transform(() => undefined));
+  return z.union([z.iso.datetime(), z.iso.date()]).optional().or(z.literal("").transform(() => undefined));
+}
+
+export function isoDateOrDateTime() {
+  return z.union([z.iso.datetime(), z.iso.date()]);
 }
 
 function isValidIdCard(v: string): boolean {

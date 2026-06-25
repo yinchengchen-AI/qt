@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { employeeProfileUpdateSchema } from "./employee-profile";
+import { employeeProfileUpdateSchema, isoDateOrDateTime } from "./employee-profile";
 
 export const userStatus = z.enum(["ACTIVE", "DISABLED"]);
 
@@ -51,16 +51,16 @@ export const userWithProfileUpdateSchema = z.object({
     school: z.string().min(1).max(200),
     major: z.string().max(200).optional().nullable(),
     degree: z.string().max(50).optional().nullable(),
-    startDate: z.iso.datetime(),
-    endDate: z.iso.datetime().optional().nullable(),
-    isFullTime: z.boolean().default(true),
+    startDate: isoDateOrDateTime(),
+    endDate: isoDateOrDateTime().optional().nullable(),
+    isFullTime: z.boolean().optional(),
     remark: z.string().max(2000).optional().nullable()
   })).optional(),
   workExperiences: z.array(z.object({
     company: z.string().min(1).max(200),
     position: z.string().max(50).optional().nullable(),
-    startDate: z.iso.datetime(),
-    endDate: z.iso.datetime().optional().nullable(),
+    startDate: isoDateOrDateTime(),
+    endDate: isoDateOrDateTime().optional().nullable(),
     leaveReason: z.string().max(200).optional().nullable(),
     referrer: z.string().max(50).optional().nullable(),
     remark: z.string().max(2000).optional().nullable()
@@ -69,15 +69,15 @@ export const userWithProfileUpdateSchema = z.object({
     name: z.string().min(1).max(200),
     number: z.string().max(100).optional().nullable(),
     issuer: z.string().max(200).optional().nullable(),
-    issueDate: z.iso.datetime().optional().nullable(),
-    expiryDate: z.iso.datetime().optional().nullable(),
+    issueDate: isoDateOrDateTime().optional().nullable(),
+    expiryDate: isoDateOrDateTime().optional().nullable(),
     attachmentId: z.string().min(1).optional().nullable(),
     remark: z.string().max(2000).optional().nullable()
   })).optional(),
   skills: z.array(z.object({
     name: z.string().min(1).max(100),
     level: z.enum(["BEGINNER", "INTERMEDIATE", "ADVANCED"]).default("INTERMEDIATE"),
-    obtainDate: z.iso.datetime().optional().nullable(),
+    obtainDate: isoDateOrDateTime().optional().nullable(),
     remark: z.string().max(2000).optional().nullable()
   })).optional(),
   emergencyContacts: z.array(z.object({

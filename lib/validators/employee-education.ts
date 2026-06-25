@@ -7,7 +7,7 @@ export const employeeEducationCreateSchema = z.object({
   degree: z.string().max(50).optional().nullable(),
   startDate: z.iso.datetime(),
   endDate: z.iso.datetime().optional().nullable(),
-  isFullTime: z.boolean().default(true),
+  isFullTime: z.boolean().optional(),
   remark: z.string().max(2000).optional().nullable()
 });
 

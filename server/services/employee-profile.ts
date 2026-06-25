@@ -262,12 +262,15 @@ export async function updateUserFullProfile(
   });
   if (!user) throw new ApiError(ERROR_CODES.NOT_FOUND, "用户不存在", 404);
   // P0-1: 新用户走 PR7 两段式 Modal 时 user.profile 还不存在,允许创建
-  // 老档案走 expectedUpdatedAt 并发检测,新档案没有 updatedAt,跳过
   const isNewProfile = !user.profile;
+  // P1-2: 预检 409 留在事务外(不持有锁),但**真**的并发保护改在事务内
+  // 用条件 update (WHERE updatedAt = expected) — PG 原生乐观锁,
+  // 影响行数 = 0 即并发覆盖,抛 409。详见下面 tx 里的 updateMany。
+  // 此处的 read 只是给用户更早的错误信号,可省;但保留能减少一次 tx rollback。
   if (input.expectedUpdatedAt && user.profile) {
     const expected = new Date(input.expectedUpdatedAt).getTime();
     const actual = user.profile.updatedAt.getTime();
-    if (Math.abs(expected - actual) > 1) {
+    if (actual > expected) {
       throw new ApiError(ERROR_CODES.CONFLICT, "档案已被他人修改,请刷新后再试", 409);
     }
   }
@@ -300,9 +303,20 @@ export async function updateUserFullProfile(
     if (input.user && Object.keys(input.user).length > 0) {
       await tx.user.update({ where: { id: userId }, data: input.user });
     }
-    // 老档案才走 update(新档案已经 create 过了)
+    // P1-2: 条件 update 拿真原子 409 保护
     if (!isNewProfile && Object.keys(profileData).length > 0) {
-      await tx.employeeProfile.update({ where: { id: profileId }, data: profileData });
+      const where: { id: string; updatedAt?: Date } = { id: profileId };
+      if (input.expectedUpdatedAt) {
+        where.updatedAt = new Date(input.expectedUpdatedAt);
+      }
+      const result = await tx.employeeProfile.updateMany({ where, data: profileData });
+      if (result.count === 0) {
+        throw new ApiError(
+          ERROR_CODES.CONFLICT,
+          "档案已被他人修改,请刷新后再试",
+          409
+        );
+      }
     }
     // 5 张子表全删全插(只有 payload 里有这个 key 才动)
     if (input.educations !== undefined) {
@@ -384,14 +398,29 @@ export async function updateUserFullProfile(
         });
       }
     }
-    // 审计
+    // P1-1: 审计 payload 补 subtableCounts + profile 字段名(不记值,防塞爆日志)
+    const subtableCounts: Record<string, number> = {
+      educations: input.educations?.length ?? 0,
+      workExperiences: input.workExperiences?.length ?? 0,
+      certificates: input.certificates?.length ?? 0,
+      skills: input.skills?.length ?? 0,
+      emergencyContacts: input.emergencyContacts?.length ?? 0
+    };
+    const profileFieldsChanged = Object.keys(profileData);
+    const userFieldsChanged = input.user ? Object.keys(input.user) : [];
+
     await audit(tx, {
       actorId: actor.id,
       action: "EMPLOYEE_PROFILE_REPLACE",
       entity: "EmployeeProfile",
       entityId: profileId,
       before: isNewProfile ? null : { updatedAt: user.profile!.updatedAt },
-      after: { updatedAt: new Date() }
+      after: {
+        updatedAt: new Date(),
+        subtableCounts,
+        profileFieldsChanged,
+        userFieldsChanged
+      }
     });
   });
 

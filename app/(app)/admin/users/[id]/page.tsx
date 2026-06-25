@@ -39,7 +39,9 @@ export default function UserDetailPage() {
   const { data: session } = useSession();
   const roleCode = (session?.user as { roleCode?: string } | undefined)?.roleCode;
   const isAdmin = roleCode === "ADMIN";
-  const { data, error, isLoading, mutate } = useSWR<{ data: FullEmployeeProfileDto | null }>(`/api/users/${id}/with-profile`);
+  const { data, error, isLoading, mutate } = useSWR<{ data: { data: FullEmployeeProfileDto | null } }>(
+    `/api/users/${id}/with-profile`
+  );
   const { data: userResp, error: userError } = useSWR<{ data: User }>(`/api/users/${id}`);
   const educationDict = useDict("EDUCATION_LEVEL");
   const contractTypeDict = useDict("CONTRACT_TYPE");
@@ -55,7 +57,7 @@ export default function UserDetailPage() {
       </Page>
     );
   }
-  if (isLoading || !data || !userResp) {
+  if (isLoading || !data?.data?.data || !userResp?.data) {
     return (
       <Page>
         <PageHeader back={() => router.push("/admin/users")} title="用户详情" />
@@ -65,7 +67,7 @@ export default function UserDetailPage() {
   }
 
   const user = userResp.data;
-  const full = data.data;
+  const full = data.data.data;
 
   const anchorItems = [
     { key: "basic", href: "#basic", title: "基础" },

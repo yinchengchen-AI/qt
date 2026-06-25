@@ -15,6 +15,8 @@ export const ALLOWED_DICTIONARY_CATEGORIES = [
   "FOLLOW_METHOD",
   "FOLLOW_RESULT",
   "REVIEW_ACTION",
+  "EDUCATION_LEVEL",
+  "CONTRACT_TYPE",
 ] as const;
 
 export type DictionaryCategory = (typeof ALLOWED_DICTIONARY_CATEGORIES)[number];
@@ -35,4 +37,6 @@ export const DICTIONARY_CATEGORY_LABEL: Record<string, string> = {
   FOLLOW_METHOD: "跟进方式",
   FOLLOW_RESULT: "跟进结果",
   REVIEW_ACTION: "审批动作",
+  EDUCATION_LEVEL: "最高学历",
+  CONTRACT_TYPE: "合同类型",
 };
