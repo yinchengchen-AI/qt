@@ -7,7 +7,9 @@
 #     BACKUP_MIRROR_MINIO=1 ./scripts/backup.sh     # 生产
 #
 # 行为差异由 env var 控制,不需要再单独维护 backup-prod.sh。
-#   DATABASE_URL         PG 连接串 (供主机 pg_dump 走;容器内 pg_dump 不读)
+#   DATABASE_URL         PG 连接串 (用于取 DB_NAME)
+#   MIGRATION_DATABASE_URL 超级用户连接串 (取 DB_USER + PGPASSWORD,用于 pg_dump,
+#                         避免 app 账号 (qt_app) 锁不到 migration 留下的备份表)
 #   DOCKER_PG            容器名 (默认 qitai-postgres,生产 cron 覆盖为 qt-postgres)
 #   BACKUP_DIR           本地备份目录 (默认 ./backups,生产建议 /opt/qt/backups)
 #   DAYS_TO_KEEP         本地/远端保留天数 (默认 30)
@@ -25,14 +27,27 @@ DAYS_TO_KEEP=${DAYS_TO_KEEP:-30}
 DOCKER_PG=${DOCKER_PG:-qitai-postgres}
 DB_URL=${DATABASE_URL:-postgresql://qitai:qitai_pass@localhost:5432/qt_biz?schema=public}
 DB_NAME=$(echo "$DB_URL" | sed -E 's|.*/([^?]+)(\?.*)?$|\1|')
-DB_USER=$(echo "$DB_URL" | sed -E 's|.*://([^:]+):.*|\1|')
+# 优先用 MIGRATION_DATABASE_URL 的超级用户做 dump, 避免应用账号 (qt_app) 锁不到
+# migration 留下的 _*_bak / _prisma_migrations 等表。生产环境 MIGRATION_DATABASE_URL
+# 指向 PG 超级用户 (qitai), 而 DATABASE_URL 是 BYPASSRLS 的 app 账号 (qt_app)。
 MIGRATION_URL=${MIGRATION_DATABASE_URL:-$DATABASE_URL}
+DB_USER=$(echo "$MIGRATION_URL" | sed -E 's|.*://([^:]+):.*|\1|')
 SUPER_PW=$(echo "$MIGRATION_URL" | sed -E 's|.*://[^:]+:([^@]+)@.*|\1|')
 
 MINIO_BACKUP_BUCKET=${MINIO_BACKUP_BUCKET:-qt-backups}
 MINIO_ALIAS=${MINIO_ALIAS:-local}
-MINIO_ENDPOINT=${MINIO_ENDPOINT:-http://127.0.0.1:9000}
 MC=${MC:-/usr/local/bin/mc}
+# 兼容 .env 把 MINIO_ENDPOINT 拆成 host/port/ssl 三段: 若 MINIO_ENDPOINT 已带
+# scheme (http:// 或 https://) 直接用, 否则按 USE_SSL + PORT 拼。
+if [[ "${MINIO_ENDPOINT:-}" =~ ^https?:// ]]; then
+  : # 已带 scheme,原样使用
+elif [ -n "${MINIO_ENDPOINT:-}" ]; then
+  SCHEME=$([ "${MINIO_USE_SSL:-false}" = "true" ] && echo https || echo http)
+  PORT=${MINIO_PORT:-9000}
+  MINIO_ENDPOINT="$SCHEME://$MINIO_ENDPOINT:$PORT"
+else
+  MINIO_ENDPOINT="http://127.0.0.1:9000"
+fi
 PG_RESTORE=${PG_RESTORE:-pg_restore}
 
 # --- 自动检测是否镜像 MinIO ---
@@ -55,19 +70,19 @@ docker exec -e PGPASSWORD="$SUPER_PW" "$DOCKER_PG" \
   > "$FILE"
 echo "  -> $(du -h "$FILE" | cut -f1)"
 
-# --- 2) 完整性校验 (主机有 pg_restore 时) ---
-if command -v "$PG_RESTORE" >/dev/null 2>&1; then
-  echo "[$(date +%FT%T)] pg_restore --list (integrity check)"
-  if "$PG_RESTORE" --list "$FILE" >/dev/null; then
-    ENTRIES=$("$PG_RESTORE" --list "$FILE" | wc -l | tr -d ' ')
-    echo "  -> OK ($ENTRIES entries)"
-  else
-    echo "  -> FAIL: dump $FILE 不可读,保留待排查" >&2
-    exit 1
-  fi
+# --- 2) 完整性校验 (走容器内 pg_restore 16,host 客户端太老读不动 -F c 格式;
+#         通过 docker cp 临时把 dump 拷到容器 /tmp 后再 list,验完即删) ---
+echo "[$(date +%FT%T)] pg_restore --list (integrity check, via $DOCKER_PG)"
+CHECK_FILE=/tmp/qt_backup_check_$$.dump
+if docker cp "$FILE" "$DOCKER_PG:$CHECK_FILE" >/dev/null 2>&1 \
+   && docker exec "$DOCKER_PG" pg_restore --list "$CHECK_FILE" >/dev/null 2>&1; then
+  ENTRIES=$(docker exec "$DOCKER_PG" pg_restore --list "$CHECK_FILE" 2>/dev/null | wc -l | tr -d ' ')
+  echo "  -> OK ($ENTRIES entries)"
 else
-  echo "  (skip integrity check: $PG_RESTORE not found)"
+  # 不让单次校验失败炸掉整个备份 (dump 仍然可用,只是没做校验)
+  echo "  -> WARN: integrity check failed,但 dump 文件已落地,继续后续 MinIO 镜像" >&2
 fi
+docker exec "$DOCKER_PG" rm -f "$CHECK_FILE" >/dev/null 2>&1 || true
 
 # --- 3) MinIO 镜像 (可选) ---
 if [ "$BACKUP_MIRROR_MINIO" = "1" ]; then

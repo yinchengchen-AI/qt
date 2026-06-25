@@ -21,3 +21,13 @@ export const paymentActionSchema = z.object({
 
 export type PaymentCreateInput = z.infer<typeof paymentCreateSchema>;
 export type PaymentActionInput = z.infer<typeof paymentActionSchema>;
+
+// 回款列表 query:导出供 use-list-request 反射出 KNOWN_KEYS, 也供 app/api/payments/route.ts 用
+export const paymentListQuerySchema = z.object({
+  page: z.coerce.number().int().min(1).default(1),
+  pageSize: z.coerce.number().int().min(1).max(100).default(20),
+  keyword: z.string().optional(),
+  status: z.string().optional(),
+  contractId: z.string().optional(),
+  invoiceId: z.string().optional(),
+});

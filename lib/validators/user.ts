@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { employeeProfileUpdateSchema } from "./employee-profile";
 
 export const userStatus = z.enum(["ACTIVE", "DISABLED"]);
 
@@ -42,6 +43,13 @@ export const userResetPasswordSchema = z.object({
     .max(72, "密码不能超过 72 个字符")
 });
 
+export const userWithProfileUpdateSchema = z.object({
+  user: userUpdateSchema.optional(),
+  profile: employeeProfileUpdateSchema.optional(),
+  attachmentIds: z.array(z.string()).optional()
+});
+
 export type UserCreateInput = z.infer<typeof userCreateSchema>;
 export type UserUpdateInput = z.infer<typeof userUpdateSchema>;
 export type UserResetPasswordInput = z.infer<typeof userResetPasswordSchema>;
+export type UserWithProfileUpdateInput = z.infer<typeof userWithProfileUpdateSchema>;

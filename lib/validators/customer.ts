@@ -40,3 +40,22 @@ export const followUpCreateSchema = z.object({
 export type CustomerCreateInput = z.infer<typeof customerCreateSchema>;
 export type CustomerUpdateInput = z.infer<typeof customerUpdateSchema>;
 export type FollowUpCreateInput = z.infer<typeof followUpCreateSchema>;
+
+// 客户列表 query:导出供 use-list-request 反射出 KNOWN_KEYS, 也供 app/api/customers/route.ts 用,
+// 不再在 route 文件里 inline 定义。
+export const customerListQuerySchema = z.object({
+  page: z.coerce.number().int().min(1).default(1),
+  pageSize: z.coerce.number().int().min(1).max(100).default(20),
+  keyword: z.string().optional(),
+  status: z.string().optional(),
+  scale: z.string().optional(),
+  customerType: z.string().optional(),
+  industry: z.string().optional(),
+  province: z.string().optional(),
+  city: z.string().optional(),
+  district: z.string().optional(),
+  town: z.string().optional(),
+  ownerUserId: z.string().optional(),
+  createdAtFrom: z.string().optional(),
+  createdAtTo: z.string().optional(),
+});

@@ -3,6 +3,12 @@
 export const USER_STATUS = ["ACTIVE", "DISABLED"] as const;
 export type UserStatus = (typeof USER_STATUS)[number];
 
+export const GENDER = ["MALE", "FEMALE", "OTHER"] as const;
+export type Gender = (typeof GENDER)[number];
+
+export const EMPLOYMENT_TYPE = ["FULL_TIME", "PART_TIME", "INTERN", "CONTRACTOR"] as const;
+export type EmploymentType = (typeof EMPLOYMENT_TYPE)[number];
+
 export const CUSTOMER_TYPE = ["ENTERPRISE", "GOV", "OTHER"] as const;
 export type CustomerType = (typeof CUSTOMER_TYPE)[number];
 

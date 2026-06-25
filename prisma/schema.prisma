@@ -52,10 +52,60 @@ model User {
   signedContracts     Contract[]   @relation("ContractSigner")
   messages            Message[]
   publishedAnnouncements Announcement[] @relation("AnnouncementPublishUser")
+  profile             EmployeeProfile?
 
   @@index([roleId])
   @@index([status])
   @@index([departmentId])
+}
+
+model EmployeeProfile {
+  id                    String    @id @default(cuid())
+  userId                String    @unique
+  user                  User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  // 基础档案
+  gender                String?   // MALE | FEMALE | OTHER
+  birthday              DateTime? @db.Timestamptz(6)
+  idCard                String?   @unique // 身份证号（敏感，加密存储）
+  education             String?   // 学历字典值
+  entryDate             DateTime? @db.Timestamptz(6)
+  address               String?
+  emergencyContactName  String?
+  emergencyContactPhone String?
+
+  // 人事/岗位
+  position              String?
+  jobLevel              String?
+  employmentType        String?   @default("FULL_TIME") // FULL_TIME | PART_TIME | INTERN | CONTRACTOR
+  probationEndDate      DateTime? @db.Timestamptz(6)
+  formalDate            DateTime? @db.Timestamptz(6)
+  resignationDate       DateTime? @db.Timestamptz(6)
+
+  // 合同
+  contractType          String?   // 合同类型字典值
+  contractStartDate     DateTime? @db.Timestamptz(6)
+  contractEndDate       DateTime? @db.Timestamptz(6)
+
+  // 敏感信息（仅 ADMIN 可见）
+  salary                Decimal?  @db.Decimal(14, 2)
+  bankAccount           String?   // 银行卡号（敏感，加密存储）
+  bankName              String?
+  socialSecurityAccount String?   // 社保账号（敏感，加密存储）
+  providentFundAccount  String?   // 公积金账号（敏感，加密存储）
+
+  // 履历/备注
+  workExperience        String?   @db.VarChar(5000)
+  educationHistory      String?   @db.VarChar(5000)
+  certificates          String?   @db.VarChar(5000)
+  remark                String?   @db.VarChar(5000)
+
+  createdAt             DateTime  @default(now()) @db.Timestamptz(6)
+  updatedAt             DateTime  @updatedAt @db.Timestamptz(6)
+
+  attachments           Attachment[] @relation("EmployeeProfileAttachments")
+
+  @@index([userId])
 }
 
 // =====================================================
@@ -436,6 +486,8 @@ model Attachment {
   contract      Contract? @relation("ContractAttachments", fields: [contractId], references: [id], onDelete: SetNull)
   invoiceId     String?
   invoice       Invoice?  @relation("InvoiceAttachments", fields: [invoiceId], references: [id], onDelete: SetNull)
+  employeeProfileId String?
+  employeeProfile   EmployeeProfile? @relation("EmployeeProfileAttachments", fields: [employeeProfileId], references: [id], onDelete: SetNull)
   // 合同交付物附件标记: true 表示该附件是合同详情"交付物"tab 上传的交付文件 (报告/证书/培训材料 等),
   //   写权限仅 admin / 签订人 / 负责人 (assertCanManageDeliverables);
   // false 表示合同通用附件 (走"附件"tab, 沿用 admin / 上传者 删除规则)
@@ -445,6 +497,7 @@ model Attachment {
 
   @@index([contractId, deletedAt])
   @@index([invoiceId, deletedAt])
+  @@index([employeeProfileId, deletedAt])
   @@index([uploadedById])
   @@index([contractId, isDeliverable, deletedAt])
   @@index([deletedAt])

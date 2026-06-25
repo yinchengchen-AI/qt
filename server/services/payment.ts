@@ -9,6 +9,7 @@ import { Prisma } from "@prisma/client";
 import { listAdminUserIds } from "@/server/events/bus";
 import { ownerEq, ownerViaContract, parseStatusList } from "@/lib/ownership";
 import { runTransitionInTx } from "@/lib/status-machine";
+import { MONEY_TOLERANCE } from "@/lib/money-tolerance";
 
 export async function listPayments(
   user: SessionUser,
@@ -95,7 +96,7 @@ export async function createPayment(user: SessionUser, input: PaymentCreateInput
     }
     const paymentNo = await nextBusinessNo("PAYMENT");
     // 登记阶段即做金额前置校验, 避免"登记通过、确认时才报超额"
-    const TOL = new Prisma.Decimal("0.01");
+    const TOL = MONEY_TOLERANCE;
     const inputAmt = new Prisma.Decimal(input.amount.toString());
     if (input.invoiceId && inv) {
       const sum = await tx.payment.aggregate({
@@ -153,7 +154,7 @@ export async function paymentAction(user: SessionUser, id: string, input: Paymen
       }
     };
     const mismatch = { code: ERROR_CODES.ENTITY_IMMUTABLE, status: 403 } as const;
-    const TOL = new Prisma.Decimal("0.01");
+    const TOL = MONEY_TOLERANCE;
 
     if (input.action === "confirm") {
       requireFinance();

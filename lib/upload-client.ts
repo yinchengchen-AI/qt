@@ -15,6 +15,7 @@ export type UploadedAttachment = {
 export type UploadOpts = {
   contractId?: string | null;
   invoiceId?: string | null;
+  employeeProfileId?: string | null;
   // 合同交付物附件标记 (true = 这是合同详情"交付物"tab 的实际交付文件);
   // 详情页"交付物"tab 走这个, 写权限仅 admin / 合同签订人 / 合同负责人
   isDeliverable?: boolean;
@@ -32,6 +33,7 @@ export async function uploadFileToMinIO(file: File, opts: UploadOpts = {}): Prom
       size: file.size,
       contractId: opts.contractId ?? null,
       invoiceId: opts.invoiceId ?? null,
+      employeeProfileId: opts.employeeProfileId ?? null,
       isDeliverable: opts.isDeliverable === true
     })
   });

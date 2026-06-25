@@ -55,7 +55,7 @@ describe("validator / service 放行 district", () => {
   });
 
   it("createCustomer 把 district 转 null (与 address/shortName 同语义)", () => {
-    const src = read("server/services/customer.ts");
+    const src = read("server/services/customer/crud.ts");
     // createCustomer 末尾是 tx.customer.create({ ... }); }); } (含 rlsTransaction 包装),
     // 这里用更宽松的写法匹配到下一个空行或下一个 export.
     const createBlock = src.match(
@@ -66,7 +66,7 @@ describe("validator / service 放行 district", () => {
   });
 
   it("createCustomer 也把 town 转 null (4 级级联最末级, 与 district 同语义)", () => {
-    const src = read("server/services/customer.ts");
+    const src = read("server/services/customer/crud.ts");
     const createBlock = src.match(
       /export\s+async\s+function\s+createCustomer[\s\S]*?(?=\nexport\s+async\s+function|\n\n)/
     );

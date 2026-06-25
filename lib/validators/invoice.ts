@@ -48,3 +48,12 @@ export const invoiceActionSchema = z.object({
 export type InvoiceCreateInput = z.infer<typeof invoiceCreateSchema>;
 export type InvoiceUpdateInput = z.infer<typeof invoiceUpdateSchema>;
 export type InvoiceActionInput = z.infer<typeof invoiceActionSchema>;
+
+// 发票列表 query:导出供 use-list-request 反射出 KNOWN_KEYS, 也供 app/api/invoices/route.ts 用
+export const invoiceListQuerySchema = z.object({
+  page: z.coerce.number().int().min(1).default(1),
+  pageSize: z.coerce.number().int().min(1).max(100).default(20),
+  keyword: z.string().optional(),
+  status: z.string().optional(),
+  contractId: z.string().optional(),
+});

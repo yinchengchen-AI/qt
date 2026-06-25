@@ -29,6 +29,7 @@ export async function POST(req: Request) {
         size: body.size,
         contractId: body.contractId ?? null,
         invoiceId: body.invoiceId ?? null,
+        employeeProfileId: body.employeeProfileId ?? null,
         // 合同交付物附件标记; 落库前 server/storage/presign.ts 校验 admin / 签订人 / 负责人
         isDeliverable: body.isDeliverable === true,
         uploadedById: user.id,
