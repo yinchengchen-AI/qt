@@ -9,6 +9,7 @@ import {
 import { App as AntdApp, Space, Tag, Typography } from "antd";
 import { useRouter } from "next/navigation";
 import { useRef, useState } from "react";
+import dayjs from "dayjs";
 import { Page } from "@/components/page";
 import { PageHeader } from "@/components/page-header";
 import { FormSection, FormGrid, FormCard, SubmitBar } from "@/components/form";
@@ -74,7 +75,7 @@ export default function NewInvoicePage() {
           initialValues={{
             invoiceType: "VAT_SPECIAL",
             taxRate: 0.06,
-            applyDate: new Date(),
+            applyDate: dayjs(),
             titleType: "COMPANY"
           }}
           onFinish={async (values) => {
