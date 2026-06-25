@@ -176,3 +176,253 @@ export async function updateEmployeeProfile(
 
   return decryptProfile(profile as unknown as Record<string, unknown>);
 }
+
+// ============================================================================
+// PR3: 全量档案读写 (含 5 张子表 + 头像 + 409 并发检测)
+// ============================================================================
+
+import { listEmployeeEducations } from "./employee-education";
+import { listEmployeeWorkExperiences } from "./employee-work-experience";
+import { listEmployeeCertificates } from "./employee-certificate";
+import { listEmployeeSkills } from "./employee-skill";
+import { listEmployeeEmergencyContacts } from "./employee-emergency-contact";
+import type { FullEmployeeProfileDto } from "@/lib/types/employee-profile";
+
+export async function getUserFullProfile(actor: SessionUser, userId: string): Promise<FullEmployeeProfileDto | null> {
+  requirePermission(actor.roleCode, RESOURCE.USER, ACTION.READ);
+  const user = await prisma.user.findFirst({
+    where: { id: userId, deletedAt: null },
+    include: {
+      profile: {
+        include: {
+          avatarAttachment: { where: { deletedAt: null } },
+          // P0-5: 非 ADMIN 不返回 ID_CARD_FRONT/BACK(身份证正反面照, PII)
+          attachments: { where: { deletedAt: null, category: { in: ["GENERAL"] } } }
+        }
+      }
+    }
+  });
+  if (!user?.profile) return null;
+
+  const decrypted = decryptProfile(user.profile as unknown as Record<string, unknown>);
+  // P0-5: 复用 stripAdminOnlyFields(已含 idCard / salary / bank 等),
+  // 避免新旧两套过滤行为不一致
+  const profile = !hasPermission(actor.roleCode, RESOURCE.USER, ACTION.UPDATE)
+    ? stripAdminOnlyFields(decrypted)
+    : decrypted;
+
+  const [educations, workExperiences, certificates, skills, emergencyContacts] = await Promise.all([
+    listEmployeeEducations(actor, user.profile.id),
+    listEmployeeWorkExperiences(actor, user.profile.id),
+    listEmployeeCertificates(actor, user.profile.id),
+    listEmployeeSkills(actor, user.profile.id),
+    listEmployeeEmergencyContacts(actor, user.profile.id)
+  ]);
+
+  return {
+    profile,
+    educations,
+    workExperiences,
+    certificates,
+    skills,
+    emergencyContacts,
+    avatar: user.profile.avatarAttachment ? {
+      id: user.profile.avatarAttachment.id,
+      name: user.profile.avatarAttachment.originalName,
+      mimeType: user.profile.avatarAttachment.mimeType,
+      size: user.profile.avatarAttachment.size,
+      // P0-3: 头像详情页用 /api/files/raw/[id] 代理下载(走 session cookie 鉴权)
+      url: `/api/files/raw/${user.profile.avatarAttachment.id}`
+    } : null
+  };
+}
+
+export type UserFullProfileUpdateInput = {
+  user?: Record<string, unknown>;
+  profile?: EmployeeProfileUpdateInput;
+  educations?: Array<{ school: string; major?: string | null; degree?: string | null; startDate: string; endDate?: string | null; isFullTime?: boolean; remark?: string | null }>;
+  workExperiences?: Array<{ company: string; position?: string | null; startDate: string; endDate?: string | null; leaveReason?: string | null; referrer?: string | null; remark?: string | null }>;
+  certificates?: Array<{ name: string; number?: string | null; issuer?: string | null; issueDate?: string | null; expiryDate?: string | null; attachmentId?: string | null; remark?: string | null }>;
+  skills?: Array<{ name: string; level?: "BEGINNER" | "INTERMEDIATE" | "ADVANCED"; obtainDate?: string | null; remark?: string | null }>;
+  emergencyContacts?: Array<{ name: string; relationship: string; phone: string; remark?: string | null }>;
+  expectedUpdatedAt?: string;
+};
+
+export async function updateUserFullProfile(
+  actor: SessionUser,
+  userId: string,
+  input: UserFullProfileUpdateInput
+): Promise<FullEmployeeProfileDto> {
+  requirePermission(actor.roleCode, RESOURCE.USER, ACTION.UPDATE);
+
+  // 1. 找 user + profile(可能没有)
+  const user = await prisma.user.findFirst({
+    where: { id: userId, deletedAt: null },
+    include: { profile: true }
+  });
+  if (!user) throw new ApiError(ERROR_CODES.NOT_FOUND, "用户不存在", 404);
+  // P0-1: 新用户走 PR7 两段式 Modal 时 user.profile 还不存在,允许创建
+  const isNewProfile = !user.profile;
+  // P1-2: 预检 409 留在事务外(不持有锁),但**真**的并发保护改在事务内
+  // 用条件 update (WHERE updatedAt = expected) — PG 原生乐观锁,
+  // 影响行数 = 0 即并发覆盖,抛 409。详见下面 tx 里的 updateMany。
+  // 此处的 read 只是给用户更早的错误信号,可省;但保留能减少一次 tx rollback。
+  if (input.expectedUpdatedAt && user.profile) {
+    const expected = new Date(input.expectedUpdatedAt).getTime();
+    const actual = user.profile.updatedAt.getTime();
+    if (actual > expected) {
+      throw new ApiError(ERROR_CODES.CONFLICT, "档案已被他人修改,请刷新后再试", 409);
+    }
+  }
+
+  // 3. 事务:更新 user 字段 + profile 字段 + 全删全插 5 张子表
+  const profileData = input.profile
+    ? buildProfileUpdateData({
+        ...input.profile,
+        birthday: input.profile.birthday ? new Date(input.profile.birthday) : undefined,
+        entryDate: input.profile.entryDate ? new Date(input.profile.entryDate) : undefined,
+        probationEndDate: input.profile.probationEndDate ? new Date(input.profile.probationEndDate) : undefined,
+        formalDate: input.profile.formalDate ? new Date(input.profile.formalDate) : undefined,
+        resignationDate: input.profile.resignationDate ? new Date(input.profile.resignationDate) : undefined,
+        contractStartDate: input.profile.contractStartDate ? new Date(input.profile.contractStartDate) : undefined,
+        contractEndDate: input.profile.contractEndDate ? new Date(input.profile.contractEndDate) : undefined
+      } as EmployeeProfileUpdateInput)
+    : {};
+
+  // P0-1: 新档案先 upsert,拿到 profileId 再走子表全删全插
+  let profileId: string;
+  if (isNewProfile) {
+    const created = await prisma.employeeProfile.create({ data: { userId, ...profileData } });
+    profileId = created.id;
+  } else {
+    profileId = user.profile!.id;
+  }
+
+  await prisma.$transaction(async (tx) => {
+    // user 字段更新
+    if (input.user && Object.keys(input.user).length > 0) {
+      await tx.user.update({ where: { id: userId }, data: input.user });
+    }
+    // P1-2: 条件 update 拿真原子 409 保护
+    if (!isNewProfile && Object.keys(profileData).length > 0) {
+      const where: { id: string; updatedAt?: Date } = { id: profileId };
+      if (input.expectedUpdatedAt) {
+        where.updatedAt = new Date(input.expectedUpdatedAt);
+      }
+      const result = await tx.employeeProfile.updateMany({ where, data: profileData });
+      if (result.count === 0) {
+        throw new ApiError(
+          ERROR_CODES.CONFLICT,
+          "档案已被他人修改,请刷新后再试",
+          409
+        );
+      }
+    }
+    // 5 张子表全删全插(只有 payload 里有这个 key 才动)
+    if (input.educations !== undefined) {
+      await tx.employeeEducation.deleteMany({ where: { profileId: profileId } });
+      if (input.educations.length > 0) {
+        await tx.employeeEducation.createMany({
+          data: input.educations.map((e) => ({
+            profileId: profileId,
+            school: e.school,
+            major: e.major ?? null,
+            degree: e.degree ?? null,
+            startDate: new Date(e.startDate),
+            endDate: e.endDate ? new Date(e.endDate) : null,
+            isFullTime: e.isFullTime ?? true,
+            remark: e.remark ?? null
+          }))
+        });
+      }
+    }
+    if (input.workExperiences !== undefined) {
+      await tx.employeeWorkExperience.deleteMany({ where: { profileId: profileId } });
+      if (input.workExperiences.length > 0) {
+        await tx.employeeWorkExperience.createMany({
+          data: input.workExperiences.map((w) => ({
+            profileId: profileId,
+            company: w.company,
+            position: w.position ?? null,
+            startDate: new Date(w.startDate),
+            endDate: w.endDate ? new Date(w.endDate) : null,
+            leaveReason: w.leaveReason ?? null,
+            referrer: w.referrer ?? null,
+            remark: w.remark ?? null
+          }))
+        });
+      }
+    }
+    if (input.certificates !== undefined) {
+      await tx.employeeCertificate.deleteMany({ where: { profileId: profileId } });
+      if (input.certificates.length > 0) {
+        await tx.employeeCertificate.createMany({
+          data: input.certificates.map((c) => ({
+            profileId: profileId,
+            name: c.name,
+            number: c.number ?? null,
+            issuer: c.issuer ?? null,
+            issueDate: c.issueDate ? new Date(c.issueDate) : null,
+            expiryDate: c.expiryDate ? new Date(c.expiryDate) : null,
+            attachmentId: c.attachmentId ?? null,
+            remark: c.remark ?? null
+          }))
+        });
+      }
+    }
+    if (input.skills !== undefined) {
+      await tx.employeeSkill.deleteMany({ where: { profileId: profileId } });
+      if (input.skills.length > 0) {
+        await tx.employeeSkill.createMany({
+          data: input.skills.map((s) => ({
+            profileId: profileId,
+            name: s.name,
+            level: s.level ?? "INTERMEDIATE",
+            obtainDate: s.obtainDate ? new Date(s.obtainDate) : null,
+            remark: s.remark ?? null
+          }))
+        });
+      }
+    }
+    if (input.emergencyContacts !== undefined) {
+      await tx.employeeEmergencyContact.deleteMany({ where: { profileId: profileId } });
+      if (input.emergencyContacts.length > 0) {
+        await tx.employeeEmergencyContact.createMany({
+          data: input.emergencyContacts.map((c) => ({
+            profileId: profileId,
+            name: c.name,
+            relationship: c.relationship,
+            phone: c.phone,
+            remark: c.remark ?? null
+          }))
+        });
+      }
+    }
+    // P1-1: 审计 payload 补 subtableCounts + profile 字段名(不记值,防塞爆日志)
+    const subtableCounts: Record<string, number> = {
+      educations: input.educations?.length ?? 0,
+      workExperiences: input.workExperiences?.length ?? 0,
+      certificates: input.certificates?.length ?? 0,
+      skills: input.skills?.length ?? 0,
+      emergencyContacts: input.emergencyContacts?.length ?? 0
+    };
+    const profileFieldsChanged = Object.keys(profileData);
+    const userFieldsChanged = input.user ? Object.keys(input.user) : [];
+
+    await audit(tx, {
+      actorId: actor.id,
+      action: "EMPLOYEE_PROFILE_REPLACE",
+      entity: "EmployeeProfile",
+      entityId: profileId,
+      before: isNewProfile ? null : { updatedAt: user.profile!.updatedAt },
+      after: {
+        updatedAt: new Date(),
+        subtableCounts,
+        profileFieldsChanged,
+        userFieldsChanged
+      }
+    });
+  });
+
+  return (await getUserFullProfile(actor, userId))!;
+}

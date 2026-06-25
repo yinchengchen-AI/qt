@@ -14,3 +14,6 @@ PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 
 # 04:00 (每月 1 号) - 审计日志清理,默认保留 5 年
 0 4 1 * * root cd /opt/qt && set -a && . /opt/qt/.env && set +a && DOCKER_PG=qt-postgres /opt/qt/scripts/prod/audit-cleanup.sh 5 >> /var/log/qt-cron.log 2>&1
+
+# PR9: 证书到期 cron (每日 09:00) — P0-2 加 source .env 避免 CRON_SECRET 在 crond 环境下为空
+0 9 * * * root cd /opt/qt && set -a && . /opt/qt/.env && set +a && /usr/bin/curl -sS -X POST -H "x-cron-secret: ${CRON_SECRET}" http://localhost:3000/api/jobs/certificates/expire-check >> /var/log/qt-biz/cron.log 2>&1

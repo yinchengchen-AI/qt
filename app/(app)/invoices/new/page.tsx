@@ -234,7 +234,7 @@ export default function NewInvoicePage() {
             title="抬头信息"
             description={
               titleType === "COMPANY"
-                ? "公司抬头:抬头名称 + 税号必填;银行 / 地址 / 电话选填"
+                ? "公司抬头:抬头名称必填;税号 / 银行 / 地址 / 电话选填"
                 : "个人抬头:抬头名称必填;税号 / 银行等选填"
             }
           >
@@ -256,11 +256,6 @@ export default function NewInvoicePage() {
                 name="taxNo"
                 label="税号"
                 placeholder={titleType === "COMPANY" ? "如:91330100XXXX(18 位)" : "可空"}
-                rules={
-                  titleType === "COMPANY"
-                    ? [{ required: true, message: "公司抬头必填税号" }]
-                    : undefined
-                }
                 fieldProps={{ size: "large", maxLength: 30 }}
               />
               <ProFormText

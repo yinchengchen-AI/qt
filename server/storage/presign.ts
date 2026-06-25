@@ -27,6 +27,7 @@ export type PresignUploadInput = {
   filename: string;
   mimeType: string;
   size: number;
+  category?: "GENERAL" | "AVATAR" | "ID_CARD_FRONT" | "ID_CARD_BACK" | "CERTIFICATE";
   contractId?: string | null;
   invoiceId?: string | null;
   employeeProfileId?: string | null;
@@ -127,7 +128,8 @@ export async function presignUpload(input: PresignUploadInput): Promise<PresignU
       contractId: input.contractId ?? null,
       invoiceId: input.invoiceId ?? null,
       employeeProfileId: input.employeeProfileId ?? null,
-      isDeliverable
+      isDeliverable,
+      category: input.category ?? "GENERAL"
     }
   });
   const yyyy = now.getUTCFullYear();

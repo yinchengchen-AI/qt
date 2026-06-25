@@ -129,28 +129,28 @@ CREATE INDEX "EmployeeEmergencyContact_profileId_idx" ON "EmployeeEmergencyConta
 -- 5. 旧数据迁移:把旧长文本作为子表第 1 行的 remark
 -- (a) 工作经历
 INSERT INTO "EmployeeWorkExperience" ("id", "profileId", "company", "position", "remark", "createdAt", "updatedAt")
-SELECT gen_random_uuid()::text, "id", '(历史文本)', NULL, "_legacy_work_experience", now(), now()
+SELECT gen_random_uuid()::text, "id", '(历史文本)', NULL, LEFT("_legacy_work_experience", 2000), now(), now()
 FROM "EmployeeProfile"
 WHERE "_legacy_work_experience" IS NOT NULL AND "_legacy_work_experience" != '';
 
 -- (b) 教育经历:degree/startDate/isFullTime 是 NOT NULL, 用占位
 INSERT INTO "EmployeeEducation" ("id", "profileId", "school", "degree", "startDate", "isFullTime", "remark", "createdAt", "updatedAt")
-SELECT gen_random_uuid()::text, "id", '(历史文本)', NULL, now(), true, "_legacy_education_history", now(), now()
+SELECT gen_random_uuid()::text, "id", '(历史文本)', NULL, now(), true, LEFT("_legacy_education_history", 2000), now(), now()
 FROM "EmployeeProfile"
 WHERE "_legacy_education_history" IS NOT NULL AND "_legacy_education_history" != '';
 
 -- (c) 证书
 INSERT INTO "EmployeeCertificate" ("id", "profileId", "name", "remark", "createdAt", "updatedAt")
-SELECT gen_random_uuid()::text, "id", '(历史证书)', "_legacy_certificates", now(), now()
+SELECT gen_random_uuid()::text, "id", '(历史证书)', LEFT("_legacy_certificates", 2000), now(), now()
 FROM "EmployeeProfile"
 WHERE "_legacy_certificates" IS NOT NULL AND "_legacy_certificates" != '';
 
 -- (d) 紧急联系人:name / relationship / phone NOT NULL
 INSERT INTO "EmployeeEmergencyContact" ("id", "profileId", "name", "relationship", "phone", "remark", "createdAt", "updatedAt")
 SELECT gen_random_uuid()::text, "id",
-  COALESCE(NULLIF("_legacy_emergency_contact_name", ''), '(未填)'),
+  LEFT(COALESCE(NULLIF("_legacy_emergency_contact_name", ''), '(未填)'), 50),
   '其他',
-  COALESCE("_legacy_emergency_contact_phone", ''),
+  LEFT(COALESCE("_legacy_emergency_contact_phone", ''), 20),
   NULL, now(), now()
 FROM "EmployeeProfile"
 WHERE ("_legacy_emergency_contact_name" IS NOT NULL AND "_legacy_emergency_contact_name" != '')

@@ -6,13 +6,15 @@ export function optionalString(max: number) {
 }
 
 export function optionalDate() {
-  return z.iso.datetime().optional().or(z.literal("").transform(() => undefined));
+  return z.union([z.iso.datetime(), z.iso.date()]).optional().or(z.literal("").transform(() => undefined));
+}
+
+export function isoDateOrDateTime() {
+  return z.union([z.iso.datetime(), z.iso.date()]);
 }
 
 function isValidIdCard(v: string): boolean {
   if (!v) return true;
-
-  // 18 位
   const eighteen = /^[1-9]\d{5}(18|19|20)\d{2}(0[1-9]|1[0-2])(0[1-9]|[12]\d|3[01])\d{3}[\dXx]$/;
   if (eighteen.test(v)) {
     const weights = [7, 9, 10, 5, 8, 4, 2, 1, 6, 3, 7, 9, 10, 5, 8, 4, 2];
@@ -25,13 +27,12 @@ function isValidIdCard(v: string): boolean {
     const actual = v[17]!.toUpperCase();
     return expected === actual;
   }
-
-  // 15 位（已废弃，仅做基础格式兼容）
-  const fifteen = /^[1-9]\d{5}\d{2}(0[1-9]|1[0-2])(0[1-9]|[12]\d|3[01])\d{3}$/;
-  return fifteen.test(v);
+  return false;
 }
 
+// PR3:删 workExperience/educationHistory/certificates/address/emergencyContactName+Phone,加省市区 + avatarAttachmentId
 export const employeeProfileUpdateSchema = z.object({
+  // 基础
   gender: z.enum(GENDER).optional().or(z.literal("").transform(() => undefined)),
   birthday: optionalDate(),
   idCard: z.preprocess(
@@ -40,10 +41,14 @@ export const employeeProfileUpdateSchema = z.object({
   ),
   education: optionalString(50),
   entryDate: optionalDate(),
-  address: optionalString(200),
-  emergencyContactName: optionalString(40),
-  emergencyContactPhone: optionalString(20),
 
+  // 住址(结构化)
+  province: optionalString(50),
+  city: optionalString(50),
+  district: optionalString(50),
+  addressDetail: optionalString(200),
+
+  // 人事/岗位
   position: optionalString(50),
   jobLevel: optionalString(50),
   employmentType: z.enum(EMPLOYMENT_TYPE).optional().or(z.literal("").transform(() => undefined)),
@@ -51,19 +56,22 @@ export const employeeProfileUpdateSchema = z.object({
   formalDate: optionalDate(),
   resignationDate: optionalDate(),
 
+  // 合同
   contractType: optionalString(50),
   contractStartDate: optionalDate(),
   contractEndDate: optionalDate(),
 
+  // 头像
+  avatarAttachmentId: z.string().min(1).nullable().optional(),
+
+  // 敏感
   salary: z.coerce.number().nonnegative().max(999999999999.99).optional().or(z.literal("").transform(() => undefined)),
   bankAccount: optionalString(40),
   bankName: optionalString(100),
   socialSecurityAccount: optionalString(40),
   providentFundAccount: optionalString(40),
 
-  workExperience: optionalString(5000),
-  educationHistory: optionalString(5000),
-  certificates: optionalString(5000),
+  // 备注(保留)
   remark: optionalString(5000)
 });
 

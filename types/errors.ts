@@ -28,6 +28,7 @@ export const ERROR_CODES = {
   // 通用
   ENTITY_IMMUTABLE: "ENTITY_IMMUTABLE",
   USER_HAS_ACTIVE_OWNERSHIP: "USER_HAS_ACTIVE_OWNERSHIP",
+  CONFLICT: "CONFLICT",
 } as const;
 export type ErrorCode = (typeof ERROR_CODES)[keyof typeof ERROR_CODES];
 
@@ -54,4 +55,5 @@ export const ERROR_MESSAGES: Record<ErrorCode, string> = {
   PAYMENT_OVER_CONTRACT: "该合同累计回款已超出合同总额",
   ENTITY_IMMUTABLE: "终态记录不可修改/删除",
   USER_HAS_ACTIVE_OWNERSHIP: "该用户仍有进行中合同，请先转移负责人",
+  CONFLICT: "档案已被他人修改,请刷新后再试",
 };

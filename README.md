@@ -131,6 +131,7 @@ docker-compose.minio.yml
 - `app/api/dashboard/` — 工作台汇总
 - `app/api/statistics/` — 统计分析
 - `app/api/{users,roles,departments,dictionaries,admin}/` — 系统管理
+  - 员工档案(v0.4+)走 5 步向导 + 5 张子表(教育/工作/证书/技能/紧急联系人);证书 30/15/7 天到期 cron 提醒;详情页 Anchor 滚动
 - `app/api/operation-logs/` — 操作日志
 - `app/api/jobs/` — 定时任务触发端点
 
