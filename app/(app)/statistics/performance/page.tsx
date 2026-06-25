@@ -36,7 +36,11 @@ export default function PerformancePage() {
   const [rows, setRows] = useState<Row[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [range, setRange] = useState<[dayjs.Dayjs, dayjs.Dayjs] | null>(null);
+  // 与 dashboard 一致: 默认本月 1 号 00:00 ~ 当前; 用户可改/清空
+  const [range, setRange] = useState<[dayjs.Dayjs, dayjs.Dayjs] | null>(() => [
+    dayjs().startOf("month"),
+    dayjs()
+  ]);
   const { message } = AntdApp.useApp();
 
   const chartHeight = isMobile ? 240 : 380;
