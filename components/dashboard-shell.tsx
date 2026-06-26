@@ -12,6 +12,7 @@ import {
   Badge,
   Drawer,
   Empty,
+  Tag,
   Typography,
   theme,
   type MenuProps
@@ -605,23 +606,37 @@ export function DashboardShell({ user, children }: Props) {
           </a>
         }
       >
-        {messages.length === 0 ? (
-          <Empty description={t("messages.empty")} />
-        ) : (
-          <div>
-            {messages.map((m) => (
+        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+          {messages.length === 0 ? (
+            <Empty
+              image={Empty.PRESENTED_IMAGE_SIMPLE}
+              description={
+                <div>
+                  <div style={{ color: token.colorTextSecondary, fontSize: 13 }}>{t("messages.empty")}</div>
+                  <div style={{ color: token.colorTextTertiary, fontSize: 12, marginTop: 4 }}>
+                    新消息会在事件触发时送达
+                  </div>
+                </div>
+              }
+              style={{ padding: "32px 0" }}
+            />
+          ) : null}
+          {messages.map((m) => {
+            const isUnread = !m.readAt;
+            const typeColor = MESSAGE_TYPE_COLORS[m.type] ?? token.colorPrimary;
+            return (
               <div
                 key={m.id}
                 role={m.link ? "button" : undefined}
                 tabIndex={m.link ? 0 : undefined}
                 style={{
-                  background: m.readAt ? undefined : token.colorPrimaryBg,
-                  borderRadius: 6,
+                  background: isUnread ? token.colorPrimaryBg : undefined,
+                  border: isUnread ? `1px solid ${token.colorPrimaryBorderHover}` : "1px solid var(--qt-border-soft)",
+                  borderRadius: 8,
                   padding: "10px 12px",
-                  marginBottom: 6,
                   cursor: m.link ? "pointer" : undefined,
-                  border: "none",
-                  transition: "background-color 160ms"
+                  transition: "background-color 160ms",
+                  position: "relative"
                 }}
                 onClick={async () => {
                   if (!m.readAt) {
@@ -630,7 +645,6 @@ export function DashboardShell({ user, children }: Props) {
                       const j = await res.json();
                       if (j.code === 0) {
                         const readAt = j.data.readAt ?? new Date().toISOString();
-                        // 同步本地状态:减红点 + 把这条消息的 readAt 标上,蓝色高亮立刻消失
                         setUnread((u) => Math.max(0, u - 1));
                         setMessages((prev) =>
                           prev.map((x) => (x.id === m.id ? { ...x, readAt } : x))
@@ -661,15 +675,75 @@ export function DashboardShell({ user, children }: Props) {
                     : undefined
                 }
               >
-                <div style={{ fontSize: 13, fontWeight: 500 }}>{m.title}</div>
-                <div style={{ fontSize: 12, color: token.colorTextTertiary, marginTop: 2 }}>
-                  <span style={{ marginRight: 8 }}>{m.type}</span>
-                  <span>{new Date(m.createdAt).toLocaleString("zh-CN")}</span>
+                <div style={{ display: "flex", alignItems: "flex-start", gap: 8 }}>
+                  {isUnread ? (
+                    <span
+                      aria-label="未读"
+                      style={{
+                        display: "inline-block",
+                        width: 6,
+                        height: 6,
+                        marginTop: 7,
+                        borderRadius: "50%",
+                        background: token.colorPrimary,
+                        flexShrink: 0
+                      }}
+                    />
+                  ) : null}
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div
+                      style={{
+                        fontSize: 13,
+                        fontWeight: isUnread ? 600 : 400,
+                        color: isUnread ? undefined : token.colorTextSecondary,
+                        lineHeight: 1.4,
+                        wordBreak: "break-word"
+                      }}
+                    >
+                      {m.title}
+                    </div>
+                    <div
+                      style={{
+                        fontSize: 12,
+                        color: token.colorTextTertiary,
+                        marginTop: 4,
+                        display: "flex",
+                        alignItems: "center",
+                        gap: 8,
+                        flexWrap: "wrap"
+                      }}
+                    >
+                      <Tag color={typeColor} style={{ margin: 0, fontSize: 11, lineHeight: "16px", padding: "0 6px" }}>
+                        {m.type}
+                      </Tag>
+                      <span title={new Date(m.createdAt).toLocaleString("zh-CN")}>
+                        {relativeTime(m.createdAt)}
+                      </span>
+                    </div>
+                  </div>
+                  {m.link ? (
+                    <span aria-hidden style={{ color: token.colorTextTertiary, fontSize: 14, flexShrink: 0, marginTop: 2 }}>›</span>
+                  ) : null}
                 </div>
               </div>
-            ))}
-          </div>
-        )}
+            );
+          })}
+          {messages.length > 0 ? (
+            <div style={{ textAlign: "center", marginTop: 8 }}>
+              <a
+                href="/messages"
+                onClick={(e) => {
+                  e.preventDefault();
+                  router.push("/messages");
+                  setDrawerOpen(false);
+                }}
+                style={{ color: token.colorPrimary, fontSize: 13 }}
+              >
+                查看全部消息 →
+              </a>
+            </div>
+          ) : null}
+        </div>
       </Drawer>
     </Layout>
   );
@@ -729,4 +803,29 @@ function Crumbs({ pathname, compact }: { pathname: string; compact?: boolean }) 
       ))}
     </span>
   );
+}
+
+// 消息类型 → Tag 颜色映射(常见业务事件)
+const MESSAGE_TYPE_COLORS: Record<string, string> = {
+  CONTRACT_EXPIRING: "orange",
+  INVOICE_OVERDUE: "red",
+  PAYMENT_RECEIVED: "green",
+  CUSTOMER_STATUS_SUGGEST: "blue",
+  CONTRACT_TRANSITION: "purple",
+  ANNOUNCEMENT: "cyan"
+};
+
+// 相对时间:刚刚 / N 分钟前 / N 小时前 / N 天前 / 绝对日期
+function relativeTime(iso: string): string {
+  const t = new Date(iso).getTime();
+  const now = Date.now();
+  const diff = Math.max(0, now - t);
+  const min = Math.floor(diff / 60000);
+  if (min < 1) return "刚刚";
+  if (min < 60) return `${min} 分钟前`;
+  const hr = Math.floor(min / 60);
+  if (hr < 24) return `${hr} 小时前`;
+  const day = Math.floor(hr / 24);
+  if (day < 7) return `${day} 天前`;
+  return new Date(iso).toLocaleDateString("zh-CN");
 }

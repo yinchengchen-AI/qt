@@ -155,3 +155,10 @@ html, body { overflow-x: hidden; }
     transition-duration: 0.001ms !important;
   }
 }
+
+/* Profile wizard: stack the avatar + form grid on narrow screens */
+@media (max-width: 575.98px) {
+  .profile-wizard-hero {
+    grid-template-columns: 1fr !important;
+  }
+}

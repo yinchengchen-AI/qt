@@ -7,7 +7,7 @@
 //
 // 用 dev 数据库; 测试数据用 stamp 后缀避免污染.
 // 用 storage state 共享 admin 登录态避免多次登录触发 NextAuth 限流.
-import { test, expect, type Page } from "@playwright/test";
+import { test, expect } from "@playwright/test";
 import { DEV_PASSWORD } from "./_dev-credentials";
 
 const stamp = Date.now();

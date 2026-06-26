@@ -1,6 +1,6 @@
 "use client";
 import { ProTable, type ActionType, type ProColumns, type ProFormInstance } from "@ant-design/pro-components";
-import { MoreOutlined, ExportOutlined, DeleteOutlined, StopOutlined, CheckCircleOutlined, TeamOutlined } from "@ant-design/icons";
+import { MoreOutlined, ExportOutlined } from "@ant-design/icons";
 import { App as AntdApp, Button, Tag, Modal, Space, Dropdown, Form, Input, Badge } from "antd";
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -9,8 +9,6 @@ import { Page } from "@/components/page";
 import { useResponsive } from "@/lib/use-breakpoint";
 import { PageHeader } from "@/components/page-header";
 import { DateTimeCell } from "@/components/table-cells";
-import { DepartmentTreeSelect } from "@/components/admin/department-tree-select";
-
 type Role = { id: string; code: string; name: string };
 type User = {
   id: string;
@@ -53,10 +51,6 @@ export default function UsersPage() {
   const [resetting, setResetting] = useState<{ id: string; name: string } | null>(null);
   const [resetForm] = Form.useForm<{ password: string; confirm: string }>();
   const [resetSubmitting, setResetSubmitting] = useState(false);
-  const [selectedRowKeys, setSelectedRowKeys] = useState<React.Key[]>([]);
-  const [batchDeptOpen, setBatchDeptOpen] = useState(false);
-  const [batchDeptId, setBatchDeptId] = useState<string | undefined>(undefined);
-  const [batchLoading, setBatchLoading] = useState(false);
   const actionRef = useRef<ActionType>(undefined);
   const formRef = useRef<ProFormInstance>(undefined);
   const searchDebounceRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
@@ -179,74 +173,6 @@ export default function UsersPage() {
     URL.revokeObjectURL(url);
   }
 
-  // ----- 批量操作 -----
-  async function batchToggleStatus(targetStatus: "ACTIVE" | "DISABLED") {
-    const action = targetStatus === "DISABLED" ? "禁用" : "启用";
-    setBatchLoading(true);
-    let ok = 0;
-    let fail = 0;
-    for (const id of selectedRowKeys) {
-      try {
-        const r = await fetch(`/api/users/${id}/toggle-status`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          credentials: "include",
-          body: JSON.stringify({ status: targetStatus })
-        });
-        const j = await r.json();
-        if (j.code === 0) ok++; else fail++;
-      } catch { fail++; }
-    }
-    setBatchLoading(false);
-    setSelectedRowKeys([]);
-    if (fail > 0) message.warning(`${action}完成: ${ok} 成功, ${fail} 失败`);
-    else message.success(`${action} ${ok} 个账号`);
-    actionRef.current?.reloadAndRest?.();
-  }
-
-  async function batchDelete() {
-    setBatchLoading(true);
-    let ok = 0;
-    let fail = 0;
-    for (const id of selectedRowKeys) {
-      try {
-        const r = await fetch(`/api/users/${id}`, { method: "DELETE", credentials: "include" });
-        const j = await r.json();
-        if (j.code === 0) ok++; else fail++;
-      } catch { fail++; }
-    }
-    setBatchLoading(false);
-    setSelectedRowKeys([]);
-    if (fail > 0) message.warning(`删除完成: ${ok} 成功, ${fail} 失败`);
-    else message.success(`已删除 ${ok} 个账号`);
-    actionRef.current?.reloadAndRest?.();
-  }
-
-  async function batchChangeDepartment() {
-    if (!batchDeptId) return;
-    setBatchLoading(true);
-    let ok = 0;
-    let fail = 0;
-    for (const id of selectedRowKeys) {
-      try {
-        const r = await fetch(`/api/users/${id}`, {
-          method: "PATCH",
-          headers: { "Content-Type": "application/json" },
-          credentials: "include",
-          body: JSON.stringify({ departmentId: batchDeptId })
-        });
-        const j = await r.json();
-        if (j.code === 0) ok++; else fail++;
-      } catch { fail++; }
-    }
-    setBatchLoading(false);
-    setBatchDeptOpen(false);
-    setSelectedRowKeys([]);
-    if (fail > 0) message.warning(`调整部门完成: ${ok} 成功, ${fail} 失败`);
-    else message.success(`已调整 ${ok} 个账号的部门`);
-    actionRef.current?.reloadAndRest?.();
-  }
-
   const columns: ProColumns<User>[] = [
     {
       title: "关键词",
@@ -333,8 +259,6 @@ export default function UsersPage() {
     }
   ];
 
-  const selectedCount = selectedRowKeys.length;
-
   return (
     <Page>
       <PageHeader
@@ -356,33 +280,6 @@ export default function UsersPage() {
         }
       />
 
-      {/* 批量操作栏 */}
-      {selectedCount > 0 && (
-        <div style={{ marginBottom: 12, padding: "8px 16px", background: "var(--qt-bg-subtle)", borderRadius: 8, display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
-          <Tag color="blue">已选 {selectedCount} 人</Tag>
-          <Button size="small" icon={<StopOutlined />} loading={batchLoading} onClick={() => batchToggleStatus("DISABLED")}>
-            批量禁用
-          </Button>
-          <Button size="small" icon={<CheckCircleOutlined />} loading={batchLoading} onClick={() => batchToggleStatus("ACTIVE")}>
-            批量启用
-          </Button>
-          <Button size="small" icon={<TeamOutlined />} loading={batchLoading} onClick={() => { setBatchDeptId(undefined); setBatchDeptOpen(true); }}>
-            批量调整部门
-          </Button>
-          <Button size="small" danger icon={<DeleteOutlined />} loading={batchLoading} onClick={() => {
-            modal.confirm({
-              title: `确定删除 ${selectedCount} 个账号?`,
-              content: "软删:账号将从列表移除,但保留审计日志关联。",
-              okType: "danger",
-              onOk: batchDelete
-            });
-          }}>
-            批量删除
-          </Button>
-          <Button size="small" type="link" onClick={() => setSelectedRowKeys([])}>取消选择</Button>
-        </div>
-      )}
-
       <ProTable<User>
         actionRef={actionRef}
         formRef={formRef}
@@ -393,7 +290,6 @@ export default function UsersPage() {
         scroll={{ x: "max-content" }}
         cardBordered={false}
         sticky={isMobile}
-        rowSelection={{ selectedRowKeys, onChange: (keys) => setSelectedRowKeys(keys) }}
         options={{ reload: () => actionRef.current?.reload?.(), density: !isMobile, fullScreen: !isMobile }}
         pagination={{ defaultPageSize: 20, showSizeChanger: !isMobile, size: isMobile ? "small" : undefined }}
         request={async (params) => {
@@ -465,25 +361,6 @@ export default function UsersPage() {
         </Form>
       </Modal>
 
-      {/* 批量调整部门 Modal */}
-      <Modal
-        open={batchDeptOpen}
-        title={`批量调整部门 (${selectedCount} 人)`}
-        okText="确认调整"
-        cancelText="取消"
-        okButtonProps={{ loading: batchLoading }}
-        onCancel={() => { if (!batchLoading) setBatchDeptOpen(false); }}
-        onOk={batchChangeDepartment}
-        destroyOnClose
-      >
-        <p style={{ marginBottom: 12, color: "var(--qt-text-muted)" }}>选择目标部门:</p>
-        <DepartmentTreeSelect
-          label=""
-          placeholder="请选择部门"
-          value={batchDeptId}
-          onChange={(v) => setBatchDeptId(v)}
-        />
-      </Modal>
     </Page>
   );
 }
