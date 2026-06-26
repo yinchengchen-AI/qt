@@ -386,7 +386,7 @@ xlsx 导出走 `lib/excel.ts` + `exceljs`,带 BOM 支持中文。
 
 完整 scripts 见 [package.json](package.json)。
 
-## 质量基线(2026-06-24)
+## 质量基线(2026-06-26)
 
 | 项 | 状态 |
 |---|---|
@@ -398,6 +398,29 @@ xlsx 导出走 `lib/excel.ts` + `exceljs`,带 BOM 支持中文。
 | dev server `/login` `/dashboard` `/contracts` | 200 |
 
 ## 最近更新
+
+### v0.3.1(2026-06-26)员工档案 + 证书到期 cron + 资产下线 + 导航重构
+
+- **feat(employee-profile)**:`EmployeeProfile` 表 + 5 张子表(教育/证书/工作经历/合同/家庭成员),`Attachment.category` 字段,`MessageType.CERTIFICATE_EXPIRING` 枚举值
+- **feat(employee-profile)**:PR7-PR11 五批 — 批量操作 + 向导/子表打磨 + E2E 覆盖 + P0 阻塞修复 12 项 + 用户手册 v0.4 重做
+- **feat(certificate)**:证书到期 cron 30/15/7 档(`certificate-expiry-check`)+ 列表页 + 用户列表 badge
+- **chore(refactor)**:下线公司资产库(CompanyAsset)模块 — DROP CompanyAsset + DROP Attachment.assetId/isPrimary + DROP POLICY + DELETE 字典 ASSET_TAG(资产模块生命周期 13 天)
+- **feat(message)**:Message.type 从 text 收紧到 enum MessageType(7 枚举值),加 type+receiverUserId+createdAt 复合索引
+- **refactor(nav)**:统一返回按钮走 `useGoBack()` hook(浏览器历史优先 + fallback 兜底),删 30+ 处硬编码 `router.push('/x')`;详情页 5 分组合并为 ProfileHero + 卡片网格
+- **fix(nav)**:消息中心 PageHeader 加 type='navigation' 提示
+- **fix(lint)**:antd 新 API — `Space direction='vertical'` → `orientation='vertical'`
+- **fix(dashboard)**:summary 接口把 range 塞进 overview 返回
+- **fix(statistics)**:员工业绩页默认本月区间(与 dashboard 一致)
+- **fix(invoice)**:开票保存 applyDate 改用 dayjs().toISOString() 兼容 string/dayjs
+- **fix(invoice-new)**:合同下拉 pageSize 100 → 1000
+- **fix(contract-export)**:新增项目负责人列,签订人/负责人只显示姓名
+- **fix(users)**:详情页删右侧 Anchor 解决 active 不同步;SWR 多解一层;修 DepartmentTreeSelect 集成;加保存按钮;skeleton 永远卡死
+- **test(e2e)**:场景 14 - 员工档案 CRUD + 附件上传端到端覆盖
+- **chore(test)**:删 `tests/e2e/13-employee-batch-ops.spec.ts`(多选链路已移除)
+
+**部署期观察**:6 个新迁移在 v0.3.0 → v0.3.1 之间手工应用(`20260630_message_type_enum_index` 试 3 次才成功),本次 1 commit `b2e9f1bdf` 是纯 refactor,deploy.sh 一键跑。详见 `docs/部署记录 — qt-biz v0.1.0 — Aliyun ECS.md` v0.3.1 节
+
+**已知问题**:`contract-auto-complete` job 偶发 `TransactionWriteConflict`(PostgreSQL 40001,单实例 3.5G 机器无分布式锁,193 行扫描里 1 条失败);job 缺 retry loop,v0.3.2 / v0.4.0 跟进
 
 ### v0.3.0(2026-06-24)企业资产库模块下线
 

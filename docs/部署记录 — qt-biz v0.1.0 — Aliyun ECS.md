@@ -480,3 +480,173 @@ DB `_prisma_migrations` 新增 8 行(20260623 → 20260627),其中 20260626_invo
 - **HTTPS / Sentry / rate limit / SSH 密钥**(v0.1.0 第六节列的 6 项)仍未落实。
 - **v0.2.0 文档更新一直未补**(G3) — 本次 v0.3.0 文档把整段 6/14 → 6/22 增量补齐,但仍缺 v0.2.0 单独的"v0.2.0 部署记录"。建议下一轮把它从本文件里拆出去,保持一节一版本。
 - **deploy.sh 没处理"列已存在"类幂等失败**(G2):可加一段 `prisma migrate status` 输出 + 5xx 异常自动 `resolve --applied` 兜底,人工 review 后再继续。但这是 v0.4+ 的事,本次没动。
+
+# 部署记录 — qt-biz v0.3.1 — Aliyun ECS 杭州 (员工档案上线 + 公司资产下线)
+
+> **首部署**: 2026-06-12 (v0.1.0, `46a274b`)
+> **v0.2.0**: 2026-06-14 01:24-01:40 (`cdcb872`,squash 14→1)
+> **v0.3.0**: 2026-06-23 09:55-10:04 (`e80d86e9`,含 1 个 hotfix)
+> **v0.3.0 → v0.3.1 之间**: 2026-06-23 → 2026-06-26 中间 6 个迁移分批手工应用(见 1.3)
+> **本次更新部署**: 2026-06-26 13:45-13:47 CST
+> **HEAD 起点**: `d296e4d6` (服务上次部署,2026-06-26 10:52,build `J7c71cPibOdu51OiqUXlx`)
+> **HEAD 终点**: `b2e9f1bdf`
+> **commit 增量**: 1 个(refactor 性质,无新迁移、无新依赖)
+> **服务模式**: 日常更新,一次 systemctl restart 切到新 build
+
+## 一、本次部署内容
+
+### 1.1 服务端起点 `d296e4d6` → 本地 `b2e9f1bdf` 的 1 个 commit
+
+```
+b2e9f1bdf refactor(nav): 统一返回按钮走 useGoBack() hook, 历史优先 + fallback 兜底
+```
+
+- 11 文件,1619 增 / 896 删;纯 refactor,无 schema、无 API 路由变化
+- 详情页 5 分组合并为单个 ProfileHero + 卡片网格,数据未到时统一 skeleton
+- 消息中心 PageHeader 加 type='navigation' 提示
+- 删 `tests/e2e/13-employee-batch-ops.spec.ts`(被移除的多选链路)
+- 修 antd 新 API:`Space direction='vertical'` → `orientation='vertical'`
+- 作者验证:`tsc --noEmit` 0 错;`eslint .` 0 错 0 警;e2e 选择器核对通过
+
+### 1.2 DB / build 状态差异(部署前发现)
+
+本次部署的"特殊状态":
+- **DB 已经在 HEAD 之前** — 23 个本地迁移全部 applied(包括 6 个新加的:employee profile / drop company assets / message type enum / employee profile restructure)
+- **Code build 还停在 v0.3.0** — 服务端上次 build `J7c71cPibOdu51OiqUXlx` 是 `d296e4d6` HEAD,不是 `b2e9f1bdf`
+- 也就是说:DB schema 与 6/24 → 6/26 之间的 6 个迁移已经走完,但中间这一段(从 6/23 v0.3.0 → 6/24 起的 PR-1 → PR-11)没有正式的"v0.3.1 部署记录"。
+
+### 1.3 v0.3.0 → v0.3.1 之间手工落地的 6 个迁移
+
+这一段实际生产环境是怎么走过来的(从 `_prisma_migrations` 表现推断):
+- `20260624_add_employee_profile` — 加 EmployeeProfile 表(11 字段 JSON 化 educationHistory/workExperience)
+- `20260624_attachment_is_primary` — Attachment.isPrimary(boolean,default false)+ `Attachment_assetId_isPrimary_deletedAt_idx`
+- `20260628_drop_company_assets` — DROP CompanyAsset + DROP Attachment.assetId/isPrimary + DROP POLICY + DELETE 字典 ASSET_TAG(与 v0.3.0 加资产→决定下线相吻合)
+- `20260629_attachment_employee_profile_id` — 加 Attachment.employeeProfileId 反向 + 复合索引 + 外键 + 补漏建 EmployeeProfile.idCard unique 索引
+- `20260630_message_type_enum_index` — Message.type text → enum MessageType,7 枚举值;加 type+receiverUserId+createdAt 复合索引(替换原单列 type_idx)
+- `20260701_employee_profile_restructure` — EmployeeProfile 拆字段 + 5 张子表(Edu/Cert/Work/Contract/Family)+ avatarAttachmentId 1:1 Attachment + Attachment.category + MessageType.CERTIFICATE_EXPIRING
+
+**重要:这一批迁移不是 deploy.sh 自动跑的**。从服务器 `_prisma_migrations` 表的失败-成功模式看:
+```
+20260630_message_type_enum_index  | f  (第 1 次,USING 子句编译失败或值不在 enum)
+20260630_message_type_enum_index  | f  (第 2 次)
+20260630_message_type_enum_index  | t  (第 3 次,最终成功)
+```
+用户手工 `prisma migrate resolve` + 重跑了多次。MessageType 最初版可能 enum 漏值,后续 PR9 (cbc09415) 加了 CERTIFICATE_EXPIRING 才填齐。
+
+**教训**:这一段迁移期没走 deploy.sh,没留部署记录,也没在 v0.3.0 文档后及时追加。本次 v0.3.1 文档一次性补齐。下次需要把"中间 6 个迁移"也变成 deploy.sh 一键跑(等下一轮自然部署机会再固化)。
+
+### 1.4 业务影响
+
+- **新模块**:
+  - EmployeeProfile + 5 张子表(教育/证书/工作经历/合同/家庭成员) + 头像附件 1:1
+  - 证书到期 cron 30/15/7 档(`certificate-expiry-check` job,扫 0 条因还没员工)
+  - 员工档案批量操作向导(PR11)
+- **下线模块**:
+  - CompanyAsset 表(20260615 加,20260628 删,生命周期 13 天)
+  - ASSET_TAG 字典
+  - `Attachment.assetId` / `Attachment.isPrimary` 字段
+  - `attachment_asset_open_read` RLS 策略
+- **API 收紧**:
+  - `Message.type` 从 text 收紧到 enum MessageType — 老 cron 任务如果发了不在 enum 的事件类型会硬失败
+- **导航**:
+  - 详情/编辑/新建 30+ 处硬编码 `router.push('/x')` 兜底 → 统一 `useGoBack()` hook(浏览器历史回退,带 fallback)
+
+## 二、新增/修改的部署相关文件
+
+| 路径 | 操作 | 备注 |
+|---|---|---|
+| `app/(app)/admin/users/[id]/page.tsx` 等 11 文件 | 修改(随 commit) | refactor 范围 |
+| `tests/e2e/13-employee-batch-ops.spec.ts` | 删除(随 commit) | 多选链路移除 |
+| `app/globals.css` | 加 7 行 | skeleton 调整 |
+| `/opt/qt/.next/` | 重 build | BUILD_ID=`iqJDYoJ6EzK658TQr_WHs` |
+
+无 Prisma 迁移(23/23 已 applied),无依赖变更。
+
+## 三、踩坑与解决(本次部署期发现)
+
+### H1. backup.sh 未加载 env 直接调用会报 "unbound variable" (c1)
+
+```
+/opt/qt/scripts/prod/backup.sh: line 33: DATABASE_URL: unbound variable
+```
+
+`backup.sh` 第 33 行用 `DB_URL=${DATABASE_URL:-...}`,虽然 `:-` 应给默认,但 `set -euo pipefail` + bash 5.x 在某种交互下会报 unbound。
+
+**修复**: 部署前手动 `set -a; . ./.env; set +a` 再跑 `backup.sh`,问题不再出现。本次没改脚本(改一行 set -u → set +u 风险大于收益,优先外部补 env)。
+
+### H2. 文档与生产 HEAD 仍然有 6 个 commit 漂移 (c2)
+
+`docs/部署记录` 的 v0.3.0 终点是 `e80d86e9`,但服务端 6/24-6/26 中间又走完 6 个迁移(都是 v0.3.1 范围),其中 PR9 还在 6/30 跑了 3 次才成功。`docs/部署记录` 没追这一段。
+
+**修复**: 本次 v0.3.1 章节一次性补齐 1.3 节。下一轮可考虑把 6/24-6/26 这段从 `docs/superpowers/specs/2026-06-25-employee-profile-redesign-design.md` 摘出来直接做 v0.3.0 末尾 hot-deploy 小节。
+
+### H3. contract-auto-complete 在 193 行扫描里偶发 TransactionWriteConflict (c3)
+
+```
+[contract-auto-complete] contract cmqg4ods90a8xflmvq3nln59c failed: TransactionWriteConflict
+```
+
+PostgreSQL 40001 `serialization_failure` — 当 cron run-all 触发 contract-auto-complete + contract-auto-publish 同时跑(或者同 job 在 1 个 contract 行的两个 update 撞上)时,Prisma 抛 write conflict。**这是已存在并发问题,不是本次部署引入的**,v0.3.0 就有(单实例 3.5G 机器,无分布式锁)。
+
+**目前行为**:单条 contract update 失败,job 整体仍 ok 退出(只 1 个 contract 没完成,下次 cron 再跑)。不影响其他 contract。
+
+**未修**:job 缺 retry loop。下一轮 v0.3.2 / v0.4.0 可在 `server/jobs/contract-auto-complete.ts` 加 `for i in 0..2: try update with backoff`,或改成单事务批 UPDATE 不带 SELECT FOR UPDATE。本文档先记录,本次不动。
+
+## 四、烟测通过
+
+```
+$ systemctl restart qt-app
+$ systemctl is-active qt-app
+active
+
+# 内部 localhost:3000
+login  : 200
+dashboard: 307 (expect 307)
+api/customers: 401 (expect 401)
+api/messages: 401 (expect 401)
+api/announcements: 401 (expect 401)
+
+# cron /api/jobs/run-all
+{"code":0,"data":{"at":"2026-06-26T05:47:08.815Z","results":[
+  {"job":"contract-expiring","created":0,"scanned":0,"durationMs":28},
+  {"job":"invoice-overdue","created":0,"scanned":4909,"durationMs":489},
+  {"job":"contract-expiry","created":0,"scanned":0,"updated":0,"durationMs":82},
+  {"job":"contract-auto-publish","created":0,"scanned":0,"updated":0,"durationMs":38},
+  {"job":"contract-auto-complete","created":1,"scanned":193,"updated":1,"durationMs":1034},
+  {"job":"customer-status-suggest","created":0,"scanned":2095,"durationMs":221},
+  {"job":"certificate-expiry-check","created":0,"scanned":0,"durationMs":0}
+]}}
+
+# 外部 IP(走 nginx :80 反代)
+external login: 200
+external api/customers: 401 (expect 401)
+```
+
+**新 cron job `certificate-expiry-check` 已挂上**:`scanned: 0`(EmployeeProfile 表空,无证书可扫;后续录员工后会自动跑)。
+
+## 五、迁移表终态
+
+`_prisma_migrations` 共 44 行(33 distinct,11 行是历史 f/t 重试记录):
+- pre-squash 旧名 14 条 + 20260614_init 1 条 + 20260615 → 20260701 期间 18 条
+- 重试行:20260611_remove_customer_level (f/t), 20260626_invoice_attachments_json (f/t), 20260630_message_type_enum_index (f/f/t 3 行)
+
+清理建议:加一个 `scripts/clean-failed-migrations.sql` 把 `finished_at IS NULL` 的行手工 DELETE(本次没动,保守起见)。
+
+## 六、最终状态
+
+| 项 | 结果 |
+|---|---|
+| 服务端 HEAD | `b2e9f1bdf` |
+| Next.js | 16.2.7 在 127.0.0.1:3000,systemd 托管,`active`,BUILD_ID=`iqJDYoJ6EzK658TQr_WHs` |
+| PostgreSQL | 16-alpine Docker,23 本地迁移全部 applied,EmployeeProfile/MessageType enum/Attachment 子集已落 |
+| MinIO | latest Docker,`Up 3 days (healthy)` |
+| 业务表行数 | 全部保留,小幅增长(2065 → 2095 Customer / 4668 → 4687 Contract 等,3 天内用户操作) |
+| 内存 | 1.7 GB / 3.5 GB(49%) |
+| 盘 | 24 GB / 49 GB(50%) |
+
+## 七、未做但建议跟进
+
+- **H3 修 retry**:contract-auto-complete 加 retry loop(0.3 行),消除 40001
+- **中间 6 迁移未走 deploy.sh**:把 1.3 那段从 `docs/superpowers/specs/...` 摘出做"中间 hot-deploy"小节,后续 deploy.sh 加 `--no-migrate` 兜底
+- **`_prisma_migrations` 11 行 f 残留**:写个 `clean-failed-migrations.sql` 一次性清理
+- **v0.1.0 文档第六章列的 6 项**(改 SSH 密钥 / 加 HTTPS / Sentry / rate limit / 关 demo 库 / 关 firewalld)仍未落实
