@@ -91,6 +91,12 @@ export type PaymentStatus = (typeof PAYMENT_STATUS)[number];
 export const BILLING_STATUS = ["NOT_STARTED", "IN_PROGRESS", "COMPLETED"] as const;
 export type BillingStatus = (typeof BILLING_STATUS)[number];
 
+/* === 合同回款状态(派生字段:由 paidAmount 与 totalAmount 比较得出,不入库) ===
+ * 与 PaymentStatus (per-payment lifecycle 5 态: PLANNED/CONFIRMED/RECONCILED/REFUNDED/CANCELLED) 不同:
+ * 这里描述的是合同级回款进度,只关心 paid/total 比例,3 态。 */
+export const PAYMENT_PROGRESS_STATUS = ["NOT_STARTED", "IN_PROGRESS", "COMPLETED"] as const;
+export type PaymentProgressStatus = (typeof PAYMENT_PROGRESS_STATUS)[number];
+
 // 通知事件类型:与 prisma schema 的 enum MessageType 一一对应
 // (bus.ts 的 DomainEventType 直接派生自这里,确保运行时与编译期一致)
 export const MESSAGE_TYPE = [

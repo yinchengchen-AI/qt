@@ -5,8 +5,8 @@ import { type SessionUser } from "@/lib/session";
 import { requirePermission, RESOURCE, ACTION } from "@/lib/permissions";
 
 import {ownerEq, ownerViaContract} from "@/lib/ownership";
-import { getBillingStatus } from "@/lib/contract-billing";
-import type { BillingStatus } from "@/types/enums";
+import { getBillingStatus, getPaymentStatus } from "@/lib/contract-billing";
+import type { BillingStatus, PaymentProgressStatus } from "@/types/enums";
 import { Prisma } from "@prisma/client";
 
 export type ContractOverview = {
@@ -59,6 +59,7 @@ export type ContractOverview = {
     invoicedAmount: number;
     paidAmount: number;
     billingStatus: BillingStatus;
+    paymentStatus: PaymentProgressStatus;
   };
 };
 
@@ -143,7 +144,8 @@ export async function getContractOverview(
       totalAmount: Number(c.totalAmount),
       invoicedAmount,
       paidAmount,
-      billingStatus: getBillingStatus(invoicedAmount, Number(c.totalAmount))
+      billingStatus: getBillingStatus(invoicedAmount, Number(c.totalAmount)),
+      paymentStatus: getPaymentStatus(paidAmount, Number(c.totalAmount))
     }
   };
 }

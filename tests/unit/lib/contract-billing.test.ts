@@ -5,7 +5,7 @@
 //   4. 浮点容差: invoiced == total - 0.005 → COMPLETED
 //   5. 负净额: 净额为负(red-flush 反向) → NOT_STARTED
 import { describe, it, expect } from "vitest";
-import { getBillingStatus } from "@/lib/contract-billing";
+import { getBillingStatus, getPaymentStatus } from "@/lib/contract-billing";
 
 describe("getBillingStatus", () => {
   it("returns NOT_STARTED when invoiced is 0 (0/0 case)", () => {
@@ -48,5 +48,33 @@ describe("getBillingStatus", () => {
   it("coerces non-numeric / NaN inputs to 0", () => {
     expect(getBillingStatus(Number("abc"), 100)).toBe("NOT_STARTED");
     expect(getBillingStatus(50, Number("xyz"))).toBe("COMPLETED");
+  });
+});
+
+describe("getPaymentStatus", () => {
+  it("returns NOT_STARTED when paid is 0 (0/0 case)", () => {
+    expect(getPaymentStatus(0, 0)).toBe("NOT_STARTED");
+  });
+
+  it("returns NOT_STARTED when paid is below tolerance (e.g. 0.005)", () => {
+    expect(getPaymentStatus(0.005, 1000)).toBe("NOT_STARTED");
+  });
+
+  it("returns IN_PROGRESS when paid is between tolerance and total", () => {
+    expect(getPaymentStatus(500, 1000)).toBe("IN_PROGRESS");
+  });
+
+  it("returns COMPLETED when paid >= total - tolerance (浮点容差命中)", () => {
+    expect(getPaymentStatus(99.995, 100)).toBe("COMPLETED");
+  });
+
+  it("returns COMPLETED when paid exceeds total (含退款净额溢出)", () => {
+    // 合同 100 元, 已回款 110 元 (含超额), 净额 110 -> COMPLETED
+    expect(getPaymentStatus(110, 100)).toBe("COMPLETED");
+  });
+
+  it("coerces non-numeric / NaN inputs to 0", () => {
+    expect(getPaymentStatus(Number("abc"), 100)).toBe("NOT_STARTED");
+    expect(getPaymentStatus(50, Number("xyz"))).toBe("COMPLETED");
   });
 });

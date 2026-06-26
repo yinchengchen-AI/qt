@@ -166,3 +166,10 @@ export const BILLING_STATUS_MAP: Record<string, string> = {
   IN_PROGRESS: "开票中",
   COMPLETED:   "开票已完成"
 };
+
+/* === 合同回款状态(详情页概览 tab 用,与开票状态对称) === */
+export const PAYMENT_PROGRESS_STATUS_MAP: Record<string, string> = {
+  NOT_STARTED: "未回款",
+  IN_PROGRESS: "回款中",
+  COMPLETED:   "回款已完成"
+};

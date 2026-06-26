@@ -5,7 +5,7 @@ import { CloudUploadOutlined, DeleteOutlined, FilePdfOutlined } from "@ant-desig
 import { useParams, useRouter } from "next/navigation";
 import { useGoBack } from "@/lib/navigation";
 import type { Contract as ContractEntity } from "@/lib/types/entities";
-import type { BillingStatus } from "@/types/enums";
+import type { BillingStatus, PaymentProgressStatus } from "@/types/enums";
 import useSWR from "swr";
 import { useSession } from "next-auth/react";
 import { useState } from "react";
@@ -23,7 +23,7 @@ import { PreviewableProFormUploadButton as UploadButton } from "@/components/fil
 import { proCustomRequest } from "@/lib/upload-client";
 import { useDict } from "@/lib/dict-client";
 import { useUserName } from "@/lib/user-lookup";
-import { PAYMENT_METHOD_MAP, SERVICE_TYPE_MAP, REVIEW_ACTION_MAP, BILLING_STATUS_MAP } from "@/lib/enum-maps";
+import { PAYMENT_METHOD_MAP, SERVICE_TYPE_MAP, REVIEW_ACTION_MAP, BILLING_STATUS_MAP, PAYMENT_PROGRESS_STATUS_MAP } from "@/lib/enum-maps";
 import { useResponsive } from "@/lib/use-breakpoint";
 import { useT } from "@/lib/i18n";
 
@@ -65,7 +65,7 @@ type Overview = {
   invoices: Array<{ id: string; invoiceNo: string; status: string; amount: string; applyDate: string; actualIssueDate: string | null }>;
   payments: Array<{ id: string; paymentNo: string; status: string; amount: string; receiveDate: string }>;
   reviewLogs: Array<{ id: string; action: string; reviewerId: string; comment: string | null; at: string }>;
-  totals: { invoiceCount: number; paymentCount: number; totalAmount: number; invoicedAmount: number; paidAmount: number; billingStatus: BillingStatus };
+  totals: { invoiceCount: number; paymentCount: number; totalAmount: number; invoicedAmount: number; paidAmount: number; billingStatus: BillingStatus; paymentStatus: PaymentProgressStatus };
 };
 
 // 交付物附件写权限: admin / 合同签订人 / 合同负责人
@@ -337,6 +337,22 @@ const handleDelete = () => {
                 </Tag>
                 <span style={{ fontSize: 13, color: "var(--qt-text-faint)" }}>
                   已开票 {t ? fmtWan(t.invoicedAmount) : 0} 万 / 合同总额 {t ? fmtWan(t.totalAmount) : 0} 万
+                </span>
+              </div>
+            </ProCard>
+          </Col>
+          <Col xs={24}>
+            <ProCard>
+              <div style={{ display: "flex", alignItems: "center", gap: 16, flexWrap: "wrap" }}>
+                <span style={{ fontSize: 13, color: "var(--qt-text-hint)" }}>回款状态</span>
+                <Tag
+                  color={t?.paymentStatus === "COMPLETED" ? "success" : t?.paymentStatus === "IN_PROGRESS" ? "processing" : "default"}
+                  style={{ fontSize: 14, padding: "4px 12px" }}
+                >
+                  {PAYMENT_PROGRESS_STATUS_MAP[t?.paymentStatus ?? "NOT_STARTED"] ?? t?.paymentStatus}
+                </Tag>
+                <span style={{ fontSize: 13, color: "var(--qt-text-faint)" }}>
+                  已回款 {t ? fmtWan(t.paidAmount) : 0} 万 / 合同总额 {t ? fmtWan(t.totalAmount) : 0} 万
                 </span>
               </div>
             </ProCard>
