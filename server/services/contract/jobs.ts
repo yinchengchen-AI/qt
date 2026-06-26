@@ -10,12 +10,20 @@ export async function tryAutoCloseOnExpiry(contractId: string, now: Date): Promi
     id: contractId,
     loadInTx: (tx) => tx.contract.findFirst({
       where: { id: contractId, deletedAt: null },
-      select: { id: true, status: true, contractNo: true, endDate: true, ownerUserId: true },
+      select: { id: true, status: true, contractNo: true, endDate: true, totalAmount: true, ownerUserId: true },
     }),
     from: ["ACTIVE"],
     to: "CLOSED",
-    precondition: (c) => {
+    precondition: async (c, tx) => {
       if (new Date(c.endDate as unknown as Date) >= now) throw new SkipTransition();
+      // 过期合同自动关闭前，必须确认开票已足额（>= totalAmount）
+      const invoiced = await tx.invoice.aggregate({
+        where: { contractId, status: "ISSUED", deletedAt: null },
+        _sum: { amount: true },
+      });
+      const invoicedAmount = Number(invoiced._sum.amount ?? 0);
+      const total = Number(c.totalAmount);
+      if (invoicedAmount < total) throw new SkipTransition();
     },
     extraData: () => ({ reviewComment: "expired" }),
     audit: (c) => ({
@@ -27,7 +35,7 @@ export async function tryAutoCloseOnExpiry(contractId: string, now: Date): Promi
     reviewLog: () => ({
       reviewerId: SYSTEM_USER_ID,
       action: "AUTO_CLOSE_EXPIRED",
-      comment: "合同已过到期日,系统自动置为已完结",
+      comment: "合同已过到期日且开票足额,系统自动置为已完结",
     }),
     event: async (c, tx) => {
       const admins = await listAdminUserIds(tx);

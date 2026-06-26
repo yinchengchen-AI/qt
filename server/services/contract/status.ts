@@ -158,6 +158,7 @@ export async function tryAutoPublish(tx: Prisma.TransactionClient, contractId: s
  * R-07: 合同满足完结条件 → ACTIVE → CLOSED (reason=completed)
  *   - 所有 Project.status ∈ {ACCEPTED, CLOSED}
  *   - SUM(Invoice.amount where status=ISSUED) >= contract.totalAmount * completionInvoiceRatio
+ *   - SUM(Payment.amount where status=RECONCILED) >= contract.totalAmount * completionInvoiceRatio
  * 完结比例从 env 读 (默认 0.95). 状态不匹配 / 条件不满足 → 静默 no-op.
  */
 
@@ -174,9 +175,9 @@ export async function tryAutoComplete(contractId: string, now: Date): Promise<"C
     }),
     from: ["ACTIVE"],
     to: "CLOSED",
-    // R-07: 完结条件 — 开票已足额 (>= totalAmount * ratio)
+    // R-07: 完结条件 — 开票已足额 (>= totalAmount * ratio) 且回款已足额 (>= totalAmount * ratio)
     // 注: DESIGN-v3.md R-07 提到的"项目全 ACCEPTED/CLOSED"在当前 schema 下无 Project 子表支撑,
-    //     简化为仅校验开票; 验收环节由 admin 在前端操作中体现 (人工确认后手动调 closeContract).
+    //     简化为仅校验开票+回款; 验收环节由 admin 在前端操作中体现 (人工确认后手动调 closeContract).
     precondition: async (c, tx) => {
       const invoiced = await tx.invoice.aggregate({
         where: { contractId, status: "ISSUED", deletedAt: null },
@@ -185,6 +186,14 @@ export async function tryAutoComplete(contractId: string, now: Date): Promise<"C
       const invoicedAmount = Number(invoiced._sum.amount ?? 0);
       const total = Number(c.totalAmount);
       if (invoicedAmount < total * ratio) throw new SkipTransition();
+
+      // 回款也必须足额
+      const paid = await tx.payment.aggregate({
+        where: { contractId, status: "RECONCILED", deletedAt: null },
+        _sum: { amount: true },
+      });
+      const paidAmount = Number(paid._sum.amount ?? 0);
+      if (paidAmount < total * ratio) throw new SkipTransition();
     },
     extraData: () => ({ reviewComment: "completed" }),
     audit: (c) => ({
@@ -196,7 +205,7 @@ export async function tryAutoComplete(contractId: string, now: Date): Promise<"C
     reviewLog: () => ({
       reviewerId: SYSTEM_USER_ID,
       action: "AUTO_CLOSE_COMPLETED",
-      comment: `项目已验收, 开票达到 ${(ratio * 100).toFixed(0)}%, 系统自动完结`,
+      comment: `项目已验收, 开票回款达到 ${(ratio * 100).toFixed(0)}%, 系统自动完结`,
     }),
     event: async (c, tx) => {
       const admins = await listAdminUserIds(tx);
