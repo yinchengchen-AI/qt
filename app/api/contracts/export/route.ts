@@ -35,21 +35,22 @@ export async function GET(req: Request) {
       });
       // listContracts 已返回 invoicedAmount / paidAmount / billingStatus,直接复用
       const enriched = list;
-      // 批量把签订人 id 解析成姓名(employeeNo), 避免导出 N+1
-      const signerIds = [
-        ...new Set(
-          list
-            .map((c) => (c as { signerId?: string | null }).signerId)
-            .filter((v): v is string => Boolean(v)),
-        ),
-      ];
-      const signers = signerIds.length
+      // 批量把 签订人 + 项目负责人 id 解析成姓名, 避免导出 N+1
+      const userIdSet = new Set<string>();
+      for (const c of list) {
+        const sId = (c as { signerId?: string | null }).signerId;
+        if (sId) userIdSet.add(sId);
+        const oId = (c as { ownerUserId?: string | null }).ownerUserId;
+        if (oId) userIdSet.add(oId);
+      }
+      const userIds = [...userIdSet];
+      const users = userIds.length
         ? await prisma.user.findMany({
-            where: { id: { in: signerIds } },
+            where: { id: { in: userIds } },
             select: { id: true, name: true, employeeNo: true },
           })
         : [];
-      const signerById = new Map(signers.map((u) => [u.id, u]));
+      const userById = new Map(users.map((u) => [u.id, u]));
       const ts = new Date().toISOString().slice(0, 10);
       const buf = await exportToXlsx(
         enriched as unknown as Record<string, unknown>[],
@@ -67,12 +68,19 @@ export async function GET(req: Request) {
           {
             header: "签订人",
             key: "signerId",
-            width: 16,
+            width: 14,
             formatter: (_v, r) => {
               const id = (r as { signerId?: string | null }).signerId;
-              if (!id) return "";
-              const u = signerById.get(id);
-              return u ? `${u.name}(${u.employeeNo})` : "";
+              return id ? userById.get(id)?.name ?? "" : "";
+            },
+          },
+          {
+            header: "项目负责人",
+            key: "ownerUserId",
+            width: 14,
+            formatter: (_v, r) => {
+              const id = (r as { ownerUserId?: string | null }).ownerUserId;
+              return id ? userById.get(id)?.name ?? "" : "";
             },
           },
           {
