@@ -199,8 +199,8 @@ test.describe.serial("14 - 员工档案 CRUD + 附件上传", () => {
     await expect(page.getByText("E2E14 软考高级证书")).toBeVisible();
     await expect(page.getByText("Playwright").first()).toBeVisible();
 
-    // Anchor 跳转
-    await page.getByRole("link", { name: "证书与附件" }).click();
+    // 滚到 #certs 验证锚点 (Anchor 已删, 改用 scrollIntoView)
+    await page.locator("#certs").scrollIntoViewIfNeeded();
     await expect(page.locator("#certs")).toBeVisible();
   });
 

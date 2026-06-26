@@ -1,5 +1,5 @@
 "use client";
-import { Anchor, Avatar, Space, Tag, Button, Typography } from "antd";
+import { Avatar, Space, Tag, Button, Typography } from "antd";
 import { ProCard, ProDescriptions } from "@ant-design/pro-components";
 import { EditOutlined, KeyOutlined, StopOutlined, CheckCircleOutlined } from "@ant-design/icons";
 import { useParams, useRouter } from "next/navigation";
@@ -69,14 +69,6 @@ export default function UserDetailPage() {
   const user = userResp;
   const full = data.data;
 
-  const anchorItems = [
-    { key: "basic", href: "#basic", title: "基础" },
-    { key: "position", href: "#position", title: "岗位合同" },
-    ...(isAdmin ? [{ key: "sensitive", href: "#sensitive", title: "敏感" }] : []),
-    { key: "history", href: "#history", title: "履历" },
-    { key: "certs", href: "#certs", title: "证书与附件" }
-  ];
-
   if (!full) {
     return (
       <Page>
@@ -145,9 +137,8 @@ export default function UserDetailPage() {
         }
       />
 
-      <div style={{ display: "flex", gap: 24, alignItems: "flex-start" }}>
-        <div style={{ flex: 1, minWidth: 0 }}>
-          {/* 基础 */}
+      <div>
+        {/* 基础 */}
           <ProCard id="basic" title="基础" style={{ marginBottom: 16 }}>
             <Space size="large" align="start" style={{ marginBottom: 16 }}>
               <Avatar src={avatar?.url} size={80} style={{ backgroundColor: "#1677ff" }}>
@@ -271,11 +262,6 @@ export default function UserDetailPage() {
               />
             </div>
           </ProCard>
-        </div>
-
-        <div style={{ position: "sticky", top: 80, minWidth: 120 }}>
-          <Anchor items={anchorItems} offsetTop={80} />
-        </div>
       </div>
     </Page>
   );

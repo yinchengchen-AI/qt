@@ -171,8 +171,8 @@ test.describe("场景 12: 员工档案向导与详情", () => {
     await expect(page.locator("#history")).toContainText("履历");
     await expect(page.locator("#certs")).toContainText("证书与附件");
 
-    await page.getByRole("link", { name: "证书与附件" }).click();
-    await page.waitForTimeout(500);
+    // 详情页右侧 Anchor 已删, 改用 scrollIntoView
+    await page.locator("#certs").scrollIntoViewIfNeeded();
     await expect(page.locator("#certs")).toBeVisible();
 
     await expect(page.getByText(userName).first()).toBeVisible();
