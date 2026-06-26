@@ -1,5 +1,5 @@
-// 状态机迁移统一入口。吃掉 contract.ts 的 tryAutoPublish / tryAutoCloseOnExpiry /
-// tryAutoComplete 三个 ~50 行函数,以及 customer.ts:changeCustomerStatus /
+// 状态机迁移统一入口。吃掉 contract.ts 的 tryAutoPublish / tryAutoClose
+// 两个 ~50 行函数,以及 customer.ts:changeCustomerStatus /
 // invoice.ts:invoiceAction / payment.ts:paymentAction 的事务与重试样板。
 //
 // 两种使用模式:

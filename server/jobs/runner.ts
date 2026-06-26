@@ -3,11 +3,9 @@
 import { prisma } from "@/lib/prisma";
 import { emit } from "@/server/events/bus";
 
-import { runContractExpiryJob } from "@/server/services/contract";
 import { tickPublishableDraffts, tickCompletionCandidates } from "@/server/jobs/contract-automation";
 import { tickCustomerStatusSuggestions } from "@/server/jobs/customer-status-suggest";
 import { runCertificateExpiryCheck } from "@/server/jobs/certificate-expiry-check";
-export { runContractExpiryJob };
 
 /**
  * 单个 job 一次执行的统计。
@@ -41,7 +39,6 @@ export async function runAllJobs(now = new Date()): Promise<JobResult[]> {
   const jobs = [
     { name: "contract-expiring", run: () => contractExpiringJob(now, admins) },
     { name: "invoice-overdue", run: () => invoiceOverdueJob(now, admins) },
-    { name: "contract-expiry", run: () => runContractExpiryJob(now) },
     { name: "contract-auto-publish", run: () => tickPublishableDraffts() },
     { name: "contract-auto-complete", run: () => tickCompletionCandidates(now) },
     { name: "customer-status-suggest", run: () => tickCustomerStatusSuggestions(now) },

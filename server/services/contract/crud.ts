@@ -316,8 +316,8 @@ export async function updateContract(user: SessionUser, id: string, input: Contr
 
 
 // 状态机: 草稿(DRAFT) / 生效中(ACTIVE) / 已完结(CLOSED) 三个值.
-// 入口: tryAutoPublish (DRAFT→ACTIVE, 字段完整+附件) / tryAutoComplete (ACTIVE→CLOSED, R-07 满足) /
-//       tryAutoCloseOnExpiry (ACTIVE→CLOSED, endDate<now) / publishContract (admin 强制 DRAFT→ACTIVE) /
+// 入口: tryAutoPublish (DRAFT→ACTIVE, 字段完整+附件) / tryAutoClose (ACTIVE→CLOSED, R-07: 开票+回款双足额) /
+//       publishContract (admin 强制 DRAFT→ACTIVE) /
 //       closeContract (admin 强制 ACTIVE→CLOSED).
 // 状态机不再审批; 业务自创建/维护, admin 兜底; 时间线上以 ContractReviewLog.action 区分自动/手动.
 

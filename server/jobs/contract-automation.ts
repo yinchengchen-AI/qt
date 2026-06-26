@@ -1,12 +1,12 @@
 /**
  * 合同状态机自动化定时任务
  *
- * tickPublishableDraffts       — 每小时扫 DRAFT, 字段完整+附件就位 → ACTIVE
- * tickCompletionCandidates     — 每天扫 ACTIVE, 开票足额 → CLOSED (reason=completed)
- * 过期扫描由 server/services/contract.ts 的 runContractExpiryJob 单独跑 (每日)
+ * tickPublishableDraffts    — 每小时扫 DRAFT, 字段完整+附件就位 → ACTIVE
+ * tickCompletionCandidates  — 每天扫 ACTIVE, 开票+回款都足额 → CLOSED
+ *                              (reason 由 endDate<now 自动判定为 expired/completed)
  */
 import { prisma } from "@/lib/prisma";
-import { tryAutoPublish, tryAutoComplete } from "@/server/services/contract";
+import { tryAutoPublish, tryAutoClose } from "@/server/services/contract";
 import type { JobResult } from "./runner";
 
 /**
@@ -43,8 +43,9 @@ export async function tickPublishableDraffts(): Promise<JobResult> {
 }
 
 /**
- * 每天扫一次: ACTIVE 中开票足额的合同 → CLOSED (reason=completed)
- * 走完整事务+重试, 单笔失败不影响其它
+ * 每天扫一次: ACTIVE 合同, 满足"开票足额 + 回款足额"两个条件 → CLOSED.
+ * reason 由 endDate<now 在 tryAutoClose 内部判定 (expired / completed).
+ * 走完整事务+重试, 单笔失败不影响其它.
  */
 export async function tickCompletionCandidates(now: Date): Promise<JobResult> {
   const t0 = Date.now();
@@ -56,7 +57,7 @@ export async function tickCompletionCandidates(now: Date): Promise<JobResult> {
   let scanned = 0;
   for (const c of candidates) {
     try {
-      const r = await tryAutoComplete(c.id, now);
+      const r = await tryAutoClose(c.id, now);
       if (r === "CLOSED") closed++;
       scanned++;
     } catch (e) {

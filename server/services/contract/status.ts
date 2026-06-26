@@ -40,7 +40,7 @@ export type ContractCloseReason = "completed" | "terminated" | "expired";
 
 /**
  * 强制完结: admin 手动从 ACTIVE 推到 CLOSED. reason 区分完结原因, 便于统计.
- * 自动完结 (tryAutoComplete / tryAutoCloseOnExpiry) 也走这个函数, source 标记 AUTO/MANUAL.
+ * 自动完结 (tryAutoClose) 也走这个函数, source 标记 AUTO/MANUAL.
  */
 export async function closeContract(
   user: SessionUser,
@@ -84,29 +84,58 @@ export async function closeContract(
 // P11: 合同 360 度视图
 // =====================================================
 
-export function isPublishable(c: {
+export type PublishableCheck = {
+  /** 是否满足 DRAFT → ACTIVE 自动发布的全部前置条件 */
+  eligible: boolean;
+  /** 缺失的字段/校验项(中英混合, 直接给前端展示用). eligible=true 时为空数组 */
+  missing: string[];
+};
+
+/**
+ * DRAFT → ACTIVE 校验: 字段完整 + 至少 1 附件.
+ * 字段: customerId / contractNo / title / serviceType / signDate / startDate / endDate /
+ *       totalAmount > 0 / taxRate >= 0 / ownerUserId / signerId + attachments.length > 0
+ *
+ * 返回结构化结果(而不是单纯 boolean)便于:
+ *   - tryAutoPublish 内部 precondition 用 .eligible
+ *   - GET /api/contracts/[id]/publish-eligibility 透传给前端, 让 admin 看到具体缺什么
+ */
+export function checkPublishable(c: {
   customerId: string;
   contractNo: string;
   title: string;
   serviceType: string;
-  signDate: Date;
-  startDate: Date;
-  endDate: Date;
+  signDate: Date | null;
+  startDate: Date | null;
+  endDate: Date | null;
   totalAmount: { toString(): string } | number | string;
   taxRate: { toString(): string } | number | string;
   ownerUserId: string;
   signerId: string;
   attachments: unknown;
-}): boolean {
-  if (!c.customerId || !c.contractNo || !c.title || !c.serviceType) return false;
-  if (!c.signDate || !c.startDate || !c.endDate) return false;
+}): PublishableCheck {
+  const missing: string[] = [];
+  if (!c.customerId) missing.push("客户 (customerId)");
+  if (!c.contractNo) missing.push("合同编号 (contractNo)");
+  if (!c.title) missing.push("合同标题 (title)");
+  if (!c.serviceType) missing.push("服务类型 (serviceType)");
+  if (!c.signDate) missing.push("签订日期 (signDate)");
+  if (!c.startDate) missing.push("开始日期 (startDate)");
+  if (!c.endDate) missing.push("结束日期 (endDate)");
   const total = Number(c.totalAmount);
   const tax = Number(c.taxRate);
-  if (!(total > 0) || !(tax >= 0)) return false;
-  if (!c.ownerUserId || !c.signerId) return false;
+  if (!(total > 0)) missing.push("合同总额 > 0 (totalAmount)");
+  if (!(tax >= 0)) missing.push("税率 >= 0 (taxRate)");
+  if (!c.ownerUserId) missing.push("项目负责人 (ownerUserId)");
+  if (!c.signerId) missing.push("签订人 (signerId)");
   const att = c.attachments;
-  if (!Array.isArray(att) || att.length === 0) return false;
-  return true;
+  if (!Array.isArray(att) || att.length === 0) missing.push("至少 1 个附件 (attachments)");
+  return { eligible: missing.length === 0, missing };
+}
+
+/** @deprecated 用 checkPublishable().eligible 替代; 保留仅为旧 caller 不破坏编译 */
+export function isPublishable(c: Parameters<typeof checkPublishable>[0]): boolean {
+  return checkPublishable(c).eligible;
 }
 
 /**
@@ -127,7 +156,7 @@ export async function tryAutoPublish(tx: Prisma.TransactionClient, contractId: s
       to: "ACTIVE",
       precondition: (c) => {
         // 字段不全视作 SKIPPED 静默跳过, 由后续 PATCH 重新评估
-        if (!isPublishable(c)) throw new SkipTransition();
+        if (!checkPublishable(c).eligible) throw new SkipTransition();
       },
       audit: (c) => ({
         actorId: SYSTEM_USER_ID,
@@ -155,63 +184,81 @@ export async function tryAutoPublish(tx: Prisma.TransactionClient, contractId: s
 }
 
 /**
- * R-07: 合同满足完结条件 → ACTIVE → CLOSED (reason=completed)
- *   - 所有 Project.status ∈ {ACCEPTED, CLOSED}
- *   - SUM(Invoice.amount where status=ISSUED) >= contract.totalAmount * completionInvoiceRatio
- *   - SUM(Payment.amount where status=RECONCILED) >= contract.totalAmount * completionInvoiceRatio
- * 完结比例从 env 读 (默认 0.95). 状态不匹配 / 条件不满足 → 静默 no-op.
+ * R-07: 合同满足完结条件 → ACTIVE → CLOSED.
+ * 统一的自动关闭入口, 取代之前的 tryAutoComplete / tryAutoCloseOnExpiry 双胞胎.
+ *   - SUM(Invoice.amount where status=ISSUED) >= contract.totalAmount * ratio
+ *   - SUM(Payment.amount where status=RECONCILED) >= contract.totalAmount * ratio
+ * 完结比例从 env 读 (默认 0.95, CONTRACT_COMPLETION_INVOICE_RATIO).
+ * 状态不匹配 / 任一前置条件不满足 → 静默 no-op.
+ *
+ * reason 由 endDate 自动判定 (统一两个旧分支):
+ *   - endDate < now → "expired"  (走 AUTO_CLOSE_EXPIRED 审计/通知)
+ *   - endDate >= now → "completed"  (走 AUTO_CLOSE_COMPLETED 审计/通知)
+ *
+ * 注: DESIGN-v3.md R-07 提到的"项目全 ACCEPTED/CLOSED"在当前 schema 下无 Project 子表支撑,
+ *     简化为仅校验开票+回款; 验收环节由 admin 在前端操作中体现 (人工确认后手动调 closeContract).
  */
 
-export async function tryAutoComplete(contractId: string, now: Date): Promise<"CLOSED" | "SKIPPED"> {
-  // now 当前未使用, 保留参数便于将来加"开票时效"等条件
-  void now;
+export async function tryAutoClose(contractId: string, now: Date): Promise<"CLOSED" | "SKIPPED"> {
   const ratio = env.CONTRACT_COMPLETION_INVOICE_RATIO;
+  const reasonOf = (endDate: Date): ContractCloseReason =>
+    endDate < now ? "expired" : "completed";
   const result = await runTransition({
     entity: "Contract",
     id: contractId,
     loadInTx: (tx) => tx.contract.findFirst({
       where: { id: contractId, deletedAt: null },
-      select: { id: true, status: true, contractNo: true, totalAmount: true, ownerUserId: true },
+      select: { id: true, status: true, contractNo: true, totalAmount: true, endDate: true, ownerUserId: true },
     }),
     from: ["ACTIVE"],
     to: "CLOSED",
-    // R-07: 完结条件 — 开票已足额 (>= totalAmount * ratio) 且回款已足额 (>= totalAmount * ratio)
-    // 注: DESIGN-v3.md R-07 提到的"项目全 ACCEPTED/CLOSED"在当前 schema 下无 Project 子表支撑,
-    //     简化为仅校验开票+回款; 验收环节由 admin 在前端操作中体现 (人工确认后手动调 closeContract).
     precondition: async (c, tx) => {
+      const total = Number(c.totalAmount);
+      const threshold = total * ratio;
+
+      // 开票足额
       const invoiced = await tx.invoice.aggregate({
         where: { contractId, status: "ISSUED", deletedAt: null },
         _sum: { amount: true },
       });
-      const invoicedAmount = Number(invoiced._sum.amount ?? 0);
-      const total = Number(c.totalAmount);
-      if (invoicedAmount < total * ratio) throw new SkipTransition();
+      if (Number(invoiced._sum.amount ?? 0) < threshold) throw new SkipTransition();
 
-      // 回款也必须足额
+      // 回款足额 (CONFIRMED + RECONCILED 都算入账;PLANNED 不算)
       const paid = await tx.payment.aggregate({
-        where: { contractId, status: "RECONCILED", deletedAt: null },
+        where: { contractId, status: { in: ["CONFIRMED", "RECONCILED"] }, deletedAt: null },
         _sum: { amount: true },
       });
-      const paidAmount = Number(paid._sum.amount ?? 0);
-      if (paidAmount < total * ratio) throw new SkipTransition();
+      if (Number(paid._sum.amount ?? 0) < threshold) throw new SkipTransition();
     },
-    extraData: () => ({ reviewComment: "completed" }),
-    audit: (c) => ({
-      actorId: SYSTEM_USER_ID,
-      action: "CONTRACT_AUTO_CLOSE_COMPLETED",
-      before: { status: c.status },
-      after: { status: "CLOSED", reason: "completed" },
-    }),
-    reviewLog: () => ({
-      reviewerId: SYSTEM_USER_ID,
-      action: "AUTO_CLOSE_COMPLETED",
-      comment: `项目已验收, 开票回款达到 ${(ratio * 100).toFixed(0)}%, 系统自动完结`,
-    }),
+    extraData: (c) => ({ reviewComment: reasonOf(c.endDate) }),
+    audit: (c) => {
+      const reason = reasonOf(c.endDate);
+      return {
+        actorId: SYSTEM_USER_ID,
+        action: `CONTRACT_AUTO_CLOSE_${reason.toUpperCase()}`,
+        before: { status: c.status },
+        after: { status: "CLOSED", reason },
+      };
+    },
+    reviewLog: (c) => {
+      const reason = reasonOf(c.endDate);
+      const pct = (ratio * 100).toFixed(0);
+      const comment =
+        reason === "expired"
+          ? `合同已过到期日且开票回款达到 ${pct}%, 系统自动置为已完结`
+          : `项目已验收, 开票回款达到 ${pct}%, 系统自动完结`;
+      return {
+        reviewerId: SYSTEM_USER_ID,
+        action: `AUTO_CLOSE_${reason.toUpperCase()}`,
+        comment,
+      };
+    },
     event: async (c, tx) => {
       const admins = await listAdminUserIds(tx);
+      const reason = reasonOf(c.endDate);
       return {
-        type: "CONTRACT_AUTO_COMPLETED",
-        payload: { contractId: c.id, contractNo: c.contractNo, reason: "completed" },
+        type: reason === "expired" ? "CONTRACT_AUTO_EXPIRED" : "CONTRACT_AUTO_COMPLETED",
+        payload: { contractId: c.id, contractNo: c.contractNo, reason, endDate: c.endDate },
         receivers: Array.from(new Set([c.ownerUserId, ...admins])),
       };
     },

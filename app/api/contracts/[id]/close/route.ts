@@ -12,7 +12,7 @@ const schema = z.object({
 
 /**
  * admin 强制完结: ACTIVE → CLOSED 兜底入口
- * 自动完结 (tryAutoComplete / tryAutoCloseOnExpiry) 也走内部 closeContract, 这里是 admin 手动入口
+ * 自动完结 (tryAutoClose) 也走内部 closeContract, 这里是 admin 手动入口
  * body: { reason: "completed" | "terminated" | "expired" }
  */
 export async function POST(

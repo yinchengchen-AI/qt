@@ -1,6 +1,6 @@
 "use client";
 import { ProCard, ProDescriptions, ProTable } from "@ant-design/pro-components";
-import { Alert, App as AntdApp, Button, Col, Empty, Radio, Row, Space, Tabs, Tag } from "antd";
+import { Alert, App as AntdApp, Button, Col, Empty, Row, Space, Tabs, Tag } from "antd";
 import { CloudUploadOutlined, DeleteOutlined, FilePdfOutlined } from "@ant-design/icons";
 import { useParams, useRouter } from "next/navigation";
 import { useGoBack } from "@/lib/navigation";
@@ -225,9 +225,7 @@ const handleDelete = () => {
     }
   });
 };
-  // 强制完结弹窗: admin 选 reason (completed / terminated / expired)
   const [activeTab, setActiveTab] = useState("info");
-  const [closeReason, setCloseReason] = useState<"completed" | "terminated" | "expired">("completed");
 
   if (error) {
     return (
@@ -260,46 +258,88 @@ const handleDelete = () => {
   const t = overview?.totals;
   const fmtWan = (v: number) => (v / 10000).toFixed(1);
 
-  // 状态机 3 态: DRAFT/ACTIVE/CLOSED. 业务基本无需手动操作, 自动化处理常见流转;
-  // 这里只暴露 admin 兜底入口: DRAFT 强制发布, ACTIVE 强制完结.
+  // 状态机 3 态: DRAFT/ACTIVE/CLOSED. 业务基本无需手动操作, 自动化处理常见流转.
+  // 这里只暴露 admin 兜底入口:
+  //   - DRAFT: "检查是否可发布" 只读检查, 不直接发布(避免跟自动双轨);
+  //     POST /publish 路由仍保留作应急, 但不在 UI 暴露按钮。
+  //   - ACTIVE: 强制完结(terminated). completed / expired 已被 tickCompletionCandidates
+  //     + tryAutoClose (开票+回款双足额) 自动覆盖, UI 不再让 admin 抢着生效。
   const can = (() => {
     const s = contract.status;
-    if (s === "DRAFT") return ["publish"];
+    if (s === "DRAFT") return ["check-publish"];
     if (s === "ACTIVE") return ["close"];
     return [];
   })();
 
   const handleClose = async () => {
+    // UI 上"强制完结"按钮只剩这一条: 业务终止(terminated). completed / expired 由
+    // tryAutoClose + tickCompletionCandidates 自动处理, 见 can() 注释。
     try {
       const res = await fetch(`/api/contracts/${id}/close`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
-        body: JSON.stringify({ reason: closeReason })
+        body: JSON.stringify({ reason: "terminated" })
       });
       const j = await res.json();
       if (j.code !== 0) { msg.error(j.message); return; }
-      msg.success("合同已完结");
+      msg.success("合同已完结 (terminated)");
       mutate();
+    } catch (e) {
+      msg.error((e as Error).message);
+    }
+  };
+  // 只读检查: 调 GET /api/contracts/[id]/publish-eligibility, 告诉 admin 缺什么字段。
+  // 不直接发布, 避免和 hourly tickPublishableDraffts 双轨; 补齐后下一次 tick 自动生效。
+  const checkPublishEligibility = async () => {
+    try {
+      const res = await fetch(`/api/contracts/${id}/publish-eligibility`, { credentials: "include" });
+      const j = await res.json();
+      if (j.code !== 0) { msg.error(j.message); return; }
+      const data = j.data as { status: string; eligible: boolean; missing: string[] };
+      if (data.eligible) {
+        msg.success(
+          `合同满足自动发布条件, 下一次 tickPublishableDraffts (每小时) 会自动推到 ACTIVE`
+        );
+      } else {
+        modal.error({
+          title: "暂不可自动发布",
+          content: (
+            <div>
+              <div style={{ marginBottom: 8 }}>缺失以下条件:</div>
+              <ul style={{ paddingLeft: 20, margin: 0 }}>
+                {data.missing.map((m, i) => (
+                  <li key={i}>{m}</li>
+                ))}
+              </ul>
+              <div style={{ marginTop: 12, color: "#999", fontSize: 12 }}>
+                补齐后, 系统每小时自动评估; 编辑保存也会立即重评。
+              </div>
+            </div>
+          )
+        });
+      }
     } catch (e) {
       msg.error((e as Error).message);
     }
   };
   const askClose = () => {
     modal.confirm({
-      title: "强制完结合同",
+      title: "强制完结合同 (业务终止)",
+      okText: "确认完结",
+      okButtonProps: { danger: true },
+      cancelText: "取消",
       content: (
         <div style={{ paddingTop: 8 }}>
-          <div style={{ marginBottom: 8 }}>请选择完结原因 (记录到 reviewComment):</div>
-          <Radio.Group value={closeReason} onChange={(e) => setCloseReason(e.target.value)}>
-            <Radio value="completed">提前结清 (completed)</Radio>
-            <Radio value="terminated">业务终止 (terminated)</Radio>
-            <Radio value="expired">到期兜底 (expired)</Radio>
-          </Radio.Group>
+          <div>
+            开票 + 回款都足额时, 或合同 endDate &lt; now 时, 系统会自动完结 (reviewComment
+            记为 <code>completed</code> / <code>expired</code>), 不需要手动操作。
+          </div>
+          <div style={{ marginTop: 8 }}>
+            本按钮仅在业务需要"提前终止"时使用, reviewComment 将记为 <code>terminated</code>。
+          </div>
         </div>
       ),
-      okText: "确认完结",
-      cancelText: "取消",
       onOk: handleClose
     });
   };
@@ -516,9 +556,13 @@ const handleDelete = () => {
               <Button
                 key={a}
                 type="primary"
-                onClick={a === "close" ? askClose : () => run(a)}
+                onClick={
+                  a === "close" ? askClose
+                  : a === "check-publish" ? checkPublishEligibility
+                  : () => run(a)
+                }
               >
-                {a === "publish" ? "发布" : a === "close" ? "完结" : a}
+                {a === "check-publish" ? "检查是否可发布" : a === "close" ? "完结" : a}
               </Button>
             ))}
             {isAdmin && (
