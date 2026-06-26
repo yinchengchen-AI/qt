@@ -82,10 +82,12 @@ export default function NewInvoicePage() {
             const newlyUploaded = (values.attachments ?? [])
               .map((f: { response?: { id?: string; name?: string; mimeType?: string; size?: number; uploadedBy?: string; uploadedAt?: string } }) => f.response)
               .filter((r: { id?: string } | undefined): r is { id: string; name: string; mimeType: string; size: number; uploadedBy: string; uploadedAt: string } => Boolean(r && r.id));
+            // ProFormDatePicker 在 onFinish 里 values.applyDate 可能是 dayjs 或 string (取决于 antd 内部转换),
+            // 用 dayjs() 包一层兼容两种, 直接 toISOString()
             const payload = {
               ...values,
-              applyDate: values.applyDate?.toISOString?.(),
-              expectedIssueDate: values.expectedIssueDate?.toISOString?.(),
+              applyDate: values.applyDate ? dayjs(values.applyDate).toISOString() : undefined,
+              expectedIssueDate: values.expectedIssueDate ? dayjs(values.expectedIssueDate).toISOString() : undefined,
               attachments: newlyUploaded
             };
             delete (payload as Record<string, unknown>).attachments_uploads;
