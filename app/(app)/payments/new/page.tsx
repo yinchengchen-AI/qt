@@ -78,7 +78,10 @@ export default function NewPaymentPage() {
             method: "BANK_TRANSFER"
           }}
           onFinish={async (values) => {
-            const payload = { ...values, receivedAt: values.receivedAt?.toISOString?.() };
+            const payload = {
+              ...values,
+              receivedAt: values.receivedAt ? new Date(values.receivedAt).toISOString() : undefined
+            };
             const res = await fetch("/api/payments", {
               method: "POST",
               headers: { "Content-Type": "application/json" },
