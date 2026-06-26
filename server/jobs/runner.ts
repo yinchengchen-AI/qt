@@ -6,6 +6,7 @@ import { emit } from "@/server/events/bus";
 import { tickPublishableDraffts, tickCompletionCandidates } from "@/server/jobs/contract-automation";
 import { tickCustomerStatusSuggestions } from "@/server/jobs/customer-status-suggest";
 import { runCertificateExpiryCheck } from "@/server/jobs/certificate-expiry-check";
+import { tickStaleContracts } from "@/server/jobs/stale-contract";
 
 /**
  * 单个 job 一次执行的统计。
@@ -41,6 +42,7 @@ export async function runAllJobs(now = new Date()): Promise<JobResult[]> {
     { name: "invoice-overdue", run: () => invoiceOverdueJob(now, admins) },
     { name: "contract-auto-publish", run: () => tickPublishableDraffts() },
     { name: "contract-auto-complete", run: () => tickCompletionCandidates(now) },
+    { name: "contract-stale-notify", run: () => tickStaleContracts(now) },
     { name: "customer-status-suggest", run: () => tickCustomerStatusSuggestions(now) },
     // P0-11: 证书到期检查,跟 01:00 通用入口打通,便于监控和手动触发
     {

@@ -103,6 +103,29 @@ function buildMessage(uid: string, ev: DomainEvent): ResolvedMessage {
         content: `合同到期日：${formatDate(p.endDate)}`,
         link: { kind: "contract", id: p.contractId }
       };
+    case "CONTRACT_AUTO_OVERDUE_TERMINATED":
+      // 合同过期宽限期强关: endDate+GRACE<now 仍未结清 → 强关为 overdue_terminated
+      // payload: contractId, contractNo, reason, endDate, graceDays
+      return {
+        receiverUserId: uid,
+        title: `合同 ${p.contractNo} 已自动强关 (过期未结清)`,
+        content: `到期日: ${formatDate(p.endDate)}, 已超宽限期 ${p.graceDays} 天仍未结清, 系统自动关闭`,
+        link: { kind: "contract", id: p.contractId }
+      };
+    case "CONTRACT_EXPIRED_UNPAID":
+      // 合同过期未结清提醒: endDate<now 但钱没收齐, 每天去重发一次
+      // payload: contractId, contractNo, daysOverdue, graceDays, daysUntilForceClose,
+      //          paidAmount, totalAmount
+      const daysUntil = Math.max(0, Number(p.graceDays ?? 0) - Number(p.daysOverdue ?? 0));
+      return {
+        receiverUserId: uid,
+        title: `合同 ${p.contractNo} 已过期 ${p.daysOverdue} 天, 未结清 ¥${p.remaining ?? "-"}`,
+        content:
+          daysUntil > 0
+            ? `还剩 ${daysUntil} 天进入宽限期强关 (reason=overdue_terminated);请尽快催收或人工处理`
+            : `已过宽限期, 下一次 cron 会被系统强关为 overdue_terminated`,
+        link: { kind: "contract", id: p.contractId }
+      };
     case "CERTIFICATE_EXPIRING":
       // 证书到期提醒 (server/jobs/certificate-expiry-check 触发)
       // payload 字段: certificateId, userId, certName, expiryDate, daysLeft

@@ -2,11 +2,12 @@
  * 合同状态机自动化定时任务
  *
  * tickPublishableDraffts    — 每小时扫 DRAFT, 字段完整+附件就位 → ACTIVE
- * tickCompletionCandidates  — 每天扫 ACTIVE, 开票+回款都足额 → CLOSED
- *                              (reason 由 endDate<now 自动判定为 expired/completed)
+ * tickCompletionCandidates  — 每小时扫 ACTIVE, 满足任一自动完结规则 → CLOSED:
+ *                              - tryAutoClose:           endDate<now + 双足额 → CLOSED (reason=completed)
+ *                              - tryAutoCloseOnOverdue:  endDate+GRACE<now + 未结清 → CLOSED (reason=overdue_terminated)
  */
 import { prisma } from "@/lib/prisma";
-import { tryAutoPublish, tryAutoClose } from "@/server/services/contract";
+import { tryAutoPublish, tryAutoClose, tryAutoCloseOnOverdue } from "@/server/services/contract";
 import type { JobResult } from "./runner";
 
 /**
@@ -43,8 +44,11 @@ export async function tickPublishableDraffts(): Promise<JobResult> {
 }
 
 /**
- * 每天扫一次: ACTIVE 合同, 满足"开票足额 + 回款足额"两个条件 → CLOSED.
- * reason 由 endDate<now 在 tryAutoClose 内部判定 (expired / completed).
+ * 每小时扫一次: ACTIVE 合同, 满足任一自动完结规则 → CLOSED.
+ *   - tryAutoClose:           endDate<now + 开票+回款双足额  → CLOSED (reason=completed)
+ *   - tryAutoCloseOnOverdue:  endDate+GRACE<now + 未结清       → CLOSED (reason=overdue_terminated)
+ * 两条规则互斥: 双足额走 tryAutoClose, 未结清走 tryAutoCloseOnOverdue; 一个合同的两次调用
+ * 至多有一个会命中 precondition (另一个会抛 SkipTransition 静默跳过).
  * 走完整事务+重试, 单笔失败不影响其它.
  */
 export async function tickCompletionCandidates(now: Date): Promise<JobResult> {
@@ -56,10 +60,15 @@ export async function tickCompletionCandidates(now: Date): Promise<JobResult> {
   let closed = 0;
   let scanned = 0;
   for (const c of candidates) {
+    scanned++;
     try {
-      const r = await tryAutoClose(c.id, now);
+      // 优先尝试"已结清"路径 (双足额 + endDate<now)
+      let r = await tryAutoClose(c.id, now);
+      // 如果上面 skip (意味着 endDate>=now 或未双足额), 再试"宽限期过期"路径
+      if (r === "SKIPPED") {
+        r = await tryAutoCloseOnOverdue(c.id, now);
+      }
       if (r === "CLOSED") closed++;
-      scanned++;
     } catch (e) {
       console.warn(
         `[contract-auto-complete] contract ${c.id} failed:`,

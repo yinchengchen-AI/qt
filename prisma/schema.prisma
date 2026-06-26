@@ -41,6 +41,10 @@ enum MessageType {
   CONTRACT_AUTO_EXECUTED
   CONTRACT_AUTO_COMPLETED
   CONTRACT_AUTO_EXPIRED
+  // 合同过期宽限期强关 (endDate+GRACE<now 仍未结清, tryAutoCloseOnOverdue 触发)
+  CONTRACT_AUTO_OVERDUE_TERMINATED
+  // 合同过期未结清提醒 (endDate<now 但钱没收齐, tickStaleContracts 触发)
+  CONTRACT_EXPIRED_UNPAID
   // 证书 N 天内到期 (30/15/7 三档阈值各发一次)
   CERTIFICATE_EXPIRING
 }

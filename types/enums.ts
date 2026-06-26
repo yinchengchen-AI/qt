@@ -107,6 +107,10 @@ export const MESSAGE_TYPE = [
   "CONTRACT_AUTO_EXECUTED",
   "CONTRACT_AUTO_COMPLETED",
   "CONTRACT_AUTO_EXPIRED",
+  // 合同过期宽限期强关 (tryAutoCloseOnOverdue 触发, endDate+GRACE<now 仍未结清)
+  "CONTRACT_AUTO_OVERDUE_TERMINATED",
+  // 合同过期未结清提醒 (tickStaleContracts 触发, endDate<now 但钱没收齐, 给 owner/admin 通知)
+  "CONTRACT_EXPIRED_UNPAID",
   // 证书 N 天内到期提醒 (server/jobs/certificate-expiry-check 触发)
   "CERTIFICATE_EXPIRING"
 ] as const;

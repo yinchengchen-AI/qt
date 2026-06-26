@@ -29,7 +29,11 @@ export const env = createEnv({
     MINIO_PUBLIC_BASE_URL: z.string().url().optional(),
     // 合同自动完结阈值:开票金额 / 合同总额 >= 该比例时 ACTIVE → CLOSED
     // 必须在 (0, 1] 之间,防止 0 或非法值导致批量误关闭
-    CONTRACT_COMPLETION_INVOICE_RATIO: z.coerce.number().min(0.01).max(1).default(0.95)
+    CONTRACT_COMPLETION_INVOICE_RATIO: z.coerce.number().min(0.01).max(1).default(0.95),
+    // 合同过期强关宽限期:endDate + GRACE_DAYS < now 仍未结清的合同,
+    // 由 tryAutoCloseOnOverdue 自动关闭 (reason=overdue_terminated).
+    // 默认 60 天,允许 0 表示"立即强关"(不推荐,会留下大量财务缺口).
+    CONTRACT_OVERDUE_GRACE_DAYS: z.coerce.number().int().min(0).max(3650).default(60)
   },
   client: {},
   runtimeEnv: {
@@ -47,7 +51,8 @@ export const env = createEnv({
     MINIO_SECRET_KEY: process.env.MINIO_SECRET_KEY,
     MINIO_BUCKET: process.env.MINIO_BUCKET,
     MINIO_PUBLIC_BASE_URL: process.env.MINIO_PUBLIC_BASE_URL,
-    CONTRACT_COMPLETION_INVOICE_RATIO: process.env.CONTRACT_COMPLETION_INVOICE_RATIO
+    CONTRACT_COMPLETION_INVOICE_RATIO: process.env.CONTRACT_COMPLETION_INVOICE_RATIO,
+    CONTRACT_OVERDUE_GRACE_DAYS: process.env.CONTRACT_OVERDUE_GRACE_DAYS
   },
   emptyStringAsUndefined: true
 });

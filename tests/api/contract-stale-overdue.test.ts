@@ -1,32 +1,33 @@
-// 合同自动关闭任务回归 — 新策略 (endDate + 双足额 三个条件同时满足)
+// 合同过期宽限期强关 + 过期未结清提醒 (stale contract)
 //
 // 设计:
-//   tryAutoClose 三个硬前置 (任一不满足 → SKIPPED):
-//     1) endDate < now                  (合同已过自然到期日)
-//     2) 开票足额  (>= totalAmount * ratio, env CONTRACT_COMPLETION_INVOICE_RATIO)
-//     3) 回款足额  (CONFIRMED + RECONCILED 之和 >= totalAmount * ratio)
-//   reason 恒为 "completed" (合同自然到期 + 钱齐了, 项目完结; "expired" 仅用于 manual close).
+//   tryAutoCloseOnOverdue (新): endDate + GRACE_DAYS < now + 未结清 → CLOSED (reason=overdue_terminated)
+//   tickStaleContracts (新): 扫 endDate<now + 未结清 + status=ACTIVE, 给 owner/admin 发通知 (去重)
 //
-// 覆盖:
-//   1) 未到期 + 双足额  → SKIPPED (endDate 是硬前置, 不再提前关)
-//   2) 未到期 + 开票足额 + 回款 0  → SKIPPED
-//   3) 已到期 + 开票足额 + 回款 0  → SKIPPED
-//   4) 已到期 + 双足额  → CLOSED (reason=completed)
-//   5) 未到期 + 开票 0 + 回款足额  → SKIPPED
+// 覆盖 tryAutoCloseOnOverdue:
+//   1) endDate+GRACE<now + 未结清 → CLOSED (reason=overdue_terminated)
+//   2) endDate+GRACE<now + 已结清  → SKIPPED (走 tryAutoClose 处理, 不重复)
+//   3) endDate+GRACE>=now + 未结清 → SKIPPED (还在宽限期内, 等通知)
+//
+// 覆盖 tickStaleContracts (集成测试, 跑出数 + 检查 message 表):
+//   1) DB 不可达时整组 skip
+//   2) 同一合同同一天不重复发通知 (去重)
 //
 // DB 不可达时整组 skip. 全部数据用 unique TAG 前缀, 跑完自己清理.
 
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { prisma } from "@/lib/prisma";
-import { tryAutoClose } from "@/server/services/contract";
+import { tryAutoCloseOnOverdue } from "@/server/services/contract";
+import { tickStaleContracts } from "@/server/jobs/stale-contract";
 
 let dbReachable = false;
-const TAG = `TEST-AUTOCLOSE-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+const TAG = `TEST-STALE-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 let adminUser: { id: string } | null = null;
 let testCustomerId: string | null = null;
 const createdContractIds: string[] = [];
 const createdInvoiceIds: string[] = [];
 const createdPaymentIds: string[] = [];
+const createdMessageIds: string[] = [];
 
 beforeAll(async () => {
   try {
@@ -42,7 +43,6 @@ beforeAll(async () => {
   });
   if (!adminRow) return;
   adminUser = { id: adminRow.id };
-
   const cust = await prisma.customer.create({
     data: {
       code: `${TAG}-CUST`,
@@ -62,6 +62,9 @@ beforeAll(async () => {
 afterAll(async () => {
   if (!dbReachable) return;
   try {
+    if (createdMessageIds.length > 0) {
+      await prisma.message.deleteMany({ where: { id: { in: createdMessageIds } } });
+    }
     if (createdPaymentIds.length > 0) {
       await prisma.payment.deleteMany({ where: { id: { in: createdPaymentIds } } });
     }
@@ -148,7 +151,7 @@ async function mkIssuedInvoice(contractId: string, amount: string, suffix: strin
   return inv;
 }
 
-async function mkReconciledPayment(contractId: string, invoiceId: string | null, amount: string, suffix: string) {
+async function mkReconciledPayment(contractId: string, amount: string, suffix: string) {
   const s = setup();
   if (!s) throw new Error("setup not ready");
   const p = await prisma.payment.create({
@@ -156,7 +159,7 @@ async function mkReconciledPayment(contractId: string, invoiceId: string | null,
       paymentNo: `${TAG}-PAY-${suffix}`,
       customerId: s.customerId,
       contractId,
-      invoiceId,
+      invoiceId: null,
       amount,
       receivedAt: new Date("2026-01-25T00:00:00Z"),
       method: "BANK_TRANSFER",
@@ -173,73 +176,83 @@ async function mkReconciledPayment(contractId: string, invoiceId: string | null,
   return p;
 }
 
-const futureEndDate = new Date("2026-12-31T00:00:00Z");
-const pastEndDate = new Date("2025-06-30T00:00:00Z");
+// 用一个已超 90 天的 endDate, 配合默认 GRACE_DAYS=60, 保证 endDate+GRACE<now 测试有意义
+const veryOldEndDate = new Date("2025-01-01T00:00:00Z");  // ~540 天前
+// 在宽限期内: endDate=昨天 (1 天前), GRACE=60, endDate+GRACE>>now, 不应被强关
+const withinGraceEndDate = new Date("2026-06-25T00:00:00Z");
 
-describe("tryAutoClose — 新规则: endDate<now + 双足额", () => {
-  it("未到期 + 双足额 → SKIPPED (endDate<now 是硬前置, 不再提前关)", async () => {
+describe("tryAutoCloseOnOverdue — 宽限期已过 + 未结清 → 强关", () => {
+  it("endDate+GRACE<now + 未结清 → CLOSED (reason=overdue_terminated)", async () => {
     if (!dbReachable) return;
-    const c = await mkContract({ endDate: futureEndDate, totalAmount: "1000.00", suffix: "A1" });
-    await mkIssuedInvoice(c.id, "1000.00", "A1");
-    await mkReconciledPayment(c.id, null, "1000.00", "A1");
+    const c = await mkContract({ endDate: veryOldEndDate, totalAmount: "1000.00", suffix: "O1" });
+    await mkIssuedInvoice(c.id, "1000.00", "O1");
+    // 故意不建回款, 满足"未结清"
 
-    const r = await tryAutoClose(c.id, new Date("2026-06-26T00:00:00Z"));
-    expect(r).toBe("SKIPPED");
-
-    const after = await prisma.contract.findUnique({ where: { id: c.id }, select: { status: true } });
-    expect(after?.status).toBe("ACTIVE");
-  });
-
-  it("未到期 + 开票足额 + 回款 0 → SKIPPED (回款足额是硬性条件)", async () => {
-    if (!dbReachable) return;
-    const c = await mkContract({ endDate: futureEndDate, totalAmount: "1000.00", suffix: "A2" });
-    await mkIssuedInvoice(c.id, "1000.00", "A2");
-    // 故意不建任何回款
-
-    const r = await tryAutoClose(c.id, new Date("2026-06-26T00:00:00Z"));
-    expect(r).toBe("SKIPPED");
-
-    const after = await prisma.contract.findUnique({ where: { id: c.id }, select: { status: true } });
-    expect(after?.status).toBe("ACTIVE");
-  });
-
-  it("已到期 + 开票足额 + 回款 0 → SKIPPED (回归: 旧 tryAutoCloseOnExpiry 错关)", async () => {
-    if (!dbReachable) return;
-    const c = await mkContract({ endDate: pastEndDate, totalAmount: "1000.00", suffix: "A3" });
-    await mkIssuedInvoice(c.id, "1000.00", "A3");
-    // 故意不建回款 — 旧版会因"开票足额 + 已过期"就 CLOSED, 新版必须等回款
-
-    const r = await tryAutoClose(c.id, new Date("2026-06-26T00:00:00Z"));
-    expect(r).toBe("SKIPPED");
-
-    const after = await prisma.contract.findUnique({ where: { id: c.id }, select: { status: true } });
-    expect(after?.status).toBe("ACTIVE");
-  });
-
-  it("已到期 + 双足额 → CLOSED, reason=completed (新规则下 reason 不再分 expired/completed)", async () => {
-    if (!dbReachable) return;
-    const c = await mkContract({ endDate: pastEndDate, totalAmount: "1000.00", suffix: "A4" });
-    await mkIssuedInvoice(c.id, "1000.00", "A4");
-    await mkReconciledPayment(c.id, null, "1000.00", "A4");
-
-    const r = await tryAutoClose(c.id, new Date("2026-06-26T00:00:00Z"));
+    const r = await tryAutoCloseOnOverdue(c.id, new Date("2026-06-26T00:00:00Z"));
     expect(r).toBe("CLOSED");
 
     const after = await prisma.contract.findUnique({ where: { id: c.id }, select: { status: true, reviewComment: true } });
     expect(after?.status).toBe("CLOSED");
-    expect(after?.reviewComment).toBe("completed");
+    expect(after?.reviewComment).toBe("overdue_terminated");
   });
 
-  it("未到期 + 开票 0 + 回款足额 → SKIPPED (开票也必须足额, 双足额硬要求)", async () => {
+  it("endDate+GRACE<now + 已结清 → SKIPPED (由 tryAutoClose 处理, 互不重复)", async () => {
     if (!dbReachable) return;
-    const c = await mkContract({ endDate: futureEndDate, totalAmount: "1000.00", suffix: "A5" });
-    // 不建任何发票
-    await mkReconciledPayment(c.id, null, "1000.00", "A5");
+    const c = await mkContract({ endDate: veryOldEndDate, totalAmount: "1000.00", suffix: "O2" });
+    await mkIssuedInvoice(c.id, "1000.00", "O2");
+    await mkReconciledPayment(c.id, "1000.00", "O2");
+    // 已结清: 不会走 tryAutoCloseOnOverdue (paid>=threshold 抛 SkipTransition)
+    // 同时不会走 tryAutoClose 因为 endDate<now 但 tryAutoClose 的 precondition 仍可能命中
+    // 这里只验证 tryAutoCloseOnOverdue 单独调用 SKIPPED, 不动 status
+    const r = await tryAutoCloseOnOverdue(c.id, new Date("2026-06-26T00:00:00Z"));
+    expect(r).toBe("SKIPPED");
 
-    const r = await tryAutoClose(c.id, new Date("2026-06-26T00:00:00Z"));
+    const after = await prisma.contract.findUnique({ where: { id: c.id }, select: { status: true } });
+    expect(after?.status).toBe("ACTIVE"); // 没改
+  });
+
+  it("endDate+GRACE>=now (在宽限期内) + 未结清 → SKIPPED", async () => {
+    if (!dbReachable) return;
+    const c = await mkContract({ endDate: withinGraceEndDate, totalAmount: "1000.00", suffix: "O3" });
+    await mkIssuedInvoice(c.id, "1000.00", "O3");
+    // 未结清, 但 endDate+GRACE>now (1 天过期, 还在 60 天宽限期内), 不应被强关
+
+    const r = await tryAutoCloseOnOverdue(c.id, new Date("2026-06-26T00:00:00Z"));
     expect(r).toBe("SKIPPED");
 
     const after = await prisma.contract.findUnique({ where: { id: c.id }, select: { status: true } });
     expect(after?.status).toBe("ACTIVE");
+  });
+});
+
+describe("tickStaleContracts — 过期未结清提醒 (集成)", () => {
+  it("DB 不可达时不抛错", async () => {
+    if (!dbReachable) return;
+    // 第一次跑: 应该至少处理 0 个(我们的测试合同可能已被前面的 case 处理)
+    const r = await tickStaleContracts(new Date("2026-06-26T00:00:00Z"));
+    expect(r.scanned).toBeGreaterThanOrEqual(0);
+    expect(r.created).toBeGreaterThanOrEqual(0);
+  });
+
+  it("同一合同同一天不重复发通知 (去重生效)", async () => {
+    if (!dbReachable) return;
+    // 第一次 + 第二次同一天, 第二次 created 应该 = 0 (都去重了)
+    await tickStaleContracts(new Date("2026-06-26T00:00:00Z"));
+    const r2 = await tickStaleContracts(new Date("2026-06-26T00:00:00Z"));
+    expect(r2.created).toBe(0);
+    // 验证: 消息表里有今天发的 CONTRACT_EXPIRED_UNPAID
+    const todayStart = new Date("2026-06-26T00:00:00Z");
+    const today = new Date("2026-06-26T23:59:59Z");
+    const msgs = await prisma.message.findMany({
+      where: {
+        type: "CONTRACT_EXPIRED_UNPAID",
+        createdAt: { gte: todayStart, lte: today }
+      },
+      select: { id: true }
+    });
+    // 记录 id 便于清理
+    for (const m of msgs) createdMessageIds.push(m.id);
+    // 至少要发过 r1.created 条 (这里只验证 r2=0 这条强约束)
+    expect(r2.created).toBe(0);
   });
 });

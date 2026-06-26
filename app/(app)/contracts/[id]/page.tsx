@@ -271,6 +271,27 @@ const handleDelete = () => {
     return [];
   })();
 
+  // 状态机提示: 合同已"开票+回款"双足额, 但 endDate 还没到, 处于"等自然到期"状态。
+  // 满足条件: status=ACTIVE + endDate>=now + 已确认回款 >= total*0.95 + 已开票 >= total*0.95
+  // 这种合同 tryAutoClose 会等 endDate<now 才关, 当前处于"等自然到期"过渡态, 加 tag 提示 admin。
+  // 阈值 0.95 跟 env.CONTRACT_COMPLETION_INVOICE_RATIO 默认值一致, 是 UI 提示不是业务门。
+  const settledPreExpiry = (() => {
+    if (contract.status !== "ACTIVE") return false;
+    if (!contract.endDate) return false;
+    if (new Date(contract.endDate).getTime() < Date.now()) return false;
+    const t = overview?.totals;
+    if (!t) return false;
+    const total = Number(t.totalAmount);
+    if (!(total > 0)) return false;
+    const ratio = 0.95;
+    return Number(t.invoicedAmount) >= total * ratio && Number(t.paidAmount) >= total * ratio;
+  })();
+  const daysUntilExpiry = (() => {
+    if (!contract.endDate) return null;
+    const ms = new Date(contract.endDate).getTime() - Date.now();
+    return Math.max(0, Math.ceil(ms / 86_400_000));
+  })();
+
   const handleClose = async () => {
     // UI 上"强制完结"按钮只剩这一条: 业务终止(terminated). completed / expired 由
     // tryAutoClose + tickCompletionCandidates 自动处理, 见 can() 注释。
@@ -545,7 +566,16 @@ const handleDelete = () => {
         back={goBack}
         title={`${contract.title} · ${contract.contractNo}`}
         subtitle="合同 360 度视图 — 概览 / 信息 / 项目 / 开票 / 回款 / 审批 / 附件"
-        meta={<StatusTag status={contract.status} domain="contract" />}
+        meta={
+          <Space size={8} wrap>
+            <StatusTag status={contract.status} domain="contract" />
+            {settledPreExpiry && (
+              <Tag color="green" title="开票+回款双足额, 等 endDate 到期后由 tryAutoClose 自动关闭">
+                已结清, {daysUntilExpiry !== null ? `${daysUntilExpiry} 天后` : "endDate 到期"}自动关闭
+              </Tag>
+            )}
+          </Space>
+        }
         actions={
           <Space wrap>
             <Button key="pdf" icon={<FilePdfOutlined />} onClick={() => openPrintWindow(`/api/contracts/${id}/pdf`)}>导出 PDF</Button>

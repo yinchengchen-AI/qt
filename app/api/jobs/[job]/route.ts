@@ -13,12 +13,14 @@ import {
   invoiceOverdueJob,
 } from "@/server/jobs/runner";
 import { tickCustomerStatusSuggestions } from "@/server/jobs/customer-status-suggest";
+import { tickStaleContracts } from "@/server/jobs/stale-contract";
 
 const jobEnum = z.enum([
   "run-all",
   "contract-expiring",
   "invoice-overdue",
   "customer-status-suggest",
+  "contract-stale-notify",
 ]);
 
 export async function POST(
@@ -47,7 +49,9 @@ export async function POST(
               ? [await invoiceOverdueJob(now)]
               : parsed === "customer-status-suggest"
                 ? [await tickCustomerStatusSuggestions(now)]
-                : (() => { throw new ApiError(ERROR_CODES.INTERNAL_ERROR, `unknown job: ${parsed}`, 500); })();
+                : parsed === "contract-stale-notify"
+                  ? [await tickStaleContracts(now)]
+                  : (() => { throw new ApiError(ERROR_CODES.INTERNAL_ERROR, `unknown job: ${parsed}`, 500); })();
       return ok({ at: now.toISOString(), results });
     } catch (e) {
       return err(e);

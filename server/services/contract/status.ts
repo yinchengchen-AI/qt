@@ -35,7 +35,7 @@ export async function publishContract(user: SessionUser, id: string) {
 }
 
 
-export type ContractCloseReason = "completed" | "terminated" | "expired";
+export type ContractCloseReason = "completed" | "terminated" | "expired" | "overdue_terminated";
 
 
 /**
@@ -185,24 +185,25 @@ export async function tryAutoPublish(tx: Prisma.TransactionClient, contractId: s
 
 /**
  * R-07: 合同满足完结条件 → ACTIVE → CLOSED.
- * 统一的自动关闭入口, 取代之前的 tryAutoComplete / tryAutoCloseOnExpiry 双胞胎.
- *   - SUM(Invoice.amount where status=ISSUED) >= contract.totalAmount * ratio
- *   - SUM(Payment.amount where status=RECONCILED) >= contract.totalAmount * ratio
- * 完结比例从 env 读 (默认 0.95, CONTRACT_COMPLETION_INVOICE_RATIO).
+ *
+ * 三个硬前置条件 (全部满足才关):
+ *   1. endDate < now                  (合同已过自然到期日)
+ *   2. 开票足额  (>= totalAmount * ratio, env CONTRACT_COMPLETION_INVOICE_RATIO)
+ *   3. 回款足额  (CONFIRMED + RECONCILED 之和 >= totalAmount * ratio)
+ *
  * 状态不匹配 / 任一前置条件不满足 → 静默 no-op.
  *
- * reason 由 endDate 自动判定 (统一两个旧分支):
- *   - endDate < now → "expired"  (走 AUTO_CLOSE_EXPIRED 审计/通知)
- *   - endDate >= now → "completed"  (走 AUTO_CLOSE_COMPLETED 审计/通知)
+ * reason 在自动路径下恒为 "completed" (合同自然到期 + 钱齐了, 项目完结).
+ *   - "expired" 作为 reason 仅用于 manual close (admin 选 expired 兜底);
+ *     自动路径不再产生, 因为 endDate<now + 双足额 已经隐含 "expired", 但 reason 字段
+ *     仍标 "completed" 跟 "人工因客户跑路标 terminated" 区分开。
+ *   - "overdue_terminated" 由 tryAutoCloseOnOverdue (宽限期已过仍未结清) 产生。
  *
  * 注: DESIGN-v3.md R-07 提到的"项目全 ACCEPTED/CLOSED"在当前 schema 下无 Project 子表支撑,
  *     简化为仅校验开票+回款; 验收环节由 admin 在前端操作中体现 (人工确认后手动调 closeContract).
  */
-
 export async function tryAutoClose(contractId: string, now: Date): Promise<"CLOSED" | "SKIPPED"> {
   const ratio = env.CONTRACT_COMPLETION_INVOICE_RATIO;
-  const reasonOf = (endDate: Date): ContractCloseReason =>
-    endDate < now ? "expired" : "completed";
   const result = await runTransition({
     entity: "Contract",
     id: contractId,
@@ -213,52 +214,112 @@ export async function tryAutoClose(contractId: string, now: Date): Promise<"CLOS
     from: ["ACTIVE"],
     to: "CLOSED",
     precondition: async (c, tx) => {
+      // 条件 1: endDate < now (合同已过自然到期日)
+      if (new Date(c.endDate as unknown as Date) >= now) throw new SkipTransition();
+
       const total = Number(c.totalAmount);
       const threshold = total * ratio;
 
-      // 开票足额
+      // 条件 2: 开票足额
       const invoiced = await tx.invoice.aggregate({
         where: { contractId, status: "ISSUED", deletedAt: null },
         _sum: { amount: true },
       });
       if (Number(invoiced._sum.amount ?? 0) < threshold) throw new SkipTransition();
 
-      // 回款足额 (CONFIRMED + RECONCILED 都算入账;PLANNED 不算)
+      // 条件 3: 回款足额 (CONFIRMED + RECONCILED 都算入账;PLANNED 不算)
       const paid = await tx.payment.aggregate({
         where: { contractId, status: { in: ["CONFIRMED", "RECONCILED"] }, deletedAt: null },
         _sum: { amount: true },
       });
       if (Number(paid._sum.amount ?? 0) < threshold) throw new SkipTransition();
     },
-    extraData: (c) => ({ reviewComment: reasonOf(c.endDate) }),
-    audit: (c) => {
-      const reason = reasonOf(c.endDate);
-      return {
-        actorId: SYSTEM_USER_ID,
-        action: `CONTRACT_AUTO_CLOSE_${reason.toUpperCase()}`,
-        before: { status: c.status },
-        after: { status: "CLOSED", reason },
-      };
-    },
-    reviewLog: (c) => {
-      const reason = reasonOf(c.endDate);
+    extraData: () => ({ reviewComment: "completed" as ContractCloseReason }),
+    audit: () => ({
+      actorId: SYSTEM_USER_ID,
+      action: "CONTRACT_AUTO_CLOSE_COMPLETED",
+      before: { status: "ACTIVE" },
+      after: { status: "CLOSED", reason: "completed" },
+    }),
+    reviewLog: () => {
       const pct = (ratio * 100).toFixed(0);
-      const comment =
-        reason === "expired"
-          ? `合同已过到期日且开票回款达到 ${pct}%, 系统自动置为已完结`
-          : `项目已验收, 开票回款达到 ${pct}%, 系统自动完结`;
       return {
         reviewerId: SYSTEM_USER_ID,
-        action: `AUTO_CLOSE_${reason.toUpperCase()}`,
-        comment,
+        action: "AUTO_CLOSE_COMPLETED",
+        comment: `合同已过到期日且开票回款达到 ${pct}%, 系统自动完结`,
       };
     },
     event: async (c, tx) => {
       const admins = await listAdminUserIds(tx);
-      const reason = reasonOf(c.endDate);
       return {
-        type: reason === "expired" ? "CONTRACT_AUTO_EXPIRED" : "CONTRACT_AUTO_COMPLETED",
-        payload: { contractId: c.id, contractNo: c.contractNo, reason, endDate: c.endDate },
+        type: "CONTRACT_AUTO_COMPLETED",
+        payload: { contractId: c.id, contractNo: c.contractNo, reason: "completed", endDate: c.endDate },
+        receivers: Array.from(new Set([c.ownerUserId, ...admins])),
+      };
+    },
+    silentSkip: true,
+  });
+  return result.result === "DONE" ? "CLOSED" : "SKIPPED";
+}
+
+/**
+ * 合同过期宽限期强关: endDate + GRACE_DAYS < now 仍未结清的合同
+ * → ACTIVE → CLOSED (reason="overdue_terminated").
+ *
+ * 跟 tryAutoClose 的差别:
+ *   - tryAutoClose 要求 endDate<now + 双足额 (钱齐了, 自然到期, 项目完结)
+ *   - tryAutoCloseOnOverdue 要求 endDate+GRACE<now + 未结清 (钱没收齐, 但拖太久了)
+ *
+ * 设计动机: 248 个 endDate 已过但未结清的合同, 如果不强制, 会无限期 ACTIVE.
+ * 加宽限期是给客户缓冲, 超期不结清就强关 + 通知, 财务也能承认坏账。
+ *
+ * GRACE_DAYS 来自 env.CONTRACT_OVERDUE_GRACE_DAYS (默认 60)。
+ * 单笔失败不影响其它; 走完整事务+重试。
+ */
+export async function tryAutoCloseOnOverdue(contractId: string, now: Date): Promise<"CLOSED" | "SKIPPED"> {
+  const ratio = env.CONTRACT_COMPLETION_INVOICE_RATIO;
+  const graceMs = env.CONTRACT_OVERDUE_GRACE_DAYS * 86_400_000;
+  const result = await runTransition({
+    entity: "Contract",
+    id: contractId,
+    loadInTx: (tx) => tx.contract.findFirst({
+      where: { id: contractId, deletedAt: null },
+      select: { id: true, status: true, contractNo: true, totalAmount: true, endDate: true, ownerUserId: true },
+    }),
+    from: ["ACTIVE"],
+    to: "CLOSED",
+    precondition: async (c, tx) => {
+      // 条件 1: endDate + GRACE_DAYS < now
+      const graceCutoff = new Date(new Date(c.endDate as unknown as Date).getTime() + graceMs);
+      if (graceCutoff >= now) throw new SkipTransition();
+
+      const total = Number(c.totalAmount);
+      const threshold = total * ratio;
+
+      // 条件 2: 必须未结清 (paid < threshold); 双足额的情况由 tryAutoClose 处理
+      const paid = await tx.payment.aggregate({
+        where: { contractId, status: { in: ["CONFIRMED", "RECONCILED"] }, deletedAt: null },
+        _sum: { amount: true },
+      });
+      if (Number(paid._sum.amount ?? 0) >= threshold) throw new SkipTransition();
+    },
+    extraData: () => ({ reviewComment: "overdue_terminated" as ContractCloseReason }),
+    audit: () => ({
+      actorId: SYSTEM_USER_ID,
+      action: "CONTRACT_AUTO_CLOSE_OVERDUE_TERMINATED",
+      before: { status: "ACTIVE" },
+      after: { status: "CLOSED", reason: "overdue_terminated" },
+    }),
+    reviewLog: () => ({
+      reviewerId: SYSTEM_USER_ID,
+      action: "AUTO_CLOSE_OVERDUE_TERMINATED",
+      comment: `合同已过到期日 + 宽限期 ${env.CONTRACT_OVERDUE_GRACE_DAYS} 天仍未结清, 系统强关`,
+    }),
+    event: async (c, tx) => {
+      const admins = await listAdminUserIds(tx);
+      return {
+        type: "CONTRACT_AUTO_OVERDUE_TERMINATED",
+        payload: { contractId: c.id, contractNo: c.contractNo, reason: "overdue_terminated", endDate: c.endDate, graceDays: env.CONTRACT_OVERDUE_GRACE_DAYS },
         receivers: Array.from(new Set([c.ownerUserId, ...admins])),
       };
     },
