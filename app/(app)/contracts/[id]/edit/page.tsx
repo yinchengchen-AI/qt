@@ -13,6 +13,7 @@ import { App as AntdApp, Space, Typography } from "antd";
 import { StatusTag } from "@/components/status-tag";
 import { useSession } from "next-auth/react";
 import { useParams, useRouter } from "next/navigation";
+import { useGoBack } from "@/lib/navigation";
 import useSWR from "swr";
 import { useDict, groupDictByLegacy } from "@/lib/dict-client";
 import { useContractTitleAutofill } from "@/lib/use-contract-title-autofill";
@@ -41,6 +42,7 @@ export default function EditContractPage() {
   const params = useParams();
   const id = String(params.id);
   const router = useRouter();
+  const goBack = useGoBack("/contracts");
   const { message } = AntdApp.useApp();
   // ProForm 的 ProFormRef 类型未导出,用 any 承载动态表单引用
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -61,7 +63,7 @@ export default function EditContractPage() {
   if (isLoading || !data) {
     return (
       <Page compact>
-        <PageHeader back={() => router.push(`/contracts/${id}`)} title="编辑合同" />
+        <PageHeader back={goBack} title="编辑合同" />
         <FormPageSkeleton />
       </Page>
     );
@@ -75,7 +77,7 @@ export default function EditContractPage() {
   if (!isAdmin && data.status !== "DRAFT") {
     return (
       <Page compact>
-        <PageHeader back={() => router.push(`/contracts/${id}`)} title="编辑合同" />
+        <PageHeader back={goBack} title="编辑合同" />
         <FormCard>
           <Text type="warning">
             当前状态 <StatusTag status={data.status} domain="contract" /> 不可编辑;仅 草稿 可改 (管理员可改任意状态)。
@@ -95,7 +97,7 @@ export default function EditContractPage() {
   return (
     <Page compact>
       <PageHeader
-        back={() => router.push(`/contracts/${id}`)}
+        back={goBack}
         title="编辑合同"
         subtitle="客户不可改;合同编号、服务起止期等可改,止期必须晚于起期"
       />

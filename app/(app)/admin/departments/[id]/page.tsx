@@ -2,6 +2,7 @@
 import { ProCard, ProDescriptions, ProTable, type ProColumns } from "@ant-design/pro-components";
 import { Button, Space, Tag, Typography } from "antd";
 import { useParams, useRouter } from "next/navigation";
+import { useGoBack } from "@/lib/navigation";
 import useSWR from "swr";
 import { Page } from "@/components/page";
 import { PageHeader } from "@/components/page-header";
@@ -37,6 +38,7 @@ export default function DepartmentDetailPage() {
   const params = useParams();
   const id = String(params.id);
   const router = useRouter();
+  const goBack = useGoBack("/admin/departments");
   const { data, error, isLoading, mutate } = useSWR<Dept>(`/api/departments/${id}`);
   const { data: membersData } = useSWR<{ list: User[]; total: number }>(
     data ? `/api/users?pageSize=50&departmentId=${id}` : null
@@ -45,7 +47,7 @@ export default function DepartmentDetailPage() {
   if (error) {
     return (
       <Page>
-        <PageHeader back={() => router.push("/admin/departments")} title="部门详情" />
+        <PageHeader back={goBack} title="部门详情" />
         <ProCard>
           <Text type="danger">加载失败:{(error as Error).message}</Text>
         </ProCard>
@@ -55,7 +57,7 @@ export default function DepartmentDetailPage() {
   if (isLoading || !data) {
     return (
       <Page>
-        <PageHeader back={() => router.push("/admin/departments")} title="部门详情" />
+        <PageHeader back={goBack} title="部门详情" />
         <DetailPageSkeleton />
       </Page>
     );
@@ -82,7 +84,7 @@ export default function DepartmentDetailPage() {
   return (
     <Page>
       <PageHeader
-        back={() => router.push("/admin/departments")}
+        back={goBack}
         title={`${data.name} (${data.code})`}
         subtitle={data.parent ? `隶属于：${data.parent.name} (${data.parent.code})` : "顶级部门"}
         meta={data.isActive ? <Tag color="green">启用</Tag> : <Tag>停用</Tag>}

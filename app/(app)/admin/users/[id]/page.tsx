@@ -3,6 +3,7 @@ import { Avatar, Space, Tag, Button, Typography } from "antd";
 import { ProCard, ProDescriptions } from "@ant-design/pro-components";
 import { EditOutlined, KeyOutlined, StopOutlined, CheckCircleOutlined } from "@ant-design/icons";
 import { useParams, useRouter } from "next/navigation";
+import { useGoBack } from "@/lib/navigation";
 import { useSession } from "next-auth/react";
 import useSWR from "swr";
 import { Page } from "@/components/page";
@@ -36,6 +37,7 @@ export default function UserDetailPage() {
   const params = useParams();
   const id = String(params.id);
   const router = useRouter();
+  const goBack = useGoBack("/admin/users");
   const { data: session } = useSession();
   const roleCode = (session?.user as { roleCode?: string } | undefined)?.roleCode;
   const isAdmin = roleCode === "ADMIN";
@@ -50,7 +52,7 @@ export default function UserDetailPage() {
     const e = error || userError;
     return (
       <Page>
-        <PageHeader back={() => router.push("/admin/users")} title="用户详情" />
+        <PageHeader back={goBack} title="用户详情" />
         <ErrorBox title="加载失败" action={<Button size="small" onClick={() => mutate()}>重试</Button>}>
           {(e as Error).message}
         </ErrorBox>
@@ -62,7 +64,7 @@ export default function UserDetailPage() {
   if (isLoading || data === undefined || !userResp) {
     return (
       <Page>
-        <PageHeader back={() => router.push("/admin/users")} title="用户详情" />
+        <PageHeader back={goBack} title="用户详情" />
         <DetailPageSkeleton />
       </Page>
     );
@@ -75,7 +77,7 @@ export default function UserDetailPage() {
     return (
       <Page>
         <PageHeader
-          back={() => router.push("/admin/users")}
+          back={goBack}
           title={user.name}
           subtitle={`${user.employeeNo} · ${user.email}`}
           meta={<Tag color={user.status === "ACTIVE" ? "green" : "default"}>{user.status === "ACTIVE" ? "启用" : "禁用"}</Tag>}
@@ -104,7 +106,7 @@ export default function UserDetailPage() {
   return (
     <Page>
       <PageHeader
-        back={() => router.push("/admin/users")}
+        back={goBack}
         title={user.name}
         subtitle={`${user.employeeNo} · ${user.email}`}
         meta={

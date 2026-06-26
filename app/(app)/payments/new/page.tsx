@@ -8,6 +8,7 @@ import {
 } from "@ant-design/pro-components";
 import { App as AntdApp, Space, Tag, Typography } from "antd";
 import { useRouter, useSearchParams } from "next/navigation";
+import { useGoBack } from "@/lib/navigation";
 import { useRef, useState } from "react";
 import { Page } from "@/components/page";
 import { PageHeader } from "@/components/page-header";
@@ -42,6 +43,7 @@ type Invoice = {
 
 export default function NewPaymentPage() {
   const router = useRouter();
+  const goBack = useGoBack("/payments");
   const search = useSearchParams();
   const presetContract = search.get("contractId") ?? undefined;
   const presetInvoice = search.get("invoiceId") ?? undefined;
@@ -54,7 +56,7 @@ export default function NewPaymentPage() {
   return (
     <Page compact>
       <PageHeader
-        back={() => router.push("/payments")}
+        back={goBack}
         title="登记回款"
         subtitle="登记银行到账流水,与发票 / 合同自动对账"
       />
@@ -220,7 +222,7 @@ export default function NewPaymentPage() {
           </Space>
           <SubmitBar
             onSubmit={() => formRef.current?.submit()}
-            onCancel={() => router.push("/payments")}
+            onCancel={() => goBack}
             submitText="登记回款"
           />
         </ProForm>

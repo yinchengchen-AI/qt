@@ -2,7 +2,8 @@
 import { ProCard, ProDescriptions } from "@ant-design/pro-components";
 import { App, Button, Input, Modal, Space } from "antd";
 import { FilePdfOutlined } from "@ant-design/icons";
-import { useParams, useRouter } from "next/navigation";
+import { useParams} from "next/navigation";
+import { useGoBack } from "@/lib/navigation";
 import type { Payment as PaymentEntity } from "@/lib/types/entities";
 import useSWR from "swr";
 import { useSession } from "next-auth/react";
@@ -23,7 +24,8 @@ const DESC_COL = { xs: 1, sm: 1, md: 2, lg: 2, xl: 3 } as const;
 export default function PaymentDetailPage() {
   const params = useParams();
   const id = String(params.id);
-  const router = useRouter();
+  // router not used after goBack migration
+  const goBack = useGoBack("/payments");
   const { isMobile: _isMobile } = useResponsive();
   const { data: session } = useSession();
   const { data, isLoading, mutate } = useSWR<PaymentEntity>(`/api/payments/${id}`);
@@ -42,7 +44,7 @@ export default function PaymentDetailPage() {
   if (isLoading || !payment) {
     return (
       <Page>
-        <PageHeader back={() => router.push("/payments")} title="回款详情" />
+        <PageHeader back={goBack} title="回款详情" />
         <DetailPageSkeleton />
       </Page>
     );
@@ -102,7 +104,7 @@ export default function PaymentDetailPage() {
   return (
     <Page>
       <PageHeader
-        back={() => router.push("/payments")}
+        back={goBack}
         title={`回款 ${payment.paymentNo}`}
         subtitle={`到账日: ${payment.receivedAt ? new Date(payment.receivedAt).toLocaleString("zh-CN") : "-"}`}
         meta={<StatusTag status={payment.status} domain="payment" />}

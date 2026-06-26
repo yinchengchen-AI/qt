@@ -3,6 +3,7 @@ import { ProCard, ProDescriptions, ProTable } from "@ant-design/pro-components";
 import { Alert, App as AntdApp, Button, Col, Empty, Radio, Row, Space, Tabs, Tag } from "antd";
 import { CloudUploadOutlined, DeleteOutlined, FilePdfOutlined } from "@ant-design/icons";
 import { useParams, useRouter } from "next/navigation";
+import { useGoBack } from "@/lib/navigation";
 import type { Contract as ContractEntity } from "@/lib/types/entities";
 import type { BillingStatus } from "@/types/enums";
 import useSWR from "swr";
@@ -194,6 +195,7 @@ export default function ContractDetailPage() {
   const params = useParams();
   const id = String(params.id);
   const router = useRouter();
+  const goBack = useGoBack("/contracts");
   const { isMobile } = useResponsive();
   const { data: contract, error, isLoading, mutate } = useSWR<ContractEntity>(`/api/contracts/${id}`);
   const { data: overview } = useSWR<Overview>(`/api/contracts/${id}/overview`);
@@ -230,7 +232,7 @@ const handleDelete = () => {
   if (error) {
     return (
       <Page>
-        <PageHeader back={() => router.push("/contracts")} title="合同详情" />
+        <PageHeader back={goBack} title="合同详情" />
         <div style={{ marginTop: 12 }}>
           <ErrorBox
             title="加载失败"
@@ -249,7 +251,7 @@ const handleDelete = () => {
   if (isLoading || !contract) {
     return (
       <Page>
-        <PageHeader back={() => router.push("/contracts")} title="合同详情" />
+        <PageHeader back={goBack} title="合同详情" />
         <DetailPageSkeleton />
       </Page>
     );
@@ -484,7 +486,7 @@ const handleDelete = () => {
   return (
     <Page>
       <PageHeader
-        back={() => router.push("/contracts")}
+        back={goBack}
         title={`${contract.title} · ${contract.contractNo}`}
         subtitle="合同 360 度视图 — 概览 / 信息 / 项目 / 开票 / 回款 / 审批 / 附件"
         meta={<StatusTag status={contract.status} domain="contract" />}

@@ -1,7 +1,8 @@
 "use client";
 import { ProCard, ProDescriptions } from "@ant-design/pro-components";
 import { Button, Space, Modal, Input, App as AntdApp } from "antd";
-import { useParams, useRouter } from "next/navigation";
+import { useParams } from "next/navigation";
+import { useGoBack } from "@/lib/navigation";
 import type { AttachmentSnapshot, Invoice as InvoiceEntity } from "@/lib/types/entities";
 import useSWR from "swr";
 import { useSession } from "next-auth/react";
@@ -22,7 +23,8 @@ const DESC_COL = { xs: 1, sm: 1, md: 2, lg: 2, xl: 3 } as const;
 export default function InvoiceDetailPage() {
   const params = useParams();
   const id = String(params.id);
-  const router = useRouter();
+
+  const goBack = useGoBack("/invoices");
   const { data: session } = useSession();
   const { message } = AntdApp.useApp();
   const { data, isLoading, mutate } = useSWR<InvoiceEntity>(`/api/invoices/${id}`);
@@ -37,7 +39,7 @@ export default function InvoiceDetailPage() {
   if (isLoading || !invoice) {
     return (
       <Page>
-        <PageHeader back={() => router.push("/invoices")} title="开票详情" />
+        <PageHeader back={goBack} title="开票详情" />
         <DetailPageSkeleton />
       </Page>
     );
@@ -73,7 +75,7 @@ export default function InvoiceDetailPage() {
   return (
     <Page>
       <PageHeader
-        back={() => router.push("/invoices")}
+        back={goBack}
         title={`${invoice.customerName} · ${invoice.invoiceNo}`}
         subtitle={`发票类型: ${INVOICE_TYPE_MAP[invoice.invoiceType as string] ?? invoice.invoiceType ?? "-"}`}
         meta={<StatusTag status={invoice.status} domain="invoice" />}

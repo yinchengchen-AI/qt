@@ -2,6 +2,7 @@
 import { ProForm, ProFormText, ProFormTreeSelect, ProFormDigit } from "@ant-design/pro-components";
 import { App as AntdApp, Space, Typography } from "antd";
 import { useRouter } from "next/navigation";
+import { useGoBack } from "@/lib/navigation";
 import { Page } from "@/components/page";
 import { PageHeader } from "@/components/page-header";
 import { FormSection, FormGrid, FormCard } from "@/components/form";
@@ -26,12 +27,13 @@ function buildTreeSelectData(list: Dept[]): { value: string; title: string; chil
 
 export default function NewDepartmentPage() {
   const router = useRouter();
+  const goBack = useGoBack("/admin/departments");
   const { message } = AntdApp.useApp();
 
   return (
     <Page compact>
       <PageHeader
-        back={() => router.push("/admin/departments")}
+        back={goBack}
         title="新建部门"
         subtitle="树形结构;选上级部门可挂为子部门;不选则为顶级"
       />

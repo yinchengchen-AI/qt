@@ -2,6 +2,7 @@
 import { ProCard, ProDescriptions } from "@ant-design/pro-components";
 import { Tag, Button } from "antd";
 import { useParams, useRouter } from "next/navigation";
+import { useGoBack } from "@/lib/navigation";
 import useSWR from "swr";
 import { Page } from "@/components/page";
 import { PageHeader } from "@/components/page-header";
@@ -25,12 +26,13 @@ export default function RoleDetailPage() {
   const params = useParams();
   const id = String(params.id);
   const router = useRouter();
+  const goBack = useGoBack("/admin/roles");
   const { data, error, isLoading, mutate } = useSWR<Role>(`/api/roles/${id}`);
 
   if (error) {
     return (
       <Page>
-        <PageHeader back={() => router.push("/admin/roles")} title="角色详情" />
+        <PageHeader back={goBack} title="角色详情" />
         <div style={{ marginTop: 12 }}>
           <ErrorBox
             title="加载失败"
@@ -49,7 +51,7 @@ export default function RoleDetailPage() {
   if (isLoading || !data) {
     return (
       <Page>
-        <PageHeader back={() => router.push("/admin/roles")} title="角色详情" />
+        <PageHeader back={goBack} title="角色详情" />
         <DetailPageSkeleton />
       </Page>
     );
@@ -58,7 +60,7 @@ export default function RoleDetailPage() {
   return (
     <Page>
       <PageHeader
-        back={() => router.push("/admin/roles")}
+        back={goBack}
         title={`${data.name} (${data.code})`}
         subtitle={data.description ?? "—"}
         meta={data.isSystem ? <Tag color="blue">系统角色</Tag> : <Tag>自定义角色</Tag>}

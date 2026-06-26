@@ -1,7 +1,8 @@
 "use client";
 import { ProCard, ProTable, type ProColumns } from "@ant-design/pro-components";
-import { Tag, Button, Space } from "antd";
+import { Tag } from "antd";
 import { useRouter } from "next/navigation";
+import { useGoBack } from "@/lib/navigation";
 import { Page } from "@/components/page";
 import { PageHeader } from "@/components/page-header";
 import { useSession } from "next-auth/react";
@@ -20,6 +21,7 @@ type Row = {
 
 export default function ExpiringCertificatesPage() {
   const router = useRouter();
+  const goBack = useGoBack("/admin/certificates");
   const { data: session } = useSession();
   const roleCode = (session?.user as { roleCode?: string } | undefined)?.roleCode;
   const isAdmin = roleCode === "ADMIN";
@@ -27,7 +29,7 @@ export default function ExpiringCertificatesPage() {
   if (!isAdmin) {
     return (
       <Page>
-        <PageHeader back={() => router.push("/admin/users")} title="到期证书" />
+        <PageHeader back={goBack} title="到期证书" />
         <ErrorBox title="无权限">仅管理员可查看到期证书</ErrorBox>
       </Page>
     );
@@ -62,7 +64,7 @@ export default function ExpiringCertificatesPage() {
   return (
     <Page>
       <PageHeader
-        back={() => router.push("/admin/users")}
+        back={goBack}
         title="到期证书"
         subtitle="60 天内到期 / 已过期(未到期的证书不在此列表)"
       />

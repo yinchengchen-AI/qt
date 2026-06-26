@@ -13,6 +13,7 @@ import {
 import { App as AntdApp, Space, Tag, Typography } from "antd";
 
 import { useRouter } from "next/navigation";
+import { useGoBack } from "@/lib/navigation";
 import { useDict, groupDictByLegacy } from "@/lib/dict-client";
 import { useContractTitleAutofill } from "@/lib/use-contract-title-autofill";
 import { extractOptionLabel } from "@/lib/extract-option-label";
@@ -57,6 +58,7 @@ type ActiveUser = {
 
 export default function NewContractPage() {
   const router = useRouter();
+  const goBack = useGoBack("/contracts");
   const { message } = AntdApp.useApp();
   const { data: session } = useSession();
   const currentUserId = (session?.user as { id?: string } | undefined)?.id;
@@ -86,7 +88,7 @@ export default function NewContractPage() {
   return (
     <Page compact>
       <PageHeader
-        back={() => router.push("/contracts")}
+        back={goBack}
         title="新建合同"
         subtitle="为洽谈中或已签约客户创建合同,提交后进入审批"
       />
@@ -387,7 +389,7 @@ export default function NewContractPage() {
           </Space>
           <SubmitBar
             onSubmit={() => formRef.current?.submit()}
-            onCancel={() => router.push("/contracts")}
+            onCancel={() => goBack}
             submitText="保存草稿"
           />
         </ProForm>

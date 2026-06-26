@@ -2,6 +2,7 @@
 import { ProForm, ProFormText, ProFormTreeSelect, ProFormDigit, ProFormSwitch } from "@ant-design/pro-components";
 import { App as AntdApp, Space, Tag, Typography } from "antd";
 import { useParams, useRouter } from "next/navigation";
+import { useGoBack } from "@/lib/navigation";
 import useSWR from "swr";
 import { Page } from "@/components/page";
 import { PageHeader } from "@/components/page-header";
@@ -65,13 +66,14 @@ export default function EditDepartmentPage() {
   const params = useParams();
   const id = String(params.id);
   const router = useRouter();
+  const goBack = useGoBack("/admin/departments");
   const { message } = AntdApp.useApp();
   const { data, isLoading } = useSWR<Dept>(`/api/departments/${id}`);
 
   if (isLoading || !data) {
     return (
       <Page compact>
-        <PageHeader back={() => router.push(`/admin/departments/${id}`)} title="编辑部门" />
+        <PageHeader back={goBack} title="编辑部门" />
         <FormPageSkeleton />
       </Page>
     );
@@ -80,7 +82,7 @@ export default function EditDepartmentPage() {
   return (
     <Page compact>
       <PageHeader
-        back={() => router.push(`/admin/departments/${id}`)}
+        back={goBack}
         title={`编辑 ${data.name}`}
         subtitle={`${data.memberCount} 名成员 / ${data.childCount} 个子部门`}
       />

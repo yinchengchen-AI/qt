@@ -8,6 +8,7 @@ import {
 } from "@ant-design/pro-components";
 import { App as AntdApp, Space, Tag, Typography } from "antd";
 import { useRouter } from "next/navigation";
+import { useGoBack } from "@/lib/navigation";
 import { useRef, useState } from "react";
 import dayjs from "dayjs";
 import { Page } from "@/components/page";
@@ -45,6 +46,7 @@ type Customer = {
 
 export default function NewInvoicePage() {
   const router = useRouter();
+  const goBack = useGoBack("/invoices");
   const { message } = AntdApp.useApp();
   // ProForm 的 ProFormRef 类型未导出,用 any 承载动态表单引用
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -56,7 +58,7 @@ export default function NewInvoicePage() {
   return (
     <Page compact>
       <PageHeader
-        back={() => router.push("/invoices")}
+        back={goBack}
         title="新建开票"
         subtitle="为已生效合同申请开票,提交后由财务审核"
       />
@@ -317,7 +319,7 @@ export default function NewInvoicePage() {
           </Space>
           <SubmitBar
             onSubmit={() => formRef.current?.submit()}
-            onCancel={() => router.push("/invoices")}
+            onCancel={() => goBack}
             submitText="创建开票"
           />
         </ProForm>

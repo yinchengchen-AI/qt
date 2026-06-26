@@ -1,6 +1,7 @@
 "use client";
 
 import { useParams, useRouter } from "next/navigation";
+import { useGoBack } from "@/lib/navigation";
 import useSWR from "swr";
 import { FormPageSkeleton } from "@/components/form-page-skeleton";
 import { CustomerForm, type CustomerFormValues } from "@/components/customers/customer-form";
@@ -9,6 +10,7 @@ export default function EditCustomerPage() {
   const params = useParams();
   const id = String(params.id);
   const router = useRouter();
+  const goBack = useGoBack("/customers");
   const { data, isLoading } = useSWR<CustomerFormValues & { code: string }>(`/api/customers/${id}`);
 
   if (isLoading || !data) {
@@ -16,7 +18,7 @@ export default function EditCustomerPage() {
       <CustomerForm
         mode="edit"
         title="编辑客户"
-        back={() => router.push(`/customers/${id}`)}
+        back={goBack}
         submitText="保存"
         onSubmit={async () => ({ ok: false, message: "数据加载中" })}
       >
@@ -31,7 +33,7 @@ export default function EditCustomerPage() {
       title={`编辑 ${data.name ?? ""}`}
       subtitle={`客户编号 ${data.code} 不可修改;创建人 / 创建时间详见详情页`}
       submitText="保存"
-      back={() => router.push(`/customers/${id}`)}
+      back={goBack}
       initialValues={data}
       onSubmit={async (values: CustomerFormValues) => {
         const res = await fetch(`/api/customers/${id}`, {

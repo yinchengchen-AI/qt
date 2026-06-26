@@ -4,6 +4,7 @@ import { PageHeader } from "@/components/page-header";
 import { ProCard, ProForm, ProFormText, ProFormTextArea } from "@ant-design/pro-components";
 import { App as AntdApp, Button, Card, Select, Typography } from "antd";
 import { useRouter } from "next/navigation";
+import { useGoBack } from "@/lib/navigation";
 import { useState } from "react";
 import { PermissionMatrix, type Permission } from "@/components/admin/permission-matrix";
 
@@ -19,13 +20,14 @@ const TEMPLATE_OPTIONS = [
 
 export default function NewRolePage() {
   const router = useRouter();
+  const goBack = useGoBack("/admin/roles");
   const { message } = AntdApp.useApp();
   const [permissions, setPermissions] = useState<Permission[]>([]);
 
   return (
     <Page compact>
       <PageHeader
-        back={() => router.push("/admin/roles")}
+        back={goBack}
         title="新建角色"
         subtitle="自定义角色（非系统角色）"
       />

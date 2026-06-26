@@ -4,6 +4,7 @@ import { App as AntdApp, Modal, Space, Tag, Typography, Button, Input } from "an
 import { CopyOutlined } from "@ant-design/icons";
 import { copyToClipboard } from "@/lib/copy";
 import { useRouter } from "next/navigation";
+import { useGoBack } from "@/lib/navigation";
 import useSWR from "swr";
 import { Page } from "@/components/page";
 import { PageHeader } from "@/components/page-header";
@@ -16,6 +17,7 @@ type Role = { id: string; code: string; name: string };
 
 export default function NewUserPage() {
   const router = useRouter();
+  const goBack = useGoBack("/admin/users");
   const { message, modal } = AntdApp.useApp();
   const { data: rolesResp } = useSWR<{ list: Role[] }>("/api/roles?pageSize=100");
   const roleOptions = (rolesResp?.list ?? []).map((r) => ({
@@ -26,7 +28,7 @@ export default function NewUserPage() {
   return (
     <Page compact>
       <PageHeader
-        back={() => router.push("/admin/users")}
+        back={goBack}
         title="新建用户"
         subtitle="系统会生成 10 位随机初始密码,创建后请立即转交给本人;后续可重置"
       />

@@ -3,6 +3,7 @@ import { ProForm, ProFormText, ProFormSelect, ProCard } from "@ant-design/pro-co
 import { App as AntdApp, Button, Alert, Space } from "antd";
 import { EditOutlined } from "@ant-design/icons";
 import { useParams, useRouter } from "next/navigation";
+import { useGoBack } from "@/lib/navigation";
 import useSWR from "swr";
 import { Page } from "@/components/page";
 import { PageHeader } from "@/components/page-header";
@@ -32,6 +33,7 @@ export default function EditUserPage() {
   const params = useParams();
   const id = String(params.id);
   const router = useRouter();
+  const goBack = useGoBack("/admin/users");
   const { message } = AntdApp.useApp();
 
   const { data: userResp, error, isLoading } = useSWR<User>(`/api/users/${id}`);
@@ -40,7 +42,7 @@ export default function EditUserPage() {
   if (error) {
     return (
       <Page>
-        <PageHeader back={() => router.push(`/admin/users/${id}`)} title="编辑账号" />
+        <PageHeader back={goBack} title="编辑账号" />
         <ErrorBox title="加载失败">{(error as Error).message}</ErrorBox>
       </Page>
     );
@@ -48,7 +50,7 @@ export default function EditUserPage() {
   if (isLoading || !userResp) {
     return (
       <Page>
-        <PageHeader back={() => router.push(`/admin/users/${id}`)} title="编辑账号" />
+        <PageHeader back={goBack} title="编辑账号" />
         <FormPageSkeleton />
       </Page>
     );
@@ -60,7 +62,7 @@ export default function EditUserPage() {
   return (
     <Page>
       <PageHeader
-        back={() => router.push(`/admin/users/${id}`)}
+        back={goBack}
         title={`编辑账号 — ${user.name} (${user.employeeNo})`}
         subtitle="工号 / 邮箱全局唯一;角色决定权限矩阵"
       />

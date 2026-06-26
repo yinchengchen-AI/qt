@@ -4,6 +4,7 @@ import { App as AntdApp } from "antd";
 import { Button, Col, Empty, Input, Popover, Row, Space, Tabs } from "antd";
 import { PlusOutlined, FilePdfOutlined } from "@ant-design/icons";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
+import { useGoBack } from "@/lib/navigation";
 import useSWR from "swr";
 import { useEffect, useState } from "react";
 import { Page } from "@/components/page";
@@ -53,6 +54,7 @@ export default function CustomerDetailPage() {
   const params = useParams();
   const id = String(params.id);
   const router = useRouter();
+  const goBack = useGoBack("/customers");
   const { isMobile } = useResponsive();
   const customerType = useDict("CUSTOMER_TYPE");
   const industryDict = useDict("CUSTOMER_INDUSTRY");
@@ -86,7 +88,7 @@ export default function CustomerDetailPage() {
   if (error) {
     return (
       <Page>
-        <PageHeader back={() => router.push("/customers")} title="客户详情" />
+        <PageHeader back={goBack} title="客户详情" />
         <div style={{ marginTop: 12 }}>
           <ErrorBox title="加载失败" action={<Button size="small" onClick={() => mutate()}>重试</Button>}>
             {(error as Error).message}
@@ -98,7 +100,7 @@ export default function CustomerDetailPage() {
   if (isLoading || !data) {
     return (
       <Page>
-        <PageHeader back={() => router.push("/customers")} title="客户详情" />
+        <PageHeader back={goBack} title="客户详情" />
         <DetailPageSkeleton />
       </Page>
     );
@@ -267,7 +269,7 @@ export default function CustomerDetailPage() {
   return (
     <Page>
       <PageHeader
-        back={() => router.push("/customers")}
+        back={goBack}
         title={`${data.name} (${data.code})`}
         subtitle="客户 360 度视图 — 概览 / 信息 / 跟进 / 合同 / 项目 / 开票 / 回款"
         actions={
