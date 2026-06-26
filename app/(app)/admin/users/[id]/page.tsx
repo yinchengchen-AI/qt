@@ -57,7 +57,9 @@ export default function UserDetailPage() {
       </Page>
     );
   }
-  if (isLoading || !data?.data || !userResp) {
+  // 区分: data === undefined (SWR 还在 fetch) → skeleton; data.data === null (用户无 profile) → empty state
+  // 老逻辑 !data?.data 在两种情况都 true, 无 profile 用户永远转 skeleton
+  if (isLoading || data === undefined || !userResp) {
     return (
       <Page>
         <PageHeader back={() => router.push("/admin/users")} title="用户详情" />
