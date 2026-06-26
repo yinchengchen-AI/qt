@@ -78,7 +78,8 @@ export type ReviewActionInput = z.infer<typeof reviewActionSchema>;
 // 合同列表 query:导出供 use-list-request 反射出 KNOWN_KEYS, 也供 app/api/contracts/route.ts 用
 export const contractListQuerySchema = z.object({
   page: z.coerce.number().int().min(1).default(1),
-  pageSize: z.coerce.number().int().min(1).max(100).default(20),
+  // max=1000: 开票新建页合同下拉一次性加载所有 ACTIVE 合同 (pageSize=1000), 普通列表默认 20
+  pageSize: z.coerce.number().int().min(1).max(1000).default(20),
   keyword: z.string().optional(),
   status: z.string().optional(),
   customerId: z.string().optional(),
