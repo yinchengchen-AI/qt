@@ -7,6 +7,8 @@ import {
   ProFormDatePicker
 } from "@ant-design/pro-components";
 import { App as AntdApp, Space, Tag, Typography } from "antd";
+import dayjs from "dayjs";
+import { toIsoDateTime } from "@/lib/format";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useGoBack } from "@/lib/navigation";
 import { useRef, useState } from "react";
@@ -74,13 +76,13 @@ export default function NewPaymentPage() {
           initialValues={{
             contractId: presetContract,
             invoiceId: presetInvoice,
-            receivedAt: new Date(),
+            receivedAt: dayjs(),
             method: "BANK_TRANSFER"
           }}
           onFinish={async (values) => {
             const payload = {
               ...values,
-              receivedAt: values.receivedAt ? new Date(values.receivedAt).toISOString() : undefined
+              receivedAt: toIsoDateTime(values.receivedAt)
             };
             const res = await fetch("/api/payments", {
               method: "POST",
