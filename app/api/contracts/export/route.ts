@@ -165,6 +165,12 @@ export async function GET(req: Request) {
             formatter: (v) =>
               v ? (CONTRACT_STATUS_MAP[v as string] ?? (v as string)) : "",
           },
+          {
+            // 合同备注 (Contract.remark): 自由文本, 与 reviewComment 区分; listContracts 已通过 ...c 带回
+            header: "合同备注",
+            key: "remark",
+            width: 40,
+          },
         ],
       );
       return new Response(new Uint8Array(buf), {

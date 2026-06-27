@@ -23,28 +23,10 @@ import { PreviewableProFormUploadButton as UploadButton } from "@/components/fil
 import { proCustomRequest } from "@/lib/upload-client";
 import { useDict } from "@/lib/dict-client";
 import { useUserName } from "@/lib/user-lookup";
-import { PAYMENT_METHOD_MAP, SERVICE_TYPE_MAP, REVIEW_ACTION_MAP, BILLING_STATUS_MAP, PAYMENT_PROGRESS_STATUS_MAP } from "@/lib/enum-maps";
+import { PAYMENT_METHOD_MAP, SERVICE_TYPE_MAP, BILLING_STATUS_MAP, PAYMENT_PROGRESS_STATUS_MAP } from "@/lib/enum-maps";
 import { useResponsive } from "@/lib/use-breakpoint";
 import { useT } from "@/lib/i18n";
-
-const REVIEW_ACTION_TONE: Record<string, string> = {
-  // 旧
-  SUBMIT:    "processing",
-  APPROVE:   "success",
-  REJECT:    "danger",
-  WITHDRAW:  "warning",
-  EXECUTE:   "processing",
-  SUSPEND:   "warning",
-  RESUME:    "processing",
-  COMPLETE:  "success",
-  // 新: 自动用蓝色, 手动用 default
-  AUTO_PUBLISH:           "blue",
-  MANUAL_PUBLISH:         "default",
-  AUTO_CLOSE_COMPLETED:   "blue",
-  AUTO_CLOSE_EXPIRED:     "blue",
-  AUTO_CLOSE_TERMINATED:  "blue",
-  MANUAL_CLOSE:           "default"
-};
+import { OperationTimeline } from "@/components/contract/operation-timeline";
 
 const DESC_COL = { xs: 1, sm: 1, md: 2, lg: 2, xl: 3 } as const;
 
@@ -64,7 +46,6 @@ type Overview = {
   deliverableAttachments: DeliverableAttachment[];
   invoices: Array<{ id: string; invoiceNo: string; status: string; amount: string; applyDate: string; actualIssueDate: string | null }>;
   payments: Array<{ id: string; paymentNo: string; status: string; amount: string; receiveDate: string }>;
-  reviewLogs: Array<{ id: string; action: string; reviewerId: string; comment: string | null; at: string }>;
   totals: { invoiceCount: number; paymentCount: number; totalAmount: number; invoicedAmount: number; paidAmount: number; billingStatus: BillingStatus; paymentStatus: PaymentProgressStatus };
 };
 
@@ -77,11 +58,6 @@ function useCanManageContractDeliverables(contract: ContractEntity | undefined):
   const me = (session?.user as { id?: string } | undefined)?.id;
   if (!me || !contract) return false;
   return contract.signerId === me || contract.ownerUserId === me;
-}
-
-function ReviewerName({ id }: { id: string }) {
-  const name = useUserName(id, "—");
-  return <span>{name}</span>;
 }
 
 function SignerName({ id }: { id: string | null | undefined }) {
@@ -515,25 +491,11 @@ const handleDelete = () => {
       )
     },
     {
-      key: "review",
-      label: <span>状态记录 ({overview?.reviewLogs.length ?? 0})</span>,
+      key: "operations",
+      label: <span>操作记录</span>,
       children: (
         <ProCard>
-          {overview && overview.reviewLogs.length > 0 ? (
-            <ProTable
-              rowKey="id"
-              search={false}
-              options={false}
-              pagination={{ defaultPageSize: 10, size: isMobile ? "small" : "middle" }}
-              dataSource={overview.reviewLogs}
-              scroll={{ x: 'max-content' }}
-              columns={[
-                { title: "时间", dataIndex: "at", valueType: "dateTime", width: 180, render: (_, r) => <DateTimeCell value={r.at as string} /> },
-                { title: "动作", dataIndex: "action", width: 120, render: (v) => <Tag color={REVIEW_ACTION_TONE[v as string] ?? "default"}>{REVIEW_ACTION_MAP[v as string] ?? v}</Tag> },
-                { title: "审批人", dataIndex: "reviewerId", width: 120, render: (_, r) => <ReviewerName id={r.reviewerId as string} /> },
-                { title: "意见", dataIndex: "comment", render: (v) => v || "—" }
-              ]} />
-          ) : <Empty description="本合同暂无状态变更记录" />}
+          <OperationTimeline contractId={id} />
         </ProCard>
       )
     },
@@ -565,7 +527,7 @@ const handleDelete = () => {
       <PageHeader
         back={goBack}
         title={`${contract.title} · ${contract.contractNo}`}
-        subtitle="合同 360 度视图 — 概览 / 信息 / 项目 / 开票 / 回款 / 审批 / 附件"
+        subtitle="合同 360 度视图 — 概览 / 信息 / 项目 / 开票 / 回款 / 操作记录 / 附件"
         meta={
           <Space size={8} wrap>
             <StatusTag status={contract.status} domain="contract" />

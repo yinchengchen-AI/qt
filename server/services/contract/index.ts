@@ -3,3 +3,4 @@ export * from "./crud";
 export * from "./status";
 export * from "./overview";
 export * from "./jobs";
+export * from "./operation-logs";
