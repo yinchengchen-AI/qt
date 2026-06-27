@@ -3,8 +3,8 @@ import { ProTable, type ActionType, type ProFormInstance } from "@ant-design/pro
 import { Button, App as AntdApp } from "antd";
 import { DownloadOutlined } from "@ant-design/icons";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
-import React, { useCallback, useMemo, useRef } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
+import React, { useCallback, useEffect, useMemo, useRef } from "react";
 import useSWR from "swr";
 import { Page } from "@/components/page";
 import { PageHeader } from "@/components/page-header";
@@ -80,6 +80,57 @@ export default function CustomersPage() {
   // formRef 在需要时可以拿来手动 reset / submit, 当前列表是"点查询按钮或回车才查"的标准行为,
   // 不再自动 submit. 这个 ref 留作后续 export 时按需扩展 (如要按表单值重置导出条件).
   const formRef = useRef<ProFormInstance>(undefined);
+  const search = useSearchParams();
+  // 从其它页面下钻过来 (e.g. /statistics/by-region) 时, 把 ?district=&town= 预填到地区级联并触发查询。
+  // 双轨: (a) 写到 form 让 cascader UI 回显; (b) 存到 regionOverrideRef 供 request 回调兜底,避免 cascader
+  // value 与 form state 同步时序问题导致首次查询拿不到 region 过滤条件(此前依赖 formRef.setFieldsValue
+  // 单轨,实测发现首次 request 仍拉到全量,必须额外兜底才能保证下钻后表行数 = 该区域客户数)。
+  // 用 handledKeyRef 去重,避免 SWR 重新校验 regionOptions 时 effect 被反复触发。
+  const initialDistrict = search.get("district");
+  const initialTown = search.get("town");
+  const handledKeyRef = useRef<string | null>(null);
+  // 兜底:dfs 出的 cascader 路径在 request 回调里强制注入,保证后端总是拿到正确过滤。
+  // 一次性:用 consumed 标记消费掉,避免用户后续清空筛选或重新点查询时被"锁死"。
+  // 原因:setFieldsValue 是同步的,理想情况下后续 reload 都能从 form state 拿到 cascader value,
+  // 但 cascader 这种嵌套字段首次 mount 时存在时序差,需要这一轨兜底;兜底后 form state 稳定,
+  // 后续 request 走 params.region 自然路径。
+  const regionOverrideRef = useRef<{ path: string[]; consumed: boolean } | null>(null);
+  useEffect(() => {
+    if (!initialTown && !initialDistrict) return;
+    if (regionOptions.length === 0) return;
+    const key = `${initialDistrict ?? ""}|${initialTown ?? ""}|${regionOptions.length}`;
+    if (handledKeyRef.current === key) return;
+    // dfs: 沿 cascader 树找 town 节点,要求 town 标签匹配 initialTown 且(若指定 initialDistrict)父 district 标签也匹配。
+    // matches 接完整 path([province, city, district, town, ...]),校验 path 末位 = town、倒数第二位 = district(若提供)。
+    // 这样既避免 acc.length 算错的 bug(原来传的是 [...acc, n.value] 长度,跟 acc 深度对不上),
+    // 也避免同名镇街的歧义(如不同区都有"南苑街道")。
+    const path: string[] = [];
+    const matches = (candidate: string[]): boolean => {
+      if (candidate.length < 2) return false;
+      const last = candidate[candidate.length - 1];
+      const prev = candidate[candidate.length - 2];
+      if (initialDistrict && initialTown) {
+        return last === initialTown && prev === initialDistrict;
+      }
+      if (initialTown) return last === initialTown;
+      if (initialDistrict) return last === initialDistrict;
+      return false;
+    };
+    const dfs = (nodes: typeof regionOptions, acc: string[]): boolean => {
+      for (const n of nodes) {
+        const next = [...acc, n.value];
+        if (matches(next)) { path.push(...next); return true; }
+        if (n.children && dfs(n.children, next)) return true;
+      }
+      return false;
+    };
+    dfs(regionOptions, []);
+    if (path.length === 0) return;
+    regionOverrideRef.current = { path, consumed: false };
+    formRef.current?.setFieldsValue({ region: path });
+    actionRef.current?.reload?.();
+    handledKeyRef.current = key;
+  }, [initialDistrict, initialTown, regionOptions]);
   const { message } = AntdApp.useApp();
 
   const handleExport = async () => {
@@ -128,7 +179,20 @@ export default function CustomersPage() {
           const createdAtTo = dateRange?.[1] as string | undefined;
           // 地区级联: cascader 给的是路径数组 ["浙江省", "杭州市", "西湖区", "留下街道"] (任意前缀)
           // 拆成 4 个标量, 未选的层为 undefined, 后端只拼接非空的层 (单选 1/2/3/4 层都支持)
-          const region = Array.isArray(params.region) ? (params.region as string[]) : [];
+          // 兜底: URL 下钻预填的路径存在 regionOverrideRef 时,即便 cascader form state 还没
+          // 同步进 params(下钻场景下从其它页面带 ?district=&town= 跳过来时常见),也用 override
+          // 路径参与拆分,保证首次 request 就拿到正确过滤。一次性消费,避免锁死。
+          const regionRaw = Array.isArray(params.region) ? (params.region as string[]) : [];
+          const override = regionOverrideRef.current;
+          const region =
+            regionRaw.length > 0
+              ? regionRaw
+              : override && !override.consumed
+              ? (() => {
+                  override.consumed = true;
+                  return override.path;
+                })()
+              : [];
           const regionProvince = region[0];
           const regionCity = region[1];
           const regionDistrict = region[2];
