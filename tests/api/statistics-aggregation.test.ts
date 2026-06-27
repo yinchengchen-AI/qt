@@ -14,7 +14,8 @@ import type { SessionUser } from "@/lib/session";
 import {
   getInvoiceAging,
   getOverview,
-  getEmployeePerformance
+  getEmployeePerformance,
+  getRegionStatistics
 } from "@/server/services/statistics";
 import { createInvoice, invoiceAction } from "@/server/services/invoice";
 import { createPayment, paymentAction } from "@/server/services/payment";
@@ -228,5 +229,151 @@ describe("getEmployeePerformance SALES 隔离", () => {
     const row = r[0]!;
     expect(row.userId).toBe(salesUser.id);
     expect(row.name).toBe(salesUser.name);
+  });
+});
+
+describe("getRegionStatistics", () => {
+  // 准备:建 3 个客户(2 个有 district+town,1 个没有 town),
+  //     各自挂一份合同 + 发票, 用本测试独有 TAG 前缀, 跑完由 afterAll 收尾.
+  //     SALES 隔离用例额外建一个"销售拥有但 admin 看不到"的客户
+  const TAG_REG = `${TAG}-REG`;
+  const regionContractNos: string[] = [];
+  const regionInvoiceIds: string[] = [];
+  const regionCustomerIds: string[] = [];
+
+  async function makeRegionCustomer(suffix: string, ownerId: string, district: string | null, town: string | null) {
+    const cust = await prisma.customer.create({
+      data: {
+        code: `${TAG_REG}-CUST-${suffix}`,
+        name: `${TAG_REG}-客户-${suffix}`,
+        customerType: "ENTERPRISE",
+        province: "浙江省",
+        city: "杭州市",
+        district: district ?? undefined,
+        town: town ?? undefined,
+        contactPhone: "13800000000",
+        createdById: ownerId,
+        updatedById: ownerId,
+        ownerUserId: ownerId
+      }
+    });
+    regionCustomerIds.push(cust.id);
+    return cust;
+  }
+
+  it("按 district+town 分桶:同名 town 跨区不合并;SALES 只看自己的客户", async () => {
+    if (!dbReachable || !adminUser || !salesUser) return;
+    // 客户 A: 销售拥有, 余杭区 闲林街道
+    const custA = await makeRegionCustomer("A", salesUser.id, "余杭区", "闲林街道");
+    // 客户 B: 销售拥有, 临平区 闲林街道 (同名镇街, 不同区)
+    const custB = await makeRegionCustomer("B", salesUser.id, "临平区", "闲林街道");
+    // 客户 C: 销售拥有, 没填 town
+    const custC = await makeRegionCustomer("C", salesUser.id, "余杭区", null);
+    // 各自挂一份合同 + 发票
+    for (const [cust, suffix] of [[custA, "A"], [custB, "B"], [custC, "C"]] as const) {
+      const ctr = await makeContract(cust.id, cust.name, salesUser.id, salesUser.id, 1000, `reg-${suffix}`);
+      regionContractNos.push(ctr.contractNo);
+      createdContractNos.push(ctr.contractNo);
+      const inv = await makeIssuedInvoice(ctr.id, salesUser.id, 600, `reg-${suffix}`, 5);
+      regionInvoiceIds.push(inv.id);
+    }
+
+    // 1) SALES 视角: 3 行, region 名带区前缀, 跨区同名镇街拆成 2 行
+    const salesRows = await getRegionStatistics(buildSales(), {
+      from: new Date(Date.now() - 7 * 86400_000),
+      to: new Date()
+    });
+    const regionNames = salesRows.filter((r) => r.region.includes("闲林街道")).map((r) => r.region).sort();
+    expect(regionNames).toEqual(["临平区 闲林街道", "余杭区 闲林街道"]);
+    // 每行都带 district/town 标量供下钻
+    for (const r of salesRows) {
+      if (r.region.includes("闲林街道")) {
+        expect(r.town).toBe("闲林街道");
+        expect(r.district).toMatch(/^(余杭区|临平区)$/);
+      }
+    }
+    // 2) SALES 的"未填写"行: district+town 都为 null 才落到末尾
+    const unfilled = salesRows.find((r) => !r.district && !r.town);
+    if (unfilled) {
+      // 应排在最后
+      expect(salesRows[salesRows.length - 1]!.region).toBe(unfilled.region);
+    }
+
+    // 3) ADMIN 视角能看到 SALES 看不到的客户(此测试不专门造, 只断言数量 >= SALES)
+    const adminRows = await getRegionStatistics(buildAdmin(), {
+      from: new Date(Date.now() - 7 * 86400_000),
+      to: new Date()
+    });
+    expect(adminRows.length).toBeGreaterThanOrEqual(salesRows.length);
+  });
+
+  it("无 range 时仍能跑通(默认本月), 字段类型与顺序稳定", async () => {
+    if (!dbReachable || !adminUser) return;
+    const rows = await getRegionStatistics(buildAdmin());
+    expect(Array.isArray(rows)).toBe(true);
+    for (const r of rows) {
+      expect(r).toHaveProperty("region");
+      expect(r).toHaveProperty("district");
+      expect(r).toHaveProperty("town");
+      expect(r).toHaveProperty("customerCount");
+      expect(r).toHaveProperty("contractCount");
+      expect(r).toHaveProperty("contractAmount");
+      expect(r).toHaveProperty("invoiceAmount");
+      expect(r).toHaveProperty("paymentAmount");
+      expect(r).toHaveProperty("invoiceRate");
+      expect(r).toHaveProperty("paymentRate");
+      expect(r).toHaveProperty("unpaidAmount");
+      // 数值字段非负
+      expect(r.contractAmount).toBeGreaterThanOrEqual(0);
+      expect(r.invoiceAmount).toBeGreaterThanOrEqual(0);
+      expect(r.paymentAmount).toBeGreaterThanOrEqual(0);
+      expect(r.unpaidAmount).toBeGreaterThanOrEqual(0);
+    }
+  });
+
+  it("本月 range 与全量 range 的合同额(只看本测试造的)单调非降", async () => {
+    if (!dbReachable || !adminUser) return;
+    const thisMonth = (() => {
+      const now = new Date();
+      return { from: new Date(now.getFullYear(), now.getMonth(), 1), to: now };
+    })();
+    const allTime = { from: new Date(2000, 0, 1), to: new Date() };
+    const [monthRows, allRows] = await Promise.all([
+      getRegionStatistics(buildAdmin(), thisMonth),
+      getRegionStatistics(buildAdmin(), allTime)
+    ]);
+    // 本月合同额 <= 全量合同额(全量包了本月)
+    const monthTotal = monthRows.reduce((s, r) => s + r.contractAmount, 0);
+    const allTotal = allRows.reduce((s, r) => s + r.contractAmount, 0);
+    expect(allTotal).toBeGreaterThanOrEqual(monthTotal);
+  });
+
+  afterAll(async () => {
+    // 区域统计用例自己负责清完全部数据(合同 / 发票 / 回款 / 客户).
+    // 原因: vitest 中内层 describe 的 afterAll 会先于顶层 afterAll 执行, 顶层
+    // afterAll 还没机会删 region 造的合同时, 这里如果直接删 customer 会被 FK 拦.
+    // deleteMany 对已删记录是幂等的, 顶层 afterAll 后续再按 createdContractNos
+    // / createdInvoiceIds 重复走一遍也安全 (0 行).
+    if (!dbReachable) return;
+    if (regionInvoiceIds.length > 0) {
+      await prisma.invoiceAuditLog.deleteMany({ where: { invoiceId: { in: regionInvoiceIds } } });
+      await prisma.invoice.deleteMany({ where: { id: { in: regionInvoiceIds } } });
+    }
+    if (regionContractNos.length > 0) {
+      const regionCtrIds = (
+        await prisma.contract.findMany({
+          where: { contractNo: { in: regionContractNos } },
+          select: { id: true }
+        })
+      ).map((c) => c.id);
+      if (regionCtrIds.length > 0) {
+        // region 合同下的回款 (含 makePayment 造的, 也可能被 service 内部自动登记的)
+        await prisma.payment.deleteMany({ where: { contractId: { in: regionCtrIds } } });
+      }
+      await prisma.contract.deleteMany({ where: { contractNo: { in: regionContractNos } } });
+    }
+    if (regionCustomerIds.length > 0) {
+      await prisma.customer.deleteMany({ where: { id: { in: regionCustomerIds } } });
+    }
   });
 });

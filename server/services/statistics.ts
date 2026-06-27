@@ -395,6 +395,146 @@ export async function getCustomerDistribution(user: SessionUser) {
   };
 }
 
+// 7. 按客户所在区域（镇街）汇总合同 / 开票 / 回款
+// 实现参考 getTopCustomers:4 次常数查询（customers + contracts/invoices/payments 各自的 groupBy by customerId),
+// 用 Map<customerId, town> 反查定位区域,JS 端按 region 桶累加。无合同/开票/回款的客户不进榜。
+// - region 粒度固定为 Customer.town；town 为 null 的客户聚合到 "未填写" 一行,排最末
+// - SALES 角色行级隔离:customers/contracts 走 ownerEq, invoices/payments 走 ownerViaContract
+// - range 同时作用于 signDate / actualIssueDate / receivedAt, 语义与 getOverview 一致
+export type RegionStatRow = {
+  /** 用于界面展示:district+town 拼接,district 缺失时回退到 town */
+  region: string;
+  /** 标量字段供下钻到客户列表 */
+  district: string | null;
+  town: string | null;
+  customerCount: number;
+  contractCount: number;
+  contractAmount: number;
+  invoiceAmount: number;
+  paymentAmount: number;
+  invoiceRate: number;
+  paymentRate: number;
+  unpaidAmount: number;
+};
+
+export async function getRegionStatistics(user: SessionUser, range?: DateRange): Promise<RegionStatRow[]> {
+  requirePermission(user.roleCode, RESOURCE.STATISTICS, ACTION.READ);
+  const customerWhere = { deletedAt: null, ...ownerEq(user) } as Prisma.CustomerWhereInput;
+  const signWhere = {
+    deletedAt: null,
+    status: { in: ["ACTIVE", "CLOSED"] },
+    ...(range ? { signDate: dateWhere(range) } : {}),
+    ...ownerEq(user)
+  } as Prisma.ContractWhereInput;
+  const invoiceWhere = {
+    deletedAt: null,
+    status: "ISSUED",
+    ...(range ? { actualIssueDate: dateWhere(range, "actualIssueDate") } : {}),
+    ...(ownerViaContract(user) as Prisma.InvoiceWhereInput)
+  };
+  const paymentWhere = {
+    deletedAt: null,
+    status: { in: ["CONFIRMED", "RECONCILED"] },
+    ...(range ? { receivedAt: dateWhere(range, "receivedAt") } : {}),
+    ...(ownerViaContract(user) as Prisma.PaymentWhereInput)
+  };
+
+  const [customers, contractRows, invoiceRows, paymentRows] = await Promise.all([
+    prisma.customer.findMany({ where: customerWhere, select: { id: true, district: true, town: true } }),
+    prisma.contract.groupBy({
+      by: ["customerId"],
+      where: signWhere,
+      _sum: { totalAmount: true },
+      _count: { _all: true }
+    }),
+    prisma.invoice.groupBy({ by: ["customerId"], where: invoiceWhere, _sum: { amount: true } }),
+    prisma.payment.groupBy({ by: ["customerId"], where: paymentWhere, _sum: { amount: true } })
+  ]);
+
+  const regionOf = new Map<string, { district: string | null; town: string | null }>();
+  for (const c of customers) regionOf.set(c.id, { district: c.district, town: c.town });
+
+  type Bucket = {
+    district: string | null;
+    town: string | null;
+    customers: Set<string>;
+    contractCount: number;
+    contractAmount: number;
+    invoiceAmount: number;
+    paymentAmount: number;
+  };
+  // 按 district+town 双字段分桶,避免跨区同名镇街被合并到一行
+  const buckets = new Map<string, Bucket>();
+  const keyOf = (district: string | null, town: string | null) => `${district ?? ""}|${town ?? ""}`;
+  const getOrCreate = (district: string | null, town: string | null): Bucket => {
+    const key = keyOf(district, town);
+    let b = buckets.get(key);
+    if (!b) {
+      b = { district, town, customers: new Set(), contractCount: 0, contractAmount: 0, invoiceAmount: 0, paymentAmount: 0 };
+      buckets.set(key, b);
+    }
+    return b;
+  };
+
+  for (const r of contractRows) {
+    const reg = regionOf.get(r.customerId);
+    if (!reg) continue;
+    const b = getOrCreate(reg.district, reg.town);
+    b.contractCount += r._count._all;
+    b.contractAmount += Number(r._sum.totalAmount ?? 0);
+    b.customers.add(r.customerId);
+  }
+  for (const r of invoiceRows) {
+    const reg = regionOf.get(r.customerId);
+    if (!reg) continue;
+    const b = getOrCreate(reg.district, reg.town);
+    b.invoiceAmount += Number(r._sum.amount ?? 0);
+    b.customers.add(r.customerId);
+  }
+  for (const r of paymentRows) {
+    const reg = regionOf.get(r.customerId);
+    if (!reg) continue;
+    const b = getOrCreate(reg.district, reg.town);
+    b.paymentAmount += Number(r._sum.amount ?? 0);
+    b.customers.add(r.customerId);
+  }
+
+  const rows: RegionStatRow[] = Array.from(buckets.values()).map((b) => {
+    const contract = round2(b.contractAmount);
+    const invoice = round2(b.invoiceAmount);
+    const payment = round2(b.paymentAmount);
+    const unpaid = round2(Math.max(0, invoice - payment));
+    // 显示名:都填 -> "区 镇街";只填 town -> "镇街";只填 district -> "区(未填镇街)";都没 -> "未填写"
+    const region =
+      b.district && b.town ? `${b.district} ${b.town}` :
+      b.town ? b.town :
+      b.district ? `${b.district} (未填镇街)` :
+      "未填写";
+    return {
+      region,
+      district: b.district,
+      town: b.town,
+      customerCount: b.customers.size,
+      contractCount: b.contractCount,
+      contractAmount: contract,
+      invoiceAmount: invoice,
+      paymentAmount: payment,
+      invoiceRate: contract > 0 ? round2((invoice / contract) * 100) : 0,
+      paymentRate: invoice > 0 ? round2((payment / invoice) * 100) : 0,
+      unpaidAmount: unpaid
+    };
+  });
+  // district+town 都为空的"未填写"行排最末, 其余按合同额降序
+  rows.sort((a, b) => {
+    const aUnfilled = !a.district && !a.town;
+    const bUnfilled = !b.district && !b.town;
+    if (aUnfilled && !bUnfilled) return 1;
+    if (!aUnfilled && bUnfilled) return -1;
+    return b.contractAmount - a.contractAmount;
+  });
+  return rows;
+}
+
 function round2(v: number): number {
   return Math.round(v * 100) / 100;
 }

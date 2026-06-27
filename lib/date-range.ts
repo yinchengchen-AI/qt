@@ -47,3 +47,16 @@ export function defaultMonthRange(): DateRange {
     to: now
   };
 }
+
+/**
+ * 把查询参数解析成最终使用的 DateRange：调用方传了 from/to 就用,否则用默认本月。
+ * 各统计页路由(员工业绩 / 区域统计)统一用这个,避免手写 parse + fallback 漂移。
+ */
+export function resolveDateRangeQuery(params: { from?: string; to?: string }): DateRange {
+  const parsed = parseDateRangeQuery(params);
+  const fallback = defaultMonthRange();
+  return {
+    from: parsed.from ?? fallback.from,
+    to: parsed.to ?? fallback.to
+  };
+}

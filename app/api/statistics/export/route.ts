@@ -7,12 +7,13 @@ import {
   getTopCustomers,
   getEmployeePerformance,
   getOverview,
+  getRegionStatistics,
 } from "@/server/services/statistics";
 import { exportToXlsx, exportMaxRows } from "@/lib/excel";
 import { parseDateRangeQuery } from "@/lib/date-range";
 
 const query = z.object({
-  type: z.enum(["overview", "top-customers", "employee-performance"]),
+  type: z.enum(["overview", "top-customers", "employee-performance", "by-region"]),
   metric: z.enum(["contract", "payment"]).optional(),
   from: z.string().optional(),
   to: z.string().optional(),
@@ -81,6 +82,30 @@ export async function GET(req: Request) {
             "Content-Type":
               "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
             "Content-Disposition": `attachment; filename="top-customers-${ts}.xlsx"`,
+            "Cache-Control": "no-store"
+          }
+        });
+      }
+      if (parsed.type === "by-region") {
+        // 受 MAX_ROWS 兜底防 OOM;客户镇街理论上是百量级,正常不会触顶
+        const regionRows = await getRegionStatistics(user, range);
+        const regionData = regionRows.slice(0, MAX_ROWS);
+        const buf = await exportToXlsx(regionData, [
+          { header: "区域", key: "region", width: 24 },
+          { header: "客户数", key: "customerCount", width: 10 },
+          { header: "合同数", key: "contractCount", width: 10 },
+          { header: "合同额", key: "contractAmount", width: 18, formatter: num },
+          { header: "已开票额", key: "invoiceAmount", width: 18, formatter: num },
+          { header: "已回款额", key: "paymentAmount", width: 18, formatter: num },
+          { header: "开票率(%)", key: "invoiceRate", width: 12, formatter: num },
+          { header: "回款率(%)", key: "paymentRate", width: 12, formatter: num },
+          { header: "未回款额", key: "unpaidAmount", width: 18, formatter: num }
+        ]);
+        return new Response(new Uint8Array(buf), {
+          headers: {
+            "Content-Type":
+              "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            "Content-Disposition": `attachment; filename="by-region-${ts}.xlsx"`,
             "Cache-Control": "no-store"
           }
         });
