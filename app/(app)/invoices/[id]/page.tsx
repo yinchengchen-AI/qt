@@ -1,36 +1,45 @@
 "use client";
 import { ProCard, ProDescriptions } from "@ant-design/pro-components";
-import { Button, Space, Modal, Input } from "antd";
-import { useParams, useRouter } from "next/navigation";
+import { Button, Space, Modal, Input, App as AntdApp } from "antd";
+import { useParams } from "next/navigation";
+import { useGoBack } from "@/lib/navigation";
 import type { AttachmentSnapshot, Invoice as InvoiceEntity } from "@/lib/types/entities";
 import useSWR from "swr";
 import { useSession } from "next-auth/react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Page } from "@/components/page";
 import { PageHeader } from "@/components/page-header";
 import { DetailPageSkeleton } from "@/components/detail-page-skeleton";
 import { StatusTag } from "@/components/status-tag";
 import { useActionCall } from "@/lib/use-action-call";
 import { CurrencyCell, DateTimeCell, PercentCell } from "@/components/table-cells";
+import { FilePdfOutlined } from "@ant-design/icons";
+import { openPrintWindow } from "@/lib/print-client";
 import { AttachmentList } from "@/components/file/attachment-list";
-const INVOICE_TYPE_MAP: Record<string, string> = { VAT_SPECIAL: "增值税专用发票", VAT_GENERAL: "增值税普通发票", VAT_ELECTRONIC: "增值税电子专票", ELEC_NORMAL: "电子普通发票" };
-const TITLE_TYPE_MAP: Record<string, string> = { COMPANY: "公司", PERSONAL: "个人" };
+import { INVOICE_TYPE_MAP, TITLE_TYPE_MAP } from "@/lib/enum-maps";
+
+const DESC_COL = { xs: 1, sm: 1, md: 2, lg: 2, xl: 3 } as const;
 
 export default function InvoiceDetailPage() {
   const params = useParams();
   const id = String(params.id);
-  const router = useRouter();
+
+  const goBack = useGoBack("/invoices");
   const { data: session } = useSession();
-  const { data, isLoading, mutate } = useSWR<{ data: InvoiceEntity }>(`/api/invoices/${id}`);
-  const invoice = data?.data;
+  const { message } = AntdApp.useApp();
+  const { data, isLoading, mutate } = useSWR<InvoiceEntity>(`/api/invoices/${id}`);
+  const invoice = data;
   const [reason, setReason] = useState("");
   const [invoiceNo, setInvoiceNo] = useState("");
+  useEffect(() => {
+    if (invoice?.invoiceNo) setInvoiceNo(invoice.invoiceNo);
+  }, [invoice?.invoiceNo]);
   const { run } = useActionCall({ baseUrl: `/api/invoices/${id}`, reload: () => mutate() });
 
   if (isLoading || !invoice) {
     return (
       <Page>
-        <PageHeader back={() => router.push("/invoices")} title="开票详情" />
+        <PageHeader back={goBack} title="开票详情" />
         <DetailPageSkeleton />
       </Page>
     );
@@ -40,39 +49,40 @@ export default function InvoiceDetailPage() {
   const status = invoice?.status;
 
   const askIssue = () => Modal.confirm({
-    title: "开票(财务)",
-    content: <div><div>发票号(电子发票 20 位数字):</div><Input value={invoiceNo} onChange={(e) => setInvoiceNo(e.target.value)} placeholder="如 01100210031112345678" /></div>,
+    title: "确认开票（财务操作）",
+    content: <div><div style={{ marginBottom: 6 }}>请填写 20 位电子发票号：</div><Input value={invoiceNo} onChange={(e) => setInvoiceNo(e.target.value)} placeholder="如：01100210031112345678" /></div>,
     onOk: async () => {
-      if (!invoiceNo) { Modal.destroyAll(); return; }
+      if (!invoiceNo) { message.warning("请先填写 20 位电子发票号"); return; }
       await run("issue", { invoiceNo, actualIssueDate: new Date().toISOString() });
       setInvoiceNo("");
     }
   });
   const askRedFlush = () => Modal.confirm({
-    title: "红冲发票",
-    content: <Input.TextArea rows={3} value={reason} onChange={(e) => setReason(e.target.value)} placeholder="红冲原因" />,
+    title: "确认红冲发票？",
+    content: <Input.TextArea rows={3} value={reason} onChange={(e) => setReason(e.target.value)} placeholder="请填写红冲原因，将记入操作记录" />,
     onOk: async () => { await run("red-flush", { reason }); setReason(""); }
   });
   const askReject = () => Modal.confirm({
-    title: "驳回开票",
-    content: <Input.TextArea rows={3} value={reason} onChange={(e) => setReason(e.target.value)} placeholder="驳回原因" />,
+    title: "确认驳回该开票？",
+    content: <Input.TextArea rows={3} value={reason} onChange={(e) => setReason(e.target.value)} placeholder="请填写驳回原因，业务员可见" />,
     onOk: async () => { await run("reject", { reason }); setReason(""); }
   });
   const askVoid = () => Modal.confirm({
-    title: "作废发票(仅当日)",
-    content: <Input.TextArea rows={2} value={reason} onChange={(e) => setReason(e.target.value)} placeholder="作废原因" />,
+    title: "确认作废该发票？（仅当日有效）",
+    content: <Input.TextArea rows={2} value={reason} onChange={(e) => setReason(e.target.value)} placeholder="请填写作废原因，将记入操作记录" />,
     onOk: async () => { await run("void", { reason }); setReason(""); }
   });
   return (
     <Page>
       <PageHeader
-        back={() => router.push("/invoices")}
+        back={goBack}
         title={`${invoice.customerName} · ${invoice.invoiceNo}`}
-        subtitle={`发票类型: ${invoice.invoiceType ?? "-"}`}
+        subtitle={`发票类型：${INVOICE_TYPE_MAP[invoice.invoiceType as string] ?? invoice.invoiceType ?? "—"}`}
         meta={<StatusTag status={invoice.status} domain="invoice" />}
         actions={
-          <Space>
-            {status === "DRAFT" && <Button type="primary" onClick={() => run("submit")}>提交</Button>}
+          <Space wrap>
+            <Button key="pdf" icon={<FilePdfOutlined />} onClick={() => openPrintWindow(`/api/invoices/${id}/pdf`)}>导出 PDF</Button>
+            {status === "DRAFT" && isFinance && <Button type="primary" onClick={() => run("submit")}>提交</Button>}
             {status === "PENDING_FINANCE" && isFinance && (
               <>
                 <Button danger onClick={askReject}>驳回</Button>
@@ -89,7 +99,7 @@ export default function InvoiceDetailPage() {
         }
       />
       <ProCard>
-        <ProDescriptions<InvoiceEntity> column={2} dataSource={invoice} columns={[
+        <ProDescriptions<InvoiceEntity> column={DESC_COL} dataSource={invoice} columns={[
           { title: "发票号", dataIndex: "invoiceNo" },
           { title: "客户", dataIndex: "customerName" },
           { title: "发票类型", dataIndex: "invoiceType", render: (v) => INVOICE_TYPE_MAP[v as string] ?? v },

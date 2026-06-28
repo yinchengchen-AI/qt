@@ -1,48 +1,143 @@
 "use client";
-import { ProTable, type ProColumns } from "@ant-design/pro-components";
-import { App as AntdApp, Button, Tag, Space, Switch } from "antd";
-import { useState } from "react";
-import { useSWRConfig } from "swr";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { Button, Layout, Select, Space, message } from "antd";
 import { Page } from "@/components/page";
 import { PageHeader } from "@/components/page-header";
+import { useResponsive } from "@/lib/use-breakpoint";
+import { DICT_DOMAINS, DICT_META, categoriesInDomain } from "@/lib/dict-domain";
+import { DictCategorySider } from "./_components/DictCategorySider";
+import { DictCategoryContent } from "./_components/DictCategoryContent";
+import { DictTableView, type DictRow } from "./_components/DictTableView";
+import { DictTreeView, type DictTreeNode } from "./_components/DictTreeView";
 import { DictEditDrawer } from "./_components/DictEditDrawer";
-import { CreateDictModal } from "./_components/CreateDictModal";
-import { DICTIONARY_CATEGORY_LABEL } from "@/lib/dictionary-categories";
+import { CreateDictDrawer } from "./_components/CreateDictDrawer";
 
-type Dict = {
-  id: string;
-  category: string;
-  code: string;
-  label: string;
-  sort: number;
-  isActive: boolean;
-  createdAt: string;
-};
+const { Sider, Content } = Layout;
 
 export default function DictionariesPage() {
-  const { message, modal } = AntdApp.useApp();
-  const { mutate } = useSWRConfig();
-  const [editing, setEditing] = useState<Dict | null>(null);
-  const [createOpen, setCreateOpen] = useState(false);
+  const { isMobile } = useResponsive();
+  const [selected, setSelected] = useState<string>(categoriesInDomain("客户域")[0] ?? "CUSTOMER_TYPE");
+  const meta = DICT_META[selected];
+  const isTree = meta?.shape === "tree";
+  const isReadonly = meta?.readonly ?? false;
+
+  // 列表 / 树 通用
+  const [rows, setRows] = useState<DictRow[]>([]);
+  const [loading, setLoading] = useState(false);
   const [includeInactive, setIncludeInactive] = useState(true);
+  const [keyword, setKeyword] = useState("");
 
-  async function onDisable(d: Dict) {
-    modal.confirm({
-      title: `停用 ${d.code}?`,
-      content: "软停用:该字典项将从下拉中隐藏,业务数据仍可读。",
-      okType: "danger",
-      onOk: async () => {
-        const r = await fetch(`/api/dictionaries/${d.id}`, { method: "DELETE", credentials: "include" });
+  // 批量
+  const [batchMode, setBatchMode] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+
+  // 各 category 的条目数 (Sider 显示用, cache)
+  const [counts, setCounts] = useState<Record<string, number | undefined>>({});
+
+  // Drawer
+  const [editTarget, setEditTarget] = useState<DictRow | null>(null);
+  const [createOpen, setCreateOpen] = useState(false);
+  const [createParent, setCreateParent] = useState<{ parentCode: string } | null>(null);
+
+  // ---- 数据加载 ----
+  const fetchRows = useCallback(async () => {
+    if (!selected) return;
+    setLoading(true);
+    try {
+      // REGION 不在 16 类白名单, listAll 会拒, 走 legacy 树形分支
+      if (selected === "REGION") {
+        const r = await fetch(`/api/dictionaries?category=REGION&tree=true`, { credentials: "include" });
         const j = await r.json();
-        if (j.code !== 0) return message.error(j.message);
-        message.success("已停用");
-        mutate((k) => typeof k === "string" && k.startsWith("/api/dictionaries"));
+        if (j.code !== 0) throw new Error(j.message);
+        // j.data 是 DictTreeNode[], 转成 DictRow 喂给 DictTreeView (用 code 作为 id)
+        const flat: DictRow[] = [];
+        const walk = (nodes: Array<{ id: string; code: string; label: string; parentCode: string | null; isActive: boolean; children?: unknown[] }>) => {
+          for (const n of nodes) {
+            flat.push({
+              id: n.id,
+              code: n.code,
+              label: n.label,
+              sort: 0,
+              isActive: n.isActive,
+              parentCode: n.parentCode,
+              createdAt: ""
+            });
+            if (n.children && (n.children as unknown[]).length > 0) walk(n.children as never);
+          }
+        };
+        walk(j.data ?? []);
+        setRows(flat);
+        setCounts((prev) => ({ ...prev, REGION: flat.length }));
+        return;
       }
-    });
-  }
+      const qs = new URLSearchParams();
+      qs.set("pageSize", "200");
+      qs.set("includeInactive", includeInactive ? "true" : "false");
+      qs.set("category", selected);
+      if (keyword.trim()) qs.set("keyword", keyword.trim());
+      const r = await fetch(`/api/dictionaries?${qs}`, { credentials: "include" });
+      const j = await r.json();
+      if (j.code !== 0) throw new Error(j.message);
+      setRows(j.data.list ?? []);
+      setCounts((prev) => ({ ...prev, [selected]: (j.data.list ?? []).length }));
+    } catch (e) {
+      const err = e as Error;
+      message.error(err.message);
+    } finally {
+      setLoading(false);
+    }
+  }, [selected, includeInactive, keyword]);
 
-  async function onToggleActive(d: Dict, next: boolean) {
-    const r = await fetch(`/api/dictionaries/${d.id}`, {
+  useEffect(() => {
+    fetchRows();
+  }, [fetchRows]);
+
+  // 初次加载后, 顺便拉所有 category 的 count (Sider 显示用)
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      for (const c of Object.keys(DICT_META)) {
+        if (cancelled) { break; }
+        if (counts[c] !== undefined) continue;
+        try {
+          // 用 legacy 分支 (?category=X 无 pageSize/includeInactive/keyword) 兼容 REGION 等非白名单类目
+          const r = await fetch(`/api/dictionaries?category=${encodeURIComponent(c)}`, { credentials: "include" });
+          const j = await r.json();
+          if (j.code === 0) setCounts((prev) => ({ ...prev, [c]: (j.data ?? []).length }));
+        } catch { /* ignore */ }
+      }
+    })();
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // 切换类目时重置批量
+  useEffect(() => {
+    setSelectedIds(new Set());
+    setBatchMode(false);
+  }, [selected]);
+
+  // ---- 操作 ----
+  const onToggleSelect = (id: string) =>
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+
+  const onToggleSelectAll = (ids: string[], checked: boolean) =>
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      for (const id of ids) {
+        if (checked) next.add(id);
+        else next.delete(id);
+      }
+      return next;
+    });
+
+  async function onToggleActive(row: DictRow, next: boolean) {
+    const r = await fetch(`/api/dictionaries/${row.id}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       credentials: "include",
@@ -50,102 +145,162 @@ export default function DictionariesPage() {
     });
     const j = await r.json();
     if (j.code !== 0) return message.error(j.message);
-    message.success(next ? "已启用" : "已停用");
-    mutate((k) => typeof k === "string" && k.startsWith("/api/dictionaries"));
+    message.success(next ? "已启用" : "已停用，列表已刷新");
+    fetchRows();
   }
 
-  const columns: ProColumns<Dict>[] = [
-    {
-      title: "分类",
-      dataIndex: "category",
-      width: 160,
-      render: (_, r) => <Tag color="blue">{DICTIONARY_CATEGORY_LABEL[r.category] ?? r.category}</Tag>
-    },
-    { title: "代码", dataIndex: "code", width: 200 },
-    { title: "标签", dataIndex: "label", width: 220 },
-    { title: "排序", dataIndex: "sort", width: 80, sorter: true },
-    {
-      title: "启用",
-      dataIndex: "isActive",
-      width: 100,
-      render: (_, r) => (
-        <Switch
-          size="small"
-          checked={r.isActive}
-          onChange={(next) => onToggleActive(r, next)}
-        />
-      )
-    },
-    {
-      title: "操作",
-      width: 160,
-      fixed: "right",
-      render: (_, r) => (
-        <Space size="small">
-          <Button type="link" size="small" onClick={() => setEditing(r)}>
-            编辑
-          </Button>
-          {r.isActive ? (
-            <Button type="link" size="small" danger onClick={() => onDisable(r)}>
-              停用
-            </Button>
-          ) : null}
-        </Space>
-      )
+  async function onBatchSetActive(active: boolean) {
+    const ids = Array.from(selectedIds);
+    if (ids.length === 0) return;
+    let ok = 0;
+    let fail = 0;
+    for (const id of ids) {
+      const r = await fetch(`/api/dictionaries/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ isActive: active })
+      });
+      const j = await r.json();
+      if (j.code === 0) ok++;
+      else fail++;
     }
-  ];
+    if (fail > 0) message.warning(`批量操作完成：${ok} 成功，${fail} 失败`);
+    else message.success(`已${active ? "启用" : "停用"} ${ok} 条字典项`);
+    setSelectedIds(new Set());
+    fetchRows();
+  }
+
+  function onEdit(row: DictRow) {
+    setEditTarget(row);
+  }
+
+  // TreeView 的 selection -> 打开编辑 Drawer
+  function onTreeSelect(node: DictTreeNode) {
+    // 把 DictTreeNode 转 DictRow 用于编辑
+    setEditTarget({
+      id: node.id,
+      code: node.code,
+      label: node.label,
+      sort: 0,
+      isActive: node.isActive,
+      parentCode: node.parentCode,
+      createdAt: ""
+    });
+  }
+
+  // TreeView 的 +子级 -> 打开 CreateDictDrawer 并预填 parentCode
+  function onAddChild(parent: DictTreeNode) {
+    setCreateParent({ parentCode: parent.code });
+    setCreateOpen(true);
+  }
+
+  // ---- 渲染 ----
+  const totalCount = useMemo(
+    () => Object.values(counts).filter((v): v is number => typeof v === "number").reduce((a, b) => a + b, 0),
+    [counts]
+  );
+  const totalCategories = Object.keys(DICT_META).length;
 
   return (
     <Page>
       <PageHeader
         title="数据字典"
-        subtitle="15 类白名单内的下拉 / 单选 / 状态枚举;支持增 / 改 / 启停 / 重排"
+        subtitle={`${totalCategories} 类 / 共 ${totalCount} 条 · 管理员可改`}
         actions={
           <Space>
-            <span style={{ fontSize: 13, color: "rgba(0,0,0,0.65)" }}>
-              <Switch size="small" checked={includeInactive} onChange={setIncludeInactive} /> 包含已停用
-            </span>
-            <Button type="primary" onClick={() => setCreateOpen(true)}>
-              新增字典项
-            </Button>
+            {!isReadonly ? (
+              <Button type="primary" onClick={() => { setCreateParent(null); setCreateOpen(true); }}>
+                新增字典项
+              </Button>
+            ) : null}
           </Space>
         }
       />
-      <ProTable<Dict>
-        rowKey="id"
-        columns={columns}
-        search={{
-          labelWidth: "auto",
-          defaultCollapsed: false
-        }}
-        toolbar={{ settings: [] }}
-        pagination={{ pageSize: 50, showSizeChanger: true }}
-        request={async (params) => {
-          const qs = new URLSearchParams();
-          qs.set("page", String(params.current ?? 1));
-          qs.set("pageSize", String(params.pageSize ?? 50));
-          if (params.keyword) qs.set("keyword", String(params.keyword));
-          if (includeInactive) qs.set("includeInactive", "true");
-          const res = await fetch(`/api/dictionaries?${qs}`, { credentials: "include" });
-          const j = await res.json();
-          if (j.code !== 0) throw new Error(j.message);
-          return { data: j.data.list, total: j.data.total, success: true };
-        }}
-      />
+      <Layout style={{ background: "transparent", minHeight: "calc(100vh - 220px)" }}>
+        {isMobile ? (
+          <div style={{ padding: "8px 16px 0" }}>
+            <Select
+              value={selected}
+              onChange={setSelected}
+              style={{ width: "100%" }}
+              options={DICT_DOMAINS.flatMap((d) => {
+                const items = categoriesInDomain(d);
+                return items.length === 0 ? [] : [
+                  { label: `── ${d} ──`, value: `__header_${d}__`, disabled: true },
+                  ...items.map((c) => ({ value: c, label: `${DICT_META[c]?.label ?? c} (${counts[c] ?? "—"})` }))
+                ];
+              })}
+            />
+          </div>
+        ) : (
+          <Sider width={240} theme="light" style={{ borderRight: "1px solid rgba(0,0,0,0.06)" }}>
+            <DictCategorySider selected={selected} onSelect={setSelected} counts={counts} />
+          </Sider>
+        )}
+        <Content style={{ padding: isMobile ? "12px 16px" : "12px 24px" }}>
+          <DictCategoryContent
+            category={selected}
+            loading={loading}
+            includeInactive={includeInactive}
+            onIncludeInactiveChange={setIncludeInactive}
+            keyword={keyword}
+            onKeywordChange={setKeyword}
+            onRefresh={fetchRows}
+            onCreate={() => { setCreateParent(null); setCreateOpen(true); }}
+            batchMode={batchMode}
+            onBatchModeChange={setBatchMode}
+            selectedCount={selectedIds.size}
+            onBatchEnable={() => onBatchSetActive(true)}
+            onBatchDisable={() => onBatchSetActive(false)}
+            onBatchClear={() => setSelectedIds(new Set())}
+          >
+            {isTree ? (
+              <DictTreeView
+                rows={rows.map((r) => ({
+                  id: r.id,
+                  code: r.code,
+                  label: r.label,
+                  parentCode: r.parentCode,
+                  isActive: r.isActive
+                }))}
+                loading={loading}
+                keyword={keyword}
+                onKeywordChange={setKeyword}
+                onSelect={onTreeSelect}
+                onAddChild={isReadonly ? undefined : onAddChild}
+              />
+            ) : (
+              <DictTableView
+                category={selected}
+                rows={rows}
+                loading={loading}
+                batchMode={batchMode}
+                selectedIds={selectedIds}
+                onToggleSelect={onToggleSelect}
+                onToggleSelectAll={onToggleSelectAll}
+                onEdit={onEdit}
+                onToggleActive={onToggleActive}
+              />
+            )}
+          </DictCategoryContent>
+        </Content>
+      </Layout>
 
       <DictEditDrawer
-        open={!!editing}
-        dict={editing}
-        onClose={() => setEditing(null)}
-        onSaved={() => mutate((k) => typeof k === "string" && k.startsWith("/api/dictionaries"))}
+        open={!!editTarget}
+        dict={editTarget}
+        onClose={() => setEditTarget(null)}
+        onSaved={fetchRows}
       />
 
-      <CreateDictModal
+      <CreateDictDrawer
         open={createOpen}
-        onClose={() => setCreateOpen(false)}
-        onSaved={() => mutate((k) => typeof k === "string" && k.startsWith("/api/dictionaries"))}
+        onClose={() => { setCreateOpen(false); setCreateParent(null); }}
+        onSaved={fetchRows}
+        defaultCategory={selected}
+        defaultParentCode={createParent?.parentCode}
       />
     </Page>
   );
 }
-

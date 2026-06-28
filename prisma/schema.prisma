@@ -29,6 +29,29 @@ model Role {
   @@index([code])
 }
 
+// 通知事件类型:与 server/events/bus.ts 的 DomainEventType 一一对应
+//   - bus.emit 写入的 type 必须落在这里
+//   - cron 任务的去重查询也按这些值匹配
+// 增减需要同步修改 server/events/bus.ts (并跑 prisma migrate)
+enum MessageType {
+  CONTRACT_EXPIRING
+  INVOICE_OVERDUE_PAYMENT
+  PAYMENT_RECEIVED
+  CUSTOMER_STATUS_SUGGEST
+  CONTRACT_AUTO_EXECUTED
+  CONTRACT_AUTO_COMPLETED
+  CONTRACT_AUTO_EXPIRED
+  // 合同过期宽限期强关 (endDate+GRACE<now 仍未结清, tryAutoCloseOnOverdue 触发)
+  CONTRACT_AUTO_OVERDUE_TERMINATED
+  // 合同过期未结清提醒 (endDate<now 但钱没收齐, tickStaleContracts 触发)
+  CONTRACT_EXPIRED_UNPAID
+  // 证书 N 天内到期 (30/15/7 三档阈值各发一次)
+  CERTIFICATE_EXPIRING
+  // 客户状态机自动化: 系统自动写状态 (§1.2 / §3.1)
+  CUSTOMER_STATUS_AUTO_APPLIED
+  CUSTOMER_STATUS_AUTO_REVERTED
+}
+
 model User {
   id           String      @id @default(cuid())
   employeeNo   String      @unique
@@ -41,47 +64,224 @@ model User {
   departmentId String?
   department   Department? @relation("UserDepartment", fields: [departmentId], references: [id])
   status       String      @default("ACTIVE") // ACTIVE | DISABLED
+  isSystem     Boolean     @default(false)
   lastLoginAt  DateTime?   @db.Timestamptz(6)
   wechatWorkId String?
   createdAt    DateTime    @default(now()) @db.Timestamptz(6)
   updatedAt    DateTime    @updatedAt @db.Timestamptz(6)
   deletedAt    DateTime?   @db.Timestamptz(6)
 
-  uploadedAttachments Attachment[]
+  uploadedAttachments    Attachment[]
+  signedContracts        Contract[]       @relation("ContractSigner")
+  messages               Message[]
+  publishedAnnouncements Announcement[]   @relation("AnnouncementPublishUser")
+  profile                EmployeeProfile?
 
   @@index([roleId])
   @@index([status])
   @@index([departmentId])
 }
 
+model EmployeeProfile {
+  id     String @id @default(cuid())
+  userId String @unique
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  // 基础档案
+  gender        String? // MALE | FEMALE | OTHER
+  birthday      DateTime? @db.Timestamptz(6)
+  idCard        String?   @unique // 身份证号（敏感，加密存储）
+  education     String? // 学历字典值
+  entryDate     DateTime? @db.Timestamptz(6)
+  // 地址：结构化为省/市/区 + 详细地址,省市区走 lib/china-divisions.ts 三级联动
+  province      String?
+  city          String?
+  district      String?
+  addressDetail String?
+
+  // 人事/岗位
+  position         String?
+  jobLevel         String?
+  employmentType   String?   @default("FULL_TIME") // FULL_TIME | PART_TIME | INTERN | CONTRACTOR
+  probationEndDate DateTime? @db.Timestamptz(6)
+  formalDate       DateTime? @db.Timestamptz(6)
+  resignationDate  DateTime? @db.Timestamptz(6)
+
+  // 合同
+  contractType      String? // 合同类型字典值
+  contractStartDate DateTime? @db.Timestamptz(6)
+  contractEndDate   DateTime? @db.Timestamptz(6)
+
+  // 头像（1:1 引用 Attachment；走 avatarAttachment 反向 relation）
+  avatarAttachmentId String?     @unique
+  avatarAttachment   Attachment? @relation("EmployeeProfileAvatar", fields: [avatarAttachmentId], references: [id], onDelete: SetNull)
+
+  // 敏感信息（仅 ADMIN 可见）
+  salary                Decimal? @db.Decimal(14, 2)
+  bankAccount           String? // 银行卡号（敏感，加密存储）
+  bankName              String?
+  socialSecurityAccount String? // 社保账号（敏感，加密存储）
+  providentFundAccount  String? // 公积金账号（敏感，加密存储）
+
+  // 履历/备注（workExperience / educationHistory / certificates 长文本已迁到子表）
+  remark String? @db.VarChar(5000)
+
+  createdAt DateTime  @default(now()) @db.Timestamptz(6)
+  updatedAt DateTime  @updatedAt @db.Timestamptz(6)
+  deletedAt DateTime? @db.Timestamptz(6)
+
+  // 5 张子表
+  educations        EmployeeEducation[]
+  workExperiences   EmployeeWorkExperience[]
+  certificates      EmployeeCertificate[]
+  skills            EmployeeSkill[]
+  emergencyContacts EmployeeEmergencyContact[]
+
+  // 通用附件 (身份证照 / 证书附件 / 其他) — 多对多挂在 Attachment.employeeProfileId
+  attachments Attachment[] @relation("EmployeeProfileAttachments")
+
+  @@index([userId])
+}
+
+// =====================================================
+// 员工档案 5 张子表 (PR1 of employee-profile-redesign)
+// - 全部 onDelete: Cascade 到 EmployeeProfile
+// - 全部带 deletedAt 支持软删 (与现有 EmployeeProfile 模式一致)
+// - certificate.attachmentId 是 0..1 引用,允许无附件的证书
+// - 详情页 / 列表 / 排序: createdAt asc / 各种日期 desc
+// =====================================================
+model EmployeeEducation {
+  id         String          @id @default(cuid())
+  profileId  String
+  profile    EmployeeProfile @relation(fields: [profileId], references: [id], onDelete: Cascade)
+  school     String
+  major      String?
+  // 学历字典值 (EDUCATION_LEVEL: HIGH_SCHOOL / JUNIOR_COLLEGE / BACHELOR / MASTER / DOCTORATE / OTHER)
+  degree     String?
+  startDate  DateTime        @db.Timestamptz(6)
+  endDate    DateTime?       @db.Timestamptz(6)
+  isFullTime Boolean         @default(true)
+  remark     String?         @db.VarChar(2000)
+  createdAt  DateTime        @default(now()) @db.Timestamptz(6)
+  updatedAt  DateTime        @updatedAt @db.Timestamptz(6)
+  deletedAt  DateTime?       @db.Timestamptz(6)
+
+  @@index([profileId])
+}
+
+model EmployeeWorkExperience {
+  id          String          @id @default(cuid())
+  profileId   String
+  profile     EmployeeProfile @relation(fields: [profileId], references: [id], onDelete: Cascade)
+  company     String
+  position    String?
+  startDate   DateTime        @db.Timestamptz(6)
+  endDate     DateTime?       @db.Timestamptz(6)
+  leaveReason String?
+  referrer    String?
+  remark      String?         @db.VarChar(2000)
+  createdAt   DateTime        @default(now()) @db.Timestamptz(6)
+  updatedAt   DateTime        @updatedAt @db.Timestamptz(6)
+  deletedAt   DateTime?       @db.Timestamptz(6)
+
+  @@index([profileId])
+}
+
+model EmployeeCertificate {
+  id           String          @id @default(cuid())
+  profileId    String
+  profile      EmployeeProfile @relation(fields: [profileId], references: [id], onDelete: Cascade)
+  name         String
+  number       String?
+  issuer       String?
+  issueDate    DateTime?       @db.Timestamptz(6)
+  // expiryDate 索引给证书到期 cron 用 (server/jobs/certificate-expiry-check)
+  expiryDate   DateTime?       @db.Timestamptz(6)
+  attachmentId String?
+  attachment   Attachment?     @relation("CertificateAttachment", fields: [attachmentId], references: [id], onDelete: SetNull)
+  remark       String?         @db.VarChar(2000)
+  createdAt    DateTime        @default(now()) @db.Timestamptz(6)
+  updatedAt    DateTime        @updatedAt @db.Timestamptz(6)
+  deletedAt    DateTime?       @db.Timestamptz(6)
+
+  @@index([profileId])
+  @@index([expiryDate])
+}
+
+model EmployeeSkill {
+  id         String          @id @default(cuid())
+  profileId  String
+  profile    EmployeeProfile @relation(fields: [profileId], references: [id], onDelete: Cascade)
+  name       String
+  // BEGINNER | INTERMEDIATE | ADVANCED
+  level      String          @default("INTERMEDIATE")
+  obtainDate DateTime?       @db.Timestamptz(6)
+  remark     String?         @db.VarChar(2000)
+  createdAt  DateTime        @default(now()) @db.Timestamptz(6)
+  updatedAt  DateTime        @updatedAt @db.Timestamptz(6)
+  deletedAt  DateTime?       @db.Timestamptz(6)
+
+  @@index([profileId])
+}
+
+// PR9:证书到期提醒的去重表(替代 Redis 缓存)
+// 每条记录表示"某证书某阈值已发过一次通知",@@unique 防重复
+model CertificateExpiryNotice {
+  id            String   @id @default(cuid())
+  certificateId String
+  threshold     Int
+  sentAt        DateTime @default(now()) @db.Timestamptz(6)
+
+  @@unique([certificateId, threshold])
+  @@index([certificateId])
+  @@index([sentAt])
+}
+
+model EmployeeEmergencyContact {
+  id           String          @id @default(cuid())
+  profileId    String
+  profile      EmployeeProfile @relation(fields: [profileId], references: [id], onDelete: Cascade)
+  name         String
+  // 关系: 父母/配偶/兄弟姐妹/子女/其他
+  relationship String
+  phone        String
+  remark       String?         @db.VarChar(500)
+  createdAt    DateTime        @default(now()) @db.Timestamptz(6)
+  updatedAt    DateTime        @updatedAt @db.Timestamptz(6)
+  deletedAt    DateTime?       @db.Timestamptz(6)
+
+  @@index([profileId])
+}
+
 // =====================================================
 // Customers
 // =====================================================
 model Customer {
-  id                      String    @id @default(cuid())
-  code                    String    @unique
+  id                      String  @id @default(cuid())
+  code                    String  @unique
   name                    String
   shortName               String?
-  unifiedSocialCreditCode String?   @unique
+  unifiedSocialCreditCode String? @unique
   customerType            String // ENTERPRISE | GOV | OTHER
   industry                String?
   scale                   String? // LARGE | MEDIUM | SMALL | MICRO
   province                String
   city                    String
+  district                String?
   address                 String?
-  contactPhone            String
-  contactEmail            String?
-  sourceChannel           String?
-  level                   String    @default("C") // A | B | C | D
-  ownerUserId             String
-  status                  String    @default("LEAD") // LEAD | NEGOTIATING | SIGNED | LOST | FROZEN
-  creditLimitAmount       Decimal?  @db.Decimal(18, 2)
-  paymentTermDays         Int       @default(30)
-  createdAt               DateTime  @default(now()) @db.Timestamptz(6)
-  updatedAt               DateTime  @updatedAt @db.Timestamptz(6)
-  createdById             String
-  updatedById             String
-  deletedAt               DateTime? @db.Timestamptz(6)
+  town                    String?
+
+  // 主联系人信息(姓名 / 职务 / 电话);废除原 creditLimitAmount / paymentTermDays / contactEmail
+  contactName   String?
+  contactTitle  String?
+  contactPhone  String
+  sourceChannel String?
+  ownerUserId   String
+  createdAt     DateTime  @default(now()) @db.Timestamptz(6)
+  updatedAt     DateTime  @updatedAt @db.Timestamptz(6)
+  createdById   String
+  updatedById   String
+  deletedAt     DateTime? @db.Timestamptz(6)
 
   contracts Contract[]
   payments  Payment[]
@@ -89,8 +289,6 @@ model Customer {
   contacts  ContactPerson[]
 
   @@index([ownerUserId])
-  @@index([status])
-  @@index([level])
   @@index([customerType])
 }
 
@@ -111,6 +309,10 @@ model ContactPerson {
   @@index([customerId])
 }
 
+// @deprecated 2026-06: 客户跟进 (FollowUp) 功能已下线, API 全部返回 410, UI 已隐藏.
+// 状态机建议信号改用 lastActivityAt (合同/回款/客户更新时间) — 见 server/jobs/customer-status-suggest.ts.
+// 表结构保留是为了历史数据可查; 后续清理数据可走 scripts/shared/cleanup-business-data.ts.
+// 新功能不要再读写此表.
 model FollowUp {
   id           String    @id @default(cuid())
   customerId   String
@@ -135,7 +337,11 @@ model FollowUp {
 // =====================================================
 model Contract {
   id                     String    @id @default(cuid())
-  contractNo             String    @unique
+  contractNo             String
+  // contractNo 唯一性: 软删合同不阻塞同号新建. 索引在
+  // prisma/migrations/20260621_contract_no_partial_unique/migration.sql 维护
+  // (CREATE UNIQUE INDEX ... WHERE "deletedAt" IS NULL). Prisma schema 不直接
+  // 表达部分唯一索引, 改 schema 时不要加回 @unique.
   customerId             String
   customer               Customer  @relation(fields: [customerId], references: [id])
   customerName           String
@@ -150,11 +356,16 @@ model Contract {
   amountExcludingTax     Decimal   @db.Decimal(18, 2)
   paymentMethod          String // LUMP_SUM | BY_PHASE | BY_MONTH | BY_QUARTER
   installmentPlan        Json?
-  status                 String    @default("DRAFT") // DRAFT | PENDING_REVIEW | EFFECTIVE | EXECUTING | COMPLETED | TERMINATED | EXPIRED
+  // 合同交付物不再以结构化 JSON 存; 实际交付文件走 Attachment.isDeliverable=true
+  // (admin / 签订人 / 负责人 三者之一 才能上传; 详见 server/storage/presign.ts assertCanManageDeliverables)
+  status                 String    @default("DRAFT") // DRAFT | ACTIVE | CLOSED
   ownerUserId            String
+  signerId               String
   reviewerId             String?
   reviewAt               DateTime? @db.Timestamptz(6)
   reviewComment          String?
+  // 合同备注: 自由文本, 跟 reviewComment (审批意见) 区分; 不参与状态机/审批流
+  remark                 String?
   attachments            Json
   completionInvoiceRatio Decimal   @default(0.95) @db.Decimal(4, 2)
   createdAt              DateTime  @default(now()) @db.Timestamptz(6)
@@ -163,16 +374,17 @@ model Contract {
   updatedById            String
   deletedAt              DateTime? @db.Timestamptz(6)
 
-  projects       Project[]
   payments       Payment[]
   invoices       Invoice[]
   reviewLogs     ContractReviewLog[]
   attachmentRefs Attachment[]        @relation("ContractAttachments")
+  signer         User                @relation("ContractSigner", fields: [signerId], references: [id])
 
   @@index([customerId])
   @@index([status])
   @@index([ownerUserId])
   @@index([signDate])
+  @@index([signerId])
 }
 
 model ContractReviewLog {
@@ -185,46 +397,6 @@ model ContractReviewLog {
   at         DateTime @default(now()) @db.Timestamptz(6)
 
   @@index([contractId])
-}
-
-// =====================================================
-// Projects
-// =====================================================
-model Project {
-  id            String    @id @default(cuid())
-  projectNo     String    @unique
-  contractId    String
-  contract      Contract  @relation(fields: [contractId], references: [id])
-  name          String
-  serviceScope  String
-  managerUserId String
-  startDate     DateTime  @db.Timestamptz(6)
-  endDate       DateTime  @db.Timestamptz(6)
-  budgetAmount  Decimal?  @db.Decimal(18, 2)
-  milestones    Json?
-  status        String    @default("PLANNED") // PLANNED | IN_PROGRESS | SUSPENDED | DELIVERED | ACCEPTED | CLOSED | CANCELLED
-  createdAt     DateTime  @default(now()) @db.Timestamptz(6)
-  updatedAt     DateTime  @updatedAt @db.Timestamptz(6)
-  createdById   String
-  updatedById   String
-  deletedAt     DateTime? @db.Timestamptz(6)
-
-  progressLogs ProjectProgressLog[]
-
-  @@unique([contractId, name])
-  @@index([contractId])
-  @@index([status])
-  @@index([managerUserId])
-}
-
-model ProjectProgressLog {
-  id        String   @id @default(cuid())
-  projectId String
-  project   Project  @relation(fields: [projectId], references: [id])
-  userId    String
-  percent   Int
-  remark    String
-  at        DateTime @default(now()) @db.Timestamptz(6)
 }
 
 // =====================================================
@@ -254,12 +426,11 @@ model Invoice {
   address            String?
   phone              String?
   remark             String?
-  attachments        Json?
   status             String    @default("DRAFT") // DRAFT | PENDING_FINANCE | ISSUED | REJECTED | VOIDED | RED_FLUSHED
   applicantUserId    String
   financeUserId      String?
-  reviewedAt         DateTime? @db.Timestamptz(6)
   reviewComment      String?
+  attachments        Json      @default("[]")
   linkedInvoiceId    String?   @unique
   linkedInvoice      Invoice?  @relation("InvoiceRedFlush", fields: [linkedInvoiceId], references: [id])
   redFlushInverse    Invoice?  @relation("InvoiceRedFlush")
@@ -271,8 +442,7 @@ model Invoice {
 
   payments       Payment[]
   auditLogs      InvoiceAuditLog[]
-  allocations    PaymentAllocation[]
-  attachmentRefs Attachment[]        @relation("InvoiceAttachments")
+  attachmentRefs Attachment[]      @relation("InvoiceAttachments")
 
   @@index([status])
   @@index([actualIssueDate])
@@ -322,8 +492,6 @@ model Payment {
   updatedById     String
   deletedAt       DateTime? @db.Timestamptz(6)
 
-  allocations PaymentAllocation[]
-
   @@index([invoiceId])
   @@index([contractId])
   @@index([status])
@@ -331,44 +499,32 @@ model Payment {
   @@index([customerId])
 }
 
-model PaymentAllocation {
-  id        String   @id @default(cuid())
-  paymentId String
-  payment   Payment  @relation(fields: [paymentId], references: [id])
-  invoiceId String?
-  invoice   Invoice? @relation(fields: [invoiceId], references: [id])
-  projectId String?
-  amount    Decimal  @db.Decimal(18, 2)
-  remark    String?
-  createdAt DateTime @default(now()) @db.Timestamptz(6)
-
-  @@index([paymentId])
-  @@index([invoiceId])
-  @@index([projectId])
-}
-
 // =====================================================
 // Messages / Announcements
 // =====================================================
 model Message {
-  id             String    @id @default(cuid())
+  id             String      @id @default(cuid())
   receiverUserId String
-  type           String // CONTRACT_PENDING_REVIEW | CONTRACT_EXPIRING | INVOICE_OVERDUE_PAYMENT | PAYMENT_RECEIVED | PROJECT_DUE | CUSTOMER_INACTIVE
-  title          String
-  content        String
+  receiver       User        @relation(fields: [receiverUserId], references: [id], onDelete: Restrict)
+  type           MessageType
+  title          String      @db.VarChar(200)
+  content        String      @db.VarChar(10000)
   link           Json?
-  readAt         DateTime? @db.Timestamptz(6)
-  createdAt      DateTime  @default(now()) @db.Timestamptz(6)
+  readAt         DateTime?   @db.Timestamptz(6)
+  createdAt      DateTime    @default(now()) @db.Timestamptz(6)
 
   @@index([receiverUserId, readAt])
-  @@index([type])
+  // 去重查询:`type + receiverUserId + createdAt + JSON link.id`
+  // 这个复合索引把扫描收敛到"今天 + 该用户 + 该类型"的小窗口,JSON 路径再二次过滤
+  @@index([type, receiverUserId, createdAt])
 }
 
 model Announcement {
   id            String    @id @default(cuid())
-  title         String
-  content       String
+  title         String    @db.VarChar(200)
+  content       String    @db.VarChar(10000)
   publishUserId String
+  publishUser   User      @relation("AnnouncementPublishUser", fields: [publishUserId], references: [id], onDelete: Restrict)
   publishAt     DateTime  @default(now()) @db.Timestamptz(6)
   effectiveFrom DateTime? @db.Timestamptz(6)
   effectiveTo   DateTime? @db.Timestamptz(6)
@@ -385,32 +541,48 @@ model Announcement {
 // Audit / Dictionaries / Sequences
 // =====================================================
 model OperationLog {
-  id       String   @id @default(cuid())
-  actorId  String
-  entity   String
-  entityId String
-  action   String
-  diff     Json?
-  ip       String?
-  at       DateTime @default(now()) @db.Timestamptz(6)
+  id           String   @id @default(cuid())
+  actorId      String
+  entity       String
+  entityId     String
+  action       String
+  diff         Json?
+  ip           String?
+  // 审计扩展字段:UA / 请求 ID / HTTP method/path / 状态 / 失败原因
+  // 字段定义与迁移 prisma/migrations/20260622_operation_log_audit_fields 同步
+  userAgent    String?
+  requestId    String?
+  method       String?
+  path         String?
+  status       String   @default("SUCCESS") // SUCCESS | FAILURE
+  errorMessage String?
+  at           DateTime @default(now()) @db.Timestamptz(6)
 
   @@index([actorId])
   @@index([entity, entityId])
   @@index([at])
+  @@index([requestId])
+  @@index([status])
 }
 
 model Dictionary {
-  id        String   @id @default(cuid())
-  category  String
-  code      String
-  label     String
-  sort      Int      @default(0)
-  isActive  Boolean  @default(true)
-  createdAt DateTime @default(now()) @db.Timestamptz(6)
-  updatedAt DateTime @updatedAt @db.Timestamptz(6)
+  id         String   @id @default(cuid())
+  category   String
+  code       String
+  label      String
+  // 自引用:支持树形字典 (如 REGION: 省/市/区/街道)
+  // 同 category 内 parentCode 引用上级 code,顶级为 null
+  // 与 @@unique([category, code]) 联合保证 (category, parentCode, code) 在同一字典内唯一
+  parentCode String?
+  sort       Int      @default(0)
+  isActive   Boolean  @default(true)
+  createdAt  DateTime @default(now()) @db.Timestamptz(6)
+  updatedAt  DateTime @updatedAt @db.Timestamptz(6)
 
   @@unique([category, code])
+  @@unique([category, parentCode, code])
   @@index([category, isActive, sort])
+  @@index([category, parentCode])
 }
 
 // 部门管理（树形自引用）
@@ -451,23 +623,38 @@ model Sequence {
 // - soft delete: deletedAt 不为 null 视为已删,MinIO 对象保留
 // =====================================================
 model Attachment {
-  id           String    @id @default(cuid())
-  objectKey    String    @unique
-  bucket       String
-  originalName String
-  mimeType     String
-  size         Int
-  uploadedById String
-  uploadedBy   User      @relation(fields: [uploadedById], references: [id])
-  contractId   String?
-  contract     Contract? @relation("ContractAttachments", fields: [contractId], references: [id], onDelete: SetNull)
-  invoiceId    String?
-  invoice      Invoice?  @relation("InvoiceAttachments", fields: [invoiceId], references: [id], onDelete: SetNull)
-  uploadedAt   DateTime  @default(now()) @db.Timestamptz(6)
-  deletedAt    DateTime? @db.Timestamptz(6)
+  id                     String                @id @default(cuid())
+  objectKey              String                @unique
+  bucket                 String
+  originalName           String
+  mimeType               String
+  size                   Int
+  uploadedById           String
+  uploadedBy             User                  @relation(fields: [uploadedById], references: [id])
+  contractId             String?
+  contract               Contract?             @relation("ContractAttachments", fields: [contractId], references: [id], onDelete: SetNull)
+  invoiceId              String?
+  invoice                Invoice?              @relation("InvoiceAttachments", fields: [invoiceId], references: [id], onDelete: SetNull)
+  employeeProfileId      String?
+  employeeProfile        EmployeeProfile?      @relation("EmployeeProfileAttachments", fields: [employeeProfileId], references: [id], onDelete: SetNull)
+  // 反向：员工头像 (1:1)
+  avatarOfProfile        EmployeeProfile?      @relation("EmployeeProfileAvatar")
+  // 反向：证书附件 (1:N)
+  certificateAttachments EmployeeCertificate[] @relation("CertificateAttachment")
+  // 合同交付物附件标记: true 表示该附件是合同详情"交付物"tab 上传的交付文件 (报告/证书/培训材料 等),
+  //   写权限仅 admin / 签订人 / 负责人 (assertCanManageDeliverables);
+  // false 表示合同通用附件 (走"附件"tab, 沿用 admin / 上传者 删除规则)
+  isDeliverable          Boolean               @default(false)
+  // 附件分类: GENERAL(默认通用) / AVATAR(头像) / ID_CARD_FRONT/BACK(身份证正反面) / CERTIFICATE(证书扫描件)
+  // 写入由 /api/files/presign-upload 的 body.category 决定;读取按 category 过滤
+  category               String                @default("GENERAL")
+  uploadedAt             DateTime              @default(now()) @db.Timestamptz(6)
+  deletedAt              DateTime?             @db.Timestamptz(6)
 
   @@index([contractId, deletedAt])
   @@index([invoiceId, deletedAt])
+  @@index([employeeProfileId, deletedAt])
   @@index([uploadedById])
+  @@index([contractId, isDeliverable, deletedAt])
   @@index([deletedAt])
 }

@@ -1,0 +1,12 @@
+node_modules
+.next
+.git
+.env
+.env.local
+.env.production
+.env.development
+*.md
+.DS_Store
+coverage
+dist
+.cache

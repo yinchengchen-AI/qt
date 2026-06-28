@@ -66,3 +66,71 @@ export function formatPercent(
   const pct = opts.isPercent ? v : v * 100;
   return pct.toFixed(digits) + "%";
 }
+
+/** 身份证号脱敏：110101********1237 */
+export function maskIdCard(v: string | null | undefined): string {
+  if (!v) return "—";
+  if (v.length <= 8) return v;
+  return v.slice(0, 4) + "********" + v.slice(-4);
+}
+
+/** 银行卡号脱敏：6222 **** **** 0123 */
+export function maskBankAccount(v: string | null | undefined): string {
+  if (!v) return "—";
+  if (v.length <= 8) return v;
+  return v.slice(0, 4) + " **** **** " + v.slice(-4);
+}
+
+/** 手机号脱敏：138****0000 */
+export function maskPhone(v: string | null | undefined): string {
+  if (!v) return "—";
+  if (v.length <= 7) return v;
+  return v.slice(0, 3) + "****" + v.slice(-4);
+}
+
+const GENDER_LABEL: Record<string, string> = {
+  MALE: "男",
+  FEMALE: "女",
+  OTHER: "其他"
+};
+
+export function formatGender(v: string | null | undefined): string {
+  return v ? (GENDER_LABEL[v] ?? v) : "—";
+}
+
+const EMPLOYMENT_TYPE_LABEL: Record<string, string> = {
+  FULL_TIME: "全职",
+  PART_TIME: "兼职",
+  INTERN: "实习",
+  CONTRACTOR: "外包"
+};
+
+export function formatEmploymentType(v: string | null | undefined): string {
+  return v ? (EMPLOYMENT_TYPE_LABEL[v] ?? v) : "—";
+}
+
+/**
+ * Normalize a value from a form field (string | Date | dayjs | moment | undefined)
+ * to a strict ISO-8601 datetime string (Z suffix) that satisfies `z.iso.datetime()`.
+ *
+ * Returns undefined for null/empty/invalid inputs so callers can pass the result
+ * directly into a Zod optional() / .default() chain.
+ */
+export function toIsoDateTime(value: unknown): string | undefined {
+  if (value === null || value === undefined || value === "") return undefined;
+  if (value instanceof Date) {
+    return Number.isNaN(value.getTime()) ? undefined : value.toISOString();
+  }
+  if (typeof value === "string") {
+    // "YYYY-MM-DD" or already-ISO with offset/Z; new Date() handles all of them
+    const d = new Date(value);
+    return Number.isNaN(d.getTime()) ? undefined : d.toISOString();
+  }
+  // dayjs / moment: prefer toDate() when available
+  const toDate = (value as { toDate?: unknown }).toDate;
+  if (typeof toDate === "function") {
+    const d = (toDate as () => unknown).call(value);
+    if (d instanceof Date && !Number.isNaN(d.getTime())) return d.toISOString();
+  }
+  return undefined;
+}

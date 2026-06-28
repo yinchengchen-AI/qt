@@ -1,0 +1,63 @@
+{
+  "startedAt": "2026-06-16T04:11:07.585Z",
+  "dryRun": true,
+  "stages": {
+    "A0_DICT_SERVICE_TYPE": {
+      "upserts": 0,
+      "ms": 0,
+      "finishedAt": "2026-06-16T04:11:07.723Z"
+    },
+    "A_DICT_REGION": {
+      "upserts": 0,
+      "ms": 0,
+      "finishedAt": "2026-06-16T04:11:07.723Z"
+    },
+    "B_DEPT": {
+      "upserts": 0,
+      "ms": 0,
+      "finishedAt": "2026-06-16T04:11:07.723Z"
+    },
+    "C_USER": {
+      "upserts": 0,
+      "pinyinDup": 0,
+      "ms": 220,
+      "finishedAt": "2026-06-16T04:11:07.943Z"
+    },
+    "D_CUSTOMER": {
+      "customers": 0,
+      "contacts": 0,
+      "dups": 0,
+      "noPhone": 0,
+      "noArea": 0,
+      "ms": 1,
+      "finishedAt": "2026-06-16T04:11:07.944Z"
+    },
+    "E_CONTRACT_PROJECT": {
+      "contracts": 0,
+      "projects": 0,
+      "contractNoKept": 1396,
+      "contractNoDedup": 31,
+      "contractNoGenerated": 3265,
+      "amountZeroFixed": 145,
+      "ms": 30,
+      "finishedAt": "2026-06-16T04:11:07.974Z"
+    },
+    "F_INVOICE": {
+      "invoices": 0,
+      "invoiceNoDup": 559,
+      "ms": 1,
+      "finishedAt": "2026-06-16T04:11:07.976Z"
+    },
+    "G_PAYMENT": {
+      "payments": 0,
+      "skippedZero": 1,
+      "withInvoice": 0,
+      "withoutInvoice": 0,
+      "ms": 0,
+      "finishedAt": "2026-06-16T04:11:07.976Z"
+    }
+  },
+  "errors": [],
+  "warnings": [],
+  "finishedAt": "2026-06-16T04:11:07.976Z"
+}

@@ -1,0 +1,245 @@
+// 合同自动关闭任务回归 — 新策略 (endDate + 双足额 三个条件同时满足)
+//
+// 设计:
+//   tryAutoClose 三个硬前置 (任一不满足 → SKIPPED):
+//     1) endDate < now                  (合同已过自然到期日)
+//     2) 开票足额  (>= totalAmount * ratio, env CONTRACT_COMPLETION_INVOICE_RATIO)
+//     3) 回款足额  (CONFIRMED + RECONCILED 之和 >= totalAmount * ratio)
+//   reason 恒为 "completed" (合同自然到期 + 钱齐了, 项目完结; "expired" 仅用于 manual close).
+//
+// 覆盖:
+//   1) 未到期 + 双足额  → SKIPPED (endDate 是硬前置, 不再提前关)
+//   2) 未到期 + 开票足额 + 回款 0  → SKIPPED
+//   3) 已到期 + 开票足额 + 回款 0  → SKIPPED
+//   4) 已到期 + 双足额  → CLOSED (reason=completed)
+//   5) 未到期 + 开票 0 + 回款足额  → SKIPPED
+//
+// DB 不可达时整组 skip. 全部数据用 unique TAG 前缀, 跑完自己清理.
+
+import { describe, it, expect, beforeAll, afterAll } from "vitest";
+import { prisma } from "@/lib/prisma";
+import { tryAutoClose } from "@/server/services/contract";
+
+let dbReachable = false;
+const TAG = `TEST-AUTOCLOSE-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+let adminUser: { id: string } | null = null;
+let testCustomerId: string | null = null;
+const createdContractIds: string[] = [];
+const createdInvoiceIds: string[] = [];
+const createdPaymentIds: string[] = [];
+
+beforeAll(async () => {
+  try {
+    await prisma.$queryRaw`SELECT 1`;
+    dbReachable = true;
+  } catch {
+    dbReachable = false;
+    return;
+  }
+  const adminRow = await prisma.user.findFirst({
+    where: { role: { code: "ADMIN" }, deletedAt: null },
+    select: { id: true }
+  });
+  if (!adminRow) return;
+  adminUser = { id: adminRow.id };
+
+  const cust = await prisma.customer.create({
+    data: {
+      code: `${TAG}-CUST`,
+      name: `${TAG}-客户`,
+      customerType: "ENTERPRISE",
+      province: "浙江省",
+      city: "杭州市",
+      contactPhone: "13800000000",
+      createdById: adminUser.id,
+      updatedById: adminUser.id,
+      ownerUserId: adminUser.id
+    }
+  });
+  testCustomerId = cust.id;
+});
+
+afterAll(async () => {
+  if (!dbReachable) return;
+  try {
+    if (createdPaymentIds.length > 0) {
+      await prisma.payment.deleteMany({ where: { id: { in: createdPaymentIds } } });
+    }
+    if (createdInvoiceIds.length > 0) {
+      await prisma.invoiceAuditLog.deleteMany({ where: { invoiceId: { in: createdInvoiceIds } } });
+      await prisma.invoice.deleteMany({ where: { id: { in: createdInvoiceIds } } });
+    }
+    if (createdContractIds.length > 0) {
+      await prisma.contractReviewLog.deleteMany({ where: { contractId: { in: createdContractIds } } });
+      await prisma.contract.deleteMany({ where: { id: { in: createdContractIds } } });
+    }
+    if (testCustomerId) {
+      await prisma.customer.delete({ where: { id: testCustomerId } });
+    }
+  } catch {
+    // ignore
+  }
+  await prisma.$disconnect();
+});
+
+const setup = () => {
+  if (!dbReachable || !adminUser || !testCustomerId) return null;
+  return { adminId: adminUser.id, customerId: testCustomerId };
+};
+
+async function mkContract(opts: { endDate: Date; totalAmount: string; suffix: string }) {
+  const s = setup();
+  if (!s) throw new Error("setup not ready");
+  const c = await prisma.contract.create({
+    data: {
+      contractNo: `${TAG}-${opts.suffix}`,
+      customerId: s.customerId,
+      customerName: `${TAG}-客户`,
+      title: `${TAG}-title-${opts.suffix}`,
+      serviceType: "OTHER",
+      signDate: new Date("2026-01-01T00:00:00Z"),
+      startDate: new Date("2026-01-01T00:00:00Z"),
+      endDate: opts.endDate,
+      totalAmount: opts.totalAmount,
+      taxRate: "0.06",
+      taxAmount: "0",
+      amountExcludingTax: "0",
+      paymentMethod: "LUMP_SUM",
+      status: "ACTIVE",
+      ownerUserId: s.adminId,
+      signerId: s.adminId,
+      attachments: [] as unknown as Parameters<typeof prisma.contract.create>[0]["data"]["attachments"],
+      createdById: s.adminId,
+      updatedById: s.adminId
+    }
+  });
+  createdContractIds.push(c.id);
+  return c;
+}
+
+async function mkIssuedInvoice(contractId: string, amount: string, suffix: string) {
+  const s = setup();
+  if (!s) throw new Error("setup not ready");
+  const inv = await prisma.invoice.create({
+    data: {
+      invoiceNo: `${TAG}-INV-${suffix}`,
+      contractId,
+      customerId: s.customerId,
+      customerName: `${TAG}-客户`,
+      invoiceType: "VAT_SPECIAL",
+      amount,
+      taxRate: "0.0600",
+      taxAmount: "0",
+      amountExcludingTax: "0",
+      applyDate: new Date("2026-01-15T00:00:00Z"),
+      actualIssueDate: new Date("2026-01-20T00:00:00Z"),
+      titleType: "COMPANY",
+      titleName: `${TAG}-抬头`,
+      taxNo: "91330000123456789X",
+      status: "ISSUED",
+      applicantUserId: s.adminId,
+      financeUserId: s.adminId,
+      attachments: [] as unknown as Parameters<typeof prisma.invoice.create>[0]["data"]["attachments"],
+      createdById: s.adminId,
+      updatedById: s.adminId
+    }
+  });
+  createdInvoiceIds.push(inv.id);
+  return inv;
+}
+
+async function mkReconciledPayment(contractId: string, invoiceId: string | null, amount: string, suffix: string) {
+  const s = setup();
+  if (!s) throw new Error("setup not ready");
+  const p = await prisma.payment.create({
+    data: {
+      paymentNo: `${TAG}-PAY-${suffix}`,
+      customerId: s.customerId,
+      contractId,
+      invoiceId,
+      amount,
+      receivedAt: new Date("2026-01-25T00:00:00Z"),
+      method: "BANK_TRANSFER",
+      bankRefNo: `${TAG}-REF-${suffix}`,
+      status: "RECONCILED",
+      reconcileUserId: s.adminId,
+      reconciledAt: new Date("2026-01-26T00:00:00Z"),
+      recorderUserId: s.adminId,
+      createdById: s.adminId,
+      updatedById: s.adminId
+    }
+  });
+  createdPaymentIds.push(p.id);
+  return p;
+}
+
+const futureEndDate = new Date("2026-12-31T00:00:00Z");
+const pastEndDate = new Date("2025-06-30T00:00:00Z");
+
+describe("tryAutoClose — 新规则: endDate<now + 双足额", () => {
+  it("未到期 + 双足额 → SKIPPED (endDate<now 是硬前置, 不再提前关)", async () => {
+    if (!dbReachable) return;
+    const c = await mkContract({ endDate: futureEndDate, totalAmount: "1000.00", suffix: "A1" });
+    await mkIssuedInvoice(c.id, "1000.00", "A1");
+    await mkReconciledPayment(c.id, null, "1000.00", "A1");
+
+    const r = await tryAutoClose(c.id, new Date("2026-06-26T00:00:00Z"));
+    expect(r).toBe("SKIPPED");
+
+    const after = await prisma.contract.findUnique({ where: { id: c.id }, select: { status: true } });
+    expect(after?.status).toBe("ACTIVE");
+  });
+
+  it("未到期 + 开票足额 + 回款 0 → SKIPPED (回款足额是硬性条件)", async () => {
+    if (!dbReachable) return;
+    const c = await mkContract({ endDate: futureEndDate, totalAmount: "1000.00", suffix: "A2" });
+    await mkIssuedInvoice(c.id, "1000.00", "A2");
+    // 故意不建任何回款
+
+    const r = await tryAutoClose(c.id, new Date("2026-06-26T00:00:00Z"));
+    expect(r).toBe("SKIPPED");
+
+    const after = await prisma.contract.findUnique({ where: { id: c.id }, select: { status: true } });
+    expect(after?.status).toBe("ACTIVE");
+  });
+
+  it("已到期 + 开票足额 + 回款 0 → SKIPPED (回归: 旧 tryAutoCloseOnExpiry 错关)", async () => {
+    if (!dbReachable) return;
+    const c = await mkContract({ endDate: pastEndDate, totalAmount: "1000.00", suffix: "A3" });
+    await mkIssuedInvoice(c.id, "1000.00", "A3");
+    // 故意不建回款 — 旧版会因"开票足额 + 已过期"就 CLOSED, 新版必须等回款
+
+    const r = await tryAutoClose(c.id, new Date("2026-06-26T00:00:00Z"));
+    expect(r).toBe("SKIPPED");
+
+    const after = await prisma.contract.findUnique({ where: { id: c.id }, select: { status: true } });
+    expect(after?.status).toBe("ACTIVE");
+  });
+
+  it("已到期 + 双足额 → CLOSED, reason=completed (新规则下 reason 不再分 expired/completed)", async () => {
+    if (!dbReachable) return;
+    const c = await mkContract({ endDate: pastEndDate, totalAmount: "1000.00", suffix: "A4" });
+    await mkIssuedInvoice(c.id, "1000.00", "A4");
+    await mkReconciledPayment(c.id, null, "1000.00", "A4");
+
+    const r = await tryAutoClose(c.id, new Date("2026-06-26T00:00:00Z"));
+    expect(r).toBe("CLOSED");
+
+    const after = await prisma.contract.findUnique({ where: { id: c.id }, select: { status: true, reviewComment: true } });
+    expect(after?.status).toBe("CLOSED");
+    expect(after?.reviewComment).toBe("completed");
+  });
+
+  it("未到期 + 开票 0 + 回款足额 → SKIPPED (开票也必须足额, 双足额硬要求)", async () => {
+    if (!dbReachable) return;
+    const c = await mkContract({ endDate: futureEndDate, totalAmount: "1000.00", suffix: "A5" });
+    // 不建任何发票
+    await mkReconciledPayment(c.id, null, "1000.00", "A5");
+
+    const r = await tryAutoClose(c.id, new Date("2026-06-26T00:00:00Z"));
+    expect(r).toBe("SKIPPED");
+
+    const after = await prisma.contract.findUnique({ where: { id: c.id }, select: { status: true } });
+    expect(after?.status).toBe("ACTIVE");
+  });
+});

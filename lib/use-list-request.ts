@@ -1,5 +1,11 @@
 "use client";
 import { useCallback, useEffect, useState } from "react";
+import { customerListQuerySchema } from "@/lib/validators/customer";
+import { contractListQuerySchema } from "@/lib/validators/contract";
+import { invoiceListQuerySchema } from "@/lib/validators/invoice";
+import { paymentListQuerySchema } from "@/lib/validators/payment";
+import { userListQuerySchema } from "@/lib/validators/user";
+import { deriveKnownKeys } from "@/lib/known-keys";
 
 export type ListParams = Record<string, unknown>;
 
@@ -7,15 +13,18 @@ export type ListRequestExtra = (params: ListParams) => Record<string, unknown> |
 
 export type ListResult<T> = { data: T[]; total: number; success: true };
 
-const KNOWN_KEYS = new Set([
-  "keyword",
-  "status",
-  "level",
-  "customerId",
-  "customerType",
-  "serviceType",
-  "contractId",
-  "invoiceId"
+// 服务端 list 路由支持的标准过滤键;前端 ProTable 把这些键透传到 query。
+// 通过 deriveKnownKeys 从 5 个 listQuerySchema 反射得到, 不再手维护。
+// 加新筛选维度时:
+//   (1) 改对应 list 路由的 zod schema (会自动反映到 KNOWN_KEYS)
+//   (2) 确认对应 service 都接受它
+//   (3) tests/lib/use-list-request.test.ts 会自动覆盖 (因为它直接用 KNOWN_KEYS 测)
+export const KNOWN_KEYS = deriveKnownKeys([
+  customerListQuerySchema,
+  contractListQuerySchema,
+  invoiceListQuerySchema,
+  paymentListQuerySchema,
+  userListQuerySchema,
 ]);
 
 function buildQuery(params: ListParams, extra?: ListRequestExtra): URLSearchParams {

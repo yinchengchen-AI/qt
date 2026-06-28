@@ -47,6 +47,7 @@ prisma/migrations/dev
 # agent / e2e tooling state (not source)
 .omc/
 .playwright-mcp/
+.playwright-cli/
 
 # agent / e2e tooling state (not source)
 .omc/
@@ -59,3 +60,46 @@ server.log.err
 
 # docker volumes (local)
 docker-data/
+
+# local runtime artifacts
+backups/
+
+# per-server deploy record (untracked, 保留在服务端)
+docs/*部署记录*.md
+
+# pnpm 11 auto-generated
+pnpm-workspace.yaml
+
+# legacy migration archive — 只 ignore 大文件 (SQL dump / CSV 兜底), 保留 README + 报告
+ops/legacy/**/*.sql
+ops/legacy/csv/
+ops/legacy/*-inspect.json
+
+# superpowers 辅助目录:只 ignore 临时/缓存产物,设计文档 specs/ 要被 git 追踪
+docs/superpowers/.transcripts/
+docs/superpowers/.cache/
+
+# superpowers 工具在仓库根目录生成的 session/状态产物(brainstorm 内容、server.pid 等)
+.superpowers/
+
+# 但保留 ops/legacy/ 下的 README 和 reports/ (重要的文档/报告)
+!ops/legacy/README.md
+!ops/legacy/reports/
+
+# Next.js 16 build 副作用文件 — dev/types -> types 路径会随 prod build 自动重写,
+# 按官方文档 next-env.d.ts 不应被手动编辑,统一 ignore 让 build 自由更新它。
+next-env.d.ts
+
+# 备份/临时文件 — 留在仓库内会被 Next.js 编译工具链意外打包
+*.bak
+*.tmp
+*.orig
+*.rej
+# tmp_*.js / tmp_*.cjs 临时脚本 (含真实 DB 连接串, 万一被 git add . 会推到 origin)
+tmp_*.js
+tmp_*.cjs
+tmp_*.ts
+tests/e2e/.auth/
+
+# Codex 桌面会话临时文件 (untracked, 仅本地使用)
+.sess.xml

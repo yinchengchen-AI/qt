@@ -2,6 +2,7 @@
 import { ProCard, ProDescriptions, ProTable, type ProColumns } from "@ant-design/pro-components";
 import { Button, Space, Tag, Typography } from "antd";
 import { useParams, useRouter } from "next/navigation";
+import { useGoBack } from "@/lib/navigation";
 import useSWR from "swr";
 import { Page } from "@/components/page";
 import { PageHeader } from "@/components/page-header";
@@ -37,15 +38,16 @@ export default function DepartmentDetailPage() {
   const params = useParams();
   const id = String(params.id);
   const router = useRouter();
+  const goBack = useGoBack("/admin/departments");
   const { data, error, isLoading, mutate } = useSWR<Dept>(`/api/departments/${id}`);
-  const { data: membersData } = useSWR<{ data: { list: User[]; total: number } }>(
+  const { data: membersData } = useSWR<{ list: User[]; total: number }>(
     data ? `/api/users?pageSize=50&departmentId=${id}` : null
   );
 
   if (error) {
     return (
       <Page>
-        <PageHeader back={() => router.push("/admin/departments")} title="部门详情" />
+        <PageHeader back={goBack} title="部门详情" />
         <ProCard>
           <Text type="danger">加载失败:{(error as Error).message}</Text>
         </ProCard>
@@ -55,7 +57,7 @@ export default function DepartmentDetailPage() {
   if (isLoading || !data) {
     return (
       <Page>
-        <PageHeader back={() => router.push("/admin/departments")} title="部门详情" />
+        <PageHeader back={goBack} title="部门详情" />
         <DetailPageSkeleton />
       </Page>
     );
@@ -82,9 +84,9 @@ export default function DepartmentDetailPage() {
   return (
     <Page>
       <PageHeader
-        back={() => router.push("/admin/departments")}
-        title={`${data.name} (${data.code})`}
-        subtitle={data.parent ? `隶属于：${data.parent.name} (${data.parent.code})` : "顶级部门"}
+        back={goBack}
+        title={`${data.name}（${data.code}）`}
+        subtitle={data.parent ? `隶属于：${data.parent.name}（${data.parent.code}）` : "顶级部门"}
         meta={data.isActive ? <Tag color="green">启用</Tag> : <Tag>停用</Tag>}
         actions={
           <Space>
@@ -107,7 +109,7 @@ export default function DepartmentDetailPage() {
             { title: "成员数", dataIndex: "memberCount", render: (_: unknown, r: Dept) => <Tag color={r.memberCount > 0 ? "green" : "default"}>{r.memberCount} 人</Tag> },
             { title: "子部门", dataIndex: "childCount", render: (_: unknown, r: Dept) => <Tag color={r.childCount > 0 ? "blue" : "default"}>{r.childCount} 个</Tag> },
             { title: "创建时间", dataIndex: "createdAt", render: (_: unknown, r: Dept) => <DateCell value={r.createdAt} /> },
-            { title: "更新时间", dataIndex: "updatedAt", render: (_: unknown, r: Dept) => <DateCell value={r.createdAt} /> }
+            { title: "更新时间", dataIndex: "updatedAt", render: (_: unknown, r: Dept) => <DateCell value={r.updatedAt} /> }
           ]}
         />
       </ProCard>
@@ -117,8 +119,8 @@ export default function DepartmentDetailPage() {
         rowKey="id"
         search={false}
         loading={!membersData}
-        pagination={{ pageSize: 50, total: membersData?.data?.total ?? 0, showSizeChanger: false }}
-        dataSource={membersData?.data?.list ?? []}
+        pagination={{ defaultPageSize: 50, total: membersData?.total ?? 0, showSizeChanger: false }}
+        dataSource={membersData?.list ?? []}
         columns={memberColumns}
       />
     </Page>

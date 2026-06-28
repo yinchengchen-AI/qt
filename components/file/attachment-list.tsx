@@ -4,6 +4,7 @@ import { App as AntdApp, Empty, Space, Typography, Button, Popconfirm, Tag } fro
 import { DownloadOutlined, DeleteOutlined, EyeOutlined } from "@ant-design/icons";
 import { FileKindBadge, formatBytes } from "./file-icon";
 import { FilePreviewModal, type PreviewableAttachment } from "./file-preview-modal";
+import { useResponsive } from "@/lib/use-breakpoint";
 
 const { Text } = Typography;
 
@@ -24,15 +25,19 @@ export function AttachmentList(props: {
   showHeader?: boolean;
   // 删除前回调(父组件先发 DELETE 请求,成功后再调 prop.onDeleted 让上层刷新)
   onDeleted?: (id: string) => void;
+  // 自定义删除逻辑:返回 Promise;若提供则用它替代默认的 DELETE /api/files/{id}
+  customDelete?: (item: AttachmentItem) => Promise<void>;
 }) {
   const { message } = AntdApp.useApp();
+  const { isMobile } = useResponsive();
   const {
     items,
     allowDelete = true,
     allowPreview = true,
-    emptyText = "暂无附件",
+    emptyText = "暂无附件，请上传",
     showHeader = true,
-    onDeleted
+    onDeleted,
+    customDelete
   } = props;
   const [preview, setPreview] = useState<AttachmentItem | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
@@ -61,13 +66,19 @@ export function AttachmentList(props: {
   const handleDelete = async (item: AttachmentItem) => {
     setDeletingId(item.id);
     try {
-      const r = await fetch(`/api/files/${item.id}`, {
-        method: "DELETE",
-        credentials: "include"
-      });
-      const j = await r.json();
-      if (j.code !== 0) throw new Error(j.message || "删除失败");
-      void message.success("已删除");
+      if (customDelete) {
+        // 自定义删除(由父组件负责发请求 + 处理结果)
+        await customDelete(item);
+      } else {
+        // 默认:软删 Attachment 记录(对象本身留 MinIO)
+        const r = await fetch(`/api/files/${item.id}`, {
+          method: "DELETE",
+          credentials: "include"
+        });
+        const j = await r.json();
+        if (j.code !== 0) throw new Error(j.message || "删除失败");
+      }
+      void message.success("附件已删除");
       onDeleted?.(item.id);
     } catch (e) {
       void message.error((e as Error).message);
@@ -103,16 +114,18 @@ export function AttachmentList(props: {
             <li
               key={a.id}
               style={{
+                // 移动端允许换行:文件名 + 大小 折到上一行,操作按钮折到下一行
                 display: "flex",
-                alignItems: "center",
+                alignItems: isMobile ? "flex-start" : "center",
                 gap: 8,
-                padding: "6px 0",
-                borderBottom: "1px dashed #f0f0f0"
+                padding: isMobile ? "10px 0" : "6px 0",
+                borderBottom: "1px dashed #f0f0f0",
+                flexWrap: "wrap"
               }}
             >
               <FileKindBadge mime={a.mimeType} name={a.name} />
               {isLegacy ? (
-                <Text type="secondary" style={{ flex: 1 }} ellipsis>
+                <Text type="secondary" style={{ flex: 1, minWidth: 0, wordBreak: "break-all" }}>
                   {a.name}
                   <Tag color="default" style={{ marginLeft: 8 }}>
                     历史链接已失效
@@ -128,12 +141,12 @@ export function AttachmentList(props: {
                   style={{ flex: 1, minWidth: 0 }}
                   title={a.name}
                 >
-                  <Text ellipsis style={{ width: "100%" }}>
+                  <Text ellipsis={!isMobile} style={{ width: "100%", wordBreak: "break-all" }}>
                     {a.name}
                   </Text>
                 </a>
               ) : (
-                <Text style={{ flex: 1 }} ellipsis>
+                <Text style={{ flex: 1, minWidth: 0, wordBreak: "break-all" }}>
                   {a.name}
                 </Text>
               )}
@@ -141,7 +154,7 @@ export function AttachmentList(props: {
                 {formatBytes(a.size)}
               </Text>
               {!isLegacy && (
-                <Space size={4} style={{ flexShrink: 0 }}>
+                <Space size={4} style={{ flexShrink: 0, marginLeft: isMobile ? "auto" : 0 }}>
                   {allowPreview && (
                     <Button
                       type="text"
@@ -161,7 +174,7 @@ export function AttachmentList(props: {
                   {allowDelete && (
                     <Popconfirm
                       title="确认删除此附件?"
-                      description="删除后详情页不再显示,对象本身暂留 MinIO"
+                      description="删除后详情页不再展示，对象本身仍暂存在 MinIO，可在回收站清理"
                       onConfirm={() => handleDelete(a)}
                       okText="删除"
                       cancelText="取消"

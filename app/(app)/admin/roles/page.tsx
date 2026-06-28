@@ -1,9 +1,10 @@
 "use client";
-import { ProTable, type ProColumns } from "@ant-design/pro-components";
+import { ProTable, type ActionType, type ProColumns } from "@ant-design/pro-components";
 import { App as AntdApp, Button, Tag, Space } from "antd";
 import { useRouter } from "next/navigation";
-import { useSWRConfig } from "swr";
+import { useRef } from "react";
 import { Page } from "@/components/page";
+import { useResponsive } from "@/lib/use-breakpoint";
 import { PageHeader } from "@/components/page-header";
 import { PermissionMatrix, type Permission } from "@/components/admin/permission-matrix";
 
@@ -21,7 +22,8 @@ type Role = {
 export default function RolesPage() {
   const router = useRouter();
   const { message, modal } = AntdApp.useApp();
-  const { mutate } = useSWRConfig();
+  const actionRef = useRef<ActionType>(undefined);
+  const { isMobile } = useResponsive();
 
   function onDelete(r: Role) {
     modal.confirm({
@@ -35,8 +37,8 @@ export default function RolesPage() {
         const res = await fetch(`/api/roles/${r.id}`, { method: "DELETE", credentials: "include" });
         const j = await res.json();
         if (j.code !== 0) return message.error(j.message);
-        message.success("已删除");
-        mutate((k) => typeof k === "string" && k.startsWith("/api/roles"));
+        message.success("角色已删除");
+        actionRef.current?.reloadAndRest?.();
       }
     });
   }
@@ -98,22 +100,22 @@ export default function RolesPage() {
     <Page>
       <PageHeader
         title="角色权限"
-        subtitle="系统内置 4 角色 + 自定义角色;权限矩阵支持 12 资源 × 6 操作"
+        subtitle="系统内置 4 个角色 + 自定义角色；权限矩阵覆盖 12 类资源 × 6 种操作"
         actions={
           <Button key="add" type="primary" onClick={() => router.push("/admin/roles/new")}>
             新建角色
           </Button>
         }
       />
-      <ProTable<Role>
+      <ProTable<Role> actionRef={actionRef}
         rowKey="id"
         columns={columns}
-        search={{
-          labelWidth: "auto",
-          defaultCollapsed: false
-        }}
-        toolbar={{ settings: [] }}
-        pagination={{ pageSize: 20, showSizeChanger: false }}
+        search={{ labelWidth: "auto", defaultCollapsed: isMobile, layout: isMobile ? "vertical" : undefined, collapsed: isMobile ? false : undefined }} debounceTime={400}
+        scroll={{ x: 'max-content' }}
+        cardBordered={false}
+        sticky={isMobile}
+        options={{ reload: () => actionRef.current?.reload?.(), density: !isMobile, fullScreen: !isMobile }}
+        pagination={{ defaultPageSize: 20, showSizeChanger: !isMobile, size: isMobile ? "small" : undefined }}
         request={async (params) => {
           const qs = new URLSearchParams();
           qs.set("page", String(params.current ?? 1));

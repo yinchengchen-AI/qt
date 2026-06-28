@@ -13,15 +13,26 @@ import {
 
 describe("isAllowedMimeType", () => {
   it("accepts whitelisted MIME types", () => {
+    // 当前 14 种;新增时同步更新下方 size 断言
     const ok = [
+      // 文档
       "application/pdf",
       "application/msword",
       "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
       "application/vnd.ms-excel",
       "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      // 图片
       "image/jpeg",
       "image/png",
-      "image/webp"
+      "image/webp",
+      "image/gif",
+      "image/bmp",
+      "image/tiff",
+      // 文本
+      "text/plain",
+      "text/csv",
+      // 压缩包
+      "application/zip"
     ];
     for (const m of ok) {
       expect(isAllowedMimeType(m), `should accept ${m}`).toBe(true);
@@ -29,7 +40,17 @@ describe("isAllowedMimeType", () => {
   });
 
   it("rejects non-whitelisted MIME types", () => {
-    const bad = ["text/html", "text/plain", "application/x-msdownload", "application/javascript", "video/mp4", ""];
+    // svg / html / js 等可内嵌脚本的类型(等同任意 XSS)永远不放行
+    const bad = [
+      "text/html",
+      "image/svg+xml",
+      "application/javascript",
+      "text/markdown", // 当前没放进白名单
+      "application/x-msdownload",
+      "video/mp4",
+      "audio/mpeg",
+      ""
+    ];
     for (const m of bad) {
       expect(isAllowedMimeType(m), `should reject ${m}`).toBe(false);
     }
@@ -46,6 +67,12 @@ describe("extFromMime", () => {
     expect(extFromMime("image/jpeg")).toBe("jpg");
     expect(extFromMime("image/png")).toBe("png");
     expect(extFromMime("image/webp")).toBe("webp");
+    expect(extFromMime("image/gif")).toBe("gif");
+    expect(extFromMime("image/bmp")).toBe("bmp");
+    expect(extFromMime("image/tiff")).toBe("tiff");
+    expect(extFromMime("text/plain")).toBe("txt");
+    expect(extFromMime("text/csv")).toBe("csv");
+    expect(extFromMime("application/zip")).toBe("zip");
   });
   it("falls back to 'bin' for unknown", () => {
     expect(extFromMime("application/octet-stream")).toBe("bin");
@@ -87,6 +114,6 @@ describe("Constants", () => {
   });
   it("ALLOWED_MIME_TYPES is a Set", () => {
     expect(ALLOWED_MIME_TYPES).toBeInstanceOf(Set);
-    expect(ALLOWED_MIME_TYPES.size).toBe(8);
+    expect(ALLOWED_MIME_TYPES.size).toBe(14);
   });
 });

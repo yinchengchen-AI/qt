@@ -2,10 +2,12 @@
 import { ProCard, ProDescriptions } from "@ant-design/pro-components";
 import { Tag, Button } from "antd";
 import { useParams, useRouter } from "next/navigation";
+import { useGoBack } from "@/lib/navigation";
 import useSWR from "swr";
 import { Page } from "@/components/page";
 import { PageHeader } from "@/components/page-header";
 import { DetailPageSkeleton } from "@/components/detail-page-skeleton";
+import { ErrorBox } from "@/components/callout";
 import { DateCell } from "@/components/table-cells";
 import { PermissionMatrix, type Permission } from "@/components/admin/permission-matrix";
 
@@ -24,26 +26,24 @@ export default function RoleDetailPage() {
   const params = useParams();
   const id = String(params.id);
   const router = useRouter();
+  const goBack = useGoBack("/admin/roles");
   const { data, error, isLoading, mutate } = useSWR<Role>(`/api/roles/${id}`);
 
   if (error) {
     return (
       <Page>
-        <PageHeader back={() => router.push("/admin/roles")} title="角色详情" />
-        <div
-          style={{
-            marginTop: 12,
-            padding: 16,
-            background: "#fff2f0",
-            color: "#cf1322",
-            borderRadius: 8,
-            fontSize: 13
-          }}
-        >
-          加载失败: {(error as Error).message}{" "}
-          <Button size="small" type="link" onClick={() => mutate()}>
-            重试
-          </Button>
+        <PageHeader back={goBack} title="角色详情" />
+        <div style={{ marginTop: 12 }}>
+          <ErrorBox
+            title="加载失败"
+            action={
+              <Button size="small" onClick={() => mutate()}>
+                重试
+              </Button>
+            }
+          >
+            {(error as Error).message}
+          </ErrorBox>
         </div>
       </Page>
     );
@@ -51,7 +51,7 @@ export default function RoleDetailPage() {
   if (isLoading || !data) {
     return (
       <Page>
-        <PageHeader back={() => router.push("/admin/roles")} title="角色详情" />
+        <PageHeader back={goBack} title="角色详情" />
         <DetailPageSkeleton />
       </Page>
     );
@@ -60,8 +60,8 @@ export default function RoleDetailPage() {
   return (
     <Page>
       <PageHeader
-        back={() => router.push("/admin/roles")}
-        title={`${data.name} (${data.code})`}
+        back={goBack}
+        title={`${data.name}（${data.code}）`}
         subtitle={data.description ?? "—"}
         meta={data.isSystem ? <Tag color="blue">系统角色</Tag> : <Tag>自定义角色</Tag>}
         actions={

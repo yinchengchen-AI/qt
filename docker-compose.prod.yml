@@ -1,0 +1,58 @@
+# 生产部署用 compose
+# 用法: set -a; . /opt/qt/.env; set +a
+#       export POSTGRES_SUPER_PASSWORD=$(echo "$MIGRATION_DATABASE_URL" | sed -E "s|.*://qitai:([^@]+)@.*|\1|")
+#       export MINIO_ROOT_USER="$MINIO_ACCESS_KEY"
+#       export MINIO_ROOT_PASSWORD="$MINIO_SECRET_KEY"
+#       docker compose -f docker-compose.prod.yml up -d
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: qt-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: qitai
+      POSTGRES_PASSWORD: ${POSTGRES_SUPER_PASSWORD}
+      POSTGRES_DB: qt_biz
+    ports: ["127.0.0.1:5432:5432"]
+    volumes:
+      - /opt/qt/docker-data/postgres:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U qitai -d qt_biz"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  minio:
+    image: minio/minio:latest
+    container_name: qt-minio
+    restart: unless-stopped
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}
+    ports:
+      - "127.0.0.1:9000:9000"
+      - "127.0.0.1:9001:9001"
+    volumes:
+      - /opt/qt/docker-data/minio:/data
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  minio-init:
+    image: minio/mc:latest
+    container_name: qt-minio-init
+    depends_on:
+      minio:
+        condition: service_healthy
+    entrypoint: >
+      /bin/sh -c "
+      mc alias set local http://minio:9000 ${MINIO_ROOT_USER} ${MINIO_ROOT_PASSWORD} &&
+      mc mb -p local/qt-biz-attachments || true &&
+      mc anonymous set none local/qt-biz-attachments &&
+      mc mb -p local/qt-backups || true &&
+      echo MinIO ready
+      "
+    restart: "no"

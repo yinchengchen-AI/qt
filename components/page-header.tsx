@@ -2,6 +2,7 @@ import type { ReactNode } from "react";
 import Link from "next/link";
 import { Breadcrumb, Button, Space, Typography } from "antd";
 import { ArrowLeftOutlined } from "@ant-design/icons";
+import { useResponsive } from "@/lib/use-breakpoint";
 
 const { Title } = Typography;
 
@@ -30,12 +31,14 @@ export function PageHeader({
   level = "page",
   className
 }: Props) {
+  const { isMobile, isPhone } = useResponsive();
   const isSection = level === "section";
 
   function renderBack() {
     if (!back) return null;
     const onClick = typeof back === "function" ? back : undefined;
     const label = typeof back === "string" ? back : "返回";
+    // 手机端(<576px)只显示图标,省空间
     return (
       <Button
         type="text"
@@ -44,7 +47,7 @@ export function PageHeader({
         onClick={onClick}
         style={{ marginRight: 4, paddingInline: 6 }}
       >
-        {label}
+        {isPhone ? null : label}
       </Button>
     );
   }
@@ -65,7 +68,7 @@ export function PageHeader({
 
   if (isSection) {
     return (
-      <div className={className} style={{ marginTop: 24, marginBottom: 16 }}>
+      <div className={className} style={{ marginTop: isMobile ? 16 : 24, marginBottom: 16 }}>
         <Title level={4} style={{ margin: 0 }}>
           {title}
         </Title>
@@ -74,24 +77,27 @@ export function PageHeader({
   }
 
   return (
-    <div className={className} style={{ marginBottom: 24 }}>
+    <div className={className} style={{ marginBottom: isMobile ? 16 : 24 }}>
       {renderBreadcrumb()}
       <div
         style={{
           display: "flex",
-          alignItems: "flex-start",
+          // 移动端把 actions 折到下一行,避免挤压标题
+          flexDirection: isMobile ? "column" : "row",
+          alignItems: isMobile ? "stretch" : "flex-start",
           justifyContent: "space-between",
-          gap: 24,
+          gap: isMobile ? 12 : 24,
           flexWrap: "wrap"
         }}
       >
-        <div style={{ display: "flex", alignItems: "flex-start", gap: 8 }}>
+        <div style={{ display: "flex", alignItems: "flex-start", gap: 8, minWidth: 0 }}>
           {renderBack()}
-          <div>
-            <Title level={3} style={{ margin: 0, fontWeight: 600 }}>
+          <div style={{ minWidth: 0 }}>
+            <Title level={3} style={{ margin: 0, fontWeight: 600, fontSize: isMobile ? 20 : undefined }}>
               {title}
             </Title>
-            {subtitle ? (
+            {/* 手机端隐藏长副标题,留出空间 */}
+            {subtitle && !isPhone ? (
               <Typography.Paragraph type="secondary" style={{ marginTop: 6, marginBottom: 0, maxWidth: 640 }}>
                 {subtitle}
               </Typography.Paragraph>
@@ -99,7 +105,14 @@ export function PageHeader({
           </div>
         </div>
         {(actions || meta) && (
-          <Space>
+          <Space
+            wrap
+            style={{
+              // 移动端 actions 整组折到标题下方,左对齐
+              alignSelf: isMobile ? "flex-start" : "center",
+              flexShrink: 0
+            }}
+          >
             {meta}
             {actions}
           </Space>

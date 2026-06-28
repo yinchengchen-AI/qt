@@ -20,7 +20,6 @@ const RESOURCE_LIST: { value: string; label: string; group?: string }[] = [
   { value: RESOURCE.OPERATION_LOG, label: "操作日志", group: "系统" },
   { value: RESOURCE.CUSTOMER, label: "客户", group: "业务" },
   { value: RESOURCE.CONTRACT, label: "合同", group: "业务" },
-  { value: RESOURCE.PROJECT, label: "项目", group: "业务" },
   { value: RESOURCE.INVOICE, label: "开票", group: "财务" },
   { value: RESOURCE.PAYMENT, label: "回款", group: "财务" },
   { value: RESOURCE.STATISTICS, label: "统计", group: "分析" },
@@ -37,9 +36,10 @@ type Props = {
 };
 
 export function PermissionMatrix({ value, onChange, readOnly }: Props) {
-  // 归一化:给每个 resource 至少一个空 actions 数组
+  // 归一化: 兼容 undefined / null / 非数组
+  const safeValue = Array.isArray(value) ? value : [];
   const byRes = new Map<string, Set<string>>();
-  for (const p of value) {
+  for (const p of safeValue) {
     byRes.set(p.resource, new Set(p.actions));
   }
   for (const r of RESOURCE_LIST) {

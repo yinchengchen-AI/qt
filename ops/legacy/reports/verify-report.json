@@ -1,0 +1,107 @@
+{
+  "counts": {
+    "PG.User": 53,
+    "PG.Role": 5,
+    "PG.Department": 8,
+    "PG.Dictionary": 109,
+    "PG.Dictionary.SERVICE_TYPE": 32,
+    "PG.Dictionary.REGION": 26,
+    "PG.Customer": 2091,
+    "PG.ContactPerson": 1838,
+    "PG.Contract": 4656,
+    "PG.Project": 4656,
+    "PG.Invoice": 4926,
+    "PG.Payment": 5170
+  },
+  "legacy": {
+    "CSV.users": 52,
+    "CSV.depts": 3,
+    "CSV.areas": 26,
+    "CSV.companies": 2091,
+    "CSV.services": 4656,
+    "CSV.invoices": 4926,
+    "CSV.collections": 5171
+  },
+  "results": [
+    {
+      "name": "User 数量",
+      "ok": true,
+      "detail": "PG=53, CSV=52 + 1 importer"
+    },
+    {
+      "name": "Role 数量",
+      "ok": true,
+      "detail": "PG=5 (期望 5 seed)"
+    },
+    {
+      "name": "Department 数量 = 5 seed + 3 legacy",
+      "ok": true,
+      "detail": "PG=8"
+    },
+    {
+      "name": "Dictionary.SERVICE_TYPE = 10 seed + 22 legacy",
+      "ok": true,
+      "detail": "PG=32"
+    },
+    {
+      "name": "Dictionary.REGION = 26 legacy",
+      "ok": true,
+      "detail": "PG=26"
+    },
+    {
+      "name": "Customer 数量",
+      "ok": true,
+      "detail": "PG=2091, CSV=2091"
+    },
+    {
+      "name": "Contract 数量",
+      "ok": true,
+      "detail": "PG=4656, CSV=4656"
+    },
+    {
+      "name": "Project 数量",
+      "ok": true,
+      "detail": "PG=4656, CSV=4656"
+    },
+    {
+      "name": "Invoice 数量",
+      "ok": true,
+      "detail": "PG=4926, CSV=4926"
+    },
+    {
+      "name": "Payment 数量 = collections - 1(≤0 过滤)",
+      "ok": true,
+      "detail": "PG=5170, CSV=5171 - 1"
+    },
+    {
+      "name": "LEGACY-* 字典 = 22",
+      "ok": true,
+      "detail": "实际 22"
+    },
+    {
+      "name": "Contract.serviceType LEGACY-* 字典可查",
+      "ok": true,
+      "detail": "→ 社会化服务（锦泰）"
+    },
+    {
+      "name": "老合同未自动开 workflow",
+      "ok": true,
+      "detail": "Project with taskInstances: 0"
+    }
+  ],
+  "totalContract": {
+    "_sum": {
+      "totalAmount": "54402345.12"
+    }
+  },
+  "totalInvoice": {
+    "_sum": {
+      "amount": "46883206.98"
+    }
+  },
+  "totalPayment": {
+    "_sum": {
+      "amount": "44519220.98"
+    }
+  }
+}

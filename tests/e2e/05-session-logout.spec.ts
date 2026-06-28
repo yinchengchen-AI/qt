@@ -1,12 +1,13 @@
 // 场景 5：会话生命周期 + 登出 + 多用户切换
 import { test } from "@playwright/test";
+import { DEV_PASSWORD } from "./_dev-credentials";
 
 test.describe.serial("场景 5: 会话生命周期", () => {
   test("05.1 登出后再访问 dashboard 应跳回登录", async ({ page }) => {
     // 登录
     await page.goto("/login");
     await page.getByPlaceholder("请输入工号").fill("admin");
-    await page.getByPlaceholder("请输入密码").fill("123456");
+    await page.getByPlaceholder("请输入密码").fill(DEV_PASSWORD);
     await page.getByText("登 录", { exact: true }).first().click();
     await page.waitForURL(/dashboard/, { timeout: 10000 });
 
@@ -32,7 +33,7 @@ test.describe.serial("场景 5: 会话生命周期", () => {
     // admin 登录
     await page.goto("/login");
     await page.getByPlaceholder("请输入工号").fill("admin");
-    await page.getByPlaceholder("请输入密码").fill("123456");
+    await page.getByPlaceholder("请输入密码").fill(DEV_PASSWORD);
     await page.getByText("登 录", { exact: true }).first().click();
     await page.waitForURL(/dashboard/, { timeout: 10000 });
     // 退出
@@ -45,7 +46,7 @@ test.describe.serial("场景 5: 会话生命周期", () => {
     // sales 登录
     await page.goto("/login");
     await page.getByPlaceholder("请输入工号").fill("sales");
-    await page.getByPlaceholder("请输入密码").fill("123456");
+    await page.getByPlaceholder("请输入密码").fill(DEV_PASSWORD);
     await page.getByText("登 录", { exact: true }).first().click();
     await page.waitForURL(/dashboard/, { timeout: 10000 });
   });

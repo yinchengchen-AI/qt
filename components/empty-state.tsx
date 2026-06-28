@@ -9,8 +9,8 @@ type Props = {
   title?: ReactNode;
   description?: ReactNode;
   action?: ReactNode;
-  /** 高度: small=160, default=240, tall=320 */
-  height?: "small" | "default" | "tall";
+  /** 高度: small=160, default=240, tall=320;也可直接传入数字(px) */
+  height?: "small" | "default" | "tall" | number;
   className?: string;
 };
 
@@ -31,7 +31,7 @@ export function EmptyState({
   height = "default",
   className
 }: Props) {
-  const minHeight = HEIGHT_MAP[height] ?? HEIGHT_MAP.default;
+  const minHeight = typeof height === "number" ? height : (HEIGHT_MAP[height] ?? HEIGHT_MAP.default);
   const wrapperStyle: React.CSSProperties = {
     display: "flex",
     flexDirection: "column",
@@ -62,7 +62,7 @@ export function EmptyState({
         <Alert
           type="error"
           showIcon
-          message={title ?? "加载失败"}
+          title={title ?? "加载失败"}
           description={error.message}
           action={
             error.onRetry ? (

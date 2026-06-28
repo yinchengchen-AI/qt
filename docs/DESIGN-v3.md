@@ -34,7 +34,7 @@
 | 状态 | `zustand` | **5.0.14** | 客户端轻量状态 |
 | 数据请求 | `swr` | **2.4.1** | RSC 之外的客户端数据获取 |
 | 导入导出 | `exceljs` | **4.4.0** | xlsx 流式生成 |
-| 邮件 | `nodemailer` | **8.0.10** | P3 邮件通道（默认关闭） |
+| 邮件 | — | — | P3 邮件通道（已下线，事件通知统一走站内信） |
 | 加密 | `bcrypt` | **6.0.0** | 密码哈希 |
 | 国际化 | `next-intl` | **4.13.0** | zh-CN；预留 en-US |
 | 环境变量 | `@t3-oss/env-nextjs` | **0.13.11** | 强类型 env |
@@ -137,11 +137,11 @@ enum UserStatus { ACTIVE DISABLED }
 enum CustomerType { ENTERPRISE GOV OTHER }
 enum CustomerScale { LARGE MEDIUM SMALL MICRO }
 enum CustomerLevel { A B C D }
-enum CustomerStatus { LEAD NEGOTIATING SIGNED LOST FROZEN }
+// (v0.5.0 起客户状态机下线, `enum CustomerStatus` 移除; Customer 表无 status 字段)
 enum FollowMethod { VISIT CALL WECHAT EMAIL OTHER }
 enum FollowResult { INTENT NO_INTENT PENDING SIGNED }
 enum ServiceType { SAFETY_CONSULT SAFETY_TRAIN HAZARD_ANA EMERGENCY_PLAN EVALUATION OTHER }
-enum ContractStatus { DRAFT PENDING_REVIEW EFFECTIVE EXECUTING COMPLETED TERMINATED EXPIRED }
+enum ContractStatus { DRAFT ACTIVE CLOSED }
 enum PaymentMethod { LUMP_SUM BY_PHASE BY_MONTH BY_QUARTER }
 enum ReviewAction { SUBMIT APPROVE REJECT WITHDRAW }
 enum ProjectStatus { PLANNED IN_PROGRESS SUSPENDED DELIVERED ACCEPTED CLOSED CANCELLED }
@@ -150,7 +150,13 @@ enum TitleType { COMPANY PERSONAL }
 enum InvoiceStatus { DRAFT PENDING_FINANCE ISSUED REJECTED VOIDED RED_FLUSHED }
 enum PaymentReceiveMethod { BANK_TRANSFER CHECK CASH WECHAT ALIPAY OTHER }
 enum PaymentStatus { PLANNED CONFIRMED RECONCILED REFUNDED CANCELLED }
-enum MessageType { CONTRACT_PENDING_REVIEW CONTRACT_EXPIRING INVOICE_OVERDUE_PAYMENT PAYMENT_RECEIVED PROJECT_DUE CUSTOMER_INACTIVE }
+enum MessageType {
+  CONTRACT_EXPIRING INVOICE_OVERDUE_PAYMENT PAYMENT_RECEIVED
+  CONTRACT_AUTO_EXECUTED CONTRACT_AUTO_COMPLETED CONTRACT_AUTO_EXPIRED
+  CONTRACT_AUTO_OVERDUE_TERMINATED CONTRACT_EXPIRED_UNPAID
+  CERTIFICATE_EXPIRING
+  CUSTOMER_STATUS_SUGGEST CUSTOMER_STATUS_AUTO_APPLIED CUSTOMER_STATUS_AUTO_REVERTED
+}  // 后 3 个 CUSTOMER_STATUS_* v0.5.0 起已停止 emit, 保留 enum 值用于历史消息 fallback 渲染
 ```
 
 #### 4.2.1 `User`
@@ -169,9 +175,9 @@ enum MessageType { CONTRACT_PENDING_REVIEW CONTRACT_EXPIRING INVOICE_OVERDUE_PAY
 - `province`、`city`、`address String?`、`contactPhone`、`contactEmail String?`、`sourceChannel String?`
 - `level CustomerLevel @default(C)`
 - `ownerUserId String`（→ User；SALES 创建=自己，OPS 创建=管理员指定）
-- `status CustomerStatus @default(LEAD)`
 - `creditLimitAmount Decimal? @db.Decimal(18,2)`、`paymentTermDays Int @default(30)`
-- 索引：`@@index([ownerUserId])`、`@@index([status])`、`@@index([level])`
+- 索引：`@@index([ownerUserId])`、`@@index([level])`
+- v0.5.0 起 `status CustomerStatus @default(LEAD)` 与 `@@index([status])` 已删（客户状态机下线）
 
 #### 4.2.4 `ContactPerson` / `FollowUp`（同 v2）
 
@@ -185,8 +191,11 @@ enum MessageType { CONTRACT_PENDING_REVIEW CONTRACT_EXPIRING INVOICE_OVERDUE_PAY
 - `status ContractStatus @default(DRAFT)`
 - `ownerUserId String`、`reviewerId String?`、`reviewAt DateTime?`、`reviewComment String?`
 - `attachments Json`（`{id,name,url,mimeType,size,uploadedBy,uploadedAt}[]`）
+
 - `completionInvoiceRatio Decimal @default(0.95) @db.Decimal(4,2)`
 - 索引：`@@index([customerId])`、`@@index([status])`、`@@index([ownerUserId])`
+
+> **交付物附件**（2026-06 调整）：合同详情"交付物"tab 内直接上传实际交付文件（报告/证书/培训材料 等）作为交付物，不再使用结构化 JSON 清单。复用 `Attachment` 表 + MinIO，加 `isDeliverable Boolean @default(false)` 标记"合同交付物附件"（区别于通用"附件"tab）。上传/删除写权限仅对 **admin / 合同签订人 / 合同负责人** 开放（`server/storage/presign.ts: assertCanManageDeliverables`）。
 
 #### 4.2.6 `ContractReviewLog`
 - `contractId`、`reviewerId`、`action ReviewAction`、`comment String?`、`at DateTime @default(now()) @db.Timestamptz(6)`
@@ -247,16 +256,23 @@ enum MessageType { CONTRACT_PENDING_REVIEW CONTRACT_EXPIRING INVOICE_OVERDUE_PAY
 
 ## 5. 状态机
 
-### 5.1 `Contract.status`
+### 5.1 `Contract.status`（v3 简化版：3 个值 + 自动化）
 ```
-DRAFT ─submit─▶ PENDING_REVIEW ─approve(admin)─▶ EFFECTIVE ─auto(项目全 ACCEPTED)─▶ EXECUTING ─▶ COMPLETED
-   ▲                  │                              │                                  │
-   │              reject│                              │ terminate(admin)                 │ expire(endDate<today & ≠COMPLETED)
-   └──────withdraw─────┘                              ▼                                  ▼
-                                                  TERMINATED                            EXPIRED
+DRAFT ──[auto: 字段完整 + 至少 1 附件]──▶ ACTIVE ──[auto: 开票足额]──▶ CLOSED
+   │                                       │                          ▲
+   │ admin 强制发布                         │ admin 强制完结            │
+   ▼                                       │                          │
+[ACTIVE]                                    │ ──[auto: endDate<now]────┘
+                                            │     reason=expired
+                                            │
+                                       reason 区分:
+                                       completed / terminated / expired
 ```
-- **→ EFFECTIVE**：附件含盖章 PDF；`signDate/startDate/endDate/totalAmount/taxRate/ownerUserId` 完整；`endDate ≥ startDate`；`totalAmount > 0`。
-- **→ COMPLETED**：所有 `Project ∈ {ACCEPTED, CLOSED}`，且 `SUM(Invoice.amount where ISSUED) ≥ totalAmount × completionInvoiceRatio`。
+- **→ ACTIVE（auto）**：保存/编辑时若 `signDate/startDate/endDate/totalAmount/taxRate/ownerUserId/signerId` 完整且 `attachments.length ≥ 1`，自动从 DRAFT 升 ACTIVE；`isPublishable(c)` 集中判定。
+- **→ CLOSED（auto complete）**：`SUM(Invoice.amount where status=ISSUED) ≥ totalAmount × completionInvoiceRatio`（默认 ratio=0.95，env `CONTRACT_COMPLETION_INVOICE_RATIO` 可调），`tryAutoComplete` 每晚扫一次。
+- **→ CLOSED（auto expire）**：`endDate < now()`，daily cron `runContractExpiryJob` 推 CLOSED 并写 `reviewComment="expired"`。
+- **admin 兜底入口**：`POST /api/contracts/[id]/publish`（DRAFT→ACTIVE）、`POST /api/contracts/[id]/close`（ACTIVE→CLOSED, body `{reason: "completed"|"terminated"|"expired"}`）。
+- **时间线**：所有自动/手动迁移写 `ContractReviewLog.action`（AUTO_PUBLISH / AUTO_CLOSE_COMPLETED / AUTO_CLOSE_EXPIRED / MANUAL_PUBLISH / MANUAL_CLOSE），详情页时间线可见。
 
 ### 5.2 `Project.status`
 ```
@@ -288,7 +304,11 @@ PLANNED ─confirm(finance)─▶ CONFIRMED ─reconcile(finance)─▶ RECONCIL
    └──cancel(创建人, PLANNED 态)──▶ CANCELLED
 ```
 
----
+### 5.5 `Customer`(无 status 字段)
+
+> v0.5.0 起客户表下线 `status` 字段及关联的状态机/自动化/撤销横幅(原 5 态 LEAD/NEGOTIATING/SIGNED/LOST/FROZEN + 4 条自动规则 + 7 天可撤销窗口); 客户跟进(`FollowUp`)已在 v0.3.1 软下线。
+> 业务方后续定义新流程。完整下线原因 / 数据迁移 / 历史消息处理见
+> [docs/superpowers/specs/2026-06-29-customer-status-deprecation.md](superpowers/specs/2026-06-29-customer-status-deprecation.md)。
 
 ## 6. 跨模块校验规则（核心规则清单）
 
@@ -297,21 +317,18 @@ PLANNED ─confirm(finance)─▶ CONFIRMED ─reconcile(finance)─▶ RECONCIL
 | 编号 | 触发 | 规则 | 错误码 |
 |---|---|---|---|
 | R-01 | 客户 `unifiedSocialCreditCode` | 18 位 + GB 32100-2015 加权校验（Zod 自定义 `.refine`） | `CUSTOMER_CREDIT_CODE_INVALID` |
-| R-02 | 客户 `→ SIGNED` | 至少一份 `EFFECTIVE/EXECUTING/COMPLETED` 合同 | `CUSTOMER_STATUS_INVALID` |
-| R-03 | 新建合同 | 客户 `status ∈ {NEGOTIATING, SIGNED}` | `CONTRACT_CUSTOMER_STATUS` |
-| R-04 | 合同 `→ EFFECTIVE` | 至少 1 个附件 + 关键字段非空 | `CONTRACT_INCOMPLETE` |
-| R-05 | 新建项目 | 所属合同 `status = EFFECTIVE` | `PROJECT_CONTRACT_NOT_EFFECTIVE` |
+| R-04 | 合同 `→ ACTIVE` | 字段完整 + 至少 1 附件（`isPublishable`） | `CONTRACT_INCOMPLETE` |
+| R-05 | 新建项目 | 所属合同 `status = ACTIVE` | `PROJECT_CONTRACT_NOT_EFFECTIVE` |
 | R-06 | 项目 `endDate` | `≤ contract.endDate` | `PROJECT_DATE_OUT_OF_RANGE` |
-| R-07 | 合同 `→ COMPLETED` | 项目全 `ACCEPTED/CLOSED` 且开票额 ≥ 阈值 | `CONTRACT_NOT_COMPLETABLE` |
+| R-07 | 合同 `→ CLOSED` (auto completed) | `SUM(Invoice.ISSUED) ≥ totalAmount × completionInvoiceRatio` | `CONTRACT_NOT_COMPLETABLE` |
 | R-08 | 开票 `submit/issue` | `SUM(已开票 ISSUED) + 当前 ≤ contract.totalAmount` | `INVOICE_OVER_LIMIT` |
 | R-09 | 开票 `→ ISSUED` | 抬头/税号/电子发票号 20 位合规 | `INVOICE_INFO_INVALID` |
 | R-10 | 回款 `→ CONFIRMED` | `bankRefNo` 全局唯一 | `PAYMENT_DUPLICATE_REF` |
 | R-11 | 回款 `→ CONFIRMED` | 该发票下累计回款 ≤ 发票金额 | `PAYMENT_OVER_INVOICE` |
 | R-12 | 回款 `→ CONFIRMED` | 合同级累计回款 ≤ 合同总额 | `PAYMENT_OVER_CONTRACT` |
-| R-13 | 客户 `→ FROZEN` | 无未完成合同、无未 RECONCILED 回款 | `CUSTOMER_HAS_ACTIVE_CONTRACT` |
 | R-14 | 删除 | 终态记录禁止物理删除 | `ENTITY_IMMUTABLE` |
-| R-15 | 用户 `DISABLED` | 名下 EXECUTING 合同需先转移 owner | `USER_HAS_ACTIVE_OWNERSHIP` |
-| R-16 | 状态机迁移 | 强制走 Service；事务内 `Serializable` + 行锁 | – |
+| R-15 | 用户 `DISABLED` | 名下 ACTIVE 合同需先转移 owner | `USER_HAS_ACTIVE_OWNERSHIP` |
+| R-16 | 状态机迁移 | 强制走 Service；事务内 `Serializable` + 行锁；通用抽象集中在 `lib/status-machine.ts` | (entity-specific) |
 
 > **错误码约定**：`{ENTITY}_{REASON}` 大写下划线；前端 ProForm `onFinish` 失败时按 `errorCode` 映射到 `errorCodeMessageMap` 文案 + 字段级错误从 `details.fieldErrors` 注入 ProForm `error`。
 
@@ -326,9 +343,8 @@ PLANNED ─confirm(finance)─▶ CONFIRMED ─reconcile(finance)─▶ RECONCIL
 | `INVOICE_OVERDUE_PAYMENT` | 定时任务：`actualIssueDate + 30` 天未全额回款 | 业务负责人 + 财务 | 「发票 `{invoiceNo}` 已开票 {n} 天，剩余未回款 ¥{amount}」 |
 | `PAYMENT_RECEIVED` | 回款 `→ CONFIRMED` | 业务负责人 | 「客户 {customerName} 回款 ¥{amount} 已确认」 |
 | `PROJECT_DUE` | 定时任务：项目 `endDate − 7` 天 | 项目负责人 + 业务负责人 | 「项目 `{projectNo}` 将于 {n} 天后计划完成」 |
-| `CUSTOMER_INACTIVE` | 客户 90 天无 `FollowUp` 记录 | 业务负责人 | 「客户 {customerName} 已 90 天未跟进」 |
 
-**实现**：领域事件总线（`src/server/events/bus.ts`）→ 消息 Worker（Next.js Route Handler + Vercel Cron / 外部 scheduler）→ 写 `Message` → 站内信（默认）/ 邮件 / 企业微信三通道（`config.notifications.{email,wechatWork}` 开关，默认关闭）。
+**实现**：领域事件总线（`src/server/events/bus.ts`）→ 写 `Message` 表 → 站内信（顶栏铃铛 + `/messages`）。邮件 / 企业微信通道已下线，运维侧不再持有任何凭据。
 
 ---
 
@@ -338,21 +354,32 @@ PLANNED ─confirm(finance)─▶ CONFIRMED ─reconcile(finance)─▶ RECONCIL
 
 | 指标 | 公式 | 时间维度 |
 |---|---|---|
-| 合同额 | `SUM(Contract.totalAmount where status ∈ {EFFECTIVE,EXECUTING,COMPLETED})` | 月/季/年/任意区间 |
+| 合同额 | `SUM(Contract.totalAmount where status ∈ {ACTIVE,CLOSED})` | 月/季/年/任意区间 |
 | 已开票额 | `SUM(Invoice.amount where status=ISSUED and actualIssueDate ∈ 区间)` | 同上 |
 | 已回款额 | `SUM(Payment.amount where status ∈ {CONFIRMED,RECONCILED} and receivedAt ∈ 区间)` | 同上 |
-| 未回款额 | 已开票额 − 已回款额 | 截止时点 |
+| 未回款额 | `MAX(0, 已开票额 − 已回款额)` | 截止时点 |
 | 开票率 | 已开票额 / 合同额 | 按合同/客户 |
 | 回款率 | 已回款额 / 已开票额 | 按合同/客户 |
 | 业务人员业绩 | 同上 + `ownerUserId=自己` | 月/季/年 |
-| 客户分布 | `level/customerType/industry` 聚合 | 截止时点 |
+| 客户分布 | `scale/customerType/status` 三组 groupBy,服务端 label 翻译 | 截止时点 |
 | 应收账款账龄 | `0-30 / 31-60 / 61-90 / 90+` 分桶 | 截止时点 |
 
+**口径备注(round-2 锁定)**
+
+- **未回款额 clamp**:`paymentAmount` 包含 `invoiceId IS NULL` 的预付款,可能大于 `invoiceAmount`,`unpaidAmount` 实际计算为 `Math.max(0, invoiceAmount − paymentAmount)`,避免出现 `-¥X`。
+- **账龄 REFUNDED 处理**:schema 的 `refund` 动作把原 `Payment.status` 翻为 `REFUNDED`(amount 不变)。账龄 paidMap 只聚合 `status ∈ {CONFIRMED, RECONCILED}`——已退款的回款视为从未生效,**不**用符号抵消(否则会从负的净额里错误高估应收)。`getInvoiceAging` 同时返回 `total`(全部超期数)与 `rows`(`rows.length ≤ 100`,按 daysOverdue 降序),前端用 `total` 渲染「共 N 条」与「查看全部 N 条 →」的真实总数。
+- **daysOverdue 计算**:走 `Date.UTC` 归一日历日差(不是 `ms / 86_400_000`),避免 DST/时区边界差一天。`actualIssueDate` 在未来(时钟漂移/录错)统一归入 `90+` 段。
+- **客户分布 label**:`byScale / byType / byStatus` 在路由层用 `lib/enum-maps.ts` 的 `CUSTOMER_SCALE_MAP / CUSTOMER_TYPE_MAP` 翻译成中文,前端 `valueEnum` 不必再维护;`key` 仍保留原始 code 供筛选/导出。
+- **业务人员业绩行级隔离**:SALES 角色 short-circuit,只返回自己一行;其它角色查 `isSystem=false AND role.code != "ADMIN" AND status=ACTIVE` 的用户。
+- **Top 客户 metric**:`metric=contract` 时筛 `total > 0`,`metric=payment` 时筛 `paymentTotal > 0`,避免按所选维度无数据的客户出现在榜上。
+
 ### 8.2 看板 / 导出
-- 管理员/财务：合同/开票/回款总览、账龄、客户 Top10、业务员 Top10。
+- 管理员/财务：合同/开票/回款总览、账龄、客户 Top10、员工 Top10。
 - 业务人员：本人业绩 + 我的客户/合同/回款进度。
 - 行政人员：基础信息统计（金额字段隐藏）。
-- 导出：`exceljs@4.4.0` 流式生成；权限跟随 `EXPORT`；文件名 `统计报表_{from}_{to}.xlsx`。
+- 导出：`exceljs@4.4.0` 流式生成；权限跟随 `EXPORT`；文件名按 type 区分（总览/Top 客户/区域统计/员工业绩/合同列表/客户列表/回款列表/开票列表）+ 时间戳后缀（如 `区域统计_2026-06-28.xlsx`）；中文文件名通过 `lib/excel.ts` `attachmentHeader()` 走 RFC 5987 双形式（`filename=ASCII_fallback; filename*=UTF-8''<percent-encoded>`），避免 Node `Headers` 拒绝非 ASCII 抛 500。
+- **导出行数兜底**:路由统一调用 `exportMaxRows()`(env `EXPORT_MAX_ROWS`,默认 5000,硬上限 10000)切到 `rows.slice(0, MAX_ROWS)`,防止员工/客户全量导出 OOM。
+- **总览「新增客户」字段**:响应里叫 `customers.newInRange`,在已选时间区间内 `createdAt ∈ [from, to]` 计数;无区间时退化为全量(并非"本月")——文案/字段名一致标注区间语义。
 
 ---
 
@@ -388,9 +415,17 @@ PLANNED ─confirm(finance)─▶ CONFIRMED ─reconcile(finance)─▶ RECONCIL
 
 ### 9.7 统计
 - `GET /api/statistics/overview?from&to&groupBy=month|customer|sales`
+  - 响应 `customers: { total, newInRange }`(旧字段 `newThisMonth` 已废弃)
+  - 响应 `distribution: { byScale, byType, byStatus }`,每项含 `{ key, label, count }`
 - `GET /api/statistics/invoice-aging`
-- `GET /api/statistics/top-customers?metric=contract|payment&limit=10`
-- `GET /api/statistics/sales-performance?userId=&from=&to=`
+  - 响应 `{ buckets, total, rows }`:`total` 为全部超期数(可能 > `rows.length`);`rows` 按 daysOverdue 降序,默认截到 100
+- `GET /api/statistics/top-customers?metric=contract|payment&limit=10&from=&to=`
+  - `from/to` 同时作用于 `Contract.signDate` / `Invoice.actualIssueDate` / `Payment.receivedAt`
+- `GET /api/statistics/employee-performance?userId=&from=&to=`
+  - `userId` 不传时全员(非系统、非 admin、ACTIVE);SALES 强制只看自己
+- `GET /api/statistics/export?type=overview|top-customers|employee-performance&metric=&from=&to=&userId=`
+  - 需 `STATISTICS:EXPORT` 权限;单次最多 `exportMaxRows()` 行
+
 
 ### 9.8 消息/公告
 - `GET /api/messages?unread=true`、`PATCH /api/messages/:id`、`POST /api/messages/mark-all-read`
@@ -444,7 +479,7 @@ PLANNED ─confirm(finance)─▶ CONFIRMED ─reconcile(finance)─▶ RECONCIL
   /domain/{customer,contract,project,invoice,payment}/rules.ts
   /services/*
   /events/bus.ts
-  /jobs/{contract-expiring,invoice-overdue,project-due,customer-inactive}.ts
+  /jobs/{contract-expiring,invoice-overdue,contract-expiry,certificate-expiry-check}.ts
 /prisma
   schema.prisma migrations/ seed.ts
 /types
@@ -464,14 +499,14 @@ PLANNED ─confirm(finance)─▶ CONFIRMED ─reconcile(finance)─▶ RECONCIL
 
 > Vitest 4.1.8 覆盖 Service/规则；Playwright 1.60.0 覆盖 E2E 审批/开票/回款关键链路。
 
-1. **客户**：信用代码错误 → 400 `CUSTOMER_CREDIT_CODE_INVALID`；客户下无 EFFECTIVE 合同尝试 `→ SIGNED` 失败。
-2. **合同**：缺附件时 `→ EFFECTIVE` 失败；同客户下「同标题+同签订日」重复合同被拒；编号 `QT-HT-2025-0001` 并发生成无重复。
-3. **项目**：合同非 EFFECTIVE 时禁止新建项目；项目 `endDate > contract.endDate` 被拒；`ACCEPTED` 之后才能让合同进入 COMPLETED。
+1. **客户**：信用代码错误 → 400 `CUSTOMER_CREDIT_CODE_INVALID`；客户下无 ACTIVE/CLOSED 合同尝试 `→ SIGNED` 失败。
+2. **合同**：缺附件/字段不完整时 `→ ACTIVE` 自动跳过（保持 DRAFT）失败；同客户下「同标题+同签订日」重复合同被拒；编号 `QT-HT-2025-0001` 并发生成无重复。
+3. **项目**：合同非 ACTIVE 时禁止新建项目；项目 `endDate > contract.endDate` 被拒；`ACCEPTED` 之后才能让合同进入 CLOSED。
 4. **开票**：已开票 90 万时再开 20 万 → 422 `INVOICE_OVER_LIMIT`；红冲后负数记录正确生成且原记录变 `RED_FLUSHED`，PLANNED Payment 自动 `CANCELLED`。
 5. **回款**：`bankRefNo` 重复 → 409 `PAYMENT_DUPLICATE_REF`；同一发票累计回款超过发票金额 → 422；`RECONCILED` 记录尝试修改 → 403 `ENTITY_IMMUTABLE`；预收款无 invoiceId 时可入账并通过 `allocate` 拆分配。
 6. **权限**：SALES 访问他人 `customerId` 详情 → 404；FINANCE 尝试改客户金额相关字段 → 403；OPS 在开票列表看不到任何记录；SALES 收件箱收不到非自己的 `MESSAGE`。
 7. **消息**：`INVOICE_OVERDUE_PAYMENT` 在开票 +30 天自动创建对应 Message；标记已读后 `unreadCount` 正确。
-8. **统计**：构造 1 个月数据，统计接口 `groupBy=month` 的「已开票额/已回款额」与 SQL 聚合一致（误差 0.01）；账龄分桶口径正确。
+8. **统计**：构造 1 个月数据，统计接口 `groupBy=month` 的「已开票额/已回款额」与 SQL 聚合一致（误差 0.01）；账龄分桶口径正确；`unpaidAmount` 不为负（预付款场景下 clamp 到 0）；`getInvoiceAging.total` 等于全部超期数（可能 > 100）；`getTopCustomers` 接受 `from/to` 时合同/开票/回款聚合同步收窄；SALES 访问 `getEmployeePerformance` 只返回自己一行。
 9. **审计**：所有状态机迁移在 `OperationLog` / `*AuditLog` 中留痕，含 `actorId` 与 `before/after diff`；密码/敏感字段永不入日志。
 10. **前端 antd 6**：ProTable 分页/排序/筛选参数正确传递；按钮权限按 `<Authority>` 隐藏；金额格式 `¥1,234,567.00` 一致；`AntdRegistry` SSR 样式无首屏闪烁。
 
@@ -484,7 +519,7 @@ PLANNED ─confirm(finance)─▶ CONFIRMED ─reconcile(finance)─▶ RECONCIL
 | **P0 脚手架** | Next.js 16 + TS 6 strict + Prisma 7 + NextAuth v4 + antd 6 + pro 3 + AntdRegistry；4 角色/字典种子；ESLint/Prettier/Typecheck/Test CI | `pnpm dev` 启动；4 角色可登录；首页 ProLayout 正常渲染；样式无闪烁 |
 | **P1 主链路** | 客户/合同/项目/开票/回款 五大模块 CRUD + 状态机 + 关键校验 + ProTable/ProForm 页面 | §11 用例 1-6 全部通过；E2E 主链路 Playwright 全绿 |
 | **P2 支撑** | 消息提醒（Vercel Cron + 站内信）、统计看板、xlsx 导出、操作日志 | §11 用例 7-9 全部通过；导出 1 万行统计 P95 < 2s |
-| **P3 完善** | 通知三通道（邮件/企业微信，开关）、SSO 接入、备份脚本、压测报告 | 200 并发列表查询 P95 < 500ms |
+| **P3 完善** | SSO 接入、备份脚本、压测报告（原通知三通道已并入站内信） | 200 并发列表查询 P95 < 500ms |
 
 ---
 

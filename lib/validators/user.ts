@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { employeeProfileUpdateSchema, isoDateOrDateTime } from "./employee-profile";
 
 export const userStatus = z.enum(["ACTIVE", "DISABLED"]);
 
@@ -34,5 +35,62 @@ export const userToggleStatusSchema = z.object({
   status: userStatus
 });
 
+// 管理员手动重置密码:8~72 字符(72 是 bcrypt 的硬上限,超出会被静默截断)
+export const userResetPasswordSchema = z.object({
+  password: z
+    .string()
+    .min(8, "密码至少 8 个字符")
+    .max(72, "密码不能超过 72 个字符")
+});
+
+export const userWithProfileUpdateSchema = z.object({
+  user: userUpdateSchema.optional(),
+  profile: employeeProfileUpdateSchema.optional(),
+  // 5 张子表(PR3 起)— 每次 PATCH 全量替换(全删全插)
+  educations: z.array(z.object({
+    school: z.string().min(1).max(200),
+    major: z.string().max(200).optional().nullable(),
+    degree: z.string().max(50).optional().nullable(),
+    startDate: isoDateOrDateTime(),
+    endDate: isoDateOrDateTime().optional().nullable(),
+    isFullTime: z.boolean().optional(),
+    remark: z.string().max(2000).optional().nullable()
+  })).optional(),
+  workExperiences: z.array(z.object({
+    company: z.string().min(1).max(200),
+    position: z.string().max(50).optional().nullable(),
+    startDate: isoDateOrDateTime(),
+    endDate: isoDateOrDateTime().optional().nullable(),
+    leaveReason: z.string().max(200).optional().nullable(),
+    referrer: z.string().max(50).optional().nullable(),
+    remark: z.string().max(2000).optional().nullable()
+  })).optional(),
+  certificates: z.array(z.object({
+    name: z.string().min(1).max(200),
+    number: z.string().max(100).optional().nullable(),
+    issuer: z.string().max(200).optional().nullable(),
+    issueDate: isoDateOrDateTime().optional().nullable(),
+    expiryDate: isoDateOrDateTime().optional().nullable(),
+    attachmentId: z.string().min(1).optional().nullable(),
+    remark: z.string().max(2000).optional().nullable()
+  })).optional(),
+  skills: z.array(z.object({
+    name: z.string().min(1).max(100),
+    level: z.enum(["BEGINNER", "INTERMEDIATE", "ADVANCED"]).default("INTERMEDIATE"),
+    obtainDate: isoDateOrDateTime().optional().nullable(),
+    remark: z.string().max(2000).optional().nullable()
+  })).optional(),
+  emergencyContacts: z.array(z.object({
+    name: z.string().min(1).max(50),
+    relationship: z.enum(["父母", "配偶", "兄弟姐妹", "子女", "其他"]),
+    phone: z.string().regex(/^1[3-9]\d{9}$/),
+    remark: z.string().max(500).optional().nullable()
+  })).optional(),
+  // 并发检测(PR3):客户端上次 GET 拿到的 updatedAt
+  expectedUpdatedAt: z.string().optional()
+});
+
 export type UserCreateInput = z.infer<typeof userCreateSchema>;
 export type UserUpdateInput = z.infer<typeof userUpdateSchema>;
+export type UserResetPasswordInput = z.infer<typeof userResetPasswordSchema>;
+export type UserWithProfileUpdateInput = z.infer<typeof userWithProfileUpdateSchema>;

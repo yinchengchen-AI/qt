@@ -3,17 +3,18 @@
 export const USER_STATUS = ["ACTIVE", "DISABLED"] as const;
 export type UserStatus = (typeof USER_STATUS)[number];
 
+export const GENDER = ["MALE", "FEMALE", "OTHER"] as const;
+export type Gender = (typeof GENDER)[number];
+
+export const EMPLOYMENT_TYPE = ["FULL_TIME", "PART_TIME", "INTERN", "CONTRACTOR"] as const;
+export type EmploymentType = (typeof EMPLOYMENT_TYPE)[number];
+
 export const CUSTOMER_TYPE = ["ENTERPRISE", "GOV", "OTHER"] as const;
 export type CustomerType = (typeof CUSTOMER_TYPE)[number];
 
 export const CUSTOMER_SCALE = ["LARGE", "MEDIUM", "SMALL", "MICRO"] as const;
 export type CustomerScale = (typeof CUSTOMER_SCALE)[number];
 
-export const CUSTOMER_LEVEL = ["A", "B", "C", "D"] as const;
-export type CustomerLevel = (typeof CUSTOMER_LEVEL)[number];
-
-export const CUSTOMER_STATUS = ["LEAD", "NEGOTIATING", "SIGNED", "LOST", "FROZEN"] as const;
-export type CustomerStatus = (typeof CUSTOMER_STATUS)[number];
 
 export const FOLLOW_METHOD = ["VISIT", "CALL", "WECHAT", "EMAIL", "OTHER"] as const;
 export type FollowMethod = (typeof FOLLOW_METHOD)[number];
@@ -27,18 +28,18 @@ export const SERVICE_TYPE = [
   "HAZARD_ANA",
   "EMERGENCY_PLAN",
   "EVALUATION",
+  "SYS_BUILDING",
+  "RESIDENT",
+  "SURVEY",
+  "STANDARDIZATION",
   "OTHER"
 ] as const;
 export type ServiceType = (typeof SERVICE_TYPE)[number];
 
 export const CONTRACT_STATUS = [
   "DRAFT",
-  "PENDING_REVIEW",
-  "EFFECTIVE",
-  "EXECUTING",
-  "COMPLETED",
-  "TERMINATED",
-  "EXPIRED"
+  "ACTIVE",
+  "CLOSED"
 ] as const;
 export type ContractStatus = (typeof CONTRACT_STATUS)[number];
 
@@ -47,17 +48,6 @@ export type ContractPaymentMethod = (typeof CONTRACT_PAYMENT_METHOD)[number];
 
 export const REVIEW_ACTION = ["SUBMIT", "APPROVE", "REJECT", "WITHDRAW"] as const;
 export type ReviewAction = (typeof REVIEW_ACTION)[number];
-
-export const PROJECT_STATUS = [
-  "PLANNED",
-  "IN_PROGRESS",
-  "SUSPENDED",
-  "DELIVERED",
-  "ACCEPTED",
-  "CLOSED",
-  "CANCELLED"
-] as const;
-export type ProjectStatus = (typeof PROJECT_STATUS)[number];
 
 export const INVOICE_TYPE = ["VAT_SPECIAL", "VAT_GENERAL", "VAT_ELECTRONIC", "ELEC_NORMAL"] as const;
 export type InvoiceType = (typeof INVOICE_TYPE)[number];
@@ -94,16 +84,39 @@ export const PAYMENT_STATUS = [
 ] as const;
 export type PaymentStatus = (typeof PAYMENT_STATUS)[number];
 
+/* === 合同开票状态(派生字段:由 invoicedAmount 与 totalAmount 比较得出,不入库) === */
+export const BILLING_STATUS = ["NOT_STARTED", "IN_PROGRESS", "COMPLETED"] as const;
+export type BillingStatus = (typeof BILLING_STATUS)[number];
+
+/* === 合同回款状态(派生字段:由 paidAmount 与 totalAmount 比较得出,不入库) ===
+ * 与 PaymentStatus (per-payment lifecycle 5 态: PLANNED/CONFIRMED/RECONCILED/REFUNDED/CANCELLED) 不同:
+ * 这里描述的是合同级回款进度,只关心 paid/total 比例,3 态。 */
+export const PAYMENT_PROGRESS_STATUS = ["NOT_STARTED", "IN_PROGRESS", "COMPLETED"] as const;
+export type PaymentProgressStatus = (typeof PAYMENT_PROGRESS_STATUS)[number];
+
+// 通知事件类型:与 prisma schema 的 enum MessageType 一一对应
+// (bus.ts 的 DomainEventType 直接派生自这里,确保运行时与编译期一致)
 export const MESSAGE_TYPE = [
-  "CONTRACT_PENDING_REVIEW",
   "CONTRACT_EXPIRING",
   "INVOICE_OVERDUE_PAYMENT",
   "PAYMENT_RECEIVED",
-  "PROJECT_DUE",
-  "CUSTOMER_INACTIVE"
+  "CUSTOMER_STATUS_SUGGEST",
+  "CONTRACT_AUTO_EXECUTED",
+  "CONTRACT_AUTO_COMPLETED",
+  "CONTRACT_AUTO_EXPIRED",
+  // 合同过期宽限期强关 (tryAutoCloseOnOverdue 触发, endDate+GRACE<now 仍未结清)
+  "CONTRACT_AUTO_OVERDUE_TERMINATED",
+  // 合同过期未结清提醒 (tickStaleContracts 触发, endDate<now 但钱没收齐, 给 owner/admin 通知)
+  "CONTRACT_EXPIRED_UNPAID",
+  // 证书 N 天内到期提醒 (server/jobs/certificate-expiry-check 触发)
+  "CERTIFICATE_EXPIRING",
+  // 客户状态机自动化: 系统自动写客户状态后, 给 owner 发的通知
+  "CUSTOMER_STATUS_AUTO_APPLIED",
+  // 客户状态机自动化: owner 在撤销窗口期内撤销了系统自动写, 给 owner 的反馈
+  "CUSTOMER_STATUS_AUTO_REVERTED"
 ] as const;
-export type MessageType = (typeof MESSAGE_TYPE)[number];
 
-// 4 个内置角色
-export const ROLE_CODES = ["ADMIN", "SALES", "FINANCE", "OPS"] as const;
+// 5 个内置角色
+export const ROLE_CODES = ["ADMIN", "SALES", "FINANCE", "OPS", "EXPERT"] as const;
 export type RoleCode = (typeof ROLE_CODES)[number];
+

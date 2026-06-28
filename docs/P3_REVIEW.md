@@ -7,13 +7,13 @@
 
 | 模块 | 文件 | 状态 |
 |---|---|---|
-| 通知通道（email / wechatWork） | `lib/notify-config.ts`、`server/events/channels.ts`、`server/events/dispatcher.ts` | ✅ 完成 |
+| 通知通道（email / wechatWork） | 已下线，事件通知统一走站内信 | ❌ 不再提供 |
 | 公告系统（CRUD + 靶向 + 软删） | `server/services/announcement.ts`、`app/api/announcements/**`、`app/announcements/page.tsx`、`lib/validators/announcement.ts` | ✅ 完成 |
-| RLS 兜底（5 张表 policy） | `prisma/migrations/20260609_rls/migration.sql`、`lib/rls.ts` | ✅ 完成 |
+| RLS 兜底（5 张表 policy） | `prisma/migrations/20260614_init/migration.sql`、`lib/rls.ts` | ✅ 完成 |
 | i18n 基础（zh-CN / en-US） | `lib/i18n.ts` | ✅ 完成 |
-| 备份脚本 | `scripts/backup.sh` | ✅ 完成 |
-| 审计清理脚本 | `scripts/audit-cleanup.sh` | ✅ 完成 |
-| 压测工具 | `scripts/loadtest.mjs` | ✅ 完成 |
+| 备份脚本 | `scripts/prod/backup.sh` | ✅ 完成 |
+| 审计清理脚本 | `scripts/prod/audit-cleanup.sh` | ✅ 完成 |
+| 压测工具 | `scripts/dev/loadtest.mjs` | ✅ 完成 |
 | 文档 | `docs/RLS.md`、`docs/P3_REVIEW.md` | ✅ 完成 |
 
 ---
@@ -22,7 +22,7 @@
 
 ### 2.1 测试方法
 
-- 工具：`scripts/loadtest.mjs`（Node 原生 fetch，无第三方依赖）
+- 工具：`scripts/dev/loadtest.mjs`（Node 原生 fetch，无第三方依赖）
 - 目标：`/api/customers?page=1&pageSize=20`（读密集 + DB 查询 + 行级 where）
 - 压测账户：登录 `admin`（admin 的 customer 列表非空，含 owner 客户）
 - 环境：dev mode（`next dev`）— 生产构建会显著优于该数据
@@ -59,10 +59,7 @@
 | 套件 | 用例 | 通过率 | 状态 |
 |---|---|---|---|
 | P0 Vitest | 5 | 5/5 | ✅ |
-| P1 E2E (`e2e-flow.mjs`) | 27 | 27/27 | ✅ |
-| P2 E2E (`p2-flow.mjs`) | 21 | 21/21 | ✅ |
-| P3 E2E (`p3-flow.mjs`) | 23 | 23/23 | ✅ |
-| **合计** | **76** | **76/76** | ✅ |
+| **合计** | **5** | **5/5** | ✅ |
 
 ### 3.2 P3 E2E 覆盖场景
 
@@ -83,7 +80,7 @@ npx tsc --noEmit  # 0 错误
 
 ### 4.1 通道矩阵
 
-| 事件 | inbox | email | wechatWork |
+| 事件 | inbox |
 |---|---|---|---|
 | CONTRACT_PENDING_REVIEW | ✅ | ✅ (off) | – |
 | CONTRACT_APPROVED | ✅ | – | – |
@@ -92,21 +89,15 @@ npx tsc --noEmit  # 0 错误
 | INVOICE_OVERDUE_PAYMENT | ✅ | ✅ (off) | ✅ (off) |
 | PAYMENT_RECEIVED | ✅ | – | – |
 | PROJECT_DUE | ✅ | – | – |
-| CUSTOMER_INACTIVE | ✅ | – | – |
 
 ### 4.2 关键设计点
 
 - **inbox 永远开启**：在事务内同步写 `Message` 表（原子性）
-- **外部通道 fire-and-forget**：事务外异步派发，失败仅 `console.warn`，不抛
-- **开关驱动**：`NOTIFY_EMAIL_ENABLED` / `NOTIFY_WECHAT_WORK_ENABLED` env 变量
-- **凭据配置**：`SMTP_*` / `WECHAT_WORK_WEBHOOK_URL` env 变量，未配置则通道静默跳过
 - **频率控制**（设计占位）：未来可加 Redis 滑动窗口（防客户 90 天无跟进刷屏）
 
 ### 4.3 部署建议
 
-1. 默认 `.env` 不开任何外部通道
-2. 内部测试 → 配 SMTP + `NOTIFY_EMAIL_ENABLED=true`
-3. 生产 → 配企业微信 webhook + `NOTIFY_WECHAT_WORK_ENABLED=true`
+外部通道（email / 企微）已下线，不再有通道相关部署步骤。
 
 ---
 
@@ -122,14 +113,14 @@ npx tsc --noEmit  # 0 错误
 
 ## 6. 备份与审计清理
 
-### 6.1 备份脚本 `scripts/backup.sh`
+### 6.1 备份脚本 `scripts/prod/backup.sh`
 
 - 工具：`pg_dump -Fc`（custom format，压缩比高）
 - 保留：30 天
 - 路径：`/var/backups/qt/qt_YYYYMMDD_HHMMSS.dump`
 - 调度：crontab `0 2 * * *`
 
-### 6.2 审计清理 `scripts/audit-cleanup.sh`
+### 6.2 审计清理 `scripts/prod/audit-cleanup.sh`
 
 - 策略：保留 5 年（设计文档 §13 假设）
 - 实现：按年分批 DELETE `OperationLog WHERE createdAt < now() - 5y`
@@ -139,7 +130,7 @@ npx tsc --noEmit  # 0 错误
 
 ```bash
 # 备份
-bash scripts/backup.sh
+bash scripts/prod/backup.sh
 # 输出：/var/backups/qt/qt_20260609_120000.dump (size=...)
 
 # 恢复
@@ -151,7 +142,7 @@ pg_restore -h localhost -U qitai -d qt_biz /var/backups/qt/qt_20260609_120000.du
 ## 7. 已知未做（设计文档 §13）
 
 - ❌ SSO / 企业微信扫码登录（保留配置位与 P3+ 钩子）
-- ❌ 邮件 / 企业微信三通道**开启时**的端到端测试（默认关闭，仅验证不崩）
+
 - ❌ Vercel Cron 部署（本地脚本可作为参考）
 - ❌ 压测 C200 P95 < 500ms（dev 模式限制；生产构建需重测）
 

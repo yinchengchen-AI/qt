@@ -3,6 +3,7 @@
 // → 创建项目 → 项目详情 → 提交+审批合同 → 创建发票 → 提交发票 → 财务开票
 // → 创建回款 → 确认回款 → 统计 → 消息中心 → 公告
 import { test, expect } from "@playwright/test";
+import { DEV_PASSWORD } from "./_dev-credentials";
 
 const stamp = Date.now();
 const customerName = `E2E客户-${stamp}`;
@@ -30,7 +31,7 @@ test.describe.serial("场景 1: admin 完整主链路", () => {
   test("01.3 admin 登录成功进入工作台", async ({ page }) => {
     await page.goto("/login");
     await page.getByPlaceholder("请输入工号").fill("admin");
-    await page.getByPlaceholder("请输入密码").fill("123456");
+    await page.getByPlaceholder("请输入密码").fill(DEV_PASSWORD);
     await page.getByText("登 录", { exact: true }).first().click();
     await page.waitForURL(/dashboard/, { timeout: 10000 });
     await expect(page).toHaveURL(/dashboard/);

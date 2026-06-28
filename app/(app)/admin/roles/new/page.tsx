@@ -4,6 +4,7 @@ import { PageHeader } from "@/components/page-header";
 import { ProCard, ProForm, ProFormText, ProFormTextArea } from "@ant-design/pro-components";
 import { App as AntdApp, Button, Card, Select, Typography } from "antd";
 import { useRouter } from "next/navigation";
+import { useGoBack } from "@/lib/navigation";
 import { useState } from "react";
 import { PermissionMatrix, type Permission } from "@/components/admin/permission-matrix";
 
@@ -19,13 +20,14 @@ const TEMPLATE_OPTIONS = [
 
 export default function NewRolePage() {
   const router = useRouter();
+  const goBack = useGoBack("/admin/roles");
   const { message } = AntdApp.useApp();
   const [permissions, setPermissions] = useState<Permission[]>([]);
 
   return (
     <Page compact>
       <PageHeader
-        back={() => router.push("/admin/roles")}
+        back={goBack}
         title="新建角色"
         subtitle="自定义角色（非系统角色）"
       />
@@ -36,7 +38,7 @@ export default function NewRolePage() {
           initialValues={{ template: "EMPTY" }}
           onFinish={async (values) => {
             if (permissions.length === 0) {
-              message.error("至少配置 1 个资源的权限");
+              message.error("请至少为 1 个资源配置权限");
               return false;
             }
             const res = await fetch("/api/roles", {
@@ -50,7 +52,7 @@ export default function NewRolePage() {
               message.error(j.message);
               return false;
             }
-            message.success("创建成功");
+            message.success("角色已创建");
             router.push(`/admin/roles/${j.data.id}`);
             return true;
           }}
@@ -58,13 +60,13 @@ export default function NewRolePage() {
           <ProFormText
             name="code"
             label="代码"
-            tooltip="大写字母/数字/下划线,以大写字母开头;创建后仍可改"
+            tooltip="大写字母 / 数字 / 下划线，需以大写字母开头；创建后仍可修改"
             rules={[{ required: true, max: 40, pattern: /^[A-Z][A-Z0-9_]*$/ }]}
           />
           <ProFormText name="name" label="名称" rules={[{ required: true, max: 40 }]} />
           <ProFormTextArea name="description" label="说明" fieldProps={{ maxLength: 200 }} />
 
-          <Card size="small" style={{ marginBottom: 16, background: "#fafafa" }}>
+          <Card size="small" style={{ marginBottom: 16, background: "var(--qt-bg-subtle)" }}>
             <Text strong>从模板复制（可选）</Text>
             <div style={{ marginTop: 8 }}>
               <Select

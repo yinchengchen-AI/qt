@@ -12,7 +12,18 @@ export type UploadedAttachment = {
   uploadedAt: string;
 };
 
-export type UploadOpts = { contractId?: string | null; invoiceId?: string | null };
+export type AttachmentCategory = "GENERAL" | "AVATAR" | "ID_CARD_FRONT" | "ID_CARD_BACK" | "CERTIFICATE";
+
+export type UploadOpts = {
+  contractId?: string | null;
+  invoiceId?: string | null;
+  employeeProfileId?: string | null;
+  // 合同交付物附件标记 (true = 这是合同详情"交付物"tab 的实际交付文件);
+  // 详情页"交付物"tab 走这个, 写权限仅 admin / 合同签订人 / 合同负责人
+  isDeliverable?: boolean;
+  // P0-10: 附件分类。头像传 AVATAR,身份证正反传 ID_CARD_FRONT/BACK,证书扫描件传 CERTIFICATE,其他传 GENERAL(默认)
+  category?: AttachmentCategory;
+};
 
 export async function uploadFileToMinIO(file: File, opts: UploadOpts = {}): Promise<UploadedAttachment> {
   // 1. 调后端拿 PUT URL
@@ -25,7 +36,10 @@ export async function uploadFileToMinIO(file: File, opts: UploadOpts = {}): Prom
       mimeType: file.type || "application/octet-stream",
       size: file.size,
       contractId: opts.contractId ?? null,
-      invoiceId: opts.invoiceId ?? null
+      invoiceId: opts.invoiceId ?? null,
+      employeeProfileId: opts.employeeProfileId ?? null,
+      isDeliverable: opts.isDeliverable === true,
+      category: opts.category ?? "GENERAL"
     })
   });
   if (!presignRes.ok) {
@@ -42,10 +56,13 @@ export async function uploadFileToMinIO(file: File, opts: UploadOpts = {}): Prom
   const { attachmentId, url } = presign.data;
 
   // 2. PUT 到 MinIO(走 fetch,无 CORS 预检干扰)
+  // 注意:url 走的是 Next.js 同源代理 /api/files/upload/{id},不是 MinIO 直连,
+  // 所以需要 credentials: "include" 把 next-auth 的 session cookie 带上,
+  // 否则服务端 requireSession() 会 401。
   const putRes = await fetch(url, {
     method: "PUT",
     body: file,
-    credentials: "omit"
+    credentials: "include"
   });
   if (!putRes.ok) {
     throw new Error(`上传到 MinIO 失败: ${putRes.status} ${putRes.statusText}`);

@@ -1,11 +1,12 @@
 "use client";
-import { ProTable, type ProColumns } from "@ant-design/pro-components";
+import { ProTable, type ActionType, type ProColumns } from "@ant-design/pro-components";
 import { App as AntdApp, Button, Space, Switch, Tag, Tree, Typography } from "antd";
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useRef, useState } from "react";
+import useSWR from "swr";
 import { Page } from "@/components/page";
+import { useResponsive } from "@/lib/use-breakpoint";
 import { PageHeader } from "@/components/page-header";
-import { useListRequest } from "@/lib/use-list-request";
 
 const { Text } = Typography;
 
@@ -20,25 +21,42 @@ type Department = {
   children?: Department[];
 };
 
+type TreeNode = {
+  key: string;
+  title: React.ReactNode;
+  children: TreeNode[];
+};
+
 export default function DepartmentsPage() {
+  const actionRef = useRef<ActionType>(undefined);
+  const { isMobile } = useResponsive();
   const router = useRouter();
   const { message } = AntdApp.useApp();
   const [view, setView] = useState<"tree" | "list">("tree");
   const [includeInactive, setIncludeInactive] = useState(false);
-  const { data, loading, reload } = useListRequest<Department>(
-    `/api/departments?pageSize=500&includeInactive=${includeInactive}`,
-    { deps: [includeInactive] }
+  // 走 tree=true 拿嵌套结构;列表视图客户端递归展平
+  const { data: departments, isLoading: loading, mutate: reload } = useSWR<Department[]>(
+    `/api/departments?pageSize=500&tree=true&includeInactive=${includeInactive}`,
+    async (url: string) => {
+      const r = await fetch(url, { credentials: "include" });
+      const j = await r.json();
+      if (j.code !== 0) throw new Error(j.message);
+      return (j.data?.tree ?? []) as Department[];
+    },
+    { refreshInterval: 0 }
   );
+  const data = departments ?? [];
+  const flatten = (nodes: Department[]): Department[] => nodes.flatMap((n) => [n, ...flatten(n.children ?? [])]);
 
   async function onDelete(d: Department) {
     if (d.memberCount > 0 || (d.children && d.children.length > 0)) {
-      message.error("该部门仍有子部门或成员,无法删除");
+      message.error("该部门仍有子部门或成员，无法删除，请先处理后再试");
       return;
     }
     const r = await fetch(`/api/departments/${d.id}`, { method: "DELETE", credentials: "include" });
     const j = await r.json();
     if (j.code !== 0) return message.error(j.message);
-    message.success("已删除");
+    message.success("部门已删除");
     reload();
   }
 
@@ -53,7 +71,8 @@ export default function DepartmentsPage() {
         // 用 parentId 简单算深度
         let d = 0;
         let cur: string | null | undefined = r.parentId;
-        const map = new Map((data ?? []).map((x) => [x.id, x.parentId] as const));
+        // 列表视图是 flatten 后的全树,parent map 也要用同一个源,否则子部门层级算不出来
+        const map = new Map(flatten(data).map((x) => [x.id, x.parentId] as const));
         while (cur) {
           d++;
           if (d > 10) break;
@@ -112,32 +131,34 @@ export default function DepartmentsPage() {
   ];
 
   // 树形展示的 treeSelectable 转换
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const treeData: any[] = ((data ?? []) as Department[]).map((d) => ({
+  const renderTitle = (d: Department) => (
+    <Space size={4}>
+      <Text strong={!d.parentId}>{d.name}</Text>
+      <Text type="secondary" style={{ fontSize: 11 }}>({d.code})</Text>
+      {!d.isActive && <Tag>停用</Tag>}
+      {d.memberCount > 0 && (
+        <Tag color="green" style={{ marginLeft: 4 }}>
+          {d.memberCount} 人
+        </Tag>
+      )}
+      {d.children && d.children.length > 0 && (
+        <Tag color="blue">{d.children.length} 子</Tag>
+      )}
+    </Space>
+  );
+  // antd Tree 要求每层节点都有 key;原代码只给顶层加 key,子节点直接用裸对象,以前 children 永远 undefined 才没暴露
+  const buildTreeNode = (d: Department): TreeNode => ({
     key: d.id,
-    title: (
-      <Space size={4}>
-        <Text strong={!d.parentId}>{d.name}</Text>
-        <Text type="secondary" style={{ fontSize: 11 }}>({d.code})</Text>
-        {!d.isActive && <Tag>停用</Tag>}
-        {d.memberCount > 0 && (
-          <Tag color="green" style={{ marginLeft: 4 }}>
-            {d.memberCount} 人
-          </Tag>
-        )}
-        {d.children && d.children.length > 0 && (
-          <Tag color="blue">{d.children.length} 子</Tag>
-        )}
-      </Space>
-    ),
-    children: (d.children ?? []) as Department[]
-  }));
+    title: renderTitle(d),
+    children: (d.children ?? []).map(buildTreeNode)
+  });
+  const treeData: TreeNode[] = data.map(buildTreeNode);
 
   return (
     <Page>
       <PageHeader
         title="部门管理"
-        subtitle="树形部门;支持任意层级嵌套;子部门 / 成员非空不可删"
+        subtitle="支持任意层级嵌套；存在子部门或成员时不可删除"
         actions={
           <Space>
             <Switch
@@ -164,8 +185,8 @@ export default function DepartmentsPage() {
       {view === "tree" ? (
         <div
           style={{
-            background: "#fff",
-            border: "1px solid #f0f0f0",
+            background: "var(--qt-bg)",
+            border: "1px solid var(--qt-border-soft)",
             borderRadius: 8,
             padding: 16,
             minHeight: 200
@@ -180,14 +201,17 @@ export default function DepartmentsPage() {
           )}
         </div>
       ) : (
-        <ProTable<Department>
+        <ProTable<Department> actionRef={actionRef}
           rowKey="id"
           loading={loading}
           columns={columns}
           search={false}
-          toolbar={{ settings: [] }}
-          pagination={{ pageSize: 50, showSizeChanger: false }}
-          dataSource={data ?? []}
+          scroll={{ x: 'max-content' }}
+          cardBordered={false}
+          sticky={isMobile}
+          options={{ reload: () => actionRef.current?.reload?.(), density: !isMobile, fullScreen: !isMobile }}
+          pagination={{ defaultPageSize: 50, showSizeChanger: !isMobile, size: isMobile ? "small" : undefined }}
+          dataSource={flatten(data)}
         />
       )}
     </Page>

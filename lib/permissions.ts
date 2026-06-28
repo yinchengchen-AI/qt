@@ -9,14 +9,13 @@ export const RESOURCE = {
   DICTIONARY: "DICTIONARY",
   CUSTOMER: "CUSTOMER",
   CONTRACT: "CONTRACT",
-  PROJECT: "PROJECT",
   INVOICE: "INVOICE",
   PAYMENT: "PAYMENT",
   STATISTICS: "STATISTICS",
   MESSAGE: "MESSAGE",
   ANNOUNCEMENT: "ANNOUNCEMENT",
   OPERATION_LOG: "OPERATION_LOG",
-  DEPARTMENT: "DEPARTMENT"
+  DEPARTMENT: "DEPARTMENT",
 } as const;
 export type Resource = (typeof RESOURCE)[keyof typeof RESOURCE];
 
@@ -41,7 +40,8 @@ const R_EXPORT: Action[] = ["READ", "EXPORT"];
 // 内置角色默认权限（P0 阶段硬编码；后续允许后台编辑）
 export const ROLE_PERMISSIONS: Record<RoleCode, Permission[]> = {
   ADMIN: Object.values(RESOURCE).map((resource) =>
-    resource === RESOURCE.STATISTICS
+    resource === RESOURCE.STATISTICS || resource === RESOURCE.CUSTOMER || resource === RESOURCE.CONTRACT ||
+    resource === RESOURCE.INVOICE || resource === RESOURCE.PAYMENT
       ? { resource, actions: [...CRUD, ACTION.EXPORT] }
       : { resource, actions: CRUD }
   ),
@@ -49,41 +49,51 @@ export const ROLE_PERMISSIONS: Record<RoleCode, Permission[]> = {
     { resource: RESOURCE.DEPARTMENT, actions: R },
     { resource: RESOURCE.USER, actions: R },
     { resource: RESOURCE.DICTIONARY, actions: R },
-    { resource: RESOURCE.CUSTOMER, actions: CRU },
-    { resource: RESOURCE.CONTRACT, actions: CRU },
-    { resource: RESOURCE.PROJECT, actions: CRU },
-    { resource: RESOURCE.INVOICE, actions: CR },
-    { resource: RESOURCE.PAYMENT, actions: CR },
+    { resource: RESOURCE.CUSTOMER, actions: [...CRU, ACTION.EXPORT] },
+    { resource: RESOURCE.CONTRACT, actions: [...CRU, ACTION.EXPORT] },
+    { resource: RESOURCE.INVOICE, actions: [...CR, ACTION.EXPORT] },
+    { resource: RESOURCE.PAYMENT, actions: [...CR, ACTION.EXPORT] },
     { resource: RESOURCE.STATISTICS, actions: R },
     { resource: RESOURCE.MESSAGE, actions: CRUD },
-    { resource: RESOURCE.ANNOUNCEMENT, actions: R }
+    { resource: RESOURCE.ANNOUNCEMENT, actions: R },
   ],
   FINANCE: [
     { resource: RESOURCE.DEPARTMENT, actions: R },
     { resource: RESOURCE.USER, actions: R },
     { resource: RESOURCE.DICTIONARY, actions: R },
-    { resource: RESOURCE.CUSTOMER, actions: R },
-    { resource: RESOURCE.CONTRACT, actions: R },
-    { resource: RESOURCE.PROJECT, actions: R },
-    { resource: RESOURCE.INVOICE, actions: CRUD },
-    { resource: RESOURCE.PAYMENT, actions: CRUD },
+    { resource: RESOURCE.CUSTOMER, actions: [...R, ACTION.EXPORT] },
+    { resource: RESOURCE.CONTRACT, actions: [...R, ACTION.EXPORT] },
+    { resource: RESOURCE.INVOICE, actions: [...CRUD, ACTION.EXPORT] },
+    { resource: RESOURCE.PAYMENT, actions: [...CRUD, ACTION.EXPORT] },
     { resource: RESOURCE.STATISTICS, actions: R_EXPORT },
     { resource: RESOURCE.MESSAGE, actions: CRUD },
-    { resource: RESOURCE.ANNOUNCEMENT, actions: R }
+    { resource: RESOURCE.ANNOUNCEMENT, actions: R },
   ],
   OPS: [
     { resource: RESOURCE.DEPARTMENT, actions: CRUD },
     { resource: RESOURCE.USER, actions: R },
     { resource: RESOURCE.DICTIONARY, actions: R },
     // CUSTOMER 金额字段不触碰（P1 阶段在 service 层显式过滤）
-    { resource: RESOURCE.CUSTOMER, actions: CRU },
-    { resource: RESOURCE.CONTRACT, actions: R },
-    { resource: RESOURCE.PROJECT, actions: CRU },
-    { resource: RESOURCE.INVOICE, actions: R },
-    { resource: RESOURCE.PAYMENT, actions: R },
+    { resource: RESOURCE.CUSTOMER, actions: [...CRU, ACTION.EXPORT] },
+    { resource: RESOURCE.CONTRACT, actions: [...R, ACTION.EXPORT] },
+    { resource: RESOURCE.INVOICE, actions: [...R, ACTION.EXPORT] },
+    { resource: RESOURCE.PAYMENT, actions: [...R, ACTION.EXPORT] },
     { resource: RESOURCE.STATISTICS, actions: R },
     { resource: RESOURCE.MESSAGE, actions: CRUD },
-    { resource: RESOURCE.ANNOUNCEMENT, actions: CRUD }
+    { resource: RESOURCE.ANNOUNCEMENT, actions: CRUD },
+  ],
+  // 技术专家：现场勘查 / 报告撰写等"专业执行"角色,权限与 SALES 同
+  EXPERT: [
+    { resource: RESOURCE.DEPARTMENT, actions: R },
+    { resource: RESOURCE.USER, actions: R },
+    { resource: RESOURCE.DICTIONARY, actions: R },
+    { resource: RESOURCE.CUSTOMER, actions: [...CRU, ACTION.EXPORT] },
+    { resource: RESOURCE.CONTRACT, actions: [...CRU, ACTION.EXPORT] },
+    { resource: RESOURCE.INVOICE, actions: [...CR, ACTION.EXPORT] },
+    { resource: RESOURCE.PAYMENT, actions: [...CR, ACTION.EXPORT] },
+    { resource: RESOURCE.STATISTICS, actions: R },
+    { resource: RESOURCE.MESSAGE, actions: CRUD },
+    { resource: RESOURCE.ANNOUNCEMENT, actions: R },
   ]
 };
 

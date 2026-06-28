@@ -1,5 +1,6 @@
 // 场景 2：SALES 行级隔离 + 越权拦截 + 错误页
 import { test, expect } from "@playwright/test";
+import { DEV_PASSWORD } from "./_dev-credentials";
 
 async function ensureLoggedIn(page: import("@playwright/test").Page, employeeNo: string, password: string) {
   // 如果已在 dashboard 就不用再登录
@@ -16,7 +17,7 @@ async function ensureLoggedIn(page: import("@playwright/test").Page, employeeNo:
 
 test.describe.serial("场景 2: SALES 行级隔离 + 越权", () => {
   test("02.1 SALES 登录", async ({ page }) => {
-    await ensureLoggedIn(page, "sales", "123456");
+    await ensureLoggedIn(page, "sales", DEV_PASSWORD);
     await expect(page).toHaveURL(/dashboard/);
   });
 

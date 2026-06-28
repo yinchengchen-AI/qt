@@ -97,7 +97,7 @@ DB 层兜底：PG RLS policy  // 即使 service 漏写，DB 也会拦截
 ```
 
 - **应用层**（`lib/permissions.ts`、`server/services/*.ts`）注入 `where: { ownerUserId: user.id }`，SALES 自动只看自己负责的客户
-- **DB 层**（`prisma/migrations/20260609_rls/migration.sql`）对 5 张核心表建 RLS policy，事务内 `set_config('app.user_id', ..., true)` 设 GUC
+- **DB 层**（`prisma/migrations/20260614_init/migration.sql`）对 5 张核心表建 RLS policy，事务内 `set_config('app.user_id', ..., true)` 设 GUC
 - **bypass_rls=on** 显式开关：cron / 内部任务用，避免误伤
 
 **经验**：任何"安全相关"的逻辑不能只靠应用层。**RLS 兜底成本极低（一次 SQL 迁移），收益极高（即使代码出 bug 也不会越权）**。
@@ -107,17 +107,28 @@ DB 层兜底：PG RLS policy  // 即使 service 漏写，DB 也会拦截
 #### 合同状态机范例
 
 ```ts
-// DRAFT → PENDING_REVIEW → EFFECTIVE → EXECUTING → COMPLETED
-//   ↑              │                │
-//   └──withdraw────┘                │ terminate → TERMINATED
-//                                   │ expire → EXPIRED
+// DRAFT ─[auto: 字段完整 + 附件]─▶ ACTIVE ─[auto: 开票足额 / endDate<now]─▶ CLOSED
+//   │                                     │
+//   │ admin 强制发布                       │ admin 强制完结 (reason: completed/terminated/expired)
+//   ▼                                     ▼
+// [ACTIVE]                              [CLOSED]
 ```
 
-- **状态迁移集中在 service**：所有 `/api/contracts/:id/{submit,approve,reject,withdraw,terminate}` 路由都只调 service 单一入口
+- **状态迁移集中在 service**：所有 `/api/contracts/:id/{publish,close}` 路由都只调 service 单一入口;自动迁移由 `tryAutoPublish` / `tryAutoComplete` / `tryAutoCloseOnExpiry` 在 `createContract` / `updateContract` / 定时任务里触发
 - **事务内做转换**：`prisma.$transaction(async (tx) => { ... })`，状态读取、规则校验、状态写入、`emit()` 消息都在同一事务内
 - **不可逆状态**：`RECONCILED` / `COMPLETED` / `ISSUED` 走 ENTITY_IMMUTABLE 错误码保护
 
 **经验**：状态机 + 事务 + 校验是 B 端业务系统的**铁三角**。任何状态变更必须有事务、必须在 service、必须有错误码。
+
+#### 3.3.2 客户状态机(v0.4.0 自动化 → v0.5.0 下线)
+
+v0.4.0(2026-06)上线了 5 态状态机 + 4 条自动规则 + 7 天可撤销横幅。v0.5.0(2026-06-29)随业务反馈
+"5 态语义不清 / 自动化规则常误判" 整体下线, 删 `Customer.status / lastAutoAppliedAt / lastAutoRule`
+3 列 + `CustomerStatus` enum + `customer-status-transitions.ts` / `customer-auto-rules.ts` /
+`server/services/customer/{automation,status}.ts` / `server/jobs/customer-status-suggest.ts` 等模块。
+完整设计 / 数据迁移 / 历史消息处理见
+[superpowers/specs/2026-06-29-customer-status-deprecation.md](superpowers/specs/2026-06-29-customer-status-deprecation.md)。
+
 
 ### 3.4 错误码体系：让前后端对话有共同语言
 
@@ -125,7 +136,6 @@ DB 层兜底：PG RLS policy  // 即使 service 漏写，DB 也会拦截
 // types/errors.ts
 export const ERROR_CODES = {
   CUSTOMER_CREDIT_CODE_INVALID: "CUSTOMER_CREDIT_CODE_INVALID",
-  CONTRACT_CUSTOMER_STATUS: "CONTRACT_CUSTOMER_STATUS",
   INVOICE_OVER_LIMIT: "INVOICE_OVER_LIMIT",
   PAYMENT_DUPLICATE_REF: "PAYMENT_DUPLICATE_REF",
   ENTITY_IMMUTABLE: "ENTITY_IMMUTABLE",
@@ -179,10 +189,10 @@ void dispatchExternalChannels(ev, resolved).catch();  // 2. 异步 fire-and-forg
 ```
 
 - **inbox 永远开**（事务内同步），保证消息不丢
-- **email / wechat** 走事务外异步，失败仅 `console.warn`，**不阻塞业务**
-- **env 开关**：`NOTIFY_EMAIL_ENABLED=false` 默认关闭，避免误发
+- 外部通知通道（email / 企微）已下线，事件通知统一走站内信（事务内 createMany）
 
-**经验**：**事务的边界就是一致性的边界**。外部副作用（邮件 / 短信 / webhook）绝对不能进事务，否则一个 SMTP 故障就能回滚整个开票流程。
+
+**经验**：**事务的边界就是一致性的边界**。所有事件副作用（写 Message）必须落在事务内，跨进程的外部副作用（已下线）会破坏一致性并阻塞主流程。
 
 ### 3.9 软删 + 审计：5 年保留 + before/after diff
 
@@ -224,9 +234,10 @@ dev 模式无：
 | 校验 | `lib/validators/*.ts` | 7 个 Zod schema |
 | 事件总线 | `server/events/{bus,channels,dispatcher}.ts` | inbox + 外部通道 |
 | 状态机 | 各 service 的 `submit/approve/issue/confirm` 函数 | switch 强制迁移 |
+| 状态机通用抽象 | `lib/status-machine.ts` (`runTransition` / `runTransitionInTx`) | 4 实体 (Contract/Invoice/Payment/Review) 共用, Serializable + 行锁 |
 | 统计 | `server/services/statistics.ts` | 总览 / 账龄 / Top / 业绩 |
 | 导出 | `lib/excel.ts` | exceljs 流式生成 |
-| RLS | `lib/rls.ts`、`prisma/migrations/20260609_rls/migration.sql` | DB 层兜底 |
+| RLS | `lib/rls.ts`、`prisma/migrations/20260614_init/migration.sql` | DB 层兜底 |
 | 通知 | `lib/notify-config.ts` | env 驱动通道开关 |
 
 ### 4.2 测试与文档
@@ -234,10 +245,9 @@ dev 模式无：
 | 类别 | 文件 |
 |---|---|
 | 单元 | `tests/permissions.test.ts` |
-| E2E | `tests/e2e-flow.mjs`、`tests/p2-flow.mjs`、`tests/p3-flow.mjs` |
-| 压测 | `scripts/loadtest.mjs` |
-| 运维 | `scripts/backup.sh`、`scripts/audit-cleanup.sh` |
-| 文档 | `docs/{CODE_REVIEW,P2_REVIEW,P3_REVIEW,RLS,PROJECT_SUMMARY}.md` |
+| 压测 | `scripts/dev/loadtest.mjs` |
+| 运维 | `scripts/prod/backup.sh`、`scripts/prod/audit-cleanup.sh` |
+| 文档 | `docs/{CODE_REVIEW,P2_REVIEW,P3_REVIEW,RLS,PROJECT_SUMMARY,USER_MANUAL}.md` + `docs/superpowers/specs/{2026-06-24-qt-biz-service-refactor-design,2026-06-25-employee-profile-redesign-design,2026-06-29-customer-status-deprecation}.md` |
 
 ---
 
@@ -319,7 +329,7 @@ dev 模式无：
 1. **读 `docs/` 4 份 review** + 设计文档 v3
 2. **看 `prisma/schema.prisma`** 理解 13 张表关系
 3. **看 `server/services/customer.ts`** 作为 service 范例（含 RLS 包装）
-4. **跑 `tests/e2e-flow.mjs`** 理解业务流程
+4. **跑 `tests/e2e/*.spec.ts` 或 `npm test`** 体验业务流程
 5. **写一个新模块**：先 schema → validator → service → route → page → e2e
 
 ### 6.2 改代码前必看
