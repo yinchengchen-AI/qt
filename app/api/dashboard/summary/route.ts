@@ -12,14 +12,26 @@ import { prisma } from "@/lib/prisma";
 import { ownerEq, ownerViaContract } from "@/lib/ownership";
 import type { Prisma } from "@prisma/client";
 
-// dashboard/summary 接受 from/to,默认本月;前端不传则展示"本月经营快照"
+// dashboard/summary 接受快捷 range=month|quarter|year (与 from/to 共存,range 优先);
+// 都不传则默认本月(本月经营快照)
 const query = z.object({
+  range: z.enum(["month", "quarter", "year"]).optional(),
   from: z.string().optional(),
   to: z.string().optional(),
 });
 
-function monthRange(): { from: Date; to: Date } {
+type RangePreset = "month" | "quarter" | "year";
+
+function presetRange(preset: RangePreset): { from: Date; to: Date } {
   const now = new Date();
+  if (preset === "year") {
+    return { from: new Date(now.getFullYear(), 0, 1), to: now };
+  }
+  if (preset === "quarter") {
+    // 本季度首日: floor(月 / 3) * 3
+    const qStartMonth = Math.floor(now.getMonth() / 3) * 3;
+    return { from: new Date(now.getFullYear(), qStartMonth, 1), to: now };
+  }
   return {
     from: new Date(now.getFullYear(), now.getMonth(), 1),
     to: now,
@@ -32,8 +44,14 @@ export async function GET(req: Request) {
       const user = await requireSession();
       const url = new URL(req.url);
       const parsed = query.parse(Object.fromEntries(url.searchParams));
-      const from = parsed.from ? new Date(parsed.from) : monthRange().from;
-      const to = parsed.to ? new Date(parsed.to) : monthRange().to;
+      // 优先级: range 预设 > 自定义 from/to > 默认本月
+      const preset = parsed.range ? presetRange(parsed.range) : null;
+      const from = parsed.from
+        ? new Date(parsed.from)
+        : preset?.from ?? presetRange("month").from;
+      const to = parsed.to
+        ? new Date(parsed.to)
+        : preset?.to ?? presetRange("month").to;
       const range = { from, to };
       const own = ownerEq(user);
       const ownVia = ownerViaContract(user);

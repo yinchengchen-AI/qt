@@ -2,7 +2,7 @@
 import { useEffect, useState } from "react";
 import { ProCard } from "@ant-design/pro-components";
 import { Column } from "@ant-design/charts";
-import { Badge, Col, Row, Space, Tag, Typography, theme } from "antd";
+import { Badge, Col, Row, Segmented, Space, Tag, Typography, theme } from "antd";
 import { CalendarOutlined } from "@ant-design/icons";
 import { Page } from "@/components/page";
 import { PageHeader } from "@/components/page-header";
@@ -28,20 +28,29 @@ type DashboardData = {
   topCustomers: { id: string; name: string; code: string; total: number; contractCount: number }[];
 };
 
+type RangePreset = "month" | "quarter" | "year";
+const RANGE_OPTIONS: { value: RangePreset; label: string }[] = [
+  { value: "month", label: "月度" },
+  { value: "quarter", label: "季度" },
+  { value: "year", label: "年度" },
+];
+
 export default function DashboardPage() {
   const { isMobile } = useResponsive();
+  const [range, setRange] = useState<RangePreset>("month");
   const [data, setData] = useState<DashboardData | null>(null);
   const [loading, setLoading] = useState(true);
   const { token } = useToken();
 
   useEffect(() => {
-    fetch("/api/dashboard/summary", { credentials: "include" })
+    setLoading(true);
+    fetch(`/api/dashboard/summary?range=${range}`, { credentials: "include" })
       .then((r) => r.json())
       .then((j) => {
         if (j.code === 0) setData(j.data);
       })
       .finally(() => setLoading(false));
-  }, []);
+  }, [range]);
 
   // 图表高度在窄屏上压缩,避免单屏只能看到 1-2 根柱子
   const chartHeight = isMobile ? 280 : 420;
@@ -63,12 +72,26 @@ export default function DashboardPage() {
   const rangeFrom = o.range?.from ? new Date(o.range.from) : null;
   const rangeTo = o.range?.to ? new Date(o.range.to) : null;
   const now = new Date();
-  // 是否"本月":起点 = 当前年/月 1 号 00:00
-  const isThisMonth =
-    !!rangeFrom && rangeTo != null &&
-    rangeFrom.getFullYear() === now.getFullYear() &&
-    rangeFrom.getMonth() === now.getMonth() &&
-    rangeFrom.getDate() === 1;
+  // 区间标签:根据当前选中的 range 判断是否匹配
+  const rangeMatchesPreset = (() => {
+    if (!rangeFrom || !rangeTo) return false;
+    if (range === "month") {
+      return rangeFrom.getFullYear() === now.getFullYear()
+        && rangeFrom.getMonth() === now.getMonth()
+        && rangeFrom.getDate() === 1;
+    }
+    if (range === "year") {
+      return rangeFrom.getFullYear() === now.getFullYear()
+        && rangeFrom.getMonth() === 0
+        && rangeFrom.getDate() === 1;
+    }
+    // quarter: 起点 = 当前季度的 1 号
+    const qStartMonth = Math.floor(now.getMonth() / 3) * 3;
+    return rangeFrom.getFullYear() === now.getFullYear()
+      && rangeFrom.getMonth() === qStartMonth
+      && rangeFrom.getDate() === 1;
+  })();
+  const rangeTagLabel = range === "month" ? "本月" : range === "quarter" ? "本季" : "本年";
   // 权限提示:SALES 角色只看到自己 owner 的合同/发票/回款(由后端 ownerEq / ownerViaContract 注入)
   const permHint = "数据权限：管理员/财务可看全员；销售仅看本人负责的合同、对应发票与回款。";
 
@@ -76,11 +99,11 @@ export default function DashboardPage() {
   const kpiItems: StatItem[] = [
     {
       label: "客户总数",
-      tooltip: <>客户档案实时数量,包含潜在/在跟/已签约等全部状态。<br/><b>不受统计区间影响</b>。<br/>{permHint}</>,
+      tooltip: <>客户档案实时数量,包含潜在/在跟/已签约等全部状态。<br/><b>客户档案总数不受统计区间影响</b>;"本期新增"按所选区间统计。<br/>{permHint}</>,
       value: cust.total,
       suffix: "家",
-      description: `本月新增 ${cust.newThisMonth} 家`,
-      delta: { value: `本月新增 ${cust.newThisMonth} 家`, direction: "up" }
+      description: `${rangeTagLabel}新增 ${cust.newThisMonth} 家`,
+      delta: { value: `${rangeTagLabel}新增 ${cust.newThisMonth} 家`, direction: "up" }
     },
     {
       label: "合同总额",
@@ -114,17 +137,23 @@ export default function DashboardPage() {
 
   return (
     <Page>
-      <PageHeader title="业务总览" subtitle="默认按本月统计（后端接口 monthRange 决定）；鼠标悬停 KPI 标题旁的 ⓘ 可查看口径说明。" />
+      <PageHeader title="业务总览" subtitle="顶部 Segmented 切换月度/季度/年度统计区间；鼠标悬停 KPI 标题旁的 ⓘ 可查看口径说明。" />
 
-      <HintBox style={{ marginBottom: 12, gap: 8 }}>
+      <HintBox style={{ marginBottom: 12, gap: 8, flexWrap: "wrap" }}>
         <CalendarOutlined style={{ color: token.colorTextTertiary }} />
         <Text type="secondary" style={{ fontSize: 12 }}>统计区间</Text>
+        <Segmented<RangePreset>
+          options={RANGE_OPTIONS}
+          value={range}
+          onChange={(v) => setRange(v)}
+          size="small"
+        />
         <Text strong style={{ fontSize: 13 }}>
           {rangeFrom ? formatDate(rangeFrom) : "—"}
           {"  ~  "}
           {rangeTo ? formatDate(rangeTo) : "—"}
         </Text>
-        {isThisMonth ? <Tag color="blue" style={{ marginInlineStart: 4 }}>本月</Tag> : null}
+        {rangeMatchesPreset ? <Tag color="blue" style={{ marginInlineStart: 4 }}>{rangeTagLabel}</Tag> : null}
         <Text type="secondary" style={{ fontSize: 12, marginInlineStart: "auto" }}>{permHint}</Text>
       </HintBox>
 
