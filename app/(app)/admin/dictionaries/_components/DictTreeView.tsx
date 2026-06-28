@@ -94,14 +94,14 @@ export function DictTreeView({ rows, loading, keyword, onKeywordChange, onSelect
         <Input
           allowClear
           prefix={<SearchOutlined />}
-          placeholder="搜索 code / label"
+          placeholder="搜索 code 或 label"
           value={keyword}
           onChange={(e) => onKeywordChange(e.target.value)}
           style={{ width: 240 }}
         />
       </Space>
       {filtered.length === 0 ? (
-        <Empty description={keyword ? "无匹配节点" : "该类目下暂无数据"} style={{ marginTop: 48 }} />
+        <Empty description={keyword ? "没有匹配的字典项，请调整搜索关键词" : "该类目下暂无字典项，请新增"} style={{ marginTop: 48 }} />
       ) : (
         <Tree
           showLine

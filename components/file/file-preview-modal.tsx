@@ -100,10 +100,10 @@ export function FilePreviewModal(props: {
         });
         const j = await r.json();
         if (cancelled) return;
-        if (j.code !== 0 || !j.data?.url) throw new Error(j.message || "获取预览链接失败");
+        if (j.code !== 0 || !j.data?.url) throw new Error(j.message || "获取预览链接失败，请稍后重试");
         const resp = await fetch(j.data.url);
         if (cancelled) return;
-        if (!resp.ok) throw new Error(`下载对象失败: HTTP ${resp.status}`);
+        if (!resp.ok) throw new Error(`下载文件失败：HTTP ${resp.status}，请稍后重试`);
         const blob = await resp.blob();
         if (cancelled) return;
         createdUrl = URL.createObjectURL(blob);
@@ -135,7 +135,7 @@ export function FilePreviewModal(props: {
         credentials: "include"
       });
       const j = await r.json();
-      if (j.code !== 0) throw new Error(j.message || "下载失败");
+      if (j.code !== 0) throw new Error(j.message || "下载失败，请稍后重试");
       // 用 a 标签 + download 属性强制下载(覆盖 Content-Disposition)
       const a = document.createElement("a");
       a.href = j.data.url;
@@ -198,7 +198,7 @@ export function FilePreviewModal(props: {
     >
       {loading && (
         <div style={{ display: "flex", justifyContent: "center", padding: 60 }}>
-          <Spin size="large" tip="加载中...">
+          <Spin size="large" tip="正在加载预览...">
             <div style={{ width: 200, height: 100 }} />
           </Spin>
         </div>
@@ -288,8 +288,8 @@ export function FilePreviewModal(props: {
       {blobUrl && !loading && !err && previewKind === "office" && (
         <Result
           icon={<FileExcelOutlined style={{ fontSize: 64, color: "#08979c" }} />}
-          title="此 Office 文件无法在浏览器内直接预览"
-          subTitle="可下载后用对应应用打开,或借助 Office Online 在线查看"
+          title="此 Office 文件暂不支持浏览器内直接预览"
+          subTitle="可下载后用对应应用打开，或借助 Office Online 在线查看"
           extra={
             <Space>
               {officeOnlineUrl && (
@@ -309,7 +309,7 @@ export function FilePreviewModal(props: {
       {blobUrl && !loading && !err && !canInlinePreview && (
         <Result
           icon={<FileKindBadge mime={attachment?.mimeType} name={attachment?.name ?? ""} style={{ fontSize: 64 }} />}
-          title="该格式无法在浏览器内预览"
+          title="该格式暂不支持浏览器内预览"
           subTitle="请下载后用对应应用打开"
           extra={
             <Button type="primary" icon={<DownloadOutlined />} onClick={handleDownload}>

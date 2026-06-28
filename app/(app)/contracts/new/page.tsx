@@ -90,9 +90,9 @@ export default function NewContractPage() {
       <PageHeader
         back={goBack}
         title="新建合同"
-        subtitle="为洽谈中或已签约客户创建合同,提交后进入审批"
+        subtitle="为洽谈中或已签约的客户创建合同，提交后进入审批流程"
       />
-      <FormCard headerHint="客户必须是 洽谈中 / 已签约 状态;服务止期必须晚于起期,否则无法提交">
+      <FormCard headerHint="客户必须处于「洽谈中」或「已签约」状态；服务止期必须晚于起期，否则无法提交">
         <ProForm
           formRef={formRef}
           layout="vertical"
@@ -121,17 +121,17 @@ export default function NewContractPage() {
               message.error(j.message);
               return false;
             }
-            message.success("已创建（草稿）");
+            message.success("合同已创建（草稿），可继续编辑后提交审批");
             router.push(`/contracts/${j.data.id}`);
             return true;
           }}
         >
-          <FormSection title="签约主体" description="只可选 洽谈中 / 已签约 状态客户">
+          <FormSection title="签约主体" description="仅可选「洽谈中」或「已签约」状态的客户">
             <FormGrid columns={1}>
               <ProFormSelect
                 name="customerId"
                 label="客户"
-                placeholder="搜索客户名"
+                placeholder="按客户名 / 客户编号搜索"
                 showSearch
                 style={{ width: "100%" }}
                 rules={[
@@ -203,9 +203,9 @@ export default function NewContractPage() {
               <ProFormText
                 name="contractNo"
                 label="合同编号"
-                placeholder="如:QT-HT-2026-0001"
+                placeholder="如：QT-HT-2026-0001（保存后不再校验可改）"
                 rules={[
-                  { required: true, message: "请输入合同编号" },
+                  { required: true, message: "请输入合同编号（必填）" },
                   { min: 1, max: 50 }
                 ]}
                 fieldProps={{ size: "large" }}
@@ -215,7 +215,7 @@ export default function NewContractPage() {
                 label="服务类型"
                 placeholder="请选择"
                 options={serviceTypeOptions}
-                rules={[{ required: true, message: "请选择服务类型" }]}
+                rules={[{ required: true, message: "请选择服务类型（必填）" }]}
                 showSearch
                 fieldProps={{
                   size: "large",
@@ -225,9 +225,9 @@ export default function NewContractPage() {
               <ProFormText
                 name="title"
                 label="合同标题"
-                placeholder="如:杭州阿里巴巴 2026 年安全咨询服务合同"
+                placeholder="如：杭州阿里巴巴 2026 年安全咨询服务合同"
                 rules={[
-                  { required: true, message: "请输入合同标题" },
+                  { required: true, message: "请输入合同标题（必填）" },
                   { min: 2, max: 200 }
                 ]}
                 fieldProps={{ size: "large" }}
@@ -237,7 +237,7 @@ export default function NewContractPage() {
                 label="付款方式"
                 placeholder="请选择"
                 options={PAYMENT_METHOD_OPTIONS}
-                rules={[{ required: true, message: "请选择付款方式" }]}
+                rules={[{ required: true, message: "请选择付款方式（必填）" }]}
                 fieldProps={{ size: "large" }}
               />
             </FormGrid>
@@ -245,11 +245,11 @@ export default function NewContractPage() {
               <ProFormSelect
                 name="signerId"
                 label="签订人"
-                placeholder="搜索员工姓名/工号"
-                tooltip="默认是当前登录员工;admin 可改成任意员工,方便代录"
+                placeholder="按姓名 / 工号搜索员工"
+                tooltip="默认为当前登录员工；管理员可改为任意员工，便于代录"
                 showSearch
                 initialValue={currentUserId}
-                rules={[{ required: true, message: "请选择签订人" }]}
+                rules={[{ required: true, message: "请选择合同签订人（必填）" }]}
                 fieldProps={{
                   size: "large",
                   optionFilterProp: "label"
@@ -271,10 +271,10 @@ export default function NewContractPage() {
               <ProFormSelect
                 name="ownerUserId"
                 label="负责人"
-                placeholder="搜索员工姓名/工号"
-                tooltip="默认继承所选客户的业务负责人,admin 可改为任意 ACTIVE 员工,方便代录/转交"
+                placeholder="按姓名 / 工号搜索员工"
+                tooltip="默认继承所选客户的业务负责人；管理员可改为任意在职员工，便于代录 / 转交"
                 showSearch
-                rules={[{ required: true, message: "请选择负责人" }]}
+                rules={[{ required: true, message: "请选择合同负责人（必填）" }]}
                 fieldProps={{
                   size: "large",
                   optionFilterProp: "label"
@@ -313,7 +313,7 @@ export default function NewContractPage() {
                 name="endDate"
                 label="服务止期"
                 rules={[
-                  { required: true, message: "请选择服务止期" },
+                  { required: true, message: "请选择服务止期（必填，且晚于起期）" },
                   ({ getFieldValue }: { getFieldValue: (name: string) => unknown }) => ({
                     validator(_: unknown, value: unknown) {
                       const start = getFieldValue("startDate") as string | number | Date | null | undefined;
@@ -338,9 +338,9 @@ export default function NewContractPage() {
               <ProFormDigit
                 name="totalAmount"
                 label="合同总额（含税）"
-                placeholder="0.00"
+                placeholder="请输入合同总额（元）"
                 min={0.01}
-                rules={[{ required: true, message: "请输入合同总额" }]}
+                rules={[{ required: true, message: "请输入合同总额（必填）" }]}
                 fieldProps={{ size: "large", precision: 2, prefix: "¥" }}
               />
               <ProFormSelect
@@ -348,19 +348,19 @@ export default function NewContractPage() {
                 label="税率"
                 initialValue={0.06}
                 options={TAX_RATE_OPTIONS.map((v, i) => ({ value: v, label: TAX_RATE_LABELS[i] }))}
-                rules={[{ required: true, message: "请选择税率" }]}
+                rules={[{ required: true, message: "请选择适用税率（必填）" }]}
                 fieldProps={{ size: "large" }}
               />
             </FormGrid>
           </FormSection>
 
-          <FormSection title="备注" description="签约背景 / 特殊条款 / 客户偏好等自由文本;不影响审批流">
+          <FormSection title="备注" description="可填写签约背景、特殊条款、客户偏好等；不影响审批流">
             <FormGrid columns={1}>
               <ProFormTextArea
                 name="remark"
                 label="合同备注"
-                placeholder="可空;500 字符以内"
-                rules={[{ max: 500, message: "备注不超过 500 字符" }]}
+                placeholder="选填，500 个字符以内"
+                rules={[{ max: 500, message: "备注不超过 500 个字符" }]}
                 fieldProps={{
                   autoSize: { minRows: 3, maxRows: 6 },
                   showCount: true,
@@ -370,7 +370,7 @@ export default function NewContractPage() {
             </FormGrid>
           </FormSection>
 
-          <FormSection title="合同附件" description="至少 1 个盖章 PDF 后才能提交审批">
+          <FormSection title="合同附件" description="至少上传 1 个盖章版的合同 PDF 后才能提交审批">
             <UploadButton
               name="attachments"
               label="上传"

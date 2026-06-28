@@ -56,7 +56,7 @@ export async function GET(req: Request) {
           headers: {
             "Content-Type":
               "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-            "Content-Disposition": `attachment; filename="overview-${ts}.xlsx"`,
+            "Content-Disposition": `attachment; filename="总览_${ts}.xlsx"`,
             "Cache-Control": "no-store"
           }
         });
@@ -81,7 +81,7 @@ export async function GET(req: Request) {
           headers: {
             "Content-Type":
               "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-            "Content-Disposition": `attachment; filename="top-customers-${ts}.xlsx"`,
+            "Content-Disposition": `attachment; filename="Top 客户_${ts}.xlsx"`,
             "Cache-Control": "no-store"
           }
         });
@@ -105,7 +105,7 @@ export async function GET(req: Request) {
           headers: {
             "Content-Type":
               "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-            "Content-Disposition": `attachment; filename="by-region-${ts}.xlsx"`,
+            "Content-Disposition": `attachment; filename="区域统计_${ts}.xlsx"`,
             "Cache-Control": "no-store"
           }
         });
@@ -126,7 +126,7 @@ export async function GET(req: Request) {
         headers: {
           "Content-Type":
             "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-          "Content-Disposition": `attachment; filename="employee-performance-${ts}.xlsx"`,
+          "Content-Disposition": `attachment; filename="员工业绩_${ts}.xlsx"`,
           "Cache-Control": "no-store"
         }
       });

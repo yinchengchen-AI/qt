@@ -52,7 +52,7 @@ export function CreateDictModal({ open, onClose, onSaved, defaultCategory }: Pro
         message.error(j.message);
         return;
       }
-      message.success("已新增");
+      message.success("字典项已新增");
       form.resetFields();
       onSaved();
       onClose();
@@ -88,13 +88,13 @@ export function CreateDictModal({ open, onClose, onSaved, defaultCategory }: Pro
         <Form.Item
           name="code"
           label="代码"
-          tooltip="同 category 内唯一;树形字典建议用 R{父 ID}.{ID} 或 {父}.{子} 形式"
+          tooltip="同 category 内唯一；树形字典建议采用 R{父 ID}.{ID} 或 {父}.{子} 的形式"
           rules={[
             { required: true, max: 40 },
-            { pattern: /^[A-Z][A-Z0-9_.]*$/, message: "大写字母/数字/下划线/点,以大写字母开头" }
+            { pattern: /^[A-Z][A-Z0-9_.]*$/, message: "需以大写字母开头，仅允许大写字母、数字、下划线、点" }
           ]}
         >
-          <Input placeholder="如 R2.30" />
+          <Input placeholder="如：R2.30" />
         </Form.Item>
         <Form.Item name="label" label="标签" rules={[{ required: true, max: 80 }]}>
           <Input maxLength={80} showCount />
@@ -102,13 +102,13 @@ export function CreateDictModal({ open, onClose, onSaved, defaultCategory }: Pro
         <Form.Item
           name="parentCode"
           label="父级代码"
-          tooltip="树形字典 (如 REGION) 用,留空 = 顶级;选后 code 要与父级 code 一致(后端校验)"
+          tooltip="仅树形字典（如 REGION）使用；留空则为顶级；选择父级后，code 需与父级 code 保持一致（后端校验）"
         >
           <Select
             allowClear
             loading={parentLoading}
             disabled={!category}
-            placeholder={category ? "顶级 (无父级)" : "先选分类"}
+            placeholder={category ? "不选则为顶级（无父级）" : "请先选择类目"}
             showSearch
             optionFilterProp="label"
             options={parentOptions.map((p) => ({

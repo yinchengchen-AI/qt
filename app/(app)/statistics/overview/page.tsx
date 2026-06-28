@@ -108,7 +108,7 @@ export default function OverviewPage() {
           <StatGrid items={kpis} columns={5} loading={loading && !data} />
 
           <div style={{ marginTop: 24 }}>
-            <PageHeader level="section" title="客户区域分布" subtitle="按镇街分组" />
+            <PageHeader level="section" title="客户区域分布" subtitle="按镇街分组（仅显示已录入镇街的客户）" />
             <ProCard>
               {data && data.townDistribution && data.townDistribution.length > 0 ? (
                 <Column data={data.townDistribution} xField="town" yField="count" height={townChartHeight} colorField="town"
@@ -116,19 +116,19 @@ export default function OverviewPage() {
                   label={{ text: (d: Record<string, unknown>) => String(d.count), style: { fontSize: 11 } }}
                   xAxis={{ label: { autoRotate: true, autoHide: false } }}
                 />
-              ) : <EmptyState empty title="暂无区域分布数据" description="客户所在地尚未录入镇街信息" height={townChartHeight} />}
+              ) : <EmptyState empty title="暂无区域分布数据" description="客户所在地尚未录入镇街信息；请在客户档案中补充所在镇街" height={townChartHeight} />}
             </ProCard>
           </div>
 
           <div style={{ marginTop: 32 }}>
-            <PageHeader level="section" title="合同/开票/回款趋势" />
+            <PageHeader level="section" title="合同/开票/回款趋势" subtitle="按月统计合同额、已开票额、已回款额" />
             <ProCard>
               {lineData.length > 0 ? (
                 <Line data={lineData} xField="month" yField="value" colorField="type" height={chartHeight}
                   autoFit
                   point={{ shapeField: "circle", sizeField: 3 }}
                 />
-              ) : <EmptyState empty title="暂无趋势数据" height={chartHeight} />}
+              ) : <EmptyState empty title="暂无趋势数据" description="当前时间范围内尚无合同、开票或回款记录" height={chartHeight} />}
             </ProCard>
           </div>
         </>

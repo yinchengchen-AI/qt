@@ -108,7 +108,7 @@ export async function GET(req: Request) {
         headers: {
           "Content-Type":
             "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-          "Content-Disposition": `attachment; filename="invoices-${ts}.xlsx"`,
+          "Content-Disposition": `attachment; filename="开票列表_${ts}.xlsx"`,
           "Cache-Control": "no-store",
         },
       });

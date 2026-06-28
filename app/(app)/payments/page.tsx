@@ -44,8 +44,8 @@ export default function PaymentsPage() {
       qs.set(k, String(v));
     }
     try {
-      await downloadExcel(`/api/payments/export${qs.toString() ? `?${qs}` : ""}`, "payments.xlsx");
-      message.success("已开始下载");
+      await downloadExcel(`/api/payments/export${qs.toString() ? `?${qs}` : ""}`, "回款列表.xlsx");
+      message.success("导出已开始下载");
     } catch (e) {
       message.error((e as Error).message);
     }
@@ -55,7 +55,7 @@ export default function PaymentsPage() {
     <Page>
       <PageHeader
         title="回款管理"
-        subtitle="登记银行到账、确认、对账与退款;按合同 / 发票 / 状态筛选"
+        subtitle="登记银行到账、确认、对账与退款；按合同、发票、状态筛选"
         actions={
           <>
             <Button key="export" icon={<DownloadOutlined />} onClick={handleExport}>

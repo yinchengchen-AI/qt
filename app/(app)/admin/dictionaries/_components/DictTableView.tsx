@@ -126,7 +126,7 @@ export function DictTableView({
   }
 
   if (!loading && rows.length === 0) {
-    return <Empty description="该类目下暂无数据" style={{ marginTop: 48 }} />;
+    return <Empty description="该类目下暂无字典项，请新增" style={{ marginTop: 48 }} />;
   }
 
   return (

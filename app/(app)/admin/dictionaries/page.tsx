@@ -145,7 +145,7 @@ export default function DictionariesPage() {
     });
     const j = await r.json();
     if (j.code !== 0) return message.error(j.message);
-    message.success(next ? "已启用" : "已停用");
+    message.success(next ? "已启用" : "已停用，列表已刷新");
     fetchRows();
   }
 
@@ -165,8 +165,8 @@ export default function DictionariesPage() {
       if (j.code === 0) ok++;
       else fail++;
     }
-    if (fail > 0) message.warning(`完成: ${ok} 成功, ${fail} 失败`);
-    else message.success(`已${active ? "启用" : "停用"} ${ok} 条`);
+    if (fail > 0) message.warning(`批量操作完成：${ok} 成功，${fail} 失败`);
+    else message.success(`已${active ? "启用" : "停用"} ${ok} 条字典项`);
     setSelectedIds(new Set());
     fetchRows();
   }

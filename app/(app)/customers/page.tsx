@@ -137,8 +137,8 @@ export default function CustomersPage() {
     }
     const url = `/api/customers/export${qs.toString() ? `?${qs}` : ""}`;
     try {
-      await downloadExcel(url, "customers.xlsx");
-      message.success("已开始下载");
+      await downloadExcel(url, "客户列表.xlsx");
+      message.success("已开始下载，请稍候");
     } catch (e) {
       message.error((e as Error).message);
     }
@@ -148,7 +148,7 @@ export default function CustomersPage() {
     <Page>
       <PageHeader
         title="客户管理"
-        subtitle="线索录入、签约、跟进与等级维护;支持按地区 / 类型 / 等级筛选"
+        subtitle="管理客户线索、签约、跟进与等级；支持按地区、类型、等级筛选"
         actions={
           <>
             <Button key="export" size={isMobile ? "middle" : "middle"} icon={<DownloadOutlined />} onClick={handleExport}>

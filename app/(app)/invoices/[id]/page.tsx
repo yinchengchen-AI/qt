@@ -49,27 +49,27 @@ export default function InvoiceDetailPage() {
   const status = invoice?.status;
 
   const askIssue = () => Modal.confirm({
-    title: "开票(财务)",
-    content: <div><div>发票号(电子发票 20 位数字):</div><Input value={invoiceNo} onChange={(e) => setInvoiceNo(e.target.value)} placeholder="如 01100210031112345678" /></div>,
+    title: "确认开票（财务操作）",
+    content: <div><div style={{ marginBottom: 6 }}>请填写 20 位电子发票号：</div><Input value={invoiceNo} onChange={(e) => setInvoiceNo(e.target.value)} placeholder="如：01100210031112345678" /></div>,
     onOk: async () => {
-      if (!invoiceNo) { message.warning("请输入发票号"); return; }
+      if (!invoiceNo) { message.warning("请先填写 20 位电子发票号"); return; }
       await run("issue", { invoiceNo, actualIssueDate: new Date().toISOString() });
       setInvoiceNo("");
     }
   });
   const askRedFlush = () => Modal.confirm({
-    title: "红冲发票",
-    content: <Input.TextArea rows={3} value={reason} onChange={(e) => setReason(e.target.value)} placeholder="红冲原因" />,
+    title: "确认红冲发票？",
+    content: <Input.TextArea rows={3} value={reason} onChange={(e) => setReason(e.target.value)} placeholder="请填写红冲原因，将记入操作记录" />,
     onOk: async () => { await run("red-flush", { reason }); setReason(""); }
   });
   const askReject = () => Modal.confirm({
-    title: "驳回开票",
-    content: <Input.TextArea rows={3} value={reason} onChange={(e) => setReason(e.target.value)} placeholder="驳回原因" />,
+    title: "确认驳回该开票？",
+    content: <Input.TextArea rows={3} value={reason} onChange={(e) => setReason(e.target.value)} placeholder="请填写驳回原因，业务员可见" />,
     onOk: async () => { await run("reject", { reason }); setReason(""); }
   });
   const askVoid = () => Modal.confirm({
-    title: "作废发票(仅当日)",
-    content: <Input.TextArea rows={2} value={reason} onChange={(e) => setReason(e.target.value)} placeholder="作废原因" />,
+    title: "确认作废该发票？（仅当日有效）",
+    content: <Input.TextArea rows={2} value={reason} onChange={(e) => setReason(e.target.value)} placeholder="请填写作废原因，将记入操作记录" />,
     onOk: async () => { await run("void", { reason }); setReason(""); }
   });
   return (
@@ -77,7 +77,7 @@ export default function InvoiceDetailPage() {
       <PageHeader
         back={goBack}
         title={`${invoice.customerName} · ${invoice.invoiceNo}`}
-        subtitle={`发票类型: ${INVOICE_TYPE_MAP[invoice.invoiceType as string] ?? invoice.invoiceType ?? "-"}`}
+        subtitle={`发票类型：${INVOICE_TYPE_MAP[invoice.invoiceType as string] ?? invoice.invoiceType ?? "—"}`}
         meta={<StatusTag status={invoice.status} domain="invoice" />}
         actions={
           <Space wrap>

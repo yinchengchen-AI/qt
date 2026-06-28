@@ -108,8 +108,8 @@ export default function UserDetailPage() {
             title="暂无员工档案"
             description={
               <>
-                <span>该账号仅有关键信息,</span>
-                <span>可补充档案以记录任职、教育、证书等。</span>
+                <span>该账号仅有关键信息，</span>
+                <span>可补充员工档案以记录岗位、教育、证书等。</span>
               </>
             }
             action={
@@ -216,7 +216,7 @@ export default function UserDetailPage() {
           <Text type="secondary" style={{ fontSize: 13 }}>紧急联系人 ({emergencyContacts.length})</Text>
         </Divider>
         {emergencyContacts.length === 0 ? (
-          <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="尚未填写紧急联系人" />
+          <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="尚未填写紧急联系人，建议至少补充 1 位" />
         ) : (
           <Row gutter={[12, 12]}>
             {emergencyContacts.map((c) => (

@@ -70,7 +70,7 @@ export async function GET(req: Request) {
         headers: {
           "Content-Type":
             "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-          "Content-Disposition": `attachment; filename="payments-${ts}.xlsx"`,
+          "Content-Disposition": `attachment; filename="回款列表_${ts}.xlsx"`,
           "Cache-Control": "no-store",
         },
       });

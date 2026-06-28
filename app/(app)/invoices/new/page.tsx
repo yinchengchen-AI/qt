@@ -60,7 +60,7 @@ export default function NewInvoicePage() {
       <PageHeader
         back={goBack}
         title="新建开票"
-        subtitle="为已生效合同申请开票,提交后由财务审核"
+        subtitle="为已生效的合同申请开票，提交后由财务审核并出具发票"
       />
       <FormCard
         headerHint={
@@ -104,18 +104,18 @@ export default function NewInvoicePage() {
               message.error(j.message);
               return false;
             }
-            message.success("已创建草稿");
+            message.success("开票草稿已创建，可在详情页提交审核");
             router.push(`/invoices/${j.data.id}`);
             return true;
           }}
         >
-          <FormSection title="关联合同" description="合同须处于 已生效 / 执行中 状态;选合同后自动带出客户与抬头">
+          <FormSection title="关联合同" description="仅可选「已生效」或「执行中」状态的合同；选择合同后将自动带出客户与抬头信息">
             <ProFormSelect
               name="contractId"
               label="合同"
-              placeholder="搜索合同编号 / 标题"
+              placeholder="按合同编号 / 合同标题搜索"
               showSearch
-              rules={[{ required: true, message: "请选择合同" }]}
+              rules={[{ required: true, message: "请选择关联合同（必填）" }]}
               fieldProps={{
                 size: "large",
                 optionFilterProp: "label",
@@ -176,9 +176,9 @@ export default function NewInvoicePage() {
               <ProFormText
                 name="invoiceNo"
                 label="发票号"
-                placeholder="如:01100210031112345678"
+                placeholder="如：01100210031112345678（电子发票为 20 位数字）"
                 rules={[
-                  { required: true, message: "请填写发票号" },
+                  { required: true, message: "请输入发票号（电子发票为 20 位数字）" },
                   { min: 1, max: 50 }
                 ]}
                 fieldProps={{ size: "large" }}
@@ -189,14 +189,14 @@ export default function NewInvoicePage() {
                 name="invoiceType"
                 label="发票类型"
                 options={INVOICE_TYPE_OPTIONS}
-                rules={[{ required: true, message: "请选择发票类型" }]}
+                rules={[{ required: true, message: "请选择发票类型（必填）" }]}
                 fieldProps={{ size: "large" }}
               />
               <ProFormSelect
                 name="titleType"
                 label="抬头类型"
                 options={TITLE_TYPE_OPTIONS}
-                rules={[{ required: true, message: "请选择抬头类型" }]}
+                rules={[{ required: true, message: "请选择抬头类型（必填）" }]}
                 fieldProps={{
                   size: "large",
                   onChange: (v) => setTitleType(v as "COMPANY" | "PERSONAL")
@@ -208,7 +208,7 @@ export default function NewInvoicePage() {
                 name="amount"
                 label="含税金额"
                 min={0.01}
-                rules={[{ required: true, message: "请输入含税金额" }]}
+                rules={[{ required: true, message: "请输入含税金额（必填）" }]}
                 fieldProps={{ size: "large", precision: 2, prefix: "¥" }}
               />
               <ProFormSelect
@@ -216,7 +216,7 @@ export default function NewInvoicePage() {
                 label="税率"
                 initialValue={0.06}
                 options={TAX_RATE_OPTIONS.map((v, i) => ({ value: v, label: TAX_RATE_LABELS[i] }))}
-                rules={[{ required: true, message: "请选择税率" }]}
+                rules={[{ required: true, message: "请选择适用税率（必填）" }]}
                 fieldProps={{ size: "large" }}
               />
             </FormGrid>
@@ -224,7 +224,7 @@ export default function NewInvoicePage() {
               <ProFormDatePicker
                 name="applyDate"
                 label="申请日期"
-                rules={[{ required: true, message: "请选择申请日期" }]}
+                rules={[{ required: true, message: "请选择开票申请日期（必填）" }]}
                 fieldProps={{ size: "large", style: { width: "100%" } }}
               />
               <ProFormDatePicker
@@ -239,8 +239,8 @@ export default function NewInvoicePage() {
             title="抬头信息"
             description={
               titleType === "COMPANY"
-                ? "公司抬头:抬头名称必填;税号 / 银行 / 地址 / 电话选填"
-                : "个人抬头:抬头名称必填;税号 / 银行等选填"
+                ? "公司抬头：抬头名称必填；税号、开户行、银行账号、地址、电话均选填"
+                : "个人抬头：抬头名称必填；税号、开户行等均选填"
             }
           >
             <FormGrid columns={1}>
@@ -249,8 +249,8 @@ export default function NewInvoicePage() {
                 label="抬头名称"
                 placeholder={
                   pickedCustomer
-                    ? `默认：${pickedCustomer.name}(可改)`
-                    : "如:杭州阿里巴巴有限公司"
+                    ? `默认：${pickedCustomer.name}（可手动修改）`
+                    : "如：杭州阿里巴巴有限公司"
                 }
                 rules={[{ required: true, max: 100 }]}
                 fieldProps={{ size: "large" }}
@@ -260,19 +260,19 @@ export default function NewInvoicePage() {
               <ProFormText
                 name="taxNo"
                 label="税号"
-                placeholder={titleType === "COMPANY" ? "如:91330100XXXX(18 位)" : "可空"}
+                placeholder={titleType === "COMPANY" ? "如：91330100MA0XXXXXXX（18 位）" : "个人抬头无需税号，可空"}
                 fieldProps={{ size: "large", maxLength: 30 }}
               />
               <ProFormText
                 name="bankName"
                 label="开户行"
-                placeholder="如:工商银行杭州武林支行"
+                placeholder="如：工商银行杭州武林支行（选填）"
                 fieldProps={{ size: "large", maxLength: 50 }}
               />
               <ProFormText
                 name="bankAccount"
                 label="银行账号"
-                placeholder="对公账号"
+                placeholder="请输入对公账号（选填）"
                 fieldProps={{ size: "large", maxLength: 50 }}
               />
               <ProFormText
@@ -281,14 +281,14 @@ export default function NewInvoicePage() {
                 placeholder={
                   pickedCustomer?.address
                     ? `默认：${pickedCustomer.address}`
-                    : "公司注册地址或开票地址"
+                    : "请输入公司注册地址或开票地址"
                 }
                 fieldProps={{ size: "large", maxLength: 200 }}
               />
               <ProFormText
                 name="phone"
                 label="电话"
-                placeholder={pickedCustomer?.contactPhone ?? "可空"}
+                placeholder={pickedCustomer?.contactPhone || "如：13800001111（选填）"}
                 fieldProps={{ size: "large", maxLength: 20 }}
               />
             </FormGrid>
@@ -296,7 +296,7 @@ export default function NewInvoicePage() {
 
           <FormSection
             title="支持凭证"
-            description="电子发票 PDF、银行回单等(可选,先传可后改);保存后会跟发票绑定"
+            description="电子发票 PDF、银行回单等凭证（选填，先传可后改）；保存后将与发票绑定"
           >
             <FormGrid columns={1}>
               <UploadButton

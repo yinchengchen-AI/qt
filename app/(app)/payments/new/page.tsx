@@ -60,13 +60,13 @@ export default function NewPaymentPage() {
       <PageHeader
         back={goBack}
         title="登记回款"
-        subtitle="登记银行到账流水,与发票 / 合同自动对账"
+        subtitle="登记银行到账流水，与发票、合同自动对账"
       />
       <FormCard
         headerHint={
           pickedContract
-            ? `合同：${pickedContract.contractNo}（${pickedContract.customerName}）;选发票可限制金额`
-            : "选合同后,发票下拉限同合同可选"
+            ? `合同：${pickedContract.contractNo}（${pickedContract.customerName}）；选了发票后金额应与发票一致`
+            : "选合同后，发票下拉会限制为同合同的可选项；留空表示合同预收款"
         }
       >
         <ProForm
@@ -95,19 +95,19 @@ export default function NewPaymentPage() {
               message.error(j.message);
               return false;
             }
-            message.success("已登记（计划中）");
+            message.success("回款已登记（计划中）");
             router.push(`/payments/${j.data.id}`);
             return true;
           }}
         >
-          <FormSection title="合同与发票" description="合同必填;发票选填,留空表示合同预收款">
+          <FormSection title="合同与发票" description="合同必填；发票选填，留空表示合同预收款">
             <FormGrid columns={2}>
               <ProFormSelect
                 name="contractId"
                 label="合同"
-                placeholder="搜索合同号 / 标题"
+                placeholder="搜索合同号或合同标题"
                 showSearch
-                rules={[{ required: true, message: "请选择合同" }]}
+                rules={[{ required: true, message: "请选择合同（必填）" }]}
                 fieldProps={{ size: "large", optionFilterProp: "label" }}
                 request={async (params: { keyWords?: string }) => {
                   const qs = new URLSearchParams();
@@ -139,7 +139,7 @@ export default function NewPaymentPage() {
               <ProFormSelect
                 name="invoiceId"
                 label="发票"
-                placeholder={pickedContract ? "选同合同的发票;留空 = 合同预收款" : "先选合同"}
+                placeholder={pickedContract ? "选同合同的发票；留空表示合同预收款" : "请先选择合同"}
                 disabled={!presetContract && !pickedContract}
                 showSearch
                 allowClear
@@ -171,7 +171,7 @@ export default function NewPaymentPage() {
                 name="amount"
                 label="金额"
                 min={0.01}
-                rules={[{ required: true, message: "请输入金额" }]}
+                rules={[{ required: true, message: "请输入金额（必填）" }]}
                 fieldProps={{
                   size: "large",
                   precision: 2,
@@ -182,21 +182,21 @@ export default function NewPaymentPage() {
               <ProFormDatePicker
                 name="receivedAt"
                 label="到账日"
-                rules={[{ required: true, message: "请选择到账日" }]}
+                rules={[{ required: true, message: "请选择到账日（必填）" }]}
                 fieldProps={{ size: "large", style: { width: "100%" } }}
               />
               <ProFormSelect
                 name="method"
                 label="收款方式"
                 options={PAYMENT_METHOD_OPTIONS}
-                rules={[{ required: true, message: "请选择收款方式" }]}
+                rules={[{ required: true, message: "请选择收款方式（必填）" }]}
                 fieldProps={{ size: "large" }}
               />
               <ProFormText
                 name="bankRefNo"
                 label="银行流水号"
-                placeholder="对账时必填;全局唯一"
-                tooltip="已确认状态时必填"
+                placeholder="对账时必填；全局唯一，建议粘贴银行流水"
+                tooltip="已确认状态时必填；用于后续对账"
                 fieldProps={{ size: "large", maxLength: 50 }}
               />
             </FormGrid>
@@ -207,13 +207,13 @@ export default function NewPaymentPage() {
               <ProFormText
                 name="bankName"
                 label="收款行"
-                placeholder="实际到账的银行名称"
+                placeholder="请输入实际到账的银行名称"
                 fieldProps={{ size: "large", maxLength: 50 }}
               />
               <ProFormText
                 name="remark"
                 label="备注"
-                placeholder="可空"
+                placeholder="备注信息（选填）"
                 fieldProps={{ size: "large", maxLength: 200, showCount: true }}
               />
             </FormGrid>
@@ -221,8 +221,8 @@ export default function NewPaymentPage() {
 
           <Space>
             <Text type="secondary" style={{ fontSize: 12 }}>
-              登记后状态 <Tag color="blue">计划中</Tag>;
-              财务确认后变 <Tag color="processing">已确认</Tag>,可对账。
+              登记后状态为「计划中」；
+              财务确认后变为「已确认」，可对账。
             </Text>
           </Space>
           <SubmitBar

@@ -81,7 +81,7 @@ export default function ByRegionPage() {
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = `by-region-${new Date().toISOString().slice(0, 10)}.xlsx`;
+    a.download = `区域统计_${new Date().toISOString().slice(0, 10)}.xlsx`;
     a.click();
     URL.revokeObjectURL(url);
   };
@@ -116,7 +116,7 @@ export default function ByRegionPage() {
     <Page>
       <PageHeader
         title="区域统计"
-        subtitle="按客户所在镇街汇总合同、开票、回款(销售角色仅看自己负责的客户),支持时间范围筛选"
+        subtitle="按客户所在镇街汇总合同、开票、回款（销售仅看自己负责的客户）；支持时间范围筛选"
         actions={
           <Space wrap>
             <DatePicker.RangePicker
@@ -136,7 +136,7 @@ export default function ByRegionPage() {
           <Alert
             type="info"
             showIcon
-            title="默认范围为本年度(1 月 1 日 00:00 ~ 当前时刻),可使用上方时间选择器调整或清空"
+            title="默认范围为本年度（1 月 1 日 00:00 ~ 当前时刻），可使用上方时间选择器调整或清空"
             style={{ marginBottom: 16 }}
           />
           <StatGrid items={kpis} columns={4} loading={loading && rows.length === 0} />
@@ -158,7 +158,7 @@ export default function ByRegionPage() {
                     label={{ text: (d: Record<string, unknown>) => formatCompact(d.value as number), style: { fontSize: 10 } }}
                     xAxis={{ label: { autoRotate: true, autoHide: false } }}
                   />
-                ) : <EmptyState empty title="暂无数据" height={chartHeight} />}
+                ) : <EmptyState empty title="暂无区域数据" description="当前时间范围内没有任何区域有合同、开票或回款" height={chartHeight} />}
               </ProCard>
             </Col>
           </Row>
@@ -237,16 +237,16 @@ export default function ByRegionPage() {
                   </table>
                 </div>
               ) : (
-                <EmptyState empty title="暂无数据" description="当前时间范围内没有任何区域有合同/开票/回款" height="tall" />
+                <EmptyState empty title="暂无区域明细" description="当前时间范围内没有任何区域有合同、开票或回款" height="tall" />
               )}
               {isMobile && realRows.length > TOP_N ? (
                 <div style={{ marginTop: 12, textAlign: "center", color: "var(--qt-processing)", fontSize: 13 }}>
-                  共 {realRows.length} 条,完整数据请使用「导出 xlsx」
+                  共 {realRows.length} 条，完整数据请使用「导出 xlsx」
                 </div>
               ) : null}
               {rows.some((r) => !r.district && !r.town) ? (
                 <div style={{ marginTop: 8, textAlign: "right", color: "var(--qt-text-secondary)", fontSize: 12 }}>
-                  注：另有 {rows.find((r) => !r.district && !r.town)?.customerCount ?? 0} 位未填写所在镇街的客户未在上表显示
+                  注：另有 {rows.find((r) => !r.district && !r.town)?.customerCount ?? 0} 位未填写所在镇街的客户，未在上表显示
                 </div>
               ) : null}
             </ProCard>

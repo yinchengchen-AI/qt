@@ -195,7 +195,7 @@ async function exportLogsToCsv(
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = url;
-  a.download = `operation-logs-${new Date().toISOString().slice(0, 10)}.csv`;
+  a.download = `操作日志_${new Date().toISOString().slice(0, 10)}.csv`;
   a.click();
   URL.revokeObjectURL(url);
 }

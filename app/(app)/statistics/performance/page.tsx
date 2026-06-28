@@ -105,7 +105,7 @@ export default function PerformancePage() {
     <Page>
       <PageHeader
         title="员工业绩"
-        subtitle="按员工汇总合同、开票、回款，支持时间范围筛选"
+        subtitle="按员工汇总合同、开票、回款（销售仅看自己负责的客户）；支持时间范围筛选"
         actions={
           <Space wrap>
             <DatePicker.RangePicker
@@ -131,7 +131,7 @@ export default function PerformancePage() {
                   <Column data={contractChartData} xField="name" yField="value" height={chartHeight} colorField="type" autoFit
                     label={{ text: (d: Record<string, unknown>) => formatCompact(d.value as number), style: { fontSize: 10 } }}
                   />
-                ) : <EmptyState empty title="暂无数据" height={chartHeight} />}
+                ) : <EmptyState empty title="暂无员工业绩" description="当前时间范围内尚无合同、开票或回款记录" height={chartHeight} />}
               </ProCard>
             </Col>
             <Col xs={24} lg={12}>
@@ -140,7 +140,7 @@ export default function PerformancePage() {
                   <Column data={invoiceChartData} xField="name" yField="value" height={chartHeight} colorField="type" autoFit
                     label={{ text: (d: Record<string, unknown>) => formatCompact(d.value as number), style: { fontSize: 10 } }}
                   />
-                ) : <EmptyState empty title="暂无数据" height={chartHeight} />}
+                ) : <EmptyState empty title="暂无员工业绩" description="当前时间范围内尚无合同、开票或回款记录" height={chartHeight} />}
               </ProCard>
             </Col>
           </Row>
@@ -152,7 +152,7 @@ export default function PerformancePage() {
                   <Column data={paymentChartData} xField="name" yField="value" height={chartHeight} colorField="type" autoFit
                     label={{ text: (d: Record<string, unknown>) => formatCompact(d.value as number), style: { fontSize: 10 } }}
                   />
-                ) : <EmptyState empty title="暂无数据" height={chartHeight} />}
+                ) : <EmptyState empty title="暂无员工业绩" description="当前时间范围内尚无合同、开票或回款记录" height={chartHeight} />}
               </ProCard>
             </Col>
             <Col xs={24} lg={12}>
@@ -161,7 +161,7 @@ export default function PerformancePage() {
                   <Column data={visibleRows.map(r => ({ name: r.name, value: r.contractCount }))} xField="name" yField="value" height={chartHeight} autoFit
                     label={{ text: (d: Record<string, unknown>) => String(d.value), style: { fontSize: 10 } }}
                   />
-                ) : <EmptyState empty title="暂无数据" height={chartHeight} />}
+                ) : <EmptyState empty title="暂无员工业绩" description="当前时间范围内尚无合同、开票或回款记录" height={chartHeight} />}
               </ProCard>
             </Col>
           </Row>
@@ -218,7 +218,7 @@ export default function PerformancePage() {
               </div>
               {isMobile && rows.length > TOP_N ? (
                 <div style={{ marginTop: 12, textAlign: "center", color: "var(--qt-processing)", fontSize: 13 }}>
-                  共 {rows.length} 条,完整数据请使用「导出 xlsx」
+                  共 {rows.length} 条，完整数据请使用「导出 xlsx」
                 </div>
               ) : null}
             </ProCard>

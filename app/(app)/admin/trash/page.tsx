@@ -56,7 +56,7 @@ export default function TrashPage() {
       notification.success({ message: `已恢复「${j.data.name}」`, placement: "topRight" });
       mutate();
     } catch {
-      message.error("恢复请求失败");
+      message.error("恢复请求失败，请稍后重试或联系管理员");
     } finally {
       setRestoring(null);
     }
@@ -87,7 +87,7 @@ export default function TrashPage() {
         width: 120,
         render: (_, r) => (
           <Popconfirm
-            title={`确定要恢复「${r.name}」吗？`}
+            title={`确认恢复「${r.name}」？`}
             onConfirm={() => handleRestore(r.entityType, r.id)}
             okText="恢复"
             cancelText="取消"
@@ -112,7 +112,7 @@ export default function TrashPage() {
     <Page>
       <PageHeader
         title="回收站"
-        subtitle="查看和恢复已删除的数据（客户/合同/项目/发票/回款/工作流模板）"
+        subtitle="查看和恢复已删除的数据：客户、合同、项目、发票、回款、工作流模板"
       />
 
       <ProTable<TrashItem>
@@ -128,7 +128,7 @@ export default function TrashPage() {
         pagination={{ defaultPageSize: 20, showSizeChanger: !isMobile, size: isMobile ? "small" : undefined }}
         locale={{
           emptyText: (
-            <Empty description="回收站为空,暂无已删除的记录" style={{ marginTop: 24 }}>
+            <Empty description="回收站为空，暂无已删除的记录" style={{ marginTop: 24 }}>
               <Button type="primary" onClick={() => router.back()}>返回</Button>
             </Empty>
           )

@@ -110,7 +110,7 @@ export default function UsersPage() {
         });
         const j = await r.json();
         if (j.code !== 0) return message.error(j.message);
-        message.success(`${action}成功`);
+        message.success(`已${action}`);
         actionRef.current?.reloadAndRest?.();
       }
     });
@@ -129,7 +129,7 @@ export default function UsersPage() {
         const r = await fetch(`/api/users/${u.id}`, { method: "DELETE", credentials: "include" });
         const j = await r.json();
         if (j.code !== 0) return message.error(j.message);
-        message.success("已删除");
+        message.success("账号已删除");
         actionRef.current?.reloadAndRest?.();
       }
     });
@@ -168,7 +168,7 @@ export default function UsersPage() {
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = `users-${new Date().toISOString().slice(0, 10)}.csv`;
+    a.download = `用户列表_${new Date().toISOString().slice(0, 10)}.csv`;
     a.click();
     URL.revokeObjectURL(url);
   }
@@ -263,7 +263,7 @@ export default function UsersPage() {
     <Page>
       <PageHeader
         title="员工管理"
-        subtitle="员工账号、角色与部门;支持按工号/姓名/邮箱/部门/状态搜索"
+        subtitle="管理员工账号、角色与部门；支持按工号 / 姓名 / 邮箱 / 部门 / 状态搜索"
         actions={
           <Space>
             <Button key="export" icon={<ExportOutlined />} onClick={exportUsersToCsv}>
@@ -308,7 +308,7 @@ export default function UsersPage() {
 
       <Modal
         open={!!resetting}
-        title={resetting ? `重置 ${resetting.name} 的密码` : "重置密码"}
+        title={resetting ? `重置 ${resetting.name} 的登录密码` : "重置密码"}
         okText="确认重置"
         cancelText="取消"
         okButtonProps={{ danger: true, loading: resetSubmitting }}
@@ -327,7 +327,7 @@ export default function UsersPage() {
             });
             const j = await r.json();
             if (j.code !== 0) { message.error(j.message); return; }
-            message.success(`已重置 ${resetting!.name} 的密码`);
+            message.success(`已重置 ${resetting!.name} 的登录密码`);
             setResetting(null);
             actionRef.current?.reloadAndRest?.();
           } catch (e) {
@@ -341,14 +341,14 @@ export default function UsersPage() {
         </p>
         <Form form={resetForm} layout="vertical" preserve={false} requiredMark={false}>
           <Form.Item name="password" label="新密码" rules={[
-            { required: true, message: "请输入新密码" },
-            { min: 8, message: "密码至少 8 个字符" },
+            { required: true, message: "请输入新密码（8 ～ 72 个字符）" },
+            { min: 8, message: "密码至少需要 8 个字符" },
             { max: 72, message: "密码不能超过 72 个字符" }
           ]}>
-            <Input.Password autoFocus placeholder="8 ~ 72 个字符,建议使用密码管理器生成" size="large" maxLength={72} />
+            <Input.Password autoFocus placeholder="8 ～ 72 个字符，建议使用密码管理器生成" size="large" maxLength={72} />
           </Form.Item>
           <Form.Item name="confirm" label="确认新密码" dependencies={["password"]} rules={[
-            { required: true, message: "请再次输入新密码" },
+            { required: true, message: "请再次输入新密码以确认" },
             ({ getFieldValue }) => ({
               validator(_, value) {
                 if (!value || getFieldValue("password") === value) return Promise.resolve();
@@ -356,7 +356,7 @@ export default function UsersPage() {
               }
             })
           ]}>
-            <Input.Password placeholder="再输入一次" size="large" />
+            <Input.Password placeholder="再次输入新密码" size="large" />
           </Form.Item>
         </Form>
       </Modal>

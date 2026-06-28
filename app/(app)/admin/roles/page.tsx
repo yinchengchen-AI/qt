@@ -37,7 +37,7 @@ export default function RolesPage() {
         const res = await fetch(`/api/roles/${r.id}`, { method: "DELETE", credentials: "include" });
         const j = await res.json();
         if (j.code !== 0) return message.error(j.message);
-        message.success("已删除");
+        message.success("角色已删除");
         actionRef.current?.reloadAndRest?.();
       }
     });
@@ -100,7 +100,7 @@ export default function RolesPage() {
     <Page>
       <PageHeader
         title="角色权限"
-        subtitle="系统内置 4 角色 + 自定义角色;权限矩阵支持 12 资源 × 6 操作"
+        subtitle="系统内置 4 个角色 + 自定义角色；权限矩阵覆盖 12 类资源 × 6 种操作"
         actions={
           <Button key="add" type="primary" onClick={() => router.push("/admin/roles/new")}>
             新建角色

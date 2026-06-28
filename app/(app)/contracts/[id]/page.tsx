@@ -94,7 +94,7 @@ function DeliverablesTab({
     const res = await fetch(`/api/files/${item.id}`, { method: "DELETE", credentials: "include" });
     const j = await res.json();
     if (j.code !== 0) throw new Error(j.message || "删除失败");
-    void message.success("已删除");
+    void message.success("附件已删除");
     onRefresh();
   };
 
@@ -119,10 +119,10 @@ function DeliverablesTab({
             // eslint-disable-next-line @typescript-eslint/no-explicit-any -- 透传给 proCustomRequest (内部用 any options)
           } as any);
         });
-        void message.success("已上传");
+        void message.success("附件已上传");
         onRefresh();
       } catch (e) {
-        void message.error((e as Error).message || "上传失败");
+        void message.error((e as Error).message || "上传失败，请重试");
       }
     })();
   };
@@ -461,7 +461,7 @@ const handleDelete = () => {
                 { title: "开票日", dataIndex: "actualIssueDate", width: 140, render: (v) => v ? <DateTimeCell value={v as string} /> : "—" },
                 { title: "状态", dataIndex: "status", width: 100, render: (_, r) => <StatusTag status={r.status as string} domain="invoice" /> }
               ]} />
-          ) : <Empty description="本合同暂无开票" />}
+          ) : <Empty description="本合同暂无开票，可去开票管理新建" />}
         </ProCard>
       )
     },
@@ -486,7 +486,7 @@ const handleDelete = () => {
                 { title: "到账日", dataIndex: "receiveDate", width: 140, render: (_, r) => <DateTimeCell value={r.receiveDate as string} /> },
                 { title: "状态", dataIndex: "status", width: 100, render: (_, r) => <StatusTag status={r.status as string} domain="payment" /> }
               ]} />
-          ) : <Empty description="本合同暂无回款" />}
+          ) : <Empty description="本合同暂无回款，可去回款管理登记" />}
         </ProCard>
       )
     },
@@ -527,7 +527,7 @@ const handleDelete = () => {
       <PageHeader
         back={goBack}
         title={`${contract.title} · ${contract.contractNo}`}
-        subtitle="合同 360 度视图 — 概览 / 信息 / 项目 / 开票 / 回款 / 操作记录 / 附件"
+        subtitle="合同 360 度视图：概览 / 基本信息 / 项目 / 开票 / 回款 / 操作记录 / 附件"
         meta={
           <Space size={8} wrap>
             <StatusTag status={contract.status} domain="contract" />

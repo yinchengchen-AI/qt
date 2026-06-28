@@ -149,28 +149,28 @@ export default function EditUserPage() {
               message.error(j.message);
               return false;
             }
-            message.success("已保存");
+            message.success("账号已保存");
             router.push(`/admin/users/${id}`);
             return true;
           }}
         >
           <FormSection
             title="账号信息"
-            description="登录身份(工号创建后不可修改)"
+            description="登录身份；工号创建后不可修改"
             icon={<UserOutlined />}
           >
             <FormGrid columns={2}>
               <ProFormText
                 name="name"
                 label="姓名"
-                tooltip="此处可修改,工号保持不变"
+                tooltip="此处显示工号用于核对；该字段不可修改"
                 rules={[{ required: true, max: 40, message: "姓名必填" }]}
                 fieldProps={{ size: "large", maxLength: 40, showCount: true, prefix: <UserOutlined /> }}
               />
               <ProFormText
                 name="employeeNo"
                 label="工号"
-                tooltip="工号不能修改"
+                tooltip="工号创建后不可修改"
                 fieldProps={{ size: "large", disabled: true, prefix: <IdcardOutlined /> }}
               />
               <ProFormText
@@ -192,7 +192,7 @@ export default function EditUserPage() {
 
           <FormSection
             title="角色与部门"
-            description="权限范围与组织归属"
+            description="决定权限范围（角色）与组织归属（部门）"
             icon={<ApartmentOutlined />}
           >
             <FormGrid columns={2}>
@@ -201,16 +201,16 @@ export default function EditUserPage() {
                 label="角色"
                 placeholder="请选择"
                 options={roleOptions}
-                rules={[{ required: true, message: "请选择角色" }]}
+                rules={[{ required: true, message: "请选择角色（决定权限范围）" }]}
                 fieldProps={{ size: "large", optionFilterProp: "label" }}
               />
-              <DepartmentTreeSelect label="部门" placeholder="不选 = 无部门" />
+              <DepartmentTreeSelect label="部门" placeholder="不选则不归属任何部门" />
             </FormGrid>
           </FormSection>
 
           <FormSection
             title="账号状态"
-            description="禁用后该账号将无法登录"
+            description="停用后该账号将无法登录系统，但历史数据保留"
             icon={<LockOutlined />}
           >
             <ProFormSelect

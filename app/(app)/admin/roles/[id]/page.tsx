@@ -61,7 +61,7 @@ export default function RoleDetailPage() {
     <Page>
       <PageHeader
         back={goBack}
-        title={`${data.name} (${data.code})`}
+        title={`${data.name}（${data.code}）`}
         subtitle={data.description ?? "—"}
         meta={data.isSystem ? <Tag color="blue">系统角色</Tag> : <Tag>自定义角色</Tag>}
         actions={

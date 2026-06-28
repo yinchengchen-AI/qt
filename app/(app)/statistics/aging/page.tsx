@@ -139,7 +139,7 @@ export default function AgingPage() {
                   label={{ text: (d: Record<string, unknown>) => formatCurrency(d.amount as number), style: { fontSize: 11 } }}
                 />
               ) : (
-                <EmptyState empty title="暂无数据" description="当前没有待回款发票" height="tall" />
+                <EmptyState empty title="暂无超期发票" description="当前没有需要重点关注的逾期发票；建议核对回款流程" height="tall" />
               )}
             </ProCard>
           </div>
@@ -147,7 +147,7 @@ export default function AgingPage() {
           <div style={{ marginTop: 32 }}>
             <PageHeader
               level="section"
-              title={`超期明细（共 ${totalOverdueInvoices} 条${isMobile && totalOverdueInvoices > TOP_N ? `, 仅显示前 ${TOP_N} 条` : ""}）`}
+              title={`超期明细（共 ${totalOverdueInvoices} 条${isMobile && totalOverdueInvoices > TOP_N ? `，仅显示前 ${TOP_N} 条` : ""}）`}
             />
             <ProCard>
               {visibleRows.length > 0 ? (
@@ -190,7 +190,7 @@ export default function AgingPage() {
                   </table>
                 </div>
               ) : (
-                <EmptyState empty title="暂无数据" description="当前没有待回款发票" height="tall" />
+                <EmptyState empty title="暂无超期发票" description="当前没有需要重点关注的逾期发票；建议核对回款流程" height="tall" />
               )}
               {isMobile && rows.length > TOP_N ? (
                 <div style={{ marginTop: 12, textAlign: "center" }}>

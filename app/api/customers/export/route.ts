@@ -141,7 +141,7 @@ export async function GET(req: Request) {
         headers: {
           "Content-Type":
             "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-          "Content-Disposition": `attachment; filename="customers-${ts}.xlsx"`,
+          "Content-Disposition": `attachment; filename="客户列表_${ts}.xlsx"`,
           "Cache-Control": "no-store",
         },
       });

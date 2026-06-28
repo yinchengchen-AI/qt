@@ -248,14 +248,14 @@ export default function AnnouncementsPage() {
                   name="title"
                   label={t("announcements.field.title")}
                   placeholder={t("announcements.field.title.placeholder")}
-                  rules={[{ required: true, min: 2, max: 200, message: "2-200 字符" }]}
+                  rules={[{ required: true, min: 2, max: 200, message: "标题为 2 — 200 个字符（必填）" }]}
                   fieldProps={{ size: "large", maxLength: 200, showCount: true }}
                 />
                 <ProFormTextArea
                   name="content"
                   label={t("announcements.field.content")}
                   placeholder={t("announcements.field.content.placeholder")}
-                  rules={[{ required: true, min: 1, max: 10000 }]}
+                  rules={[{ required: true, min: 1, max: 10000, message: "公告内容不能超过 10000 个字符（必填）" }]}
                   fieldProps={{
                     size: "large",
                     rows: 6,

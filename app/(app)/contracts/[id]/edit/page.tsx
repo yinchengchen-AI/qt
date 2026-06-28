@@ -99,9 +99,9 @@ export default function EditContractPage() {
       <PageHeader
         back={goBack}
         title="编辑合同"
-        subtitle="客户不可改;合同编号、服务起止期等可改,止期必须晚于起期"
+        subtitle="客户与创建人不可修改；合同编号、服务起止期可改，止期必须晚于起期"
       />
-      <FormCard headerHint="客户一旦签约不可更换,如需换客户请新建合同。">
+      <FormCard headerHint="客户一旦签约不可更换，如需更换请新建合同后再迁移数据">
         <ProForm
           submitter={false}
           formRef={formRef}
@@ -147,7 +147,7 @@ export default function EditContractPage() {
               message.error(j.message);
               return false;
             }
-            message.success("已保存");
+            message.success("合同已保存");
             router.push(`/contracts/${id}`);
             return true;
           }}
@@ -167,7 +167,7 @@ export default function EditContractPage() {
                 name="contractNo"
                 label="合同编号"
                 rules={[
-                  { required: true, message: "请输入合同编号" },
+                  { required: true, message: "请输入合同编号（必填）" },
                   { min: 1, max: 50 }
                 ]}
                 fieldProps={{ size: "large" }}
@@ -177,7 +177,7 @@ export default function EditContractPage() {
                 label="服务类型"
                 options={serviceTypeOptions}
                 showSearch
-                rules={[{ required: true, message: "请选择服务类型" }]}
+                rules={[{ required: true, message: "请选择服务类型（必填）" }]}
                 fieldProps={{
                   size: "large",
                   onChange: () => tryAutoFill()
@@ -187,7 +187,7 @@ export default function EditContractPage() {
                 name="title"
                 label="合同标题"
                 rules={[
-                  { required: true, message: "请输入合同标题" },
+                  { required: true, message: "请输入合同标题（必填）" },
                   { min: 2, max: 200 }
                 ]}
                 fieldProps={{ size: "large" }}
@@ -196,16 +196,16 @@ export default function EditContractPage() {
                 name="paymentMethod"
                 label="付款方式"
                 options={PAYMENT_METHOD_OPTIONS}
-                rules={[{ required: true, message: "请选择付款方式" }]}
+                rules={[{ required: true, message: "请选择付款方式（必填）" }]}
                 fieldProps={{ size: "large" }}
               />
               <ProFormSelect
                 name="ownerUserId"
                 label="负责人"
-                placeholder="搜索员工姓名/工号"
-                tooltip="admin 可改为任意 ACTIVE 员工,业务上等同于把合同转交给对方"
+                placeholder="按姓名 / 工号搜索员工"
+                tooltip="管理员可改为任意在职员工，业务上等同于把合同转交给对方"
                 showSearch
-                rules={[{ required: true, message: "请选择负责人" }]}
+                rules={[{ required: true, message: "请选择合同负责人（必填）" }]}
                 fieldProps={{
                   size: "large",
                   optionFilterProp: "label"
@@ -244,7 +244,7 @@ export default function EditContractPage() {
                 name="endDate"
                 label="服务止期"
                 rules={[
-                  { required: true, message: "请选择服务止期" },
+                  { required: true, message: "请选择服务止期（必填，且晚于起期）" },
                   ({ getFieldValue }: { getFieldValue: (name: string) => unknown }) => ({
                     validator(_: unknown, value: unknown) {
                       const start = getFieldValue("startDate") as string | number | Date | null | undefined;
@@ -270,14 +270,14 @@ export default function EditContractPage() {
                 name="totalAmount"
                 label="合同总额（含税）"
                 min={0.01}
-                rules={[{ required: true, message: "请输入合同总额" }]}
+                rules={[{ required: true, message: "请输入合同总额（必填）" }]}
                 fieldProps={{ size: "large", precision: 2, prefix: "¥" }}
               />
               <ProFormSelect
                 name="taxRate"
                 label="税率"
                 options={TAX_RATE_OPTIONS.map((v, i) => ({ value: v, label: TAX_RATE_LABELS[i] }))}
-                rules={[{ required: true, message: "请选择税率" }]}
+                rules={[{ required: true, message: "请选择适用税率（必填）" }]}
                 fieldProps={{ size: "large" }}
               />
             </FormGrid>
@@ -288,8 +288,8 @@ export default function EditContractPage() {
               <ProFormTextArea
                 name="remark"
                 label="合同备注"
-                placeholder="可空;500 字符以内"
-                rules={[{ max: 500, message: "备注不超过 500 字符" }]}
+                placeholder="选填，500 个字符以内"
+                rules={[{ max: 500, message: "备注不超过 500 个字符" }]}
                 fieldProps={{
                   autoSize: { minRows: 3, maxRows: 6 },
                   showCount: true,
@@ -299,7 +299,7 @@ export default function EditContractPage() {
             </FormGrid>
           </FormSection>
 
-          <FormSection title="合同附件" description="可继续添加;已有附件的删除请到详情页操作">
+          <FormSection title="合同附件" description="可继续添加附件；已有附件的删除请到详情页操作">
             <FormGrid columns={1}>
               <AttachmentList
                 items={(data.attachments ?? []) as AttachmentItem[]}

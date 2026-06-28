@@ -43,7 +43,7 @@ export default function EditProfilePage() {
     return (
       <Page>
         <PageHeader back={goBack} title="编辑员工档案" />
-        <ErrorBox title="无权限">仅管理员可编辑员工档案</ErrorBox>
+        <ErrorBox title="无权限">仅管理员可编辑员工档案，请联系系统管理员</ErrorBox>
       </Page>
     );
   }
@@ -53,7 +53,7 @@ export default function EditProfilePage() {
       <PageHeader
         back={goBack}
         title="编辑员工档案"
-        subtitle="5 步走完保存:基础 / 岗位合同 / 敏感 / 履历 / 证书与附件"
+        subtitle="5 步走完保存：基础信息 / 岗位合同 / 敏感信息 / 履历 / 证书与附件"
       />
       <ProfileWizard userId={id} initial={data.data} isAdmin={isAdmin} />
     </Page>

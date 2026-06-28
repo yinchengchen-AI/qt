@@ -203,7 +203,7 @@ export default function MessagesPage() {
                 const r = await fetch("/api/messages/mark-all-read", { method: "POST", credentials: "include" });
                 const j = await r.json();
                 if (j.code === 0) {
-                  msg.success(`已标记 ${j.data.updated} 条已读`);
+                  msg.success(`已标记 ${j.data.updated} 条消息为已读`);
                   actionRef.current?.reloadAndRest?.();
                 } else msg.error(j.message);
               }}

@@ -51,8 +51,8 @@ export default function ContractsPage() {
       qs.set(k, String(v));
     }
     try {
-      await downloadExcel(`/api/contracts/export${qs.toString() ? `?${qs}` : ""}`, "contracts.xlsx");
-      message.success("已开始下载");
+      await downloadExcel(`/api/contracts/export${qs.toString() ? `?${qs}` : ""}`, "合同列表.xlsx");
+      message.success("已开始下载，请稍候");
     } catch (e) {
       message.error((e as Error).message);
     }
@@ -62,7 +62,7 @@ export default function ContractsPage() {
     <Page>
       <PageHeader
         title="合同管理"
-        subtitle="从草稿、审批、生效到执行/终止的全生命周期;支持按客户、状态筛选"
+        subtitle="覆盖合同全生命周期：草稿、审批、生效、执行 / 终止；支持按客户、状态筛选"
         actions={
           <>
             <Button key="export" icon={<DownloadOutlined />} onClick={handleExport}>

@@ -35,9 +35,9 @@ export default function NewDepartmentPage() {
       <PageHeader
         back={goBack}
         title="新建部门"
-        subtitle="树形结构;选上级部门可挂为子部门;不选则为顶级"
+        subtitle="支持任意层级嵌套；选上级部门可挂为子部门；不选则为顶级"
       />
-      <FormCard headerHint="代码全局唯一,创建后仍可改;上级部门可选;不选为顶级">
+      <FormCard headerHint="代码全局唯一，创建后仍可修改；上级部门不选则为顶级">
         <ProForm
           layout="vertical"
           submitter={{
@@ -61,7 +61,7 @@ export default function NewDepartmentPage() {
               message.error(j.message);
               return false;
             }
-            message.success("创建成功");
+            message.success("部门已创建");
             router.push(`/admin/departments/${j.data.id}`);
             return true;
           }}
@@ -71,24 +71,24 @@ export default function NewDepartmentPage() {
               <ProFormText
                 name="code"
                 label="代码"
-                placeholder="如 技术部 / 技术一组"
+                placeholder="如：TECH / TECH-GROUP"
                 rules={[
                   { required: true, max: 30 },
-                  { pattern: /^[A-Za-z][A-Za-z0-9_-]*$/, message: "字母开头,允许字母/数字/-/_" }
+                  { pattern: /^[A-Za-z][A-Za-z0-9_-]*$/, message: "需以字母开头，仅允许字母、数字、-、_" }
                 ]}
                 fieldProps={{ size: "large", maxLength: 30, showCount: true }}
               />
               <ProFormText
                 name="name"
                 label="名称"
-                placeholder="如:技术部"
+                placeholder="如：技术部"
                 rules={[{ required: true, max: 50 }]}
                 fieldProps={{ size: "large", maxLength: 50, showCount: true }}
               />
               <ProFormTreeSelect
                 name="parentId"
                 label="上级部门"
-                placeholder="不选 = 顶级部门"
+                placeholder="不选则为顶级部门"
                 allowClear
                 fieldProps={{
                   size: "large",
@@ -108,7 +108,7 @@ export default function NewDepartmentPage() {
               <ProFormDigit
                 name="sort"
                 label="排序"
-                placeholder="数字小排前;默认 0"
+                placeholder="数字小靠前，默认 0"
                 min={0}
                 fieldProps={{ size: "large" }}
               />
@@ -117,7 +117,7 @@ export default function NewDepartmentPage() {
 
           <Space>
             <Text type="secondary" style={{ fontSize: 12 }}>
-              顶级部门可后续挂为其它部门的子部门;现有成员的部门编号 不会变化,外键仍指向原部门。
+              顶级部门创建后仍可挂为其他部门的子部门；现有成员的部门归属不会变化。
             </Text>
           </Space>
         </ProForm>

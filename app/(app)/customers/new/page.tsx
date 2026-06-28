@@ -11,7 +11,7 @@ export default function NewCustomerPage() {
     <CustomerForm
       mode="create"
       title="新建客户"
-      subtitle="客户编号、创建人、创建时间由系统自动生成"
+      subtitle="客户编号、创建人、创建时间由系统自动生成；保存后进入 洽谈中 状态"
       submitText="创建客户"
       back={goBack}
       onSubmit={async (values: CustomerFormValues) => {

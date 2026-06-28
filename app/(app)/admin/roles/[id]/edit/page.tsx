@@ -33,7 +33,7 @@ export default function EditRolePage() {
   if (isLoading || !data) {
     return (
       <Page compact>
-        <PageHeader back={goBack} title="编辑角色" subtitle="修改名称 / 说明 / 权限矩阵" />
+        <PageHeader back={goBack} title="编辑角色" subtitle="可修改名称、说明与权限矩阵；保存后立即生效" />
         <FormPageSkeleton />
       </Page>
     );
@@ -46,7 +46,7 @@ export default function EditRolePage() {
       <PageHeader
         back={goBack}
         title={`编辑 ${data.name}`}
-        subtitle="修改名称 / 说明 / 权限矩阵"
+        subtitle="可修改名称、说明与权限矩阵；保存后立即生效"
         meta={data.isSystem ? <Tag color="blue">系统角色</Tag> : <Tag>自定义角色</Tag>}
       />
       <ProCard>
@@ -70,7 +70,7 @@ export default function EditRolePage() {
               message.error(j.message);
               return false;
             }
-            message.success("保存成功");
+            message.success("角色已保存");
             router.push(`/admin/roles/${id}`);
             return true;
           }}

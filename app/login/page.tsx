@@ -10,14 +10,14 @@ import styles from "./login.module.css";
 const { Text } = Typography;
 
 const ERROR_MAP: Record<string, string> = {
-  CredentialsSignin: "工号或密码错误，请重试",
-  AccessDenied: "账号无访问权限",
-  Verification: "验证链接已失效",
+  CredentialsSignin: "工号或密码错误，请检查后重试",
+  AccessDenied: "当前账号未授予访问权限，请联系管理员",
+  Verification: "验证链接已失效，请重新登录",
   Configuration: "登录服务配置异常，请联系管理员"
 };
 
 function mapAuthError(code?: string | null) {
-  if (!code) return "登录失败，请检查工号或密码";
+  if (!code) return "登录失败，请检查工号与密码";
   return ERROR_MAP[code] ?? "登录失败，请检查工号或密码";
 }
 
@@ -89,7 +89,7 @@ function LoginForm() {
         redirect: false
       });
       if (res?.ok) {
-        message.success("登录成功");
+        message.success("登录成功，正在跳转…");
         router.push(callbackUrl);
         router.refresh();
       } else {
@@ -138,7 +138,7 @@ function LoginForm() {
           size="large"
           name="employeeNo"
           prefix={<UserOutlined style={{ color: "#9CA3AF" }} />}
-          placeholder="请输入工号"
+          placeholder="请输入工号，如：admin"
           autoFocus
           autoComplete="username"
         />
@@ -154,7 +154,7 @@ function LoginForm() {
           size="large"
           name="password"
           prefix={<LockOutlined style={{ color: "#9CA3AF" }} />}
-          placeholder="请输入密码"
+          placeholder="请输入密码（8 ～ 72 个字符）"
           autoComplete="current-password"
         />
       </Form.Item>
@@ -166,7 +166,7 @@ function LoginForm() {
           disabled={loading}
           className={styles.remember}
         >
-          7 天内自动登录
+          7 天内免登录
         </Checkbox>
         <a className={styles.forgot} href="mailto:it@qt.com">
           忘记密码？
@@ -189,7 +189,7 @@ function LoginForm() {
 
       {SHOW_QUICK_FILL && QUICK_ACCOUNTS.length > 0 ? (
         <details className={styles.testCard}>
-          <summary>测试账号 · 点击下方账号快速填充</summary>
+          <summary>开发 / 预览环境：点击下方账号可一键填充</summary>
           <div className={styles.testGrid}>
             {QUICK_ACCOUNTS.map((a) => (
               <span key={a.no}>

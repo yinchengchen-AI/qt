@@ -41,7 +41,7 @@ export function ProvinceCityDistrict({ value, onChange, disabled }: Props) {
         city: arr[1],
         district: arr[2]
       })}
-      placeholder="省 / 市 / 区"
+      placeholder="请选择省 / 市 / 区（必填）"
       changeOnSelect={false}
       showSearch
     />

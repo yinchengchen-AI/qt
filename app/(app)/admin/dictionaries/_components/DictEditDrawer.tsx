@@ -44,7 +44,7 @@ export function DictEditDrawer({ open, dict, onClose, onSaved }: Props) {
         message.error(j.message);
         return;
       }
-      message.success("保存成功");
+      message.success("字典项已保存");
       onSaved();
       onClose();
     } catch {
@@ -87,7 +87,7 @@ export function DictEditDrawer({ open, dict, onClose, onSaved }: Props) {
               showIcon
               style={{ marginBottom: 16 }}
               title="系统字典 · 不可在 UI 中编辑"
-              description="该类目由同步脚本管理,仅查看。"
+              description="该类目由同步脚本管理，此处仅供查看。"
             />
           ) : null}
           <Form layout="vertical" form={form} disabled={readonlyByCategory}>

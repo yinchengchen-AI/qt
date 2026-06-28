@@ -85,8 +85,8 @@ export default function DepartmentDetailPage() {
     <Page>
       <PageHeader
         back={goBack}
-        title={`${data.name} (${data.code})`}
-        subtitle={data.parent ? `隶属于：${data.parent.name} (${data.parent.code})` : "顶级部门"}
+        title={`${data.name}（${data.code}）`}
+        subtitle={data.parent ? `隶属于：${data.parent.name}（${data.parent.code}）` : "顶级部门"}
         meta={data.isActive ? <Tag color="green">启用</Tag> : <Tag>停用</Tag>}
         actions={
           <Space>

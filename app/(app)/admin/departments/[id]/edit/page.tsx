@@ -84,9 +84,9 @@ export default function EditDepartmentPage() {
       <PageHeader
         back={goBack}
         title={`编辑 ${data.name}`}
-        subtitle={`${data.memberCount} 名成员 / ${data.childCount} 个子部门`}
+        subtitle={data.memberCount + data.childCount > 0 ? `${data.memberCount} 名成员 · ${data.childCount} 个子部门` : "暂无成员与子部门"}
       />
-      <FormCard headerHint="代码 / 名称 / 上级部门可改;停用后业务查询会自动过滤;上级不能选自己或自己后代">
+      <FormCard headerHint="代码 / 名称 / 上级部门可修改；停用后业务查询会自动过滤；上级不能选自己或自己的下级部门">
         <ProForm
           layout="vertical"
           initialValues={{
@@ -118,7 +118,7 @@ export default function EditDepartmentPage() {
               message.error(j.message);
               return false;
             }
-            message.success("已保存");
+            message.success("部门已保存");
             router.push(`/admin/departments/${id}`);
             return true;
           }}
@@ -130,7 +130,7 @@ export default function EditDepartmentPage() {
                 label="代码"
                 rules={[
                   { required: true, max: 30 },
-                  { pattern: /^[A-Za-z][A-Za-z0-9_-]*$/, message: "字母开头,允许字母/数字/-/_" }
+                  { pattern: /^[A-Za-z][A-Za-z0-9_-]*$/, message: "需以字母开头，仅允许字母、数字、-、_" }
                 ]}
                 fieldProps={{ size: "large", maxLength: 30, showCount: true }}
               />
@@ -143,7 +143,7 @@ export default function EditDepartmentPage() {
               <ProFormTreeSelect
                 name="parentId"
                 label="上级部门"
-                placeholder="不选 = 顶级"
+                placeholder="不选则为顶级部门"
                 allowClear
                 fieldProps={{
                   size: "large",
@@ -174,7 +174,7 @@ export default function EditDepartmentPage() {
               <ProFormSwitch
                 name="isActive"
                 label="启用"
-                tooltip="停用后该部门成员在筛选 / 列表中不再展示此部门"
+                tooltip="停用后该部门在筛选、列表中将不再展示，但不会影响历史数据"
               />
               <Space>
                 <Text type="secondary" style={{ fontSize: 12 }}>

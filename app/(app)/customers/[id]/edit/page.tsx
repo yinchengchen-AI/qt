@@ -20,7 +20,7 @@ export default function EditCustomerPage() {
         title="编辑客户"
         back={goBack}
         submitText="保存"
-        onSubmit={async () => ({ ok: false, message: "数据加载中" })}
+        onSubmit={async () => ({ ok: false, message: "数据加载中，请稍候再试" })}
       >
         <FormPageSkeleton />
       </CustomerForm>
@@ -31,7 +31,7 @@ export default function EditCustomerPage() {
     <CustomerForm
       mode="edit"
       title={`编辑 ${data.name ?? ""}`}
-      subtitle={`客户编号 ${data.code} 不可修改;创建人 / 创建时间详见详情页`}
+      subtitle={`客户编号 ${data.code} 不可修改；创建人、创建时间等元信息请到详情页查看`}
       submitText="保存"
       back={goBack}
       initialValues={data}

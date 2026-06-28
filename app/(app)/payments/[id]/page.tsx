@@ -58,11 +58,11 @@ export default function PaymentDetailPage() {
   const askConfirm = () => {
     bankRefNoRef.current = "";
     Modal.confirm({
-      title: "确认回款(财务)",
+      title: "确认回款（财务）？",
       content: (
         <Input
           autoFocus
-          placeholder="银行流水号(必填)"
+          placeholder="请输入 20 位银行流水号"
           onChange={(e) => { bankRefNoRef.current = e.target.value; }}
           onPressEnter={async (e) => {
             // 回车直接提交,避开鼠标点 OK 时漏改 state 的问题
@@ -86,11 +86,11 @@ export default function PaymentDetailPage() {
   const askRefund = () => {
     reasonRef.current = "";
     Modal.confirm({
-      title: "退款(财务)",
+      title: "确认退款（财务）？",
       content: (
         <Input.TextArea
           rows={2}
-          placeholder="退款原因"
+          placeholder="请填写退款原因，将记入操作记录"
           onChange={(e) => { reasonRef.current = e.target.value; }}
         />
       ),
@@ -106,7 +106,7 @@ export default function PaymentDetailPage() {
       <PageHeader
         back={goBack}
         title={`回款 ${payment.paymentNo}`}
-        subtitle={`到账日: ${payment.receivedAt ? new Date(payment.receivedAt).toLocaleString("zh-CN") : "-"}`}
+        subtitle={`到账日：${payment.receivedAt ? new Date(payment.receivedAt).toLocaleString("zh-CN") : "—"}`}
         meta={<StatusTag status={payment.status} domain="payment" />}
         actions={
           <Space wrap>

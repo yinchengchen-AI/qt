@@ -38,7 +38,7 @@ export default function NewRolePage() {
           initialValues={{ template: "EMPTY" }}
           onFinish={async (values) => {
             if (permissions.length === 0) {
-              message.error("至少配置 1 个资源的权限");
+              message.error("请至少为 1 个资源配置权限");
               return false;
             }
             const res = await fetch("/api/roles", {
@@ -52,7 +52,7 @@ export default function NewRolePage() {
               message.error(j.message);
               return false;
             }
-            message.success("创建成功");
+            message.success("角色已创建");
             router.push(`/admin/roles/${j.data.id}`);
             return true;
           }}
@@ -60,7 +60,7 @@ export default function NewRolePage() {
           <ProFormText
             name="code"
             label="代码"
-            tooltip="大写字母/数字/下划线,以大写字母开头;创建后仍可改"
+            tooltip="大写字母 / 数字 / 下划线，需以大写字母开头；创建后仍可修改"
             rules={[{ required: true, max: 40, pattern: /^[A-Z][A-Z0-9_]*$/ }]}
           />
           <ProFormText name="name" label="名称" rules={[{ required: true, max: 40 }]} />

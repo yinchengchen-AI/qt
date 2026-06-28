@@ -63,7 +63,7 @@ async function fetchDetail(logId: string): Promise<OperationLogDetail> {
     credentials: "include",
   });
   const j = await res.json();
-  if (j.code !== 0) throw new Error(j.message ?? "加载失败");
+  if (j.code !== 0) throw new Error(j.message ?? "加载失败，请稍后重试");
   return j.data as OperationLogDetail;
 }
 
@@ -312,7 +312,7 @@ function DetailBody({ data }: { data: OperationLogDetail }) {
           <Text type="secondary" style={{ fontSize: 12 }}>
             {diff.length === 0
               ? "无 diff 数据"
-              : `${diff.length} 个字段${diff.some((d) => d.kind === "modified") ? "，含修改" : ""}`}
+              : `共 ${diff.length} 个字段${diff.some((d) => d.kind === "modified") ? "，含修改" : ""}`}
           </Text>
         </div>
         {diff.length === 0 ? (

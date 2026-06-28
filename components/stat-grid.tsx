@@ -12,7 +12,7 @@ export type StatItem = {
   suffix?: ReactNode;
   description?: ReactNode;
   delta?: { value: ReactNode; direction?: "up" | "down" | "flat" };
-  /** 鼠标悬停 label 旁的 ⓘ 图标时显示,用于说明该 KPI 的统计口径(时间范围 / 状态过滤 / 权限范围)。 */
+  /** 鼠标悬停 label 旁的 ⓘ 图标时显示，用于说明该 KPI 的统计口径（时间范围 / 状态过滤 / 权限范围）。 */
   tooltip?: ReactNode;
 };
 
@@ -24,7 +24,7 @@ type Props = {
   className?: string;
 };
 
-// 桌面列数 → 响应式 span 配置。xs 一律铺满一列,sm 半列,md/lg/xl 按桌面列数走
+// 桌面列数 → 响应式 span 配置。xs 一律铺满一列，sm 半列，md/lg/xl 按桌面列数走
 const SPAN_MAP: Record<number, { xs: number; sm: number; md: number; lg: number; xl: number }> = {
   2: { xs: 24, sm: 12, md: 12, lg: 12, xl: 12 },
   3: { xs: 24, sm: 12, md: 8,  lg: 8,  xl: 8  },

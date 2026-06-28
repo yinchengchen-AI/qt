@@ -40,8 +40,8 @@ export default function InvoicesPage() {
       qs.set(k, String(v));
     }
     try {
-      await downloadExcel(`/api/invoices/export${qs.toString() ? `?${qs}` : ""}`, "invoices.xlsx");
-      message.success("已开始下载");
+      await downloadExcel(`/api/invoices/export${qs.toString() ? `?${qs}` : ""}`, "开票列表.xlsx");
+      message.success("已开始下载，请稍候");
     } catch (e) {
       message.error((e as Error).message);
     }
@@ -51,7 +51,7 @@ export default function InvoicesPage() {
     <Page>
       <PageHeader
         title="开票管理"
-        subtitle="合同开票申请、审核、实际开票与红冲;按状态 / 客户 / 合同筛选"
+        subtitle="管理开票申请、审核、实际开票与红冲；支持按状态、客户、合同筛选"
         actions={
           <>
             <Button key="export" icon={<DownloadOutlined />} onClick={handleExport}>

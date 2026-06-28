@@ -49,7 +49,7 @@ export default function DashboardPage() {
   if (loading || !data) {
     return (
       <Page>
-        <PageHeader title="业务总览" subtitle="实时经营数据快照 — 客户、合同、项目、开票、回款" />
+        <PageHeader title="业务总览" subtitle="实时经营数据快照：客户、合同、项目、开票、回款" />
         <StatGrid columns={4} loading items={[{},{},{},{}] as StatItem[]} />
         <div style={{ height: 24 }} />
         <StatGrid columns={3} loading items={[{},{},{}] as StatItem[]} />
@@ -70,7 +70,7 @@ export default function DashboardPage() {
     rangeFrom.getMonth() === now.getMonth() &&
     rangeFrom.getDate() === 1;
   // 权限提示:SALES 角色只看到自己 owner 的合同/发票/回款(由后端 ownerEq / ownerViaContract 注入)
-  const permHint = "数据权限:管理员/财务可看全员;销售仅看本人 owner 的合同、对应发票与回款。";
+  const permHint = "数据权限：管理员/财务可看全员；销售仅看本人负责的合同、对应发票与回款。";
 
   // ── 五大维度 KPI ──
   const kpiItems: StatItem[] = [
@@ -80,7 +80,7 @@ export default function DashboardPage() {
       value: cust.total,
       suffix: "家",
       description: `本月新增 ${cust.newThisMonth} 家`,
-      delta: { value: `+${cust.newThisMonth} 本月新增`, direction: "up" }
+      delta: { value: `本月新增 ${cust.newThisMonth} 家`, direction: "up" }
     },
     {
       label: "合同总额",
@@ -95,7 +95,7 @@ export default function DashboardPage() {
       value: formatCompact(o.invoiceAmount),
       suffix: "元",
       description: `开票率 ${o.invoiceRate}% · ${o.invoiceCount} 张`,
-      delta: { value: `待审 ${inv.byStatus.find(s => s.status === "PENDING_FINANCE")?.count ?? 0} 张`, direction: "flat" }
+      delta: { value: `待审 ${inv.byStatus.find(s => s.status === "PENDING_FINANCE")?.count ?? 0} 张待开票`, direction: "flat" }
     },
     {
       label: "已回款额",
@@ -103,7 +103,7 @@ export default function DashboardPage() {
       value: formatCompact(o.paymentAmount),
       suffix: "元",
       description: `回款率 ${o.paymentRate}% · ${o.paymentCount} 笔`,
-      delta: { value: "应收 " + formatCompact(o.unpaidAmount), direction: o.unpaidAmount > 0 ? "down" : "up" }
+      delta: { value: "未回款 " + formatCompact(o.unpaidAmount), direction: o.unpaidAmount > 0 ? "down" : "up" }
     }
   ];
 
@@ -114,7 +114,7 @@ export default function DashboardPage() {
 
   return (
     <Page>
-      <PageHeader title="业务总览" subtitle="默认按本月统计(后端接口 monthRange 决定);鼠标悬停 KPI 标题旁的 ⓘ 可查看口径说明。" />
+      <PageHeader title="业务总览" subtitle="默认按本月统计（后端接口 monthRange 决定）；鼠标悬停 KPI 标题旁的 ⓘ 可查看口径说明。" />
 
       <HintBox style={{ marginBottom: 12, gap: 8 }}>
         <CalendarOutlined style={{ color: token.colorTextTertiary }} />
@@ -147,7 +147,7 @@ export default function DashboardPage() {
                 label={{ text: (d: Record<string, unknown>) => String(d.count), style: { fontSize: 11 } }}
                 xAxis={{ label: { autoRotate: true, autoHide: false } }}
               />
-            ) : <EmptyState empty title="暂无区域分布数据" description="客户所在地尚未录入镇街信息" height={chartHeight} />}
+            ) : <EmptyState empty title="暂无区域分布数据" description="客户所在地尚未录入镇街信息；请在客户档案中补充所在镇街" height={chartHeight} />}
           </ProCard>
         </Col>
       </Row>
@@ -159,7 +159,7 @@ export default function DashboardPage() {
                 <StatusTag status={s.status} domain="contract" />
                 <Text strong>{s.count} 份</Text>
               </div>
-            )) : <EmptyState empty title="暂无数据" height={100} />}
+            )) : <EmptyState empty title="暂无合同数据" description="当前还没有任何合同" height={100} />}
           </ProCard>
         </Col>
         <Col xs={24} lg={8}>
@@ -208,7 +208,7 @@ export default function DashboardPage() {
               </div>
             ))}
           </Space>
-        ) : <EmptyState empty title="暂无客户数据" height={120} />}
+        ) : <EmptyState empty title="暂无客户数据" description="当前统计区间内还没有合作的客户" height={120} />}
       </ProCard>
     </Page>
   );

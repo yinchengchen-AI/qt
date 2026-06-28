@@ -170,7 +170,7 @@ export default function CustomerDetailPage() {
                 { title: "开票日", dataIndex: "actualIssueDate", width: 120, render: (v) => v ? <DateCell value={v as string} /> : "—" },
                 { title: "状态", dataIndex: "status", width: 120, render: (_, r) => <StatusTag status={r.status as string} domain="invoice" /> }
               ]} />
-          ) : <Empty description="该客户暂无开票记录" />}
+          ) : <Empty description="该客户暂无开票记录，请先创建开票" />}
         </ProCard>
       )
     },
@@ -196,7 +196,7 @@ export default function CustomerDetailPage() {
                 { title: "到账日", dataIndex: "receiveDate", width: 120, render: (_, r) => <DateCell value={r.receiveDate as string} /> },
                 { title: "状态", dataIndex: "status", width: 120, render: (_, r) => <StatusTag status={r.status as string} domain="payment" /> }
               ]} />
-          ) : <Empty description="该客户暂无回款记录" />}
+          ) : <Empty description="该客户暂无回款记录，请先登记回款" />}
         </ProCard>
       )
     }
@@ -206,8 +206,8 @@ export default function CustomerDetailPage() {
     <Page>
       <PageHeader
         back={goBack}
-        title={`${data.name} (${data.code})`}
-        subtitle="客户 360 度视图 — 概览 / 信息 / 合同 / 项目 / 开票 / 回款"
+        title={`${data.name}（${data.code}）`}
+        subtitle="客户 360 度视图：概览 / 基本信息 / 合同 / 项目 / 开票 / 回款"
         actions={
           <Space wrap>
             <Button key="pdf" icon={<FilePdfOutlined />} onClick={() => openPrintWindow(`/api/customers/${id}/pdf`)}>导出 PDF</Button>

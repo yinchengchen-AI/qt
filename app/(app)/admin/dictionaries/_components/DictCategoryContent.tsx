@@ -71,7 +71,7 @@ export function DictCategoryContent({
       >
         <Input.Search
           allowClear
-          placeholder="搜索 code / label"
+          placeholder="搜索 code 或 label"
           value={keyword}
           onChange={(e) => onKeywordChange(e.target.value)}
           style={{ width: 240 }}

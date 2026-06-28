@@ -50,13 +50,13 @@ export default function DepartmentsPage() {
 
   async function onDelete(d: Department) {
     if (d.memberCount > 0 || (d.children && d.children.length > 0)) {
-      message.error("该部门仍有子部门或成员,无法删除");
+      message.error("该部门仍有子部门或成员，无法删除，请先处理后再试");
       return;
     }
     const r = await fetch(`/api/departments/${d.id}`, { method: "DELETE", credentials: "include" });
     const j = await r.json();
     if (j.code !== 0) return message.error(j.message);
-    message.success("已删除");
+    message.success("部门已删除");
     reload();
   }
 
@@ -158,7 +158,7 @@ export default function DepartmentsPage() {
     <Page>
       <PageHeader
         title="部门管理"
-        subtitle="树形部门;支持任意层级嵌套;子部门 / 成员非空不可删"
+        subtitle="支持任意层级嵌套；存在子部门或成员时不可删除"
         actions={
           <Space>
             <Switch

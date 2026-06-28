@@ -34,7 +34,7 @@ export function DictCategorySider({ selected, onSelect, counts }: Props) {
         <Input
           allowClear
           prefix={<SearchOutlined />}
-          placeholder="搜索类目"
+          placeholder="搜索类目名称"
           value={keyword}
           onChange={(e) => setKeyword(e.target.value)}
         />
@@ -43,7 +43,7 @@ export function DictCategorySider({ selected, onSelect, counts }: Props) {
       <div style={{ flex: 1, overflowY: "auto", marginRight: -8, paddingRight: 8 }}>
         {filtered ? (
           filtered.length === 0 ? (
-            <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="无匹配类目" />
+            <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="没有匹配的类目，请调整搜索关键词" />
           ) : (
             filtered.map((g) => (
               <div key={g.domain} style={{ marginBottom: 12 }}>

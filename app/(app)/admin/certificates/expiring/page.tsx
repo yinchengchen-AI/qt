@@ -30,7 +30,7 @@ export default function ExpiringCertificatesPage() {
     return (
       <Page>
         <PageHeader back={goBack} title="到期证书" />
-        <ErrorBox title="无权限">仅管理员可查看到期证书</ErrorBox>
+        <ErrorBox title="无权限">仅管理员可查看到期证书，请联系系统管理员</ErrorBox>
       </Page>
     );
   }
@@ -66,7 +66,7 @@ export default function ExpiringCertificatesPage() {
       <PageHeader
         back={goBack}
         title="到期证书"
-        subtitle="60 天内到期 / 已过期(未到期的证书不在此列表)"
+        subtitle="60 天内到期或已过期的证书（未到期的证书不在此列表）"
       />
       <ProCard>
         <ProTable<Row>

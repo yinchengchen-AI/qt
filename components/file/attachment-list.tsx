@@ -34,7 +34,7 @@ export function AttachmentList(props: {
     items,
     allowDelete = true,
     allowPreview = true,
-    emptyText = "暂无附件",
+    emptyText = "暂无附件，请上传",
     showHeader = true,
     onDeleted,
     customDelete
@@ -78,7 +78,7 @@ export function AttachmentList(props: {
         const j = await r.json();
         if (j.code !== 0) throw new Error(j.message || "删除失败");
       }
-      void message.success("已删除");
+      void message.success("附件已删除");
       onDeleted?.(item.id);
     } catch (e) {
       void message.error((e as Error).message);
@@ -174,7 +174,7 @@ export function AttachmentList(props: {
                   {allowDelete && (
                     <Popconfirm
                       title="确认删除此附件?"
-                      description="删除后详情页不再显示,对象本身暂留 MinIO"
+                      description="删除后详情页不再展示，对象本身仍暂存在 MinIO，可在回收站清理"
                       onConfirm={() => handleDelete(a)}
                       okText="删除"
                       cancelText="取消"
