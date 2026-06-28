@@ -76,7 +76,11 @@ export default function ExpiringCertificatesPage() {
           request={async () => {
             const r = await fetch("/api/certificates/expiring?days=60", { credentials: "include" });
             const j = await r.json();
-            return { data: j.data ?? [], success: j.code === 0 };
+            // 接口返回 ok({ data: T[] }), 内层 data 才是真正的列表;
+            // 直接拿 j.data 会拿到 { data: [...] } 对象, ProTable 内部
+            // useEditableArray 会按数组遍历 → 报 records?.forEach is not a function
+            const list = j.data?.data ?? [];
+            return { data: list, success: j.code === 0, total: list.length };
           }}
           pagination={{ pageSize: 20 }}
         />
