@@ -121,14 +121,28 @@ export default function NewInvoicePage() {
                 size: "large",
                 optionFilterProp: "label",
                 // 选合同 → 拉客户详情 → 写抬头字段
-                onChange: async (_: unknown, opt: unknown) => {
-                  const o = opt as { customerId?: string } | undefined;
-                  if (!o?.customerId) {
+                onChange: async (
+                  _: unknown,
+                  opt: {
+                    value: string;
+                    contract?: {
+                      id: string;
+                      contractNo: string;
+                      title: string;
+                      totalAmount: string;
+                      customerId: string;
+                      customerName: string;
+                    };
+                  } | unknown
+                ) => {
+                  const o = opt as { value: string; contract?: { customerId: string } } | undefined;
+                  const customerId = o?.contract?.customerId;
+                  if (!customerId) {
                     setPickedCustomer(null);
                     return;
                   }
                   try {
-                    const r = await fetch(`/api/customers/${o.customerId}`, {
+                    const r = await fetch(`/api/customers/${customerId}`, {
                       credentials: "include"
                     });
                     const j = await r.json();
@@ -166,8 +180,7 @@ export default function NewInvoicePage() {
                 }>).map((c) => ({
                   value: c.id,
                   label: `${c.contractNo} · ${c.title} · ${formatCurrency(c.totalAmount)}`,
-                  customerId: c.customerId,
-                  customerName: c.customerName
+                  contract: c
                 }));
               }}
             />
