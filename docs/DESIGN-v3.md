@@ -137,7 +137,7 @@ enum UserStatus { ACTIVE DISABLED }
 enum CustomerType { ENTERPRISE GOV OTHER }
 enum CustomerScale { LARGE MEDIUM SMALL MICRO }
 enum CustomerLevel { A B C D }
-enum CustomerStatus { LEAD NEGOTIATING SIGNED LOST FROZEN }
+// (v0.5.0 起客户状态机下线, `enum CustomerStatus` 移除; Customer 表无 status 字段)
 enum FollowMethod { VISIT CALL WECHAT EMAIL OTHER }
 enum FollowResult { INTENT NO_INTENT PENDING SIGNED }
 enum ServiceType { SAFETY_CONSULT SAFETY_TRAIN HAZARD_ANA EMERGENCY_PLAN EVALUATION OTHER }
@@ -150,7 +150,13 @@ enum TitleType { COMPANY PERSONAL }
 enum InvoiceStatus { DRAFT PENDING_FINANCE ISSUED REJECTED VOIDED RED_FLUSHED }
 enum PaymentReceiveMethod { BANK_TRANSFER CHECK CASH WECHAT ALIPAY OTHER }
 enum PaymentStatus { PLANNED CONFIRMED RECONCILED REFUNDED CANCELLED }
-enum MessageType { CONTRACT_EXPIRING INVOICE_OVERDUE_PAYMENT PAYMENT_RECEIVED CUSTOMER_STATUS_SUGGEST CONTRACT_AUTO_EXECUTED CONTRACT_AUTO_COMPLETED CONTRACT_AUTO_EXPIRED CUSTOMER_STATUS_AUTO_APPLIED CUSTOMER_STATUS_AUTO_REVERTED }
+enum MessageType {
+  CONTRACT_EXPIRING INVOICE_OVERDUE_PAYMENT PAYMENT_RECEIVED
+  CONTRACT_AUTO_EXECUTED CONTRACT_AUTO_COMPLETED CONTRACT_AUTO_EXPIRED
+  CONTRACT_AUTO_OVERDUE_TERMINATED CONTRACT_EXPIRED_UNPAID
+  CERTIFICATE_EXPIRING
+  CUSTOMER_STATUS_SUGGEST CUSTOMER_STATUS_AUTO_APPLIED CUSTOMER_STATUS_AUTO_REVERTED
+}  // 后 3 个 CUSTOMER_STATUS_* v0.5.0 起已停止 emit, 保留 enum 值用于历史消息 fallback 渲染
 ```
 
 #### 4.2.1 `User`
@@ -169,9 +175,9 @@ enum MessageType { CONTRACT_EXPIRING INVOICE_OVERDUE_PAYMENT PAYMENT_RECEIVED CU
 - `province`、`city`、`address String?`、`contactPhone`、`contactEmail String?`、`sourceChannel String?`
 - `level CustomerLevel @default(C)`
 - `ownerUserId String`（→ User；SALES 创建=自己，OPS 创建=管理员指定）
-- `status CustomerStatus @default(LEAD)`
 - `creditLimitAmount Decimal? @db.Decimal(18,2)`、`paymentTermDays Int @default(30)`
-- 索引：`@@index([ownerUserId])`、`@@index([status])`、`@@index([level])`
+- 索引：`@@index([ownerUserId])`、`@@index([level])`
+- v0.5.0 起 `status CustomerStatus @default(LEAD)` 与 `@@index([status])` 已删（客户状态机下线）
 
 #### 4.2.4 `ContactPerson` / `FollowUp`（同 v2）
 
@@ -298,45 +304,11 @@ PLANNED ─confirm(finance)─▶ CONFIRMED ─reconcile(finance)─▶ RECONCIL
    └──cancel(创建人, PLANNED 态)──▶ CANCELLED
 ```
 
-### 5.5 `Customer.status`(5 态 + 自动化 + 7 天可撤销)
+### 5.5 `Customer`(无 status 字段)
 
-```
-LEAD ─manual/auto─▶ NEGOTIATING ─auto/manual─▶ SIGNED ─[manual]─▶ LOST (终态)
-  │                    │                       │             │
-  │                    ├──[manual/auto]─▶ LOST │             └─▶ FROZEN (终态)
-  │                    │   (终态)              │            (LOST/FROZEN 只能走 NEGOTIATING 恢复)
-  │                    │                       │
-  │                    └──[auto/manual]─▶ FROZEN│
-  │                        (终态)              │
-  └─[manual/auto]─▶ LOST  (LEAD→FROZEN 暂不允许)
-```
-
-**合法迁移表**(`lib/customer-status-transitions.ts:CUSTOMER_STATUS_TRANSITIONS`):
-
-| 起点 | 可去往 |
-|---|---|
-| `LEAD` 线索 | `NEGOTIATING` / `SIGNED` / `LOST` |
-| `NEGOTIATING` 洽谈中 | `SIGNED` / `LOST` / `FROZEN` |
-| `SIGNED` 已签约 | `LOST` / `FROZEN`(**不能**回 `NEGOTIATING`) |
-| `LOST` 已流失 | `NEGOTIATING`(恢复推进) |
-| `FROZEN` 已冻结 | `NEGOTIATING`(恢复推进) |
-
-**自动联动 4 条规则**(`lib/customer-auto-rules.ts:CUSTOMER_AUTO_RULES`):
-
-- 业务事件 2 条: `CONTRACT_ACTIVATED`(合同 DRAFT→ACTIVE, 目标 SIGNED) / `ALL_CONTRACTS_CLOSED`(全部合同 CLOSED, 目标 FROZEN)
-- 时间窗 2 条: `INACTIVE_LOST` 90 天无活动(目标 LOST) / `INACTIVE_FROZEN` 60 天无活动 + 全完结(目标 FROZEN)
-- 撤销回退走状态机迁移表, per-rule `rule.revertTarget` 字段;`CONTRACT_ACTIVATED` 因 SIGNED→NEGOTIATING 非法, 走 SIGNED→FROZEN
-- 7 天窗口 `CUSTOMER_AUTO_DISPUTE_DAYS`; 关单条 `CUSTOMER_AUTO_RULES_DISABLED="RULE_ID"`
-
-`silentSkip` 自动写(行锁 + Serializable + `runTransitionInTx`, 不抛错; 前置不满足或状态被改过返 `SKIPPED`), 时间窗 SKIPPED 时降级为 `CUSTOMER_STATUS_SUGGEST`。撤销走 `POST /api/customers/[id]/revert`, 7 天外返 `CUSTOMER_AUTO_DISPUTE_EXPIRED` (403), 状态被改过返 `CUSTOMER_AUTO_REVERT_TARGET_INVALID` (422)。
-
-**关键校验**:
-- R-02 客户 → SIGNED 需 ≥ 1 份 ACTIVE 合同; R-13 客户 → FROZEN 需无 ACTIVE 合同 + 无 PLANNED/CONFIRMED 回款
-- R-13b 撤销窗口 7 天; R-13c 撤销前 status 必须等于 `lastAutoRule.targetStatus`(防竞态); R-13d 撤销路径必须走 `ALLOWED_TRANSITIONS_BY_TARGET`
-- R-13e `LEAD → FROZEN` 暂不允许
-
-**完整设计 / 数据流 / Schema 增量 / 错误码 / env 列表**: 见
-[docs/superpowers/specs/2026-06-28-customer-status-automation.md](superpowers/specs/2026-06-28-customer-status-automation.md)。
+> v0.5.0 起客户表下线 `status` 字段及关联的状态机/自动化/撤销横幅(原 5 态 LEAD/NEGOTIATING/SIGNED/LOST/FROZEN + 4 条自动规则 + 7 天可撤销窗口); 客户跟进(`FollowUp`)已在 v0.3.1 软下线。
+> 业务方后续定义新流程。完整下线原因 / 数据迁移 / 历史消息处理见
+> [docs/superpowers/specs/2026-06-29-customer-status-deprecation.md](superpowers/specs/2026-06-29-customer-status-deprecation.md)。
 
 ## 6. 跨模块校验规则（核心规则清单）
 
@@ -345,8 +317,6 @@ LEAD ─manual/auto─▶ NEGOTIATING ─auto/manual─▶ SIGNED ─[manual]─
 | 编号 | 触发 | 规则 | 错误码 |
 |---|---|---|---|
 | R-01 | 客户 `unifiedSocialCreditCode` | 18 位 + GB 32100-2015 加权校验（Zod 自定义 `.refine`） | `CUSTOMER_CREDIT_CODE_INVALID` |
-| R-02 | 客户 `→ SIGNED` | 至少一份 `ACTIVE` 合同 | `CUSTOMER_STATUS_INVALID` |
-| R-03 | 新建合同 | 客户 `status ∈ {NEGOTIATING, SIGNED}` | `CONTRACT_CUSTOMER_STATUS` |
 | R-04 | 合同 `→ ACTIVE` | 字段完整 + 至少 1 附件（`isPublishable`） | `CONTRACT_INCOMPLETE` |
 | R-05 | 新建项目 | 所属合同 `status = ACTIVE` | `PROJECT_CONTRACT_NOT_EFFECTIVE` |
 | R-06 | 项目 `endDate` | `≤ contract.endDate` | `PROJECT_DATE_OUT_OF_RANGE` |
@@ -356,10 +326,9 @@ LEAD ─manual/auto─▶ NEGOTIATING ─auto/manual─▶ SIGNED ─[manual]─
 | R-10 | 回款 `→ CONFIRMED` | `bankRefNo` 全局唯一 | `PAYMENT_DUPLICATE_REF` |
 | R-11 | 回款 `→ CONFIRMED` | 该发票下累计回款 ≤ 发票金额 | `PAYMENT_OVER_INVOICE` |
 | R-12 | 回款 `→ CONFIRMED` | 合同级累计回款 ≤ 合同总额 | `PAYMENT_OVER_CONTRACT` |
-| R-13 | 客户 `→ FROZEN` | 无 `ACTIVE` 合同 + 无 `PLANNED/CONFIRMED` 回款 | `CUSTOMER_HAS_ACTIVE_CONTRACT` / `CUSTOMER_FROZEN_ACTIVE_PAYMENT` |
 | R-14 | 删除 | 终态记录禁止物理删除 | `ENTITY_IMMUTABLE` |
 | R-15 | 用户 `DISABLED` | 名下 ACTIVE 合同需先转移 owner | `USER_HAS_ACTIVE_OWNERSHIP` |
-| R-16 | 状态机迁移 | 强制走 Service；事务内 `Serializable` + 行锁；迁移表集中在 `lib/customer-status-transitions.ts` | `CUSTOMER_STATUS_TRANSITION_INVALID` |
+| R-16 | 状态机迁移 | 强制走 Service；事务内 `Serializable` + 行锁；通用抽象集中在 `lib/status-machine.ts` | (entity-specific) |
 
 > **错误码约定**：`{ENTITY}_{REASON}` 大写下划线；前端 ProForm `onFinish` 失败时按 `errorCode` 映射到 `errorCodeMessageMap` 文案 + 字段级错误从 `details.fieldErrors` 注入 ProForm `error`。
 
@@ -374,9 +343,6 @@ LEAD ─manual/auto─▶ NEGOTIATING ─auto/manual─▶ SIGNED ─[manual]─
 | `INVOICE_OVERDUE_PAYMENT` | 定时任务：`actualIssueDate + 30` 天未全额回款 | 业务负责人 + 财务 | 「发票 `{invoiceNo}` 已开票 {n} 天，剩余未回款 ¥{amount}」 |
 | `PAYMENT_RECEIVED` | 回款 `→ CONFIRMED` | 业务负责人 | 「客户 {customerName} 回款 ¥{amount} 已确认」 |
 | `PROJECT_DUE` | 定时任务：项目 `endDate − 7` 天 | 项目负责人 + 业务负责人 | 「项目 `{projectNo}` 将于 {n} 天后计划完成」 |
-| `CUSTOMER_STATUS_SUGGEST` | 定时任务: 自动写 `SKIPPED` 时降级发建议 (2026-06 后降为次要路径) | 业务负责人 | 「建议将客户 {customerName} 状态变更为 {suggestedStatus}」 |
-| `CUSTOMER_STATUS_AUTO_APPLIED` | 业务事件 / 时间窗: 4 条规则之一 `DONE` (见 §5.5.1) | 客户 owner | 「系统已根据「{ruleLabel}」将客户 {customerName} 状态变更为 {to}，7 天内可撤销」 |
-| `CUSTOMER_STATUS_AUTO_REVERTED` | owner 撤销: `POST /api/customers/[id]/revert` 成功 | 客户 owner | 「已撤销系统对客户 {customerName} 的状态变更 ({from} → {to})，原因: {reason}」 |
 
 **实现**：领域事件总线（`src/server/events/bus.ts`）→ 写 `Message` 表 → 站内信（顶栏铃铛 + `/messages`）。邮件 / 企业微信通道已下线，运维侧不再持有任何凭据。
 
@@ -403,7 +369,7 @@ LEAD ─manual/auto─▶ NEGOTIATING ─auto/manual─▶ SIGNED ─[manual]─
 - **未回款额 clamp**:`paymentAmount` 包含 `invoiceId IS NULL` 的预付款,可能大于 `invoiceAmount`,`unpaidAmount` 实际计算为 `Math.max(0, invoiceAmount − paymentAmount)`,避免出现 `-¥X`。
 - **账龄 REFUNDED 处理**:schema 的 `refund` 动作把原 `Payment.status` 翻为 `REFUNDED`(amount 不变)。账龄 paidMap 只聚合 `status ∈ {CONFIRMED, RECONCILED}`——已退款的回款视为从未生效,**不**用符号抵消(否则会从负的净额里错误高估应收)。`getInvoiceAging` 同时返回 `total`(全部超期数)与 `rows`(`rows.length ≤ 100`,按 daysOverdue 降序),前端用 `total` 渲染「共 N 条」与「查看全部 N 条 →」的真实总数。
 - **daysOverdue 计算**:走 `Date.UTC` 归一日历日差(不是 `ms / 86_400_000`),避免 DST/时区边界差一天。`actualIssueDate` 在未来(时钟漂移/录错)统一归入 `90+` 段。
-- **客户分布 label**:`byScale / byType / byStatus` 在路由层用 `lib/enum-maps.ts` 的 `CUSTOMER_SCALE_MAP / CUSTOMER_TYPE_MAP / CUSTOMER_STATUS_MAP` 翻译成中文,前端 `valueEnum` 不必再维护;`key` 仍保留原始 code 供筛选/导出。
+- **客户分布 label**:`byScale / byType / byStatus` 在路由层用 `lib/enum-maps.ts` 的 `CUSTOMER_SCALE_MAP / CUSTOMER_TYPE_MAP` 翻译成中文,前端 `valueEnum` 不必再维护;`key` 仍保留原始 code 供筛选/导出。
 - **业务人员业绩行级隔离**:SALES 角色 short-circuit,只返回自己一行;其它角色查 `isSystem=false AND role.code != "ADMIN" AND status=ACTIVE` 的用户。
 - **Top 客户 metric**:`metric=contract` 时筛 `total > 0`,`metric=payment` 时筛 `paymentTotal > 0`,避免按所选维度无数据的客户出现在榜上。
 
@@ -513,7 +479,7 @@ LEAD ─manual/auto─▶ NEGOTIATING ─auto/manual─▶ SIGNED ─[manual]─
   /domain/{customer,contract,project,invoice,payment}/rules.ts
   /services/*
   /events/bus.ts
-  /jobs/{contract-expiring,invoice-overdue,contract-expiry,customer-status-suggest}.ts
+  /jobs/{contract-expiring,invoice-overdue,contract-expiry,certificate-expiry-check}.ts
 /prisma
   schema.prisma migrations/ seed.ts
 /types
@@ -543,7 +509,6 @@ LEAD ─manual/auto─▶ NEGOTIATING ─auto/manual─▶ SIGNED ─[manual]─
 8. **统计**：构造 1 个月数据，统计接口 `groupBy=month` 的「已开票额/已回款额」与 SQL 聚合一致（误差 0.01）；账龄分桶口径正确；`unpaidAmount` 不为负（预付款场景下 clamp 到 0）；`getInvoiceAging.total` 等于全部超期数（可能 > 100）；`getTopCustomers` 接受 `from/to` 时合同/开票/回款聚合同步收窄；SALES 访问 `getEmployeePerformance` 只返回自己一行。
 9. **审计**：所有状态机迁移在 `OperationLog` / `*AuditLog` 中留痕，含 `actorId` 与 `before/after diff`；密码/敏感字段永不入日志。
 10. **前端 antd 6**：ProTable 分页/排序/筛选参数正确传递；按钮权限按 `<Authority>` 隐藏；金额格式 `¥1,234,567.00` 一致；`AntdRegistry` SSR 样式无首屏闪烁。
-11. **客户状态机自动化 (2026-06)**: 合同 `DRAFT→ACTIVE` 后客户自动 `→ SIGNED` (lastAutoAppliedAt/lastAutoRule 写入 + 收 `CUSTOMER_STATUS_AUTO_APPLIED`); 7 天内 owner `POST /api/customers/[id]/revert {reason: 5-200字}` 成功回退, 横幅消失; 7 天后返 403 `CUSTOMER_AUTO_DISPUTE_EXPIRED`; INACTIVE_LOST 90 天阈值 (env `CUSTOMER_AUTO_INACTIVE_LOST_DAYS`) + 全部合同 CLOSED ≥ 30 天满足时自动写 LOST/FROZEN; 关单条规则 `CUSTOMER_AUTO_RULES_DISABLED="INACTIVE_LOST"` 降级为 SUGGEST。
 
 ---
 

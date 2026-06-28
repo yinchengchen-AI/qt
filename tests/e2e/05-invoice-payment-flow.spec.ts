@@ -33,13 +33,7 @@ async function createCustomer(page: import("@playwright/test").Page) {
   expect(res.ok()).toBeTruthy();
   const body = await res.json();
   expect(body.code).toBe(0);
-  const customerId = body.data.id as string;
-  // 合同要求客户处于 NEGOTIATING/SIGNED
-  const patch = await page.request.patch(`/api/customers/${customerId}`, {
-    data: { status: "NEGOTIATING" }
-  });
-  expect(patch.ok()).toBeTruthy();
-  return customerId;
+  return body.data.id as string;
 }
 
 async function createAndPublishContract(page: import("@playwright/test").Page, customerId: string) {

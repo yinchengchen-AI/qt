@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { CUSTOMER_SCALE, CUSTOMER_STATUS, CUSTOMER_TYPE } from "@/types/enums";
+import { CUSTOMER_SCALE, CUSTOMER_TYPE } from "@/types/enums";
 import { isValidCreditCode } from "@/lib/credit-code";
 
 export const customerCreateSchema = z.object({
@@ -27,7 +27,7 @@ export const customerCreateSchema = z.object({
   ownerUserId: z.string().optional()
 });
 
-export const customerUpdateSchema = customerCreateSchema.partial().extend({ status: z.enum(CUSTOMER_STATUS).optional(), reason: z.string().max(200).optional() });
+export const customerUpdateSchema = customerCreateSchema.partial();
 
 export type CustomerCreateInput = z.infer<typeof customerCreateSchema>;
 export type CustomerUpdateInput = z.infer<typeof customerUpdateSchema>;
@@ -38,7 +38,6 @@ export const customerListQuerySchema = z.object({
   page: z.coerce.number().int().min(1).default(1),
   pageSize: z.coerce.number().int().min(1).max(100).default(20),
   keyword: z.string().optional(),
-  status: z.string().optional(),
   scale: z.string().optional(),
   customerType: z.string().optional(),
   industry: z.string().optional(),
@@ -51,11 +50,3 @@ export const customerListQuerySchema = z.object({
   createdAtTo: z.string().optional(),
 });
 
-/**
- * 客户状态自动写撤销 (§2.4) 请求体:
- *   - reason 必填, 5-200 字 (进 audit.after.reason + 站内信 content)
- */
-export const customerRevertSchema = z.object({
-  reason: z.string().min(5, "撤销理由至少 5 个字符").max(200, "撤销理由最多 200 个字符")
-});
-export type CustomerRevertInput = z.infer<typeof customerRevertSchema>;

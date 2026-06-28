@@ -43,7 +43,9 @@ export function actionDomain(action: string): StatusDomain | null {
   if (action.startsWith("CONTRACT_")) return "contract";
   if (action.startsWith("INVOICE_")) return "invoice";
   if (action.startsWith("PAYMENT_")) return "payment";
-  if (action.startsWith("CUSTOMER_")) return "customer";
+  // 历史 CUSTOMER_STATUS_* / CUSTOMER_AUTO_* action 仍保留, 但 StatusDomain 已无 customer
+  // 返回 null 让 StatusTag 走默认色, 标签由调用方自己决定 (一般是 action 本身)
+  if (action.startsWith("CUSTOMER_")) return null;
   return null;
 }
 

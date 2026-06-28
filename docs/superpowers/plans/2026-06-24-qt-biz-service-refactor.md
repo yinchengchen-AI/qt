@@ -1,5 +1,7 @@
 # qt-biz 五模块 service 层主题重构 Implementation Plan
 
+> ⚠️ **历史注脚 (2026-06-29, v0.5.0)**：本计划为 v0.3.0 历史产物,已完整执行并合入。文中提及的 `lib/customer-status-transitions.ts` / `changeCustomerStatus` / `tests/unit/server/customer-status.test.ts` 等模块已在 v0.5.0 客户状态机下线时整体移除 (`docs/superpowers/specs/2026-06-29-customer-status-deprecation.md`), 仅作历史参考, 不再适用。本计划其它 lib (`status-machine` / `money` / `money-tolerance` / `attachment-snapshot` / `soft-delete` / `known-keys`) 仍为现行架构。
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** 把 1780 行 service / lib 层的 9 条技术债打包成 6 个独立可合 PR,后端先,API 契约零变化,142 个旧单测 + 20 个 API 集成测试零回归。

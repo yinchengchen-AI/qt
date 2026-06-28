@@ -1,5 +1,5 @@
 // 客户列表导出 XLSX
-// - 入参同 GET /api/customers(keyword/status), 便于从列表页带当前筛选条件拉全量
+// - 入参同 GET /api/customers(keyword), 便于从列表页带当前筛选条件拉全量
 // - 行级隔离: 仍调 listCustomers, SALES 用户只会导出自己负责的客户
 // - 上限 10000 行, 够用
 import { z } from "zod";
@@ -11,7 +11,6 @@ import { listCustomers } from "@/server/services/customer";
 import { exportToXlsx, exportMaxRows } from "@/lib/excel";
 import { prisma } from "@/lib/prisma";
 import { ALLOWED_DICTIONARY_CATEGORIES } from "@/lib/dictionary-categories";
-import { CUSTOMER_STATUS_MAP } from "@/lib/enum-maps";
 
 // 把动态字典(category+code -> label)和客户状态静态 map 拍平成一个查找表
 async function loadDict(): Promise<Record<string, string>> {
@@ -22,15 +21,14 @@ async function loadDict(): Promise<Record<string, string>> {
     },
     select: { category: true, code: true, label: true },
   });
-  const out: Record<string, string> = { ...CUSTOMER_STATUS_MAP };
+  const out: Record<string, string> = {};
   for (const i of items) out[`${i.category}::${i.code}`] = i.label;
   return out;
 }
 
 const query = z.object({
   keyword: z.string().optional(),
-  // status / scale / customerType / industry 接受单值或逗号分隔多值
-  status: z.string().optional(),
+  // scale / customerType / industry 接受单值或逗号分隔多值
   scale: z.string().optional(),
   customerType: z.string().optional(),
   industry: z.string().optional(),
@@ -97,12 +95,6 @@ export async function GET(req: Request) {
             key: "sourceChannel",
             width: 14,
             formatter: (v) => label("CUSTOMER_SOURCE", v as string),
-          },
-          {
-            header: "状态",
-            key: "status",
-            width: 10,
-            formatter: (v) => label("CUSTOMER_STATUS", v as string),
           },
           {
             header: "联系人",

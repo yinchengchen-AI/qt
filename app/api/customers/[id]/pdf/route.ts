@@ -11,7 +11,7 @@ import {
 import { prisma } from "@/lib/prisma";
 import { renderPrintHtml, type PrintDoc } from "@/lib/print-html";
 import { ALLOWED_DICTIONARY_CATEGORIES } from "@/lib/dictionary-categories";
-import { CUSTOMER_STATUS_MAP, CONTRACT_STATUS_MAP, INVOICE_STATUS_MAP, PAYMENT_STATUS_MAP } from "@/lib/enum-maps";
+import { CONTRACT_STATUS_MAP, INVOICE_STATUS_MAP, PAYMENT_STATUS_MAP } from "@/lib/enum-maps";
 
 const fmtDate = (s: string | Date | null | undefined) =>
   s ? new Date(s).toLocaleDateString("zh-CN") : "—";
@@ -45,7 +45,7 @@ export async function GET(
         }),
       ]);
 
-      const dict: Record<string, string> = { ...CUSTOMER_STATUS_MAP };
+      const dict: Record<string, string> = {};
       for (const i of dictItems) dict[`${i.category}::${i.code}`] = i.label;
       const label = (cat: string, code?: string | null) =>
         code ? (dict[`${cat}::${code}`] ?? code) : "";
@@ -53,7 +53,7 @@ export async function GET(
       const totals = overview.totals;
       const doc: PrintDoc = {
         title: `客户档案 - ${c.name}`,
-        subtitle: `客户编号 ${c.code} · 状态 ${label("CUSTOMER_STATUS", c.status)}`,
+        subtitle: `客户编号 ${c.code}`,
         meta: [
           { label: "客户编号:", value: c.code },
           {

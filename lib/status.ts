@@ -1,7 +1,6 @@
 /* 业务状态色板集中映射。StatusTag 和 valueEnum 都消费这里。 */
 
 export type StatusDomain =
-  | "customer"
   | "contract"
   | "invoice"
   | "payment"
@@ -15,15 +14,6 @@ export type StatusMeta = {
   label: string;
   tone: Tone;
 };
-/* === Customer === */
-const CUSTOMER: Record<string, StatusMeta> = {
-  LEAD:        { label: "线索",     tone: "default" },
-  NEGOTIATING: { label: "洽谈中",   tone: "processing" },
-  SIGNED:      { label: "已签约",   tone: "success" },
-  LOST:        { label: "已流失",   tone: "warning" },
-  FROZEN:      { label: "已冻结",   tone: "danger" }
-};
-
 /* === Contract === */
 const CONTRACT: Record<string, StatusMeta> = {
   DRAFT:   { label: "草稿",   tone: "default" },
@@ -69,7 +59,6 @@ const ANNOUNCEMENT: Record<string, StatusMeta> = {
 };
 
 const DOMAIN_MAP: Record<StatusDomain, Record<string, StatusMeta>> = {
-  customer: CUSTOMER,
   contract: CONTRACT,
   invoice: INVOICE,
   payment: PAYMENT,

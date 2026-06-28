@@ -2,7 +2,7 @@ import "dotenv/config";
 import { randomUUID } from "crypto";
 import { PutObjectCommand } from "@aws-sdk/client-s3";
 import { prisma } from "@/lib/prisma";
-import { createCustomer, changeCustomerStatus } from "@/server/services/customer";
+import { createCustomer } from "@/server/services/customer";
 import { createContract } from "@/server/services/contract";
 import { getS3Client, getBucket } from "@/server/storage/minio";
 import { isMinioEnabled } from "@/lib/env";
@@ -103,7 +103,6 @@ async function main() {
     };
 
     const customer = await createCustomer(admin, customerInput);
-    await changeCustomerStatus(admin, customer.id, "NEGOTIATING");
 
     const attachment = await uploadTmpAttachment(admin.id, i);
 
@@ -127,7 +126,6 @@ async function main() {
       where: { id: attachment.id },
       data: { isDeliverable: true }
     });
-    await changeCustomerStatus(admin, customer.id, "SIGNED");
 
     results.push({
       customer: { id: customer.id, code: customer.code, name: customer.name },

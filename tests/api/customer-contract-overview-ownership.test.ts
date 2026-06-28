@@ -29,7 +29,6 @@ function readAll(paths: string[]): string {
 const CUSTOMER_SERVICE_FILES = [
   "server/services/customer/index.ts",
   "server/services/customer/crud.ts",
-  "server/services/customer/status.ts",
   "server/services/customer/overview.ts",
 ];
 const CONTRACT_SERVICE_FILES = [

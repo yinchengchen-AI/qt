@@ -40,13 +40,16 @@ describe("buildCustomerUpdateData", () => {
     expect(data.contactName).toBe("张三");
   });
 
-  it("status 永远不会被写入 (必须经 changeCustomerStatus 走业务规则)", () => {
-    // 即便调用方传了 status, 也不能让它绕过 R-02 / R-13 校验
+  it("防御性: buildCustomerUpdateData 不写入 status / reason 字段", () => {
+    // 客户 status 字段已下线 (v0.5.0), 但 schema 仍可能允许 history 字段残留;
+    // 路由层会把 status 单独路由, 此处再做一次防御, 即便 input 含 status / reason 也不应进入 data
     const data = buildCustomerUpdateData(
-      { name: "X", status: "SIGNED" } as never,
+      { name: "X", status: "FROZEN", reason: "test" } as unknown as Parameters<typeof buildCustomerUpdateData>[0],
       "u"
     ) as Record<string, unknown>;
     expect("status" in data).toBe(false);
+    expect("reason" in data).toBe(false);
+    expect(data.name).toBe("X");
   });
 
   it("updatedById 总是写入", () => {

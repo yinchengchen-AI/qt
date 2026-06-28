@@ -34,16 +34,6 @@ export const env = createEnv({
     // 由 tryAutoCloseOnOverdue 自动关闭 (reason=overdue_terminated).
     // 默认 60 天,允许 0 表示"立即强关"(不推荐,会留下大量财务缺口).
     CONTRACT_OVERDUE_GRACE_DAYS: z.coerce.number().int().min(0).max(3650).default(60),
-    // 客户状态机自动化规则开关 (P 客户状态机优化 §2.1):
-    //   CUSTOMER_AUTO_RULES_DISABLED  - 逗号分隔的 rule id 列表, 命中即关闭该规则
-    //     (空 = 全开). 规则 ID 见 lib/customer-auto-rules.ts
-    //   CUSTOMER_AUTO_DISPUTE_DAYS   - 自动写后多久内可人工撤销 (默认 7 天)
-    //   CUSTOMER_AUTO_INACTIVE_LOST_DAYS    - 90 天无活动 → 建议/自动写 LOST (默认 90)
-    //   CUSTOMER_AUTO_INACTIVE_FROZEN_DAYS  - 60 天无活动 + 所有合同 CLOSED → 自动写 FROZEN (默认 60)
-    CUSTOMER_AUTO_RULES_DISABLED: z.string().default(""),
-    CUSTOMER_AUTO_DISPUTE_DAYS: z.coerce.number().int().min(1).max(30).default(7),
-    CUSTOMER_AUTO_INACTIVE_LOST_DAYS: z.coerce.number().int().min(1).max(365).default(90),
-    CUSTOMER_AUTO_INACTIVE_FROZEN_DAYS: z.coerce.number().int().min(1).max(365).default(60)
   },
   client: {},
   runtimeEnv: {
@@ -63,10 +53,6 @@ export const env = createEnv({
     MINIO_PUBLIC_BASE_URL: process.env.MINIO_PUBLIC_BASE_URL,
     CONTRACT_COMPLETION_INVOICE_RATIO: process.env.CONTRACT_COMPLETION_INVOICE_RATIO,
     CONTRACT_OVERDUE_GRACE_DAYS: process.env.CONTRACT_OVERDUE_GRACE_DAYS,
-    CUSTOMER_AUTO_RULES_DISABLED: process.env.CUSTOMER_AUTO_RULES_DISABLED,
-    CUSTOMER_AUTO_DISPUTE_DAYS: process.env.CUSTOMER_AUTO_DISPUTE_DAYS,
-    CUSTOMER_AUTO_INACTIVE_LOST_DAYS: process.env.CUSTOMER_AUTO_INACTIVE_LOST_DAYS,
-    CUSTOMER_AUTO_INACTIVE_FROZEN_DAYS: process.env.CUSTOMER_AUTO_INACTIVE_FROZEN_DAYS
   },
   emptyStringAsUndefined: true
 });

@@ -1,5 +1,7 @@
 # 员工档案功能彻底重做 Implementation Plan
 
+> ⚠️ **历史注脚 (2026-06-29, v0.5.0)**：本计划为 v0.4.0 历史产物,已完整执行并合入。文中 §3.2 列举的 `MessageType` enum 含 `CUSTOMER_STATUS_SUGGEST`,v0.5.0 客户状态机下线后已停止 emit, 仅保留 enum 值以兼容历史消息渲染 (`docs/superpowers/specs/2026-06-29-customer-status-deprecation.md`)。其它 `CERTIFICATE_EXPIRING` / `CONTRACT_AUTO_*` 等仍为现行消息类型。
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** 把 `EmployeeProfile` 从"长文本 + ProCard 堆叠"重做为"5 张子表 + 5 步向导 + Anchor 详情 + 证书到期提醒",范围由 [`docs/superpowers/specs/2026-06-25-employee-profile-redesign-design.md`](../../specs/2026-06-25-employee-profile-redesign-design.md) 锁定。

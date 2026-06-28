@@ -133,7 +133,6 @@ export async function createCustomer(user: SessionUser, input: CustomerCreateInp
     data: {
       ...input,
       code,
-      status: "LEAD",
       ownerUserId,
       unifiedSocialCreditCode: input.unifiedSocialCreditCode || null,
       shortName: input.shortName || null,

@@ -21,7 +21,6 @@ const TAG = `TEST-CONTRACT-NEW-${Date.now()}-${Math.random().toString(36).slice(
 let adminUser: SessionUser | null = null;
 let disabledUser: { id: string } | null = null;
 let negotiatingCustomerId: string | null = null;
-let leadCustomerId: string | null = null;
 const createdContractIds: string[] = [];
 const createdAttachmentIds: string[] = [];
 
@@ -52,38 +51,20 @@ beforeAll(async () => {
     select: { id: true }
   });
 
-  const [negotiating, lead] = await Promise.all([
-    prisma.customer.create({
-      data: {
-        code: `${TAG}-CUST-OK`,
-        name: `${TAG}-洽谈中客户`,
-        customerType: "ENTERPRISE",
-        province: "浙江省",
-        city: "杭州市",
-        contactPhone: "13800000000",
-        status: "NEGOTIATING",
-        createdById: adminUser.id,
-        updatedById: adminUser.id,
-        ownerUserId: adminUser.id
-      }
-    }),
-    prisma.customer.create({
-      data: {
-        code: `${TAG}-CUST-LEAD`,
-        name: `${TAG}-线索客户`,
-        customerType: "ENTERPRISE",
-        province: "浙江省",
-        city: "杭州市",
-        contactPhone: "13800000001",
-        status: "LEAD",
-        createdById: adminUser.id,
-        updatedById: adminUser.id,
-        ownerUserId: adminUser.id
-      }
-    })
-  ]);
+  const negotiating = await prisma.customer.create({
+    data: {
+      code: `${TAG}-CUST-OK`,
+      name: `${TAG}-洽谈中客户`,
+      customerType: "ENTERPRISE",
+      province: "浙江省",
+      city: "杭州市",
+      contactPhone: "13800000000",
+      createdById: adminUser.id,
+      updatedById: adminUser.id,
+      ownerUserId: adminUser.id
+    }
+  });
   negotiatingCustomerId = negotiating.id;
-  leadCustomerId = lead.id;
 });
 
 afterAll(async () => {
@@ -96,9 +77,9 @@ afterAll(async () => {
       await prisma.contractReviewLog.deleteMany({ where: { contractId: { in: createdContractIds } } });
       await prisma.contract.deleteMany({ where: { id: { in: createdContractIds } } });
     }
-    await prisma.customer.deleteMany({
-      where: { id: { in: [negotiatingCustomerId, leadCustomerId].filter((v): v is string => Boolean(v)) } }
-    });
+    if (negotiatingCustomerId) {
+      await prisma.customer.deleteMany({ where: { id: negotiatingCustomerId } });
+    }
     if (disabledUser) {
       await prisma.user.deleteMany({ where: { id: disabledUser.id } });
     }
@@ -130,12 +111,6 @@ function baseInput(contractNo: string): ContractCreateInput {
 }
 
 describe("createContract 服务层校验", () => {
-  it("客户状态 LEAD → 创建合同失败", guard(async () => {
-    await expect(
-      createContract(adminUser!, { ...baseInput(`${TAG}-LEAD`), customerId: leadCustomerId! })
-    ).rejects.toMatchObject({ errorCode: ERROR_CODES.CONTRACT_CUSTOMER_STATUS });
-  }));
-
   it("止期 <= 起期 → 400 VALIDATION_FAILED", guard(async () => {
     await expect(
       createContract(adminUser!, {

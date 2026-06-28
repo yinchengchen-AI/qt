@@ -1,8 +1,10 @@
 # 代码审查报告 — 公告 / 消息 功能
 
+> **注**：本审查于 2026-06-23 完成。v0.5.0(2026-06-29)起, 范围中的 `server/jobs/customer-status-suggest.ts` 随客户状态机整体下线而删除, 下文中相关条目仅作历史参考。`MessageType` enum 中 `CUSTOMER_STATUS_SUGGEST` / `CUSTOMER_STATUS_AUTO_APPLIED` / `CUSTOMER_STATUS_AUTO_REVERTED` 3 个值仍保留 (历史消息 fallback 渲染, 不再 emit)。
+>
 > 审查日期：2026-06-23
-> 范围：`app/(app)/announcements`、`app/(app)/messages`、`app/api/announcements/**`、`app/api/messages/**`、`server/services/{announcement,message}.ts`、`server/events/**`、`server/jobs/{runner,customer-status-suggest,contract-automation}.ts`、`server/audit.ts`、`lib/message-link.ts`、`lib/notify-config.ts`、`components/dashboard-shell.tsx`（消息抽屉/Bell Badge 部分）、`prisma/schema.prisma`（Message/Announcement/OperationLog 三张表）。
-> 总体评分：**合格偏上**（拆分与事件总线设计清晰、inbox 事务内 + 外部通道 fire-and-forget 解耦、目标角色过滤与生效期过滤都在 SQL 层完成、有专门的 customer-status-suggest 单元测试）。但 **存在 1 个真实安全漏洞 + 1 个性能债务 + 若干一致性 / 死代码 / 测试缺位问题**，建议在 P4 修复。
+> 范围(2026-06-29 更新, 移除 customer-status-suggest job):`app/(app)/announcements`、`app/(app)/messages`、`app/api/announcements/**`、`app/api/messages/**`、`server/services/{announcement,message}.ts`、`server/events/**`、`server/jobs/{runner,contract-automation}.ts`(v0.5.0 起 `customer-status-suggest` 已删)、`server/audit.ts`、`lib/message-link.ts`、`lib/notify-config.ts`、`components/dashboard-shell.tsx`（消息抽屉/Bell Badge 部分）、`prisma/schema.prisma`（Message/Announcement/OperationLog 三张表）。
+> 总体评分：**合格偏上**（拆分与事件总线设计清晰、inbox 事务内 + 外部通道 fire-and-forget 解耦、目标角色过滤与生效期过滤都在 SQL 层完成、有部分 job 单元测试(customer-status-suggest 等, 后者 v0.5.0 随客户状态机下线而删)）。但 **存在 1 个真实安全漏洞 + 1 个性能债务 + 若干一致性 / 死代码 / 测试缺位问题**，建议在 P4 修复。
 
 ## 维度评分
 
@@ -12,7 +14,7 @@
 | 鉴权 / 授权 | **需改进** | `getAnnouncement` 没有按 `targetRoles` 过滤，越权可读非自己角色的公告（P0） |
 | 性能 | **需改进** | `emit` 顺序 `for-await prisma.message.create` 是 N+1 写；dashboard-shell 每 60s 拉一次未读 count，无缓存 |
 | 代码重复 / 一致性 | **需改进** | `dispatcher.ts` 里的 `TYPE_TO_TEMPLATE` 是死代码且与 `bus.ts` 模板不一致；`channels.ts:kindToPath` 与 `lib/message-link.ts:MESSAGE_LINK_PATH` 是两份独立的 URL map |
-| 可测试性 | 需改进 | `message.ts` / `announcement.ts` / `bus.emit` 都没有单测；只有 `customer-status-suggest` job 有覆盖 |
+| 可测试性 | 需改进 | `message.ts` / `announcement.ts` / `bus.emit` 都没有单测；只有 `customer-status-suggest` job 有覆盖 (v0.5.0 随客户状态机下线而删, 现有 job 单测见 `tests/unit/server/contract-automation.test.ts`) |
 | 可观测性 | 良好 | `announcement` CRUD 走 `audit()`，自动捕获 IP/UA/requestId；`Message` 操作（标记已读/删除）按设计本就不记审计，但删除消息建议加一行轻量审计 |
 | 安全 / XSS | 良好 | 公告/消息内容走 React 自动转义（`<Paragraph>{detail.content}</Paragraph>`），未使用 `dangerouslySetInnerHTML` |
 | 数据完整性 | 良好 | 公告 `deletedAt` 软删 + 列表默认过滤；`markRead` 幂等；`markAllRead` 用 `updateMany`；`emit` 在事务内调用保证 inbox 原子性 |
@@ -111,6 +113,7 @@
 - **问题**：
   - 消息 `link` 是 `Json?`，全仓库没有一个 `MessageLinkSchema` 集中定义所有合法 kind。`bus.ts:buildMessage` 的 13 个 case 里硬编码 `kind: "contract" | "invoice" | "payment" | "project" | "customer" | "asset"` 与 `link.suggest` 这种扩展字段。
   - 前端 `MESSAGE_LINK_PATH` 又是另一份枚举；`customer` 路径下还出现过 `link.suggest`（`bus.ts:125`）但前端 `buildMessageLinkHref` 完全没读这个字段（仅看 `link.id`），意味着 `CUSTOMER_STATUS_SUGGEST` 的 `?suggest=<status>` 查询参数丢了，**用户点通知会直接落到 `/customers/<id>` 而不是带 suggest 状态**（dashboard-shell.tsx:632 `router.push(href)` 不带 query）。
+  - **2026-06-29 更新 (v0.5.0)**：该问题随 `customer-status-suggest` job 与 `Customer.status` 字段整体下线而消失；`CUSTOMER_STATUS_SUGGEST` 不再 emit, `link.suggest` 写入分支已删, 仅作历史参考。
 - **建议**：
   - 在 `lib/validators/message.ts` 定义 `messageLinkSchema` 单一枚举 + 子类型；`bus.ts` 拼 link 时过 schema；`MESSAGE_LINK_PATH` 用同一份类型生成（`as const` + 派生）。
   - 修 `buildMessageLinkHref`：把 `link.suggest` 这类额外字段作为 query string 拼回去，前端 dashboard-shell 拿到 `?suggest=FROZEN` 时由 `/customers/[id]` 页面读取并预填状态变更。
@@ -119,7 +122,7 @@
 ### [P1-4] `Message` / `Announcement` service 层单测缺位
 - **文件**：`server/services/message.ts`、`server/services/announcement.ts`、`server/events/bus.ts`
 - **问题**：
-  - `tests/unit/server/customer-status-suggest.test.ts` 已经验证了 job 的规则逻辑与去重，但 `bus.emit` 本身、`message.listMessages` / `markRead` / `markAllRead` / `deleteMessage`、`announcement.createAnnouncement` / `updateAnnouncement` / `softDeleteAnnouncement` 全部没有单测。
+  - `tests/unit/server/customer-status-suggest.test.ts`(v0.5.0 随客户状态机下线而删)曾验证了 job 的规则逻辑与去重，但 `bus.emit` 本身、`message.listMessages` / `markRead` / `markAllRead` / `deleteMessage`、`announcement.createAnnouncement` / `updateAnnouncement` / `softDeleteAnnouncement` 全部没有单测。
   - 特别是：
     - `markRead` 的幂等行为（已经读过再 PATCH 不应当重写 `readAt`）。
     - `markAllRead` 只更新 `readAt: null` 的部分，不影响已读。
@@ -127,7 +130,7 @@
     - `announcement` 的 `targetRoles` 包含用户角色 OR 列表为空（=全员）。
   - P0-1 提到的越权 fix 需要回归测试，否则下次重构可能再漏。
 - **建议**：
-  - 仿照 `tests/unit/server/customer-status-suggest.test.ts` 的 `vi.mock` 风格补：
+  - 仿照 `tests/unit/server/customer-status-suggest.test.ts`(v0.5.0 随客户状态机下线而删, 替换为 `bus.emit` 直接构造)的 `vi.mock` 风格补：
     - `tests/unit/server/message.test.ts`（list / markRead / markAllRead / delete）
     - `tests/unit/server/announcement.test.ts`（list 角色过滤 / create / softDelete）
     - `tests/unit/server/events-bus.test.ts`（emit 事务性 / dispatcher fire-and-forget / buildMessage 各分支）
@@ -270,7 +273,7 @@
 ## 做得好的地方（保留）
 
 1. **inbox 与外部通道职责分离**：inbox 在事务内（保证与业务状态机迁移原子），email/wechat fire-and-forget（不影响主流程）。`bus.emit` 注释清晰说明了设计意图。
-2. **去重机制完备**：`contractExpiringJob` / `customerInactiveJob` / `tickCustomerStatusSuggestions` 都用 `type + entityId + 当天` 三个维度去重，避免每天给同一用户刷 10 条同样的提醒。
+2. **去重机制完备**：`contractExpiringJob` / `customerInactiveJob` / `tickCustomerStatusSuggestions`(后两者 v0.5.0 随客户状态机下线而删)都用 `type + entityId + 当天` 三个维度去重，避免每天给同一用户刷 10 条同样的提醒。
 3. **markRead 幂等**：已读后再 PATCH 不重写 `readAt`（`message.ts:31`）。
 4. **markAllRead 用 updateMany**：避免 SELECT + 多次 UPDATE 的循环。
 5. **公告目标角色 + 生效期都在 SQL 过滤**：避免前端再过滤或漏过滤。
@@ -279,7 +282,7 @@
 8. **message-link 抽取**：`lib/message-link.ts` 把"link.kind → 路径"的映射抽出来，`dashboard-shell.tsx` 与 `messages/page.tsx` 复用，避免两处拼 URL 漂移。
 9. **query boolean 处理规范**：`app/api/messages/route.ts:11-14` 显式 z.enum + transform，避免 `z.coerce.boolean()` 把 `"false"` 也当 true 的坑。
 10. **targetRoles 为空 = 全员**：约定直观，写在 schema 注释里。
-11. **`customer-status-suggest` 单测**：覆盖了规则 1、规则 2、SQL 预过滤、去重四个场景，是 job 类代码的好范例。
+11. **`customer-status-suggest` 单测**（v0.5.0 随客户状态机下线而删）：曾覆盖规则 1、规则 2、SQL 预过滤、去重四个场景，是 job 类代码的好范例。
 12. **`kindToPath` 用 `${base}` 而非裸路径**：邮件 / 企微跳转带绝对 URL，避免邮件里点击相对路径 404。
 13. **运营日志/审计入口稳定**：公告 CRUD 都打了 audit（包括 before/after 最小集），符合"谁在什么时候改了什么"的可追溯要求。
 14. **listAnnouncements 多 OR 用 Prisma 顶层 AND 嵌套**：与 `WHERE deletedAt IS NULL AND ...` 语义一致，行为正确。

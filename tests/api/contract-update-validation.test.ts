@@ -68,7 +68,6 @@ beforeAll(async () => {
       province: "浙江省",
       city: "杭州市",
       contactPhone: "13800000000",
-      status: "NEGOTIATING",
       createdById: adminUser.id,
       updatedById: adminUser.id,
       ownerUserId: salesUser.id

@@ -383,15 +383,13 @@ export async function getEmployeePerformance(user: SessionUser, targetUserId?: s
 export async function getCustomerDistribution(user: SessionUser) {
   requirePermission(user.roleCode, RESOURCE.STATISTICS, ACTION.READ);
   const customerWhere = { deletedAt: null, ...ownerEq(user) } as Prisma.CustomerWhereInput;
-  const [byScale, byType, byStatus] = await Promise.all([
+  const [byScale, byType] = await Promise.all([
     prisma.customer.groupBy({ by: ["scale"], where: customerWhere, _count: { _all: true } }),
-    prisma.customer.groupBy({ by: ["customerType"], where: customerWhere, _count: { _all: true } }),
-    prisma.customer.groupBy({ by: ["status"], where: customerWhere, _count: { _all: true } })
+    prisma.customer.groupBy({ by: ["customerType"], where: customerWhere, _count: { _all: true } })
   ]);
   return {
     byScale: byScale.map((x) => ({ key: x.scale, count: x._count._all })),
-    byType: byType.map((x) => ({ key: x.customerType, count: x._count._all })),
-    byStatus: byStatus.map((x) => ({ key: x.status, count: x._count._all }))
+    byType: byType.map((x) => ({ key: x.customerType, count: x._count._all }))
   };
 }
 

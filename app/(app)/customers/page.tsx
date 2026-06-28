@@ -8,10 +8,8 @@ import React, { useCallback, useEffect, useMemo, useRef } from "react";
 import useSWR from "swr";
 import { Page } from "@/components/page";
 import { PageHeader } from "@/components/page-header";
-import { StatusTag } from "@/components/status-tag";
 import { DateCell } from "@/components/table-cells";
 import { useDict } from "@/lib/dict-client";
-import { useStatusValueEnum } from "@/lib/use-status-enum";
 import { makeListRequest } from "@/lib/use-list-request";
 import { downloadExcel } from "@/lib/excel-client";
 import { useResponsive } from "@/lib/use-breakpoint";
@@ -25,7 +23,6 @@ type Customer = {
   scale: string | null;
   industry: string | null;
   sourceChannel: string | null;
-  status: string;
   ownerUserId: string;
   contactPhone: string;
   province: string;
@@ -43,7 +40,6 @@ export default function CustomersPage() {
   const customerScaleDict = useDict("CUSTOMER_SCALE");
   const industryDict = useDict("CUSTOMER_INDUSTRY");
   const sourceDict = useDict("CUSTOMER_SOURCE");
-  const statusEnum = useStatusValueEnum("customer");
   // 负责人筛选: 拉一次全员 (pageSize=100 够用), 失败时回落到空 options, 控件仍可下拉但没有可选项
   const usersFetcher = useCallback(async (url: string) => {
     const res = await fetch(url, { credentials: "include" });
@@ -200,7 +196,6 @@ export default function CustomersPage() {
           // 记下当前查询参数, 导出时复用 (handleExport 直接读这个 ref)
           searchRef.current = {
             keyword: params.keyword,
-            status: params.status,
             scale: params.scale,
             customerType: params.customerType,
             industry: params.industry,
@@ -305,13 +300,6 @@ export default function CustomersPage() {
             search: false,
             width: 120,
             render: (_, r) => r.sourceChannel ? (sourceDict.find((d) => d.code === r.sourceChannel)?.label ?? r.sourceChannel) : "—"
-          },
-          {
-            title: "状态",
-            dataIndex: "status",
-            width: 100,
-            valueEnum: statusEnum,
-            render: (_, r) => <StatusTag status={r.status} domain="customer" />
           },
           { title: "联系电话", dataIndex: "contactPhone", search: false, width: 140 },
           {

@@ -54,7 +54,9 @@ describe("emit", () => {
     });
   });
 
-  it("CUSTOMER_STATUS_SUGGEST 消息保留 suggest 字段", async () => {
+  it("CUSTOMER_STATUS_SUGGEST (deprecated) 走 default fallback 渲染为历史消息", async () => {
+    // v0.5.0 起客户状态机下线, CUSTOMER_STATUS_SUGGEST 不再 emit; 但 enum 仍保留值,
+    // 历史 row / 漏改代码会落到 bus default 分支, 渲染为占位提示
     const ev = makeEvent("CUSTOMER_STATUS_SUGGEST", {
       customerId: "c-1",
       customerName: "客户 A",
@@ -65,8 +67,8 @@ describe("emit", () => {
     await emit(prisma, ev);
     const data = mockState.createManyCalls[0]!.data;
     expect(data[0]!).toMatchObject({
-      title: "建议将客户 客户 A 状态变更为 已流失",
-      link: { kind: "customer", id: "c-1", suggest: "LOST" }
+      title: "历史消息 (CUSTOMER_STATUS_SUGGEST)",
+      content: "该消息类型已下线, 详情请联系管理员"
     });
   });
 
@@ -86,9 +88,17 @@ describe("emit", () => {
   });
 });
 
-describe("buildMessage default case", () => {
-  it("未处理事件类型应抛错", async () => {
+describe("buildMessage default case (历史消息 fallback)", () => {
+  it("未处理事件类型不再抛错, 渲染为占位提示", async () => {
+    // 历史上 assertNever 抛错, 但 v0.5.0 后 PG Message 表可能含历史未知 type 的 row,
+    // 渲染时不能让一个陌生 type 把整页渲染崩掉; 改走 fallback
     const ev = { type: "UNKNOWN_EVENT", payload: {}, receivers: ["u-1"] } as unknown as DomainEvent;
-    await expect(emit(prisma, ev)).rejects.toThrow("[bus] unhandled event type");
+    const r = await emit(prisma, ev);
+    expect(r).toBe(1);
+    const data = mockState.createManyCalls[0]!.data;
+    expect(data[0]!).toMatchObject({
+      title: "历史消息 (UNKNOWN_EVENT)",
+      content: "该消息类型已下线, 详情请联系管理员"
+    });
   });
 });

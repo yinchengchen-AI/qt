@@ -16,9 +16,6 @@ import { FormSection, FormGrid, FormCard, SubmitBar } from "@/components/form";
 import { LocationCascader } from "@/components/form/LocationCascader";
 import { ZHEJIANG_DIVISIONS, type DivisionNode } from "@/lib/china-divisions";
 import { isValidCreditCode } from "@/lib/credit-code";
-import { getAllowedTransitions, isCustomerStatus } from "@/lib/customer-status-transitions";
-import { getStatusOptions } from "@/lib/status";
-import type { CustomerStatus } from "@/types/enums";
 
 export type CustomerFormValues = {
   name?: string;
@@ -28,7 +25,6 @@ export type CustomerFormValues = {
   industry?: string | null;
   sourceChannel?: string | null;
   scale?: string | null;
-  status?: string;
   reason?: string;
   contactName?: string | null;
   contactTitle?: string | null;
@@ -59,26 +55,12 @@ export function CustomerForm(props: Props) {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const formRef = useRef<any>(null);
   const [cascadeValue, setCascadeValue] = useState<string[]>([]);
-  const [statusValue, setStatusValue] = useState<string | undefined>(undefined);
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const watchedStatus = (statusValue ?? (formRef.current as any)?.getFieldValue?.("status")) as string | undefined;
-
   const customerType = useDict("CUSTOMER_TYPE");
   const industryDict = useDict("CUSTOMER_INDUSTRY");
   const sourceDict = useDict("CUSTOMER_SOURCE");
   const scaleDict = useDict("CUSTOMER_SCALE");
 
-  const allCustomerStatusOptions = getStatusOptions("customer");
-  const currentStatus = isCustomerStatus(initialValues?.status) ? initialValues!.status : null;
-  const allowedNext = currentStatus ? getAllowedTransitions(currentStatus) : [];
-  const statusOptions = allCustomerStatusOptions.filter((o) =>
-    mode === "create" ||
-    !currentStatus ||
-    allowedNext.includes(o.value as CustomerStatus) ||
-    o.value === currentStatus
-  );
-
-  useEffect(() => {
+useEffect(() => {
     if (!initialValues) return;
     const codes: string[] = [];
     let current: DivisionNode[] | undefined = ZHEJIANG_DIVISIONS;
@@ -93,11 +75,7 @@ export function CustomerForm(props: Props) {
     setCascadeValue(codes);
   }, [initialValues]);
 
-  const handleValuesChange = (changed: Record<string, unknown>) => {
-    if ("status" in changed) setStatusValue(changed.status as string);
-  };
-
-  const handleCascadeChange = (value: string[], labels: string[]) => {
+const handleCascadeChange = (value: string[], labels: string[]) => {
     setCascadeValue(value);
     formRef.current?.setFieldsValue({
       province: labels[0] || "",
@@ -118,7 +96,6 @@ export function CustomerForm(props: Props) {
         layout="vertical"
         submitter={false}
         initialValues={initialValues}
-        onValuesChange={handleValuesChange}
         onFinish={async (values) => {
           const res = await onSubmit(values);
           if (!res.ok) {
@@ -203,35 +180,6 @@ export function CustomerForm(props: Props) {
               />
             </FormGrid>
 
-            {mode === "edit" && (
-              <>
-                <ProFormSelect
-                  name="status"
-                  label="客户状态"
-                  tooltip="客户状态受状态机约束,仅显示当前状态允许去往的目标"
-                  options={statusOptions}
-                  fieldProps={{
-                    size: "large",
-                    disabled: !!currentStatus && allowedNext.length === 0
-                  }}
-                />
-                {(watchedStatus === "LOST" || watchedStatus === "FROZEN") && (
-                  <ProFormTextArea
-                    name="reason"
-                    label={watchedStatus === "LOST" ? "流失原因" : "冻结原因"}
-                    tooltip="变更到该状态需要填写原因, 用于审计追溯与报表统计"
-                    rules={[{ required: true, message: "请填写原因" }, { max: 200 }]}
-                    fieldProps={{
-                      size: "large",
-                      maxLength: 200,
-                      showCount: true,
-                      autoSize: { minRows: 2, maxRows: 4 },
-                      placeholder: watchedStatus === "LOST" ? "例如: 客户明确拒绝 / 预算取消" : "例如: 重大风险 / 投诉期"
-                    }}
-                  />
-                )}
-              </>
-            )}
           </FormSection>
 
           <FormSection title="位置与联系" description="级联选择省 / 市 / 区 / 镇街, 自动填充到详细地址">

@@ -22,8 +22,8 @@ const STRINGABLE_NULLABLE: ReadonlyArray<keyof CustomerUpdateInput> = [
  * 把 CustomerUpdateInput 拼成 Prisma.CustomerUpdateInput.
  * 仅含 input 中实际出现的字段 - 不在 input 里的字段不会进 data, Prisma 也就不会触碰 DB 中的旧值.
  * 现状 updateCustomer 直接 `...input, field: input.field || null` 会把没传的字段写成 null, 触发
- * "只想改 name 却把 shortName 擦掉" 的回归. 路由层会单独把 status 路由到 changeCustomerStatus,
- * 这里也再防御一次, 即便 input 里有 status 也不会被写入.
+ * "只想改 name 却把 shortName 擦掉" 的回归. 客户 status 字段已下线 (v0.5.0), 即便 input 里有
+ * status 残留也不会被写入 (路由层不会传过来; 此处作为二次防御).
  */
 export function buildCustomerUpdateData(
   input: CustomerUpdateInput,
@@ -39,7 +39,6 @@ export function buildCustomerUpdateData(
   if (has("city")) data.city = input.city;
   if (has("contactPhone")) data.contactPhone = input.contactPhone;
   if (has("ownerUserId")) data.ownerUserId = input.ownerUserId;
-  // status 走 changeCustomerStatus, 这里不写, 防止绕过 R-02 / R-13 业务规则
 
   for (const key of STRINGABLE_NULLABLE) {
     if (has(key)) {

@@ -12,7 +12,6 @@ import { calcTaxBreakdown } from "@/lib/money";
 import { resolveAttachmentSnapshots } from "@/lib/attachment-snapshot";
 import { softDelete } from "@/lib/soft-delete";
 import { tryAutoPublish } from "./status";
-import { onContractActivated } from "@/server/services/customer/automation";
 
 function assertDateOrder(start?: string | Date | null, end?: string | Date | null, label = "服务"): void {
   if (!start || !end) return;
@@ -170,12 +169,9 @@ export async function createContract(user: SessionUser, input: ContractCreateInp
   // Dictionary 兜底: 防止 zod 放行后写入任意 serviceType
   const st = await prisma.dictionary.findUnique({ where: { category_code: { category: "SERVICE_TYPE", code: input.serviceType } } });
   if (!st) throw new ApiError(ERROR_CODES.VALIDATION_FAILED, `serviceType ${input.serviceType} not in dictionary`, 400);
-  // R-03
+  // (R-03 已删:客户无 status 概念, 不再校验"客户状态必须是 NEGOTIATING/SIGNED 才能建合同")
   const customer = await prisma.customer.findFirst({ where: { id: input.customerId, deletedAt: null } });
   if (!customer) throw new ApiError(ERROR_CODES.NOT_FOUND, "客户不存在", 404);
-  if (!["NEGOTIATING", "SIGNED"].includes(customer.status)) {
-    throw new ApiError(ERROR_CODES.CONTRACT_CUSTOMER_STATUS, "客户当前状态不允许新建合同", 422);
-  }
   // 校验签订人:前端不传时回退为当前 user;若显式传入,确保目标用户存在且未停用
   const signerId = input.signerId ?? user.id;
   await assertActiveUser(signerId, "签订人");
@@ -233,18 +229,9 @@ export async function createContract(user: SessionUser, input: ContractCreateInp
       await tx.contract.update({ where: { id: created.id }, data: { attachments } });
     }
     // 自动化: 字段完整 + 至少 1 附件 → DRAFT 自动升 ACTIVE (在事务内, 失败时回滚)
-    const publishResult = await tryAutoPublish(tx, created.id);
-    return { id: created.id, publishResult };
-  }).then(async ({ id, publishResult }) => {
-    // 客户状态机联动 (§2.3): 合同自动升 ACTIVE 后, 尝试把客户自动改为 SIGNED.
-    // 不能在原 $transaction 里嵌套调 (Prisma 7 不支持嵌套事务), 在事务结束后独立事务跑.
-    // tryAutoPublish 已 DONE 时才触发, 避免无意义的 SYSTEM_USER 写; 客户 auto-write 自身
-    // 失败是 silentSkip, 不影响合同已成功的状态.
-    if (publishResult === "PUBLISHED") {
-      await onContractActivated(id);
-    }
-    return prisma.contract.findUnique({ where: { id } });
-  });
+    await tryAutoPublish(tx, created.id);
+    return { id: created.id };
+  }).then(async ({ id }) => prisma.contract.findUnique({ where: { id } }));
 }
 
 
@@ -321,11 +308,7 @@ export async function updateContract(user: SessionUser, id: string, input: Contr
       }
       throw e;
     }
-  }).then(async ({ updated, publishResult }) => {
-    // 客户状态机联动 (§2.3): 同 createContract
-    if (publishResult === "PUBLISHED") {
-      await onContractActivated(id);
-    }
+  }).then(async ({ updated }) => {
     return updated;
   });
 }

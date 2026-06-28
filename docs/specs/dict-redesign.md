@@ -65,14 +65,14 @@ Sider 项的 "." 标记 = 当前选中; 条目数实时显示; 类目按"域"折
 |---|---|---|
 | SERVICE_TYPE / CUSTOMER_* / PAYMENT_RECEIVE_METHOD 等 12 类 | **Table** | 平铺, 几十到几百条 |
 | REGION | **Tree** | 树形(省/市/区/街道), 支持展开折叠 |
-| 状态类 (CUSTOMER_STATUS / CONTRACT_STATUS / INVOICE_STATUS / PAYMENT_STATUS / REVIEW_ACTION) | **Table (紧凑)** | 5-8 条, 无搜索, 直接展示 |
+| 状态类 (CONTRACT_STATUS / INVOICE_STATUS / PAYMENT_STATUS / REVIEW_ACTION) | **Table (紧凑)** | 5-8 条, 无搜索, 直接展示 |
 
 > 树形 vs 表格 在类目级别自动切换, 不在全页级别切换。
 
 ## 五、类目只读护栏
 
 新增 `DICT_DOMAIN` 域元数据, 标记每个类目是否"系统核心":
-- **可改** (12 类): CUSTOMER_TYPE / SCALE / INDUSTRY / SOURCE / SERVICE_TYPE / PAYMENT_RECEIVE_METHOD / FOLLOW_METHOD / FOLLOW_RESULT / CONTRACT_PAYMENT_METHOD / INVOICE_TYPE / 状态类 5 个
+- **可改** (12 类): CUSTOMER_TYPE / SCALE / INDUSTRY / SOURCE / SERVICE_TYPE / PAYMENT_RECEIVE_METHOD / FOLLOW_METHOD / FOLLOW_RESULT / CONTRACT_PAYMENT_METHOD / INVOICE_TYPE / 状态类 4 个
 - **只读 (系统)** (1 类): REGION(由同步脚本管理, 不在 UI 编辑)
 - **未来扩展** (按需): 标记某类只允许新增/不允许删除等
 

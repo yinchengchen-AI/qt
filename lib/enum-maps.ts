@@ -107,14 +107,6 @@ export const CUSTOMER_SCALE_MAP: Record<string, string> = {
   MICRO:  "微型"
 };
 
-export const CUSTOMER_STATUS_MAP: Record<string, string> = {
-  LEAD:        "线索",
-  NEGOTIATING: "洽谈中",
-  SIGNED:      "已签约",
-  LOST:        "已流失",
-  FROZEN:      "已冻结"
-};
-
 export const CONTRACT_STATUS_MAP: Record<string, string> = {
   DRAFT:  "草稿",
   ACTIVE: "生效中",

@@ -16,9 +16,6 @@ export const CUSTOMER_SCALE = ["LARGE", "MEDIUM", "SMALL", "MICRO"] as const;
 export type CustomerScale = (typeof CUSTOMER_SCALE)[number];
 
 
-export const CUSTOMER_STATUS = ["LEAD", "NEGOTIATING", "SIGNED", "LOST", "FROZEN"] as const;
-export type CustomerStatus = (typeof CUSTOMER_STATUS)[number];
-
 export const FOLLOW_METHOD = ["VISIT", "CALL", "WECHAT", "EMAIL", "OTHER"] as const;
 export type FollowMethod = (typeof FOLLOW_METHOD)[number];
 
@@ -114,10 +111,8 @@ export const MESSAGE_TYPE = [
   // 证书 N 天内到期提醒 (server/jobs/certificate-expiry-check 触发)
   "CERTIFICATE_EXPIRING",
   // 客户状态机自动化: 系统自动写客户状态后, 给 owner 发的通知
-  // (server/services/customer/automation.ts + bus.ts CUSTOMER_STATUS_AUTO_APPLIED case)
   "CUSTOMER_STATUS_AUTO_APPLIED",
   // 客户状态机自动化: owner 在撤销窗口期内撤销了系统自动写, 给 owner 的反馈
-  // (app/api/customers/[id]/revert/route.ts → bus.ts CUSTOMER_STATUS_AUTO_REVERTED case)
   "CUSTOMER_STATUS_AUTO_REVERTED"
 ] as const;
 

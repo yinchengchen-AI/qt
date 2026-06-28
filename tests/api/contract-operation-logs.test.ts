@@ -40,7 +40,7 @@ beforeAll(async () => {
     return;
   }
   const admin = await prisma.user.findFirst({
-    where: { role: { code: "ADMIN" }, deletedAt: null },
+    where: { role: { code: "ADMIN" }, deletedAt: null, isSystem: false },
   });
   const sales = await prisma.user.findMany({
     where: { role: { code: "SALES" }, deletedAt: null },
@@ -59,7 +59,6 @@ beforeAll(async () => {
       province: "浙江省",
       city: "杭州市",
       contactPhone: "13800000000",
-      status: "NEGOTIATING",
       createdById: adminUser.id,
       updatedById: adminUser.id,
       ownerUserId: salesOwner.id,
@@ -77,7 +76,6 @@ beforeAll(async () => {
       province: "浙江省",
       city: "杭州市",
       contactPhone: "13800000001",
-      status: "NEGOTIATING",
       createdById: adminUser.id,
       updatedById: adminUser.id,
       ownerUserId: salesOther.id,

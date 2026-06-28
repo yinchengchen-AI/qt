@@ -184,62 +184,18 @@ PLANNED ──confirm──> CONFIRMED ──reconcile──> RECONCILED
                   └─> CANCELLED (取消)
 ```
 
-### Customer 状态机(5 态 + 自动联动 + 7 天可撤销)
-
-```
-LEAD ─[manual/auto]─▶ NEGOTIATING ─[auto/manual]─▶ SIGNED ─[manual]─▶ LOST
-  │                       │                        │             │
-  │                       ├─[manual/auto]─▶ LOST  │             └─▶ FROZEN (终态)
-  │                       │   (终态)              │            (终态; LOST/FROZEN 只能
-  │                       │                       │             走 → NEGOTIATING 恢复)
-  │                       └─[auto/manual]─▶ FROZEN│
-  │                          (终态)               │
-  └─[manual/auto]─▶ LOST                          │
-   (LEAD→FROZEN 暂不允许)
-```
-
-**自动联动 4 条规则**(配置中心 `lib/customer-auto-rules.ts`, `env CUSTOMER_AUTO_RULES_DISABLED="RULE_ID"` 可关单条):
-
-| 规则 | 触发器 | 条件 | 目标 | 撤销回退 |
-|---|---|---|---|---|
-| `CONTRACT_ACTIVATED` | 业务事件(合同 `DRAFT→ACTIVE`) | R-02 满足(有 ACTIVE 合同) | `SIGNED` | `FROZEN` (1) |
-| `ALL_CONTRACTS_CLOSED` | 业务事件(全部合同 CLOSED) | R-13 满足(无 ACTIVE 合同 + 无 PLANNED/CONFIRMED 回款) | `FROZEN` | `NEGOTIATING` |
-| `INACTIVE_LOST` | 时间窗(每日 `tickCustomerStatusSuggestions`) | `CUSTOMER_AUTO_INACTIVE_LOST_DAYS=90` 天无活动 + 无 ACTIVE 合同 | `LOST` | `NEGOTIATING` |
-| `INACTIVE_FROZEN` | 时间窗(每日) | `CUSTOMER_AUTO_INACTIVE_FROZEN_DAYS=60` 天无活动 + 全部合同 CLOSED ≥ 30 天 + 无未对账回款 | `FROZEN` | `NEGOTIATING` |
-
-> (1) `CONTRACT_ACTIVATED` 撤销走 `FROZEN` 而非 `NEGOTIATING`,因为 `SIGNED → NEGOTIATING`
-> 不在 `ALLOWED_TRANSITIONS_BY_TARGET["NEGOTIATING"] = [LEAD, LOST, FROZEN]` 中;
-> 走 `FROZEN` 合法(`ALLOWED_TRANSITIONS_BY_TARGET["FROZEN"]` 含 `SIGNED`), owner 后续
-> 可手动 `FROZEN → NEGOTIATING` 重新推进。`revertTarget` 是 per-rule 字段,
-> 新增规则时同步写测试。
-
-**silentSkip 语义**:`autoChangeCustomerStatus` 与合同 `tryAutoPublish` 同款(行锁 + Serializable
-事务 + `runTransitionInTx`), 但**不抛错**;前置不满足或状态被人工改过时返回 `SKIPPED`,
-时间窗触发时降级为 `CUSTOMER_STATUS_SUGGEST` 站内信。
-
-**撤销 API**:`POST /api/customers/[id]/revert { reason: 5-200字 }`(`revertCustomerStatus`),
-走 `runTransitionInTx` 用 `rule.revertTarget` 作为合法迁移目标;7 天窗口外返
-`CUSTOMER_AUTO_DISPUTE_EXPIRED` (403), 撤销时状态已被改过返 `CUSTOMER_AUTO_REVERT_TARGET_INVALID` (422)。
-详情页顶部渲染 `<AutoStatusBanner>`,7 天内显示撤销入口,撤销成功即消失。
-
-详细 schema 增量、错误码、env 列表、UI 流程见 [docs/DESIGN-v3.md §5.5](docs/DESIGN-v3.md),
-用户操作见 [docs/USER_MANUAL.md §5.6](docs/USER_MANUAL.md), spec 见
-[docs/superpowers/specs/2026-06-28-customer-status-automation.md](docs/superpowers/specs/2026-06-28-customer-status-automation.md)。
 
 ## 跨模块校验规则
 
 | 规则 | 含义 | 校验点 | 错误码 |
 |---|---|---|---|
 | R-01 | 客户统一社会信用代码 GB 32100-2015 | Zod refine | 400 |
-| R-02 | 客户 → SIGNED 需有合同 | service 事务 | 422 CUSTOMER_STATUS_INVALID |
-| R-03 | 合同需客户 NEGOTIATING/SIGNED | service 事务 | – |
 | R-07 | 合同 ACTIVE → CLOSED 需开票足额 | service 事务 | – |
 | R-08 | 累计开票 ≤ 合同总额 | service 事务 | 422 INVOICE_OVER_LIMIT |
 | R-09 | 发票 ISSUED 需抬头 + 税号 | service 事务 | 422 INVOICE_INFO_INVALID |
 | R-10 | 回款 bankRefNo CONFIRMED 唯一 | service 事务 | 409 PAYMENT_DUPLICATE_REF |
 | R-11 | 发票级回款不超额 | service 事务 | 422 PAYMENT_OVER_INVOICE |
 | R-12 | 合同级回款不超额 | service 事务 | 422 PAYMENT_OVER_CONTRACT |
-| R-13 | 客户 INACTIVE 无活跃合同 | service 事务 | 422 CUSTOMER_HAS_ACTIVE_CONTRACT |
 | – | SALES 行级隔离 | ownershipWhere 注入 | 404 |
 
 完整规则与边界场景见 [docs/DESIGN-v3.md §6](docs/DESIGN-v3.md)。
@@ -441,19 +397,22 @@ xlsx 导出走 `lib/excel.ts` + `exceljs`,带 BOM 支持中文。
 
 ## 最近更新
 
-### v0.4.0(2026-06-28)客户状态机自动化 + 7 天可撤销
+### v0.5.0(2026-06-29)客户状态机下线(硬删)
 
-- **feat(customer)**:客户状态机从「建议型 `CUSTOMER_STATUS_SUGGEST`」升级为「直接自动写」, 详情页顶部 7 天可撤销横幅。设计: [docs/DESIGN-v3.md §5.5](docs/DESIGN-v3.md)
-- **feat(schema)**:`Customer` 加 `lastAutoAppliedAt` / `lastAutoRule` 2 列; `MessageType` enum 加 `CUSTOMER_STATUS_AUTO_APPLIED` / `CUSTOMER_STATUS_AUTO_REVERTED` 2 值(migration `20260628_customer_auto_fields`)
-- **feat(env)**:`CUSTOMER_AUTO_DISPUTE_DAYS=7` / `CUSTOMER_AUTO_INACTIVE_LOST_DAYS=90` / `CUSTOMER_AUTO_INACTIVE_FROZEN_DAYS=60` / `CUSTOMER_AUTO_RULES_DISABLED=`(逗号分隔关单条)
-- **feat(service)**:新增 `autoChangeCustomerStatus`(silentSkip, 行锁 + Serializable) + `revertCustomerStatus`(per-rule `rule.revertTarget` 走合法迁移); 触发器入口 `onContractActivated` / `onContractClosed` 在合同 `tryAutoPublish` / `tryAutoClose` 内调
-- **feat(api)**:`POST /api/customers/[id]/revert` — 7 天窗口 + 状态机合法迁移 + audit `CUSTOMER_STATUS_REVERT` + emit `CUSTOMER_STATUS_AUTO_REVERTED`
-- **feat(ui)**:`components/customers/auto-status-banner.tsx` 详情页横幅(InfoBox + Modal 撤销)
-- **refactor(jobs)**:`tickCustomerStatusSuggestions` 升级: 先尝试 `autoChangeCustomerStatus`, 失败 fallthrough 到原 `CUSTOMER_STATUS_SUGGEST`(降级路径)
-- **docs**:USER_MANUAL §5.6 客户状态自动联动; DESIGN-v3 §5.5 + §7 加 2 个新事件 + §11 加第 11 条验收用例; PROJECT_SUMMARY §3.3.2 经验
-- **test**:vitest 539/539(新增 39 用例: customer-auto-rules 14 + customer-status-automation 16 + customer-status-suggest 升级 +9); typecheck 0 error; lint 0 warning; `prisma generate` + `migrate deploy` 已跑
+业务反馈 v0.4.0 上线的客户状态机(5 态 + 4 条自动规则 + 7 天可撤销横幅)语义不清 / 自动化规则常误判, 整体硬下线。设计: [docs/superpowers/specs/2026-06-29-customer-status-deprecation.md](docs/superpowers/specs/2026-06-29-customer-status-deprecation.md)。
 
-提交 `45dcfcd`。
+- **chore(customer)**:删 `Customer.status / lastAutoAppliedAt / lastAutoRule` 3 列 + `@@index([status])` (`Customer_status_idx`); 删 `enum CustomerStatus`(5 态); migration `20260629_drop_customer_status`(`DROP INDEX IF EXISTS` + `DROP COLUMN IF EXISTS`, idempotent, 状态列 v0.4.0 起为 String 故无需 backfill)
+- **chore(lib)**:删 `lib/customer-status-transitions.ts` / `lib/customer-auto-rules.ts`; `lib/{status,dict-domain,dictionary-categories,use-status-enum,validators/customer,env,customer-update}.ts` 移除 `customer` StatusDomain 引用 / 字典 / 校验字段 / 错误码 `CUSTOMER_STATUS_TRANSITION_INVALID` / `CUSTOMER_AUTO_*`
+- **chore(server)**:删 `server/services/customer/{status,automation}.ts` + `server/services/customer-status.ts` + `server/jobs/customer-status-suggest.ts`; 改 `server/services/customer/{crud,index}.ts` / `server/services/contract/{crud,status}.ts` / `server/jobs/runner.ts` / `server/events/bus.ts` / `server/services/statistics.ts` 移除外发调用
+- **chore(api)**:删 `POST /api/customers/[id]/revert` 路由; 改 `GET/PATCH /api/customers/[id]` / `GET /api/customers/export` / `GET /api/jobs/[job]` / `GET /api/statistics/overview` 移除外发
+- **chore(ui)**:删 `components/customers/auto-status-banner.tsx`; 详情页/列表页/表单移除「变更状态」入口 + 撤销横幅; 客户 PDF 改用合同级状态
+- **chore(types|events|errors)**:`MessageType` enum 3 个 `CUSTOMER_STATUS_*` 值**保留**(历史消息 fallback); `bus.ts` `default` 分支渲染为「历史消息」; `operation-log-format.ts` `CUSTOMER_STATUS_*` action 返 null
+- **refactor(schema)**:跨模块校验 R-02 / R-03 / R-13 删; R-16 指向 `lib/status-machine.ts`(通用抽象, 仍 4 实体共用)
+- **chore(tests)**:删 `tests/{api,unit,unit/server}/customer-status*.test.ts` + `tests/e2e/08-customer-status.spec.ts`; 修 5 个 contract-* test + `customers-patch` / `customer-update` / `validators/customer` / `events-bus` / `contract-create-validation` / `customer-contract-overview-ownership` / e2e `05-invoice-payment-flow`
+- **chore(docs)**:DESIGN-v3 §5.5 → deprecation 链接; PROJECT_SUMMARY §3.3.2 → 简化为 deprecation 总结; USER_MANUAL §5.1 状态表 / §5.6 客户状态自动联动 / FAQ Q5 全删; README 删 §3 客户状态机节 + 删 R-02/R-13; v0.4.0 spec `2026-06-28-customer-status-automation.md` 移入 `docs/superpowers/specs/_archive/`
+- **test**:vitest 425/425(54 files, -14 customer-status 用例); typecheck 0 error; eslint 0 warning; 后续 e2e(跳过 08-customer-status)待 commit 前跑
+
+提交 `BREAKING CHANGE` 一次性合并(单 commit, 涵盖所有 schema/lib/server/api/ui/types/tests/docs 改动)。
 
 ### v0.3.1(2026-06-26)员工档案 + 证书到期 cron + 资产下线 + 导航重构
 
@@ -502,7 +461,7 @@ xlsx 导出走 `lib/excel.ts` + `exceljs`,带 BOM 支持中文。
 - **chore(workflow)**:彻底删除项目管理和工作流引擎模块 — Project / WorkflowTemplate / WorkflowStage / WorkflowTask / WorkflowTaskInstance 五张表 DROP,5 个 dict 类别 `PROJECT_STATUS` 移除,12 个 dead 路由改 410 Gone,`action` 8→5,清掉 ~50 个 dead 字段/路由/文件
 - **refactor(contract)**:合同状态机 7 态 → 3 态(DRAFT / ACTIVE / CLOSED)。SQL 迁移带断言(失败会回滚)+ 备份到 `_Contract_status_simplify_bak`;`migrate:contract-status-dict` 软停用 6 旧 code + upsert 3 新 code。4668 合同一次性收敛(524 ACTIVE / 4109 CLOSED / 35 DRAFT)
 - **feat(contract)**:合同自动状态机 — `contract-auto-publish`(DRAFT 字段完整+附件 → ACTIVE)和 `contract-auto-complete`(ACTIVE 开票足额 → CLOSED)两个 cron job 落地
-- **feat(customer)**:客户状态机 — 字段 `status` (ACTIVE / INACTIVE / PENDING) + 服务层规则
+- **feat(customer)**:客户状态机 — 字段 `status` (ACTIVE / INACTIVE / PENDING) + 服务层规则(v0.4.0 升级为 5 态, v0.5.0 整体下线)
 - **feat(announcement,message)**:公告详情页 + 消息未读计数 + 事件总线收敛
 - **feat(invoice,payment)**:发票/回款详情页用 enum map 显示中文标签
 - **feat(jobs)**:加 `/api/jobs/contract-expiry` 单跑端点
@@ -528,7 +487,7 @@ xlsx 导出走 `lib/excel.ts` + `exceljs`,带 BOM 支持中文。
 
 ## 历史里程碑
 
-- **v0.4.0(2026-06-28)**:客户状态机自动化 + 7 天可撤销横幅 + 4 条规则 + per-rule revertTarget
+- **v0.5.0(2026-06-29)**:客户状态机下线(硬删, BREAKING; 5 态/4 规则/撤销横幅 全删; Customer 表无 status)
 - **v0.3.0(2026-06-23/24)**:企业资产库下线 + 统计分析 round-2 收尾 + 合同 7→3 状态机 + 项目/工作流模块删除
 - **v0.2.0(2026-06-22)**:合同/项目收紧 + 业务纯化
 - **v0.1.0(2026-06-11)**:上线前清理 — 清空 136 个 lint warnings,登录页 + 顶部导航品牌化,统一仓库 `core.autocrlf=false`

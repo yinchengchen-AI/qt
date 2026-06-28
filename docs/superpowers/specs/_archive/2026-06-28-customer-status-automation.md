@@ -1,9 +1,13 @@
+> ⚠️ **本 spec 已被 v0.5.0 整体下线取代, 移入 _archive/ 作历史档案。** 实现状态 / 替代文档见
+> [docs/superpowers/specs/2026-06-29-customer-status-deprecation.md](../2026-06-29-customer-status-deprecation.md)
+> 与 [docs/superpowers/plans/2026-06-29-customer-status-deprecation.md](../../plans/2026-06-29-customer-status-deprecation.md)。
+
 # 客户状态机自动化 (Customer Status Machine Automation)
 
 | 项 | 值 |
 |---|---|
 | 日期 | 2026-06-28 |
-| 状态 | 设计中(待实现) |
+| 状态 | 设计中(2026-06-29 被 deprecation 取代) |
 | 范围 | `lib/customer-status-*` / `server/services/customer/*` / `server/services/contract/*` / `server/jobs/customer-status-suggest*` / `app/api/customers/[id]/revert` / 客户详情页 |
 | 目标版本 | qt-biz v0.4.x(与当前 main 一致) |
 | 落地策略 | **II · 一次提交**(后台 + 前端一次性 PR,带 spec + plan) |

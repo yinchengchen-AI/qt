@@ -1,5 +1,7 @@
 # qt-biz 五模块 service 层主题重构设计
 
+> ⚠️ **历史注脚 (2026-06-29, v0.5.0)**：本设计为 v0.3.0 历史产物,文中提及的 `changeCustomerStatus` / R-02 / R-13 等已在 v0.5.0 客户状态机下线时整体移除 (`docs/superpowers/specs/2026-06-29-customer-status-deprecation.md`),仅作历史参考。本设计其它 lib 抽象 (`status-machine` / `money` / `money-tolerance` / `attachment-snapshot` / `soft-delete` / `known-keys`) 仍为现行架构。
+
 | 项 | 值 |
 |---|---|
 | 日期 | 2026-06-24 |

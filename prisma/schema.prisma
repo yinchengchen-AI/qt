@@ -277,11 +277,6 @@ model Customer {
   contactPhone  String
   sourceChannel String?
   ownerUserId   String
-  status        String    @default("LEAD") // LEAD | NEGOTIATING | SIGNED | LOST | FROZEN
-  // 客户状态机自动化: 系统最近一次自动写状态的时间 + 触发规则 ID (nullable, 旧数据全 null)
-  // 用于详情页横幅 + 7 天撤销窗口; 见 lib/customer-auto-rules.ts
-  lastAutoAppliedAt DateTime? @db.Timestamptz(6)
-  lastAutoRule      String?   // CONTRACT_ACTIVATED | ALL_CONTRACTS_CLOSED | INACTIVE_LOST | INACTIVE_FROZEN
   createdAt     DateTime  @default(now()) @db.Timestamptz(6)
   updatedAt     DateTime  @updatedAt @db.Timestamptz(6)
   createdById   String
@@ -294,7 +289,6 @@ model Customer {
   contacts  ContactPerson[]
 
   @@index([ownerUserId])
-  @@index([status])
   @@index([customerType])
 }
 
