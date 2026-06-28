@@ -122,19 +122,15 @@ export default function NewPaymentPage() {
                     .map((c) => ({
                       value: c.id,
                       label: `${c.contractNo} · ${c.title} · ${formatCurrency(c.totalAmount)}`,
-                      customerName: c.customerName
+                      contract: c
                     }));
                 }}
                 onChange={async (
                   _: unknown,
-                  opt: { value: string; customerName?: string; label: string } | unknown
+                  opt: { value: string; contract?: Contract } | unknown
                 ) => {
-                  const o = opt as { value: string; customerName?: string; label: string } | undefined;
-                  setPickedContract(
-                    o
-                      ? ({ id: o.value, customerName: o.customerName ?? "" } as Contract)
-                      : null
-                  );
+                  const o = opt as { value: string; contract?: Contract } | undefined;
+                  setPickedContract(o?.contract ?? null);
                 }}
               />
             </FormGrid>
