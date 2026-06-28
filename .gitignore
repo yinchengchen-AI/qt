@@ -100,3 +100,6 @@ tmp_*.js
 tmp_*.cjs
 tmp_*.ts
 tests/e2e/.auth/
+
+# Codex 桌面会话临时文件 (untracked, 仅本地使用)
+.sess.xml
