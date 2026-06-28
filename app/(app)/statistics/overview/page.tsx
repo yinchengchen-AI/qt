@@ -10,6 +10,7 @@ import { PageHeader } from "@/components/page-header";
 import { StatGrid, type StatItem } from "@/components/stat-grid";
 import { EmptyState } from "@/components/empty-state";
 import { formatCurrency } from "@/lib/format";
+import { downloadExcel } from "@/lib/excel-client";
 import { useResponsive } from "@/lib/use-breakpoint";
 import { toDateRangeQuery } from "@/lib/date-range";
 
@@ -61,15 +62,12 @@ export default function OverviewPage() {
     const { from, to } = toDateRangeQuery(range);
     if (from) qs.set("from", from);
     if (to) qs.set("to", to);
-    const r = await fetch(`/api/statistics/export?${qs}`, { credentials: "include" });
-    if (!r.ok) { const j = await r.json(); message.error(j.message); return; }
-    const blob = await r.blob();
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `总览_${new Date().toISOString().slice(0, 10)}.xlsx`;
-    a.click();
-    URL.revokeObjectURL(url);
+    // 走 downloadExcel:从服务端 Content-Disposition 拿真实文件名,中文不会被截断
+    try {
+      await downloadExcel(`/api/statistics/export?${qs}`);
+    } catch (e) {
+      message.error((e as Error).message);
+    }
   };
 
   const o = data?.overview;

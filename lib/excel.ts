@@ -41,3 +41,22 @@ export async function exportToXlsx<T extends Record<string, unknown>>(
   const buf = await wb.xlsx.writeBuffer();
   return Buffer.from(buf);
 }
+
+
+/**
+ * 构造带中文文件名的 Content-Disposition 值 (RFC 5987)。
+ *
+ * 背景:HTTP 头只能放 ASCII;若把 "区域统计_2026-06-28.xlsx" 直接塞进
+ * Content-Disposition,Node 的 Headers 实现会抛
+ *   "Cannot convert argument to a ByteString because the character at index 22 has a value of 21306"
+ * 整个请求被 try/catch 兜成 500。本 helper 同时输出 ASCII 兜底 (filename=) 和
+ * RFC 5987 UTF-8 形式 (filename*=),现代浏览器都看 filename*,老 IE 拿 filename=。
+ *
+ * @param filename 期望用户看到的下载文件名,支持中文/空格
+ * @returns 可直接放进 Response headers 的 Content-Disposition 字符串
+ */
+export function attachmentHeader(filename: string): string {
+  // ASCII 兜底:把非 ASCII/非可打印 ASCII 替换成下划线,避免老客户端拿到乱码
+  const fallback = filename.replace(/[^\x20-\x7E]/g, "_");
+  return `attachment; filename="${fallback}"; filename*=UTF-8''${encodeURIComponent(filename)}`;
+}

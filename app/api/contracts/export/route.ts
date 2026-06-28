@@ -5,7 +5,7 @@ import { err } from "@/lib/api";
 import { requireSession } from "@/lib/session";
 import { requirePermission, RESOURCE, ACTION } from "@/lib/permissions";
 import { listContracts } from "@/server/services/contract";
-import { exportToXlsx, exportMaxRows } from "@/lib/excel";
+import { exportToXlsx, exportMaxRows, attachmentHeader } from "@/lib/excel";
 import { prisma } from "@/lib/prisma";
 import {
   SERVICE_TYPE_MAP,
@@ -177,7 +177,7 @@ export async function GET(req: Request) {
         headers: {
           "Content-Type":
             "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-          "Content-Disposition": `attachment; filename="合同列表_${ts}.xlsx"`,
+          "Content-Disposition": attachmentHeader(`合同列表_${ts}.xlsx`),
           "Cache-Control": "no-store",
         },
       });

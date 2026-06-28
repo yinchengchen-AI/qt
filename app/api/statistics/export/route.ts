@@ -9,7 +9,7 @@ import {
   getOverview,
   getRegionStatistics,
 } from "@/server/services/statistics";
-import { exportToXlsx, exportMaxRows } from "@/lib/excel";
+import { exportToXlsx, exportMaxRows, attachmentHeader } from "@/lib/excel";
 import { parseDateRangeQuery } from "@/lib/date-range";
 
 const query = z.object({
@@ -56,7 +56,7 @@ export async function GET(req: Request) {
           headers: {
             "Content-Type":
               "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-            "Content-Disposition": `attachment; filename="总览_${ts}.xlsx"`,
+            "Content-Disposition": attachmentHeader(`总览_${ts}.xlsx`),
             "Cache-Control": "no-store"
           }
         });
@@ -81,7 +81,7 @@ export async function GET(req: Request) {
           headers: {
             "Content-Type":
               "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-            "Content-Disposition": `attachment; filename="Top 客户_${ts}.xlsx"`,
+            "Content-Disposition": attachmentHeader(`Top 客户_${ts}.xlsx`),
             "Cache-Control": "no-store"
           }
         });
@@ -105,7 +105,7 @@ export async function GET(req: Request) {
           headers: {
             "Content-Type":
               "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-            "Content-Disposition": `attachment; filename="区域统计_${ts}.xlsx"`,
+            "Content-Disposition": attachmentHeader(`区域统计_${ts}.xlsx`),
             "Cache-Control": "no-store"
           }
         });
@@ -126,7 +126,7 @@ export async function GET(req: Request) {
         headers: {
           "Content-Type":
             "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-          "Content-Disposition": `attachment; filename="员工业绩_${ts}.xlsx"`,
+          "Content-Disposition": attachmentHeader(`员工业绩_${ts}.xlsx`),
           "Cache-Control": "no-store"
         }
       });

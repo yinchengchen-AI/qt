@@ -16,6 +16,7 @@ import {
 import { GetObjectCommand } from "@aws-sdk/client-s3";
 import { ensureBucketAndCors, getS3Client } from "@/server/storage/minio";
 import { Readable } from "node:stream";
+import { attachmentHeader } from "@/lib/excel";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -54,16 +55,14 @@ export async function GET(
     const nodeStream = obj.Body as Readable;
     const webStream = Readable.toWeb(nodeStream) as unknown as ReadableStream;
 
-    // RFC 5987 文件名编码(content-disposition 中文/特殊字符安全)
-    const encoded = encodeURIComponent(att.originalName)
-      .replace(/['()]/g, escape)
-      .replace(/\*/g, "%2A");
+    // RFC 5987 文件名编码(content-disposition 中文/特殊字符安全),
+    // 走 attachmentHeader 拿 ASCII 兜底 + UTF-8 形式,跟导出路由一致
     return new Response(webStream, {
       status: 200,
       headers: {
         "content-type": att.mimeType || "application/octet-stream",
         "content-length": String(obj.ContentLength ?? ""),
-        "content-disposition": `attachment; filename*=UTF-8''${encoded}`,
+        "content-disposition": attachmentHeader(att.originalName),
         // 缓存:附件 ID 固定 + 对象 key 不变,允许浏览器短缓存
         "cache-control": "private, max-age=60",
       },

@@ -9,10 +9,15 @@ export async function downloadExcel(url: string, fallbackName = "导出.xlsx") {
       const j = await r.json().catch(() => ({}));
       throw new Error((j as { message?: string }).message ?? `下载失败: HTTP ${r.status}`);
     }
-    // 从 Content-Disposition 拿真实文件名,fallback 到默认
+    // 从 Content-Disposition 拿真实文件名:优先 RFC 5987 的 filename*=UTF-8''<percent-encoded>,
+    // 现代浏览器都看这一份;fallback 到 ASCII 的 filename=;再不行才用 fallbackName
     const cd = r.headers.get("content-disposition") ?? "";
-    const m = /filename=([^;]+)/.exec(cd);
-    const name = m?.[1]?.replace(/^"|"$/g, "") || fallbackName;
+    const star = /filename\*=UTF-8''([^;]+)/i.exec(cd);
+    const ascii = /filename=([^;]+)/.exec(cd);
+    const name =
+      (star?.[1] ? decodeURIComponent(star[1]) : "") ||
+      ascii?.[1]?.replace(/^"|"$/g, "") ||
+      fallbackName;
     const blob = await r.blob();
     const a = document.createElement("a");
     a.href = URL.createObjectURL(blob);

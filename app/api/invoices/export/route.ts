@@ -5,7 +5,7 @@ import { err } from "@/lib/api";
 import { requireSession } from "@/lib/session";
 import { requirePermission, RESOURCE, ACTION } from "@/lib/permissions";
 import { listInvoices } from "@/server/services/invoice";
-import { exportToXlsx, exportMaxRows } from "@/lib/excel";
+import { exportToXlsx, exportMaxRows, attachmentHeader } from "@/lib/excel";
 import {
   INVOICE_TYPE_MAP,
   TITLE_TYPE_MAP,
@@ -108,7 +108,7 @@ export async function GET(req: Request) {
         headers: {
           "Content-Type":
             "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-          "Content-Disposition": `attachment; filename="开票列表_${ts}.xlsx"`,
+          "Content-Disposition": attachmentHeader(`开票列表_${ts}.xlsx`),
           "Cache-Control": "no-store",
         },
       });

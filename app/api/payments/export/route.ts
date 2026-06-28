@@ -5,7 +5,7 @@ import { err } from "@/lib/api";
 import { requireSession } from "@/lib/session";
 import { requirePermission, RESOURCE, ACTION } from "@/lib/permissions";
 import { listPayments } from "@/server/services/payment";
-import { exportToXlsx, exportMaxRows } from "@/lib/excel";
+import { exportToXlsx, exportMaxRows, attachmentHeader } from "@/lib/excel";
 import { METHOD_MAP, PAYMENT_STATUS_MAP } from "@/lib/enum-maps";
 
 const query = z.object({
@@ -70,7 +70,7 @@ export async function GET(req: Request) {
         headers: {
           "Content-Type":
             "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-          "Content-Disposition": `attachment; filename="回款列表_${ts}.xlsx"`,
+          "Content-Disposition": attachmentHeader(`回款列表_${ts}.xlsx`),
           "Cache-Control": "no-store",
         },
       });

@@ -3,7 +3,7 @@
 // exceljs 仍按老 Buffer 类型标注; runtime 无差别, 测试里加个 cast
 import { describe, it, expect } from "vitest";
 import ExcelJS from "exceljs";
-import { exportToXlsx, exportMaxRows } from "@/lib/excel";
+import { exportToXlsx, exportMaxRows, attachmentHeader } from "@/lib/excel";
 
 // exceljs 期望老 Buffer 类型, 而 exportToXlsx 返回的是 Buffer<ArrayBufferLike>
 // 二者 runtime 等价, 这里 cast 一下
@@ -97,5 +97,33 @@ describe("exportToXlsx", () => {
     // null/undefined 兜底成 ""
     expect(ws.getRow(2).getCell(2).value).toBe("");
     expect(ws.getRow(3).getCell(2).value).toBe("x");
+  });
+});
+
+
+describe("attachmentHeader", () => {
+  // 锁住 RFC 5987 编码:中文文件名不能用裸的 filename=,否则 Node 的 Headers 会抛
+  // "Cannot convert argument to a ByteString" 把整个导出打成 500。
+  it("中文文件名:同时输出 ASCII 兜底和 filename*=UTF-8'' 形式", () => {
+    const h = attachmentHeader("区域统计_2026-06-28.xlsx");
+    // 兜底:非 ASCII 全部替换成下划线
+    expect(h).toContain('filename="_____2026-06-28.xlsx"');
+    // RFC 5987: 百分号编码的 UTF-8
+    expect(h).toContain("filename*=UTF-8''");
+    expect(h).toContain(encodeURIComponent("区域统计_2026-06-28.xlsx"));
+  });
+
+  it("纯 ASCII 文件名:不引入百分号编码", () => {
+    const h = attachmentHeader("report_2026.xlsx");
+    expect(h).toBe(`attachment; filename="report_2026.xlsx"; filename*=UTF-8''report_2026.xlsx`);
+  });
+
+  it("带空格的文件名:空格被 encodeURIComponent 编码为 %20", () => {
+    const h = attachmentHeader("Top 客户.xlsx");
+    expect(h).toContain("filename*=UTF-8''Top%20%E5%AE%A2%E6%88%B7.xlsx");
+  });
+
+  it("始终以 attachment; 开头 (告诉浏览器下载而非内联)", () => {
+    expect(attachmentHeader("x.xlsx")).toMatch(/^attachment;/);
   });
 });

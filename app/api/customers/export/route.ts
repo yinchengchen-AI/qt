@@ -8,7 +8,7 @@ import { err } from "@/lib/api";
 import { requireSession } from "@/lib/session";
 import { requirePermission, RESOURCE, ACTION } from "@/lib/permissions";
 import { listCustomers } from "@/server/services/customer";
-import { exportToXlsx, exportMaxRows } from "@/lib/excel";
+import { exportToXlsx, exportMaxRows, attachmentHeader } from "@/lib/excel";
 import { prisma } from "@/lib/prisma";
 import { ALLOWED_DICTIONARY_CATEGORIES } from "@/lib/dictionary-categories";
 
@@ -141,7 +141,7 @@ export async function GET(req: Request) {
         headers: {
           "Content-Type":
             "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-          "Content-Disposition": `attachment; filename="客户列表_${ts}.xlsx"`,
+          "Content-Disposition": attachmentHeader(`客户列表_${ts}.xlsx`),
           "Cache-Control": "no-store",
         },
       });
