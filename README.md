@@ -320,7 +320,7 @@ GET /api/statistics/employee-performance?userId=&from=&to=
 GET /api/statistics/export?type=overview|top-customers|employee-performance   # xlsx 下载
 ```
 
-xlsx 导出走 `lib/excel.ts` + `exceljs`,带 BOM 支持中文。
+xlsx 导出走 `lib/excel.ts` + `exceljs`; 中文文件名通过 `attachmentHeader()` 走 RFC 5987 双形式(`filename=` ASCII 兜底 + `filename*=UTF-8''...`)。
 
 ## 移动端适配
 
@@ -396,6 +396,17 @@ xlsx 导出走 `lib/excel.ts` + `exceljs`,带 BOM 支持中文。
 | dev server `/login` `/dashboard` `/contracts` | 200 |
 
 ## 最近更新
+
+### v0.5.1(2026-06-28)Excel 导出文件名国际化 + 合同选择器增强
+
+小版本集中修 8 个 xlsx 导出端点(统计 4 / 合同 / 客户 / 回款 / 开票)的 `Content-Disposition` 中文文件名 + 客户端 `downloadExcel` 解析。涉及 [lib/excel.ts](lib/excel.ts) 新增 `attachmentHeader()`,[app/api/statistics/export/route.ts](app/api/statistics/export/route.ts) 等 8 个导出路由 + [app/api/files/raw/[id]/route.ts](app/api/files/raw/%5Bid%5D/route.ts) 文件下载。
+
+- **fix(statistics)**:`区域统计` 等中文 xlsx 文件名在 Node `Headers` API 抛 `TypeError: Cannot convert argument to a ByteString`(byte 22, value 21306)→ 500。统一改 `attachmentHeader()` 走 `filename=ASCII_fallback; filename*=UTF-8''<percent-encoded>` 双形式,老 IE 拿 ASCII、现代浏览器拿 UTF-8。同步覆盖 `/api/files/raw/[id]` 文件下载(`originalName` 也是中文,同一根因)
+- **feat(form)**:新建开票 / 登记回款的合同 `ProFormSelect` option label 拼接 `合同号 · 合同标题 · 合同总额`,下拉搜索时可一眼看到合同金额;`Contract` 类型补 `totalAmount: string` 字段
+- **fix(payment)**:登记回款 `FormCard` headerHint 渲染 `合同：undefined(客户名)`,根因是 `onChange` 拼 `pickedContract` 时漏塞 `contractNo`。option 改成 `contract: c` 整份合同塞入,`setPickedContract(o?.contract ?? null)`,以后扩字段不会再踩
+- **refactor(invoice)**:开票表单合同选择器 option 同步对齐成 `contract: c` 写法,onChange 从 `o.contract?.customerId` 取值,两张表单结构统一
+- **refactor(client)**:`lib/excel-client.ts` 的 `downloadExcel` 解析 `Content-Disposition` 之前用 `/filename=([^;]+)/` 拿到 ASCII 兜底而丢掉中文,改成优先 `filename*=UTF-8''` + `decodeURIComponent`,fallback 才退到 ASCII;三个统计页(总览/Top 客户/区域/员工业绩)改用 `downloadExcel(url)`,文件名以服务端 `Content-Disposition` 为单一来源,删手写 `<a download="中文.xlsx">`
+- **test(unit)**:`tests/unit/lib/excel.test.ts` 加 4 条 `attachmentHeader` 单测(中文 / 纯 ASCII / 带空格 / `encodeURIComponent` round-trip),11/11 通过;端到端验证 8 个导出端点 200,文件名均带中文
 
 ### v0.5.0(2026-06-29)客户状态机下线(硬删)
 

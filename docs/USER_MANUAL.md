@@ -741,7 +741,7 @@ PLANNED ─confirm─▶ CONFIRMED ─reconcile─▶ RECONCILED
   - 客户列表:导出全部或按筛选条件
   - 合同 / 项目 / 发票 / 回款:同上
 - **统计页「导出 Excel」**:总览 / 账龄 / Top 客户 / 业绩(SALES 无权限)
-- 导出文件格式:`.xlsx`,文件名带时间戳
+- 导出文件格式:`.xlsx`,文件名按「类型 + 时间戳」命名(如 `区域统计_2026-06-28.xlsx`、`合同列表_2026-06-28.xlsx`),中文文件名在所有现代浏览器都能正确显示(走 RFC 5987 编码,服务端 `lib/excel.ts` `attachmentHeader()` 统一处理)
 
 ### Q8. 审批中合同能不能改字段?
 

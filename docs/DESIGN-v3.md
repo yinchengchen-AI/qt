@@ -377,7 +377,7 @@ PLANNED ─confirm(finance)─▶ CONFIRMED ─reconcile(finance)─▶ RECONCIL
 - 管理员/财务：合同/开票/回款总览、账龄、客户 Top10、员工 Top10。
 - 业务人员：本人业绩 + 我的客户/合同/回款进度。
 - 行政人员：基础信息统计（金额字段隐藏）。
-- 导出：`exceljs@4.4.0` 流式生成；权限跟随 `EXPORT`；文件名 `统计报表_{from}_{to}.xlsx`。
+- 导出：`exceljs@4.4.0` 流式生成；权限跟随 `EXPORT`；文件名按 type 区分（总览/Top 客户/区域统计/员工业绩/合同列表/客户列表/回款列表/开票列表）+ 时间戳后缀（如 `区域统计_2026-06-28.xlsx`）；中文文件名通过 `lib/excel.ts` `attachmentHeader()` 走 RFC 5987 双形式（`filename=ASCII_fallback; filename*=UTF-8''<percent-encoded>`），避免 Node `Headers` 拒绝非 ASCII 抛 500。
 - **导出行数兜底**:路由统一调用 `exportMaxRows()`(env `EXPORT_MAX_ROWS`,默认 5000,硬上限 10000)切到 `rows.slice(0, MAX_ROWS)`,防止员工/客户全量导出 OOM。
 - **总览「新增客户」字段**:响应里叫 `customers.newInRange`,在已选时间区间内 `createdAt ∈ [from, to]` 计数;无区间时退化为全量(并非"本月")——文案/字段名一致标注区间语义。
 
