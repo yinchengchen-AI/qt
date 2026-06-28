@@ -136,6 +136,25 @@ function buildMessage(uid: string, ev: DomainEvent): ResolvedMessage {
         content: `到期日：${formatDate(p.expiryDate)}`,
         link: { kind: "employee-profile", id: p.userId, certificateId: p.certificateId }
       };
+    case "CUSTOMER_STATUS_AUTO_APPLIED":
+      // 客户状态机自动化 (§2.3): 系统按规则自动写客户状态后给 owner 的通知
+      // payload 字段: customerId, customerName, from, to, rule, ruleLabel
+      // 列表点进去会跳到客户详情页,详情页横幅提供"撤销"入口
+      return {
+        receiverUserId: uid,
+        title: `系统已将客户 ${String(p.customerName ?? "-")} 状态变更为 ${statusLabel(p.to)}`,
+        content: `原因: ${String(p.ruleLabel ?? p.rule ?? "系统规则")}。如需撤销, 请在 7 天内到详情页操作。`,
+        link: { kind: "customer", id: p.customerId }
+      };
+    case "CUSTOMER_STATUS_AUTO_REVERTED":
+      // 客户状态机自动化 (§2.4): owner 在撤销窗口期内撤销了系统自动写
+      // payload 字段: customerId, customerName, from, to, reason
+      return {
+        receiverUserId: uid,
+        title: `客户 ${String(p.customerName ?? "-")} 状态已从 ${statusLabel(p.from)} 撤销回 ${statusLabel(p.to)}`,
+        content: `撤销理由: ${String(p.reason ?? "-")}`,
+        link: { kind: "customer", id: p.customerId }
+      };
     default:
       return assertNever(ev.type);
   }
@@ -150,6 +169,23 @@ function formatDate(d: unknown): string {
   const date = typeof d === "string" ? new Date(d) : d instanceof Date ? d : null;
   if (!date || isNaN(date.getTime())) return "—";
   return date.toISOString().slice(0, 10);
+}
+
+/**
+ * 客户状态机文案映射. bus.ts 渲染站内信 title/content 用.
+ * 与 types/enums.ts 的 CUSTOMER_STATUS 保持一致, 加状态时两处都改.
+ */
+const CUSTOMER_STATUS_LABEL: Record<string, string> = {
+  LEAD: "线索",
+  NEGOTIATING: "洽谈中",
+  SIGNED: "已签约",
+  LOST: "已流失",
+  FROZEN: "已冻结"
+};
+
+function statusLabel(s: unknown): string {
+  if (typeof s !== "string") return String(s ?? "-");
+  return CUSTOMER_STATUS_LABEL[s] ?? s;
 }
 
 /** 找出全部 *真人* ADMIN 的 userId;排除 isSystem 占位；用于"通用通知"接收人 */

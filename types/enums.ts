@@ -112,7 +112,13 @@ export const MESSAGE_TYPE = [
   // 合同过期未结清提醒 (tickStaleContracts 触发, endDate<now 但钱没收齐, 给 owner/admin 通知)
   "CONTRACT_EXPIRED_UNPAID",
   // 证书 N 天内到期提醒 (server/jobs/certificate-expiry-check 触发)
-  "CERTIFICATE_EXPIRING"
+  "CERTIFICATE_EXPIRING",
+  // 客户状态机自动化: 系统自动写客户状态后, 给 owner 发的通知
+  // (server/services/customer/automation.ts + bus.ts CUSTOMER_STATUS_AUTO_APPLIED case)
+  "CUSTOMER_STATUS_AUTO_APPLIED",
+  // 客户状态机自动化: owner 在撤销窗口期内撤销了系统自动写, 给 owner 的反馈
+  // (app/api/customers/[id]/revert/route.ts → bus.ts CUSTOMER_STATUS_AUTO_REVERTED case)
+  "CUSTOMER_STATUS_AUTO_REVERTED"
 ] as const;
 
 // 5 个内置角色

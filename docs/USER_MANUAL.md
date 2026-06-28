@@ -187,9 +187,9 @@
 > 终态恢复: LOST / FROZEN 都可通过回到 `NEGOTIATING` 重新激活。
 > 越级跳转(例如 SIGNED→LEAD)会被服务端拒,错误码 `CUSTOMER_STATUS_TRANSITION_INVALID`。
 > LEAD→FROZEN 暂不允许: FROZEN 通常是合规/欠款场景,不符合「线索」语义。
-> 自动联动: `tickCustomerStatusSuggestions` 每天扫一次,对满足规则(90 天无跟进 + 无活跃合同 等)
-> 的客户发 `CUSTOMER_STATUS_SUGGEST` 站内信建议变更,**不直接写状态**;用户点消息进入详情页
-> 「变更状态」走完整校验。
+> 自动联动: 系统会在「合同生效」「全部合同完结」「N 天无活动」等业务事件/时间窗触发时
+> **直接改写客户状态**,并在详情页顶部给出 7 天可撤销的横幅;规则被 env 关闭或前置条件
+> 不满足时,降级为 `CUSTOMER_STATUS_SUGGEST` 站内信建议。详见 §5.6。
 
 ### 5.2 列表功能
 
@@ -235,6 +235,49 @@
 - 仅「客户全称 / 简称 / 信用代码 / 联系人」等基础信息可改
 - 状态变更在 **详情页右上角** 走专用按钮,触发跨模块校验
 - 跟进记录一旦提交不可修改,只能新增(留痕)
+
+### 5.6 客户状态自动联动
+
+系统在以下 4 条规则被触发时,会**直接改写客户状态**(不再只发建议消息),同时给客户
+owner 发 `CUSTOMER_STATUS_AUTO_APPLIED` 站内信;改写后 7 天内可在详情页顶部横幅撤销。
+
+| 规则 | 触发器 | 触发条件 | 目标状态 | 撤销回退到 |
+|---|---|---|---|---|
+| `CONTRACT_ACTIVATED` 合同生效 | 业务事件 | 合同 `DRAFT → ACTIVE` | `SIGNED` 已签约 | `FROZEN` 已冻结(1) |
+| `ALL_CONTRACTS_CLOSED` 全部合同完结 | 业务事件 | 客户所有合同 `ACTIVE → CLOSED` | `FROZEN` 已冻结 | `NEGOTIATING` 洽谈中 |
+| `INACTIVE_LOST` N 天无活动 | 时间窗(每日) | 90 天无活动 + 无 `ACTIVE` 合同 | `LOST` 已流失 | `NEGOTIATING` 洽谈中 |
+| `INACTIVE_FROZEN` N 天无活动 + 全部合同完结 | 时间窗(每日) | 60 天无活动 + 所有合同 `CLOSED ≥ 30 天` + 无未对账回款 | `FROZEN` 已冻结 | `NEGOTIATING` 洽谈中 |
+
+> (1) 状态机迁移表里 `SIGNED → NEGOTIATING` 不在合法边集合,所以 `CONTRACT_ACTIVATED` 的
+> 撤销回退走 `SIGNED → FROZEN`;owner 后续如需重新推进,可手动走 `FROZEN → NEGOTIATING`。
+> 其它 3 条规则因 `LOST/FROZEN → NEGOTIATING` 在迁移表里,直接回退到 `NEGOTIATING`。
+
+**详情页横幅**(系统自动变更后 7 天内显示):
+
+- 位置:详情页头部下方、标签页上方,蓝色 `InfoBox`
+- 内容:说明触发规则、相对时间、变更后的状态
+- 操作:点「撤销」→ 弹窗填写 5-200 字原因 → 提交
+- 撤销成功后横幅立即消失(后端会清空 `lastAutoAppliedAt` / `lastAutoRule`)
+- 7 天窗口期结束后,横幅自动隐藏;此时若要再变更状态,需走详情页右上「变更状态」人工路径
+
+**自动写失败时的降级**:
+
+- 规则被 env 关闭(`CUSTOMER_AUTO_RULES_DISABLED="INACTIVE_LOST"` 逗号分隔),或
+- 业务前置条件不满足(例如 `CONTRACT_ACTIVATED` 触发时 `R-02`(至少 1 份 `ACTIVE` 合同)
+  已不成立、客户当前状态已被人改过)
+- → 走 `CUSTOMER_STATUS_SUGGEST` 站内信建议,owner 收到消息后点进详情页走人工「变更状态」
+
+**可调参数**(`.env`):
+
+- `CUSTOMER_AUTO_DISPUTE_DAYS=7` — 撤销窗口天数(默认 7)
+- `CUSTOMER_AUTO_INACTIVE_LOST_DAYS=90` — `INACTIVE_LOST` 阈值
+- `CUSTOMER_AUTO_INACTIVE_FROZEN_DAYS=60` — `INACTIVE_FROZEN` 阈值
+- `CUSTOMER_AUTO_RULES_DISABLED=` — 逗号分隔的规则 ID,关闭后该规则不自动写,只发 SUGGEST
+
+**审计与通知**:
+
+- 系统自动改:audit `CUSTOMER_STATUS_AUTO_CHANGE`,actor = SYSTEM;发 `CUSTOMER_STATUS_AUTO_APPLIED` 给 owner
+- 人工撤销:audit `CUSTOMER_STATUS_REVERT`,actor = 操作人;发 `CUSTOMER_STATUS_AUTO_REVERTED` 给 owner
 
 ---
 

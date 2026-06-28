@@ -47,6 +47,9 @@ enum MessageType {
   CONTRACT_EXPIRED_UNPAID
   // 证书 N 天内到期 (30/15/7 三档阈值各发一次)
   CERTIFICATE_EXPIRING
+  // 客户状态机自动化: 系统自动写状态 (§1.2 / §3.1)
+  CUSTOMER_STATUS_AUTO_APPLIED
+  CUSTOMER_STATUS_AUTO_REVERTED
 }
 
 model User {
@@ -275,6 +278,10 @@ model Customer {
   sourceChannel String?
   ownerUserId   String
   status        String    @default("LEAD") // LEAD | NEGOTIATING | SIGNED | LOST | FROZEN
+  // 客户状态机自动化: 系统最近一次自动写状态的时间 + 触发规则 ID (nullable, 旧数据全 null)
+  // 用于详情页横幅 + 7 天撤销窗口; 见 lib/customer-auto-rules.ts
+  lastAutoAppliedAt DateTime? @db.Timestamptz(6)
+  lastAutoRule      String?   // CONTRACT_ACTIVATED | ALL_CONTRACTS_CLOSED | INACTIVE_LOST | INACTIVE_FROZEN
   createdAt     DateTime  @default(now()) @db.Timestamptz(6)
   updatedAt     DateTime  @updatedAt @db.Timestamptz(6)
   createdById   String

@@ -11,6 +11,7 @@ import { listAdminUserIds } from "@/server/events/bus";
 import { runTransition, runTransitionInTx, SkipTransition } from "@/lib/status-machine";
 import { SYSTEM_USER_ID } from "@/lib/system";
 import { env } from "@/lib/env";
+import { onContractClosed } from "@/server/services/customer/automation";
 
 export async function publishContract(user: SessionUser, id: string) {
   requirePermission(user.roleCode, RESOURCE.CONTRACT, ACTION.UPDATE);
@@ -259,6 +260,12 @@ export async function tryAutoClose(contractId: string, now: Date): Promise<"CLOS
     },
     silentSkip: true,
   });
+  // 客户状态机联动 (§2.3): 合同自动完结后, 尝试把客户自动改为 FROZEN
+  // (前提: 这个客户的所有合同都已 CLOSED, 由 autoChangeCustomerStatus 内部 R-13 校验)
+  // runTransition 已经包了独立事务, 这里直接 await; onContractClosed 自己再开新事务
+  if (result.result === "DONE") {
+    await onContractClosed(contractId);
+  }
   return result.result === "DONE" ? "CLOSED" : "SKIPPED";
 }
 
@@ -325,5 +332,9 @@ export async function tryAutoCloseOnOverdue(contractId: string, now: Date): Prom
     },
     silentSkip: true,
   });
+  // 客户状态机联动 (§2.3): 同 tryAutoClose
+  if (result.result === "DONE") {
+    await onContractClosed(contractId);
+  }
   return result.result === "DONE" ? "CLOSED" : "SKIPPED";
 }

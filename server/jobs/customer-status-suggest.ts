@@ -1,8 +1,8 @@
-// 客户状态机联动建议: 不直接写状态, 仅发站内信
+// 客户状态机联动 job: 时间窗规则触发自动写 + (回退) 发站内信
 //
-// 规则 (见 PLAN 客户状态机优化 §4, follow-up 功能已下线后改用 lastActivityAt 信号):
-//   建议 LOST: status ∈ {LEAD, NEGOTIATING, SIGNED} 且 90 天无活动 且 无 ACTIVE 合同
-//   建议 FROZEN: status ∈ {NEGOTIATING, SIGNED} 且 所有合同 CLOSED ≥ 30 天 且 60 天无活动 且 无未对账回款
+// 规则 (见 PLAN 客户状态机优化 §4 + P 客户状态机自动化 §2.3):
+//   INACTIVE_LOST:    status ∈ {LEAD, NEGOTIATING, SIGNED} 且 90 天无活动 且 无 ACTIVE 合同
+//   INACTIVE_FROZEN:  status ∈ {NEGOTIATING, SIGNED} 且 所有合同 CLOSED ≥ 30 天 且 60 天无活动 且 无未对账回款
 //
 // lastActivityAt = max(
 //   contract.signDate,
@@ -12,19 +12,26 @@
 //   customer.createdAt
 // )
 //
-// 行为:
-//   - 每客户每天最多 1 条 (type+suggest+entityId+今日)
-//   - 只发建议不发直接写; "启用自动写" 是 v2 的话题
-//   - 用户点击后跳 /customers/<id>?suggest=<status> 走完整 changeCustomerStatus 校验 + 审计
+// 行为 (§2.3 v2 升级):
+//   - 规则开启时 (env CUSTOMER_AUTO_RULES_DISABLED 未关): 先尝试 autoChangeCustomerStatus,
+//     成功 (返回 DONE) 走自动写, emit CUSTOMER_STATUS_AUTO_APPLIED 已经在内部发好, 不再发 SUGGEST
+//   - 规则关闭 / 自动写失败 (前置不满足 / 状态已变): fallthrough 到原 CUSTOMER_STATUS_SUGGEST 建议
+//   - 每客户每天最多 1 条 SUGGEST (type+suggest+entityId+今日) 去重
+//   - 用户点 SUGGEST 跳 /customers/<id>?suggest=<status> 走完整 changeCustomerStatus 校验 + 审计
+//   - 自动写路径有 7 天撤销窗口 (lib/customer-auto-rules.ts + server/services/customer/status.ts)
 import { prisma } from "@/lib/prisma";
 import { emit } from "@/server/events/bus";
 import { getAllowedTransitions, isCustomerStatus } from "@/lib/customer-status-transitions";
+import { isRuleEnabled, type CustomerAutoRuleId } from "@/lib/customer-auto-rules";
+import { autoChangeCustomerStatus } from "@/server/services/customer/status";
+import { env } from "@/lib/env";
 import type { JobResult } from "./runner";
 
 const DAY_MS = 86_400_000;
-const INACTIVE_DAYS = 90; // 活动空窗 (LOST)
-const FROZEN_INACTIVE_DAYS = 60; // 活动空窗 (FROZEN, 更严)
-const CLOSED_GRACE_DAYS = 30; // 合同 CLOSED 后观察期
+// 阈值走 env (CUSTOMER_AUTO_INACTIVE_*_DAYS, 默认 90 / 60), 不再硬编码
+const INACTIVE_DAYS = env.CUSTOMER_AUTO_INACTIVE_LOST_DAYS;
+const FROZEN_INACTIVE_DAYS = env.CUSTOMER_AUTO_INACTIVE_FROZEN_DAYS;
+const CLOSED_GRACE_DAYS = 30; // 合同 CLOSED 后观察期 (FROZEN 规则专用)
 
 type Candidate = {
   id: string;
@@ -127,6 +134,8 @@ export async function tickCustomerStatusSuggestions(now: Date = new Date()): Pro
   const t0 = Date.now();
   const candidates = await loadCandidates(now);
   let created = 0;
+  let applied = 0;
+  let suggestionsKept = 0;
   const scanned = candidates.length;
   // 批量化去重:一次 findMany 拉今天所有 CUSTOMER_STATUS_SUGGEST 消息,
   // 在 JS 里按 `${customerId}:${suggest}` 二元组查表(代替 N 次 findFirst)
@@ -157,8 +166,16 @@ export async function tickCustomerStatusSuggestions(now: Date = new Date()): Pro
     const allowed = getAllowedTransitions(c.status);
     const lastActivityAgeDays = (now.getTime() - c.lastActivityAt.getTime()) / DAY_MS;
 
-    // 规则 1: 建议 LOST
+    // 规则 1: LOST (auto-write 优先, 失败 fallthrough 到建议)
     if (allowed.includes("LOST") && lastActivityAgeDays >= INACTIVE_DAYS && !c.hasActiveContract) {
+      // 自动写路径: 规则开启时尝试 autoChangeCustomerStatus. 成功 DONE → emit 已经在内部发
+      // 完 CUSTOMER_STATUS_AUTO_APPLIED, 这里不再发 SUGGEST. 失败 (前置不满足 / 状态已变)
+      // 走原 SUGGEST 提示用户手动确认.
+      if (isRuleEnabled("INACTIVE_LOST" satisfies CustomerAutoRuleId)) {
+        const r = await autoChangeCustomerStatus({ customerId: c.id, rule: "INACTIVE_LOST" });
+        if (r.result === "DONE") { applied++; continue; }
+      }
+      // fallthrough: 发原 SUGGEST
       if (sentKey.has(`${c.id}:LOST`)) continue;
       await emit(prisma, {
         type: "CUSTOMER_STATUS_SUGGEST",
@@ -172,15 +189,21 @@ export async function tickCustomerStatusSuggestions(now: Date = new Date()): Pro
         receivers: [c.ownerUserId]
       });
       created++;
+      suggestionsKept++;
     }
 
-    // 规则 2: 建议 FROZEN (与规则 1 互不冲突, 一个客户可能同时满足, 各发一条)
+    // 规则 2: FROZEN (auto-write 优先, 失败 fallthrough 到建议)
     if (
       allowed.includes("FROZEN") &&
       lastActivityAgeDays >= FROZEN_INACTIVE_DAYS &&
       c.allClosedOverGrace &&
       !c.hasPlannedOrConfirmedPayment
     ) {
+      if (isRuleEnabled("INACTIVE_FROZEN" satisfies CustomerAutoRuleId)) {
+        const r = await autoChangeCustomerStatus({ customerId: c.id, rule: "INACTIVE_FROZEN" });
+        if (r.result === "DONE") { applied++; continue; }
+      }
+      // fallthrough: 发原 SUGGEST
       if (sentKey.has(`${c.id}:FROZEN`)) continue;
       await emit(prisma, {
         type: "CUSTOMER_STATUS_SUGGEST",
@@ -194,7 +217,15 @@ export async function tickCustomerStatusSuggestions(now: Date = new Date()): Pro
         receivers: [c.ownerUserId]
       });
       created++;
+      suggestionsKept++;
     }
   }
-  return { job: "customer-status-suggest", created, scanned, durationMs: Date.now() - t0 };
+  return {
+    job: "customer-status-suggest",
+    created,
+    scanned,
+    applied,
+    suggestionsKept,
+    durationMs: Date.now() - t0
+  };
 }

@@ -12,6 +12,7 @@ import { calcTaxBreakdown } from "@/lib/money";
 import { resolveAttachmentSnapshots } from "@/lib/attachment-snapshot";
 import { softDelete } from "@/lib/soft-delete";
 import { tryAutoPublish } from "./status";
+import { onContractActivated } from "@/server/services/customer/automation";
 
 function assertDateOrder(start?: string | Date | null, end?: string | Date | null, label = "服务"): void {
   if (!start || !end) return;
@@ -232,8 +233,17 @@ export async function createContract(user: SessionUser, input: ContractCreateInp
       await tx.contract.update({ where: { id: created.id }, data: { attachments } });
     }
     // 自动化: 字段完整 + 至少 1 附件 → DRAFT 自动升 ACTIVE (在事务内, 失败时回滚)
-    await tryAutoPublish(tx, created.id);
-    return tx.contract.findUnique({ where: { id: created.id } });
+    const publishResult = await tryAutoPublish(tx, created.id);
+    return { id: created.id, publishResult };
+  }).then(async ({ id, publishResult }) => {
+    // 客户状态机联动 (§2.3): 合同自动升 ACTIVE 后, 尝试把客户自动改为 SIGNED.
+    // 不能在原 $transaction 里嵌套调 (Prisma 7 不支持嵌套事务), 在事务结束后独立事务跑.
+    // tryAutoPublish 已 DONE 时才触发, 避免无意义的 SYSTEM_USER 写; 客户 auto-write 自身
+    // 失败是 silentSkip, 不影响合同已成功的状态.
+    if (publishResult === "PUBLISHED") {
+      await onContractActivated(id);
+    }
+    return prisma.contract.findUnique({ where: { id } });
   });
 }
 
@@ -302,8 +312,8 @@ export async function updateContract(user: SessionUser, id: string, input: Contr
         }
       });
       // 自动化: PATCH 一次性补齐字段/附件时, DRAFT 也可能升 ACTIVE
-      if (wasDraft) await tryAutoPublish(tx, id);
-      return updated;
+      const publishResult = wasDraft ? await tryAutoPublish(tx, id) : ("SKIPPED" as const);
+      return { updated, publishResult };
     } catch (e) {
       // 同 createContract: 并发把 contractNo 抢走时把 P2002 转 422
       if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === "P2002") {
@@ -311,6 +321,12 @@ export async function updateContract(user: SessionUser, id: string, input: Contr
       }
       throw e;
     }
+  }).then(async ({ updated, publishResult }) => {
+    // 客户状态机联动 (§2.3): 同 createContract
+    if (publishResult === "PUBLISHED") {
+      await onContractActivated(id);
+    }
+    return updated;
   });
 }
 

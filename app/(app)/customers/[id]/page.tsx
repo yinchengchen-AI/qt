@@ -11,6 +11,7 @@ import { Page } from "@/components/page";
 import { PageHeader } from "@/components/page-header";
 import { DetailPageSkeleton } from "@/components/detail-page-skeleton";
 import { ErrorBox } from "@/components/callout";
+import { AutoStatusBanner } from "@/components/customers/auto-status-banner";
 import { StatGrid } from "@/components/stat-grid";
 import { StatusTag } from "@/components/status-tag";
 import { useDict } from "@/lib/dict-client";
@@ -27,6 +28,9 @@ type Customer = {
   contactName: string | null; contactTitle: string | null; contactPhone: string;
   province: string; city: string; district: string | null; town: string | null; address: string | null;
   createdAt: string;
+  // 状态机自动化 (§2.4): 详情页横幅判定
+  lastAutoAppliedAt: string | null;
+  lastAutoRule: string | null;
 };
 
 type Overview = {
@@ -246,6 +250,13 @@ export default function CustomerDetailPage() {
           </Space>
         }
         meta={data.status ? <StatusTag status={data.status} domain="customer" /> : null}
+      />
+      <AutoStatusBanner
+        customerId={id}
+        lastAutoAppliedAt={data.lastAutoAppliedAt}
+        lastAutoRule={data.lastAutoRule}
+        currentStatus={data.status}
+        onReverted={() => mutate()}
       />
       <Tabs activeKey={activeTab} onChange={setActiveTab} items={tabItems} />
     </Page>
