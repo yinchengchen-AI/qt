@@ -10,7 +10,6 @@ export const ENTITY_LABELS: Record<string, string> = {
   Customer: "客户",
   Department: "部门",
   Dictionary: "字典",
-  FollowUp: "跟进记录",
   Invoice: "开票",
   Payment: "回款",
   Role: "角色",

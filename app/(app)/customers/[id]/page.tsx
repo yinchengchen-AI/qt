@@ -2,7 +2,7 @@
 import { ProCard, ProDescriptions, ProTable } from "@ant-design/pro-components";
 import { App as AntdApp } from "antd";
 import { Button, Col, Empty, Input, Popover, Row, Space, Tabs } from "antd";
-import { PlusOutlined, FilePdfOutlined } from "@ant-design/icons";
+import { FilePdfOutlined } from "@ant-design/icons";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { useGoBack } from "@/lib/navigation";
 import useSWR from "swr";
@@ -14,9 +14,7 @@ import { ErrorBox } from "@/components/callout";
 import { StatGrid } from "@/components/stat-grid";
 import { StatusTag } from "@/components/status-tag";
 import { useDict } from "@/lib/dict-client";
-import { useUserName } from "@/lib/user-lookup";
 import { CurrencyCell, DateCell, DateTimeCell } from "@/components/table-cells";
-import { FollowUpDrawer } from "@/components/file/follow-up-drawer";
 import { openPrintWindow } from "@/lib/print-client";
 import { useResponsive } from "@/lib/use-breakpoint";
 import { getAllowedTransitions, isCustomerStatus } from "@/lib/customer-status-transitions";
@@ -29,16 +27,6 @@ type Customer = {
   contactName: string | null; contactTitle: string | null; contactPhone: string;
   province: string; city: string; district: string | null; town: string | null; address: string | null;
   createdAt: string;
-};
-
-type FollowUp = {
-  id: string;
-  followAt: string;
-  method: string;
-  content: string;
-  result: string | null;
-  nextFollowAt: string | null;
-  userId: string;
 };
 
 type Overview = {
@@ -60,12 +48,8 @@ export default function CustomerDetailPage() {
   const industryDict = useDict("CUSTOMER_INDUSTRY");
   const sourceDict = useDict("CUSTOMER_SOURCE");
   const scaleDict = useDict("CUSTOMER_SCALE");
-  const methodDict = useDict("FOLLOW_METHOD");
-  const resultDict = useDict("FOLLOW_RESULT");
   const { data, error, isLoading, mutate } = useSWR<Customer>(`/api/customers/${id}`);
-  const { data: followUps, mutate: mutateFollowUps } = useSWR<FollowUp[]>(`/api/customers/${id}/follow-ups`);
-  const { data: overview, mutate: mutateOverview } = useSWR<Overview>(`/api/customers/${id}/overview`);
-  const [followUpOpen, setFollowUpOpen] = useState(false);
+  const { data: overview } = useSWR<Overview>(`/api/customers/${id}/overview`);
   const [activeTab, setActiveTab] = useState("info");
   // 状态变更 Popover 状态
   const [statusPopoverOpen, setStatusPopoverOpen] = useState(false);
@@ -161,33 +145,6 @@ export default function CustomerDetailPage() {
       )
     },
     {
-      key: "followups",
-      label: <span>跟进 ({followUps?.length ?? 0})</span>,
-      children: (
-        <ProCard>
-          <ProTable<FollowUp>
-            rowKey="id"
-            search={false}
-            options={false}
-            pagination={{ defaultPageSize: 10, size: isMobile ? "small" : "middle" }}
-            dataSource={followUps ?? []}
-            scroll={{ x: 'max-content' }}
-            sticky={isMobile}
-            columns={[
-              { title: "跟进时间", dataIndex: "followAt", valueType: "dateTime", width: 180, render: (_, r) => <DateTimeCell value={r.followAt as string} /> },
-              { title: "方式", dataIndex: "method", width: 100, render: (v) => methodDict.find((d) => d.code === v)?.label ?? v },
-              { title: "内容", dataIndex: "content" },
-              { title: "结果", dataIndex: "result", width: 100, render: (v) => v ? (resultDict.find((d) => d.code === v)?.label ?? v) : "—" },
-              { title: "下次跟进", dataIndex: "nextFollowAt", width: 140, render: (v) => v ? <DateCell value={v as string} /> : "—" },
-              {
-                title: "跟进人", dataIndex: "userId", width: 120,
-                render: (_, r) => <FollowUpUserName id={r.userId as string} />
-              }
-            ]} />
-        </ProCard>
-      )
-    },
-    {
       key: "contracts",
       label: <span>合同 ({overview?.contracts.length ?? 0})</span>,
       children: (
@@ -271,14 +228,11 @@ export default function CustomerDetailPage() {
       <PageHeader
         back={goBack}
         title={`${data.name} (${data.code})`}
-        subtitle="客户 360 度视图 — 概览 / 信息 / 跟进 / 合同 / 项目 / 开票 / 回款"
+        subtitle="客户 360 度视图 — 概览 / 信息 / 合同 / 项目 / 开票 / 回款"
         actions={
           <Space wrap>
             <Button key="pdf" icon={<FilePdfOutlined />} onClick={() => openPrintWindow(`/api/customers/${id}/pdf`)}>导出 PDF</Button>
-            <Button key="followup" icon={<PlusOutlined />} onClick={() => setFollowUpOpen(true)}>
-              新增跟进
-            </Button>
-            <ChangeStatusPopover
+<ChangeStatusPopover
               customerId={id}
               currentStatus={data.status}
               highlightStatus={highlightStatus}
@@ -294,21 +248,9 @@ export default function CustomerDetailPage() {
         meta={data.status ? <StatusTag status={data.status} domain="customer" /> : null}
       />
       <Tabs activeKey={activeTab} onChange={setActiveTab} items={tabItems} />
-      <FollowUpDrawer
-        customerId={id}
-        open={followUpOpen}
-        onClose={() => setFollowUpOpen(false)}
-        onSaved={() => { mutateFollowUps(); mutateOverview(); }}
-      />
     </Page>
   );
 }
-
-function FollowUpUserName({ id }: { id: string }) {
-  const name = useUserName(id, "—");
-  return <span>{name}</span>;
-}
-
 
 /**
  * 详情页右上角"变更状态" Popover.

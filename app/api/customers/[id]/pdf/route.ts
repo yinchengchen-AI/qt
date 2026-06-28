@@ -1,12 +1,11 @@
 // 客户详情 → 打印页 HTML(浏览器"另存为 PDF"使用)
-// 字段来源 = lib/types/entities.ts 的 Customer + 关联合同/项目/开票/回款 + 跟进
+// 字段来源 = lib/types/entities.ts 的 Customer + 关联合同/项目/开票/回款
 import { err } from "@/lib/api";
 import { runWithRequestContext } from "@/lib/request-context";
 import { requireSession } from "@/lib/session";
 import { requirePermission, RESOURCE, ACTION } from "@/lib/permissions";
 import {
   getCustomer,
-  listFollowUps,
   getCustomerOverview,
 } from "@/server/services/customer";
 import { prisma } from "@/lib/prisma";
@@ -31,7 +30,7 @@ export async function GET(
       requirePermission(user.roleCode, RESOURCE.CUSTOMER, ACTION.EXPORT);
       const { id } = await params;
       const c = await getCustomer(user, id);
-      const [dictItems, followUps, overview, owner] = await Promise.all([
+      const [dictItems, overview, owner] = await Promise.all([
         prisma.dictionary.findMany({
           where: {
             category: { in: [...ALLOWED_DICTIONARY_CATEGORIES] },
@@ -39,7 +38,6 @@ export async function GET(
           },
           select: { category: true, code: true, label: true },
         }),
-        listFollowUps(user, id),
         getCustomerOverview(user, id),
         prisma.user.findUnique({
           where: { id: c.ownerUserId },
@@ -157,16 +155,6 @@ export async function GET(
               状态: PAYMENT_STATUS_MAP[p.status] ?? p.status,
             })),
             emptyText: "暂无回款记录",
-          },
-          {
-            title: "跟进记录",
-            rows: followUps.length
-              ? followUps.map((f) => ({
-                  label: `${fmtDateTime(f.followAt)} · ${f.method}${f.result ? " · 结果:" + f.result : ""}`,
-                  value: f.content,
-                }))
-              : [],
-            emptyText: "暂无跟进记录",
           },
         ],
       };

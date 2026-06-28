@@ -1,8 +1,16 @@
 // 客户状态机联动建议: 不直接写状态, 仅发站内信
 //
-// 规则 (见 PLAN 客户状态机优化 §4):
-//   建议 LOST: status ∈ {LEAD, NEGOTIATING, SIGNED} 且 90 天无 FollowUp 且 无 ACTIVE 合同
-//   建议 FROZEN: status ∈ {NEGOTIATING, SIGNED} 且 所有合同 CLOSED ≥ 30 天 且 60 天无 FollowUp 且 无未对账回款
+// 规则 (见 PLAN 客户状态机优化 §4, follow-up 功能已下线后改用 lastActivityAt 信号):
+//   建议 LOST: status ∈ {LEAD, NEGOTIATING, SIGNED} 且 90 天无活动 且 无 ACTIVE 合同
+//   建议 FROZEN: status ∈ {NEGOTIATING, SIGNED} 且 所有合同 CLOSED ≥ 30 天 且 60 天无活动 且 无未对账回款
+//
+// lastActivityAt = max(
+//   contract.signDate,
+//   contract.endDate(where status=CLOSED),
+//   payment.receivedAt(where status ∈ {PLANNED, CONFIRMED, RECONCILED}),
+//   customer.updatedAt,
+//   customer.createdAt
+// )
 //
 // 行为:
 //   - 每客户每天最多 1 条 (type+suggest+entityId+今日)
@@ -14,8 +22,8 @@ import { getAllowedTransitions, isCustomerStatus } from "@/lib/customer-status-t
 import type { JobResult } from "./runner";
 
 const DAY_MS = 86_400_000;
-const INACTIVE_DAYS = 90; // 跟进空窗
-const FROZEN_INACTIVE_DAYS = 60; // 冻结建议的更严空窗
+const INACTIVE_DAYS = 90; // 活动空窗 (LOST)
+const FROZEN_INACTIVE_DAYS = 60; // 活动空窗 (FROZEN, 更严)
 const CLOSED_GRACE_DAYS = 30; // 合同 CLOSED 后观察期
 
 type Candidate = {
@@ -23,23 +31,20 @@ type Candidate = {
   name: string;
   status: string;
   ownerUserId: string;
-  lastFollowAt: Date | null;
+  lastActivityAt: Date; // 最后活动时间
   hasActiveContract: boolean;
   allClosedOverGrace: boolean; // 所有合同 CLOSED ≥ CLOSED_GRACE_DAYS
   hasPlannedOrConfirmedPayment: boolean; // 有未对账回款
 };
 
 async function loadCandidates(now: Date): Promise<Candidate[]> {
-  // SQL 预过滤: 60 天内无任何跟进 (FROZEN 规则需要 ≥60 天空窗).
-  //   - Prisma 的 followUps: { none: { followAt: { gte: cutoff } } } 表示"没有任何 followUp.followAt >= cutoff"
-  //   - 即"所有跟进 (如有) 都早于 cutoff, 或完全无跟进"
-  // LOST 规则需要 ≥90 天, 由内存二次判定; 预过滤只是减少扫描量, 不会漏掉潜在候选.
-  const sixtyDaysAgo = new Date(now.getTime() - FROZEN_INACTIVE_DAYS * DAY_MS);
+  // 不做 SQL 预过滤, 加载所有非终态客户, 在 JS 里算 lastActivityAt.
+  // 数据量级: 非终态客户通常几百到几千, 每天跑一次, 性能可接受.
+  // (原 followUps 预过滤因 follow-up 功能下线已删除)
   const customers = await prisma.customer.findMany({
     where: {
       deletedAt: null,
-      status: { in: ["LEAD", "NEGOTIATING", "SIGNED"] },
-      followUps: { none: { followAt: { gte: sixtyDaysAgo } } }
+      status: { in: ["LEAD", "NEGOTIATING", "SIGNED"] }
     },
     select: {
       id: true,
@@ -47,35 +52,58 @@ async function loadCandidates(now: Date): Promise<Candidate[]> {
       status: true,
       ownerUserId: true,
       createdAt: true,
-      followUps: { orderBy: { followAt: "desc" }, take: 1, select: { followAt: true } },
+      updatedAt: true,
       contracts: {
         where: { deletedAt: null },
-        select: { status: true, endDate: true }
+        select: { signDate: true, endDate: true, status: true }
       }
     }
   });
   const customerIds = customers.map((c) => c.id);
-  // 拉所有客户的回款状态聚合
+  // 拉所有客户的活跃回款 (PLANNED/CONFIRMED/RECONCILED):
+  //   - hasPlannedOrConfirmedPayment 只看 PLANNED/CONFIRMED
+  //   - lastActivityAt 看三者的 receivedAt
   const payments = await prisma.payment.findMany({
     where: {
       customerId: { in: customerIds },
-      status: { in: ["PLANNED", "CONFIRMED"] },
+      status: { in: ["PLANNED", "CONFIRMED", "RECONCILED"] },
       deletedAt: null
     },
-    select: { customerId: true }
+    select: { customerId: true, receivedAt: true, status: true }
   });
-  const paymentByCustomer = new Set(payments.map((p) => p.customerId));
+  // 按客户聚合: 最大 receivedAt + 是否含 PLANNED/CONFIRMED
+  const aggByCustomer = new Map<string, { maxReceivedAt: number; hasPlannedOrConfirmed: boolean }>();
+  for (const p of payments) {
+    const t = p.receivedAt.getTime();
+    const cur = aggByCustomer.get(p.customerId);
+    if (!cur) {
+      aggByCustomer.set(p.customerId, {
+        maxReceivedAt: t,
+        hasPlannedOrConfirmed: p.status === "PLANNED" || p.status === "CONFIRMED"
+      });
+    } else {
+      cur.maxReceivedAt = Math.max(cur.maxReceivedAt, t);
+      if (p.status === "PLANNED" || p.status === "CONFIRMED") cur.hasPlannedOrConfirmed = true;
+    }
+  }
 
   return customers.map((c) => {
-    const lastFollowAt = c.followUps[0]?.followAt ?? c.createdAt;
-    const hasActiveContract = c.contracts.some(
-      (ct) => ct.status === "ACTIVE"
-    );
+    // 算 lastActivityAt
+    const times: number[] = [c.createdAt.getTime(), c.updatedAt.getTime()];
+    for (const ct of c.contracts) {
+      times.push(ct.signDate.getTime());
+      if (ct.status === "CLOSED" && ct.endDate) times.push(ct.endDate.getTime());
+    }
+    const agg = aggByCustomer.get(c.id);
+    if (agg) times.push(agg.maxReceivedAt);
+    const lastActivityAt = new Date(Math.max(...times));
+
+    const hasActiveContract = c.contracts.some((ct) => ct.status === "ACTIVE");
     const allClosedOverGrace = c.contracts.length > 0 &&
       c.contracts.every((ct) => {
         if (ct.status !== "CLOSED") return false;
         if (!ct.endDate) return false;
-        const ageDays = (now.getTime() - new Date(ct.endDate).getTime()) / DAY_MS;
+        const ageDays = (now.getTime() - ct.endDate.getTime()) / DAY_MS;
         return ageDays >= CLOSED_GRACE_DAYS;
       });
     return {
@@ -83,10 +111,10 @@ async function loadCandidates(now: Date): Promise<Candidate[]> {
       name: c.name,
       status: c.status,
       ownerUserId: c.ownerUserId,
-      lastFollowAt,
+      lastActivityAt,
       hasActiveContract,
       allClosedOverGrace,
-      hasPlannedOrConfirmedPayment: paymentByCustomer.has(c.id)
+      hasPlannedOrConfirmedPayment: agg?.hasPlannedOrConfirmed ?? false
     };
   });
 }
@@ -127,12 +155,10 @@ export async function tickCustomerStatusSuggestions(now: Date = new Date()): Pro
   for (const c of candidates) {
     if (!isCustomerStatus(c.status)) continue;
     const allowed = getAllowedTransitions(c.status);
-    const lastFollowAgeDays = c.lastFollowAt
-      ? (now.getTime() - new Date(c.lastFollowAt).getTime()) / DAY_MS
-      : Number.POSITIVE_INFINITY;
+    const lastActivityAgeDays = (now.getTime() - c.lastActivityAt.getTime()) / DAY_MS;
 
     // 规则 1: 建议 LOST
-    if (allowed.includes("LOST") && lastFollowAgeDays >= INACTIVE_DAYS && !c.hasActiveContract) {
+    if (allowed.includes("LOST") && lastActivityAgeDays >= INACTIVE_DAYS && !c.hasActiveContract) {
       if (sentKey.has(`${c.id}:LOST`)) continue;
       await emit(prisma, {
         type: "CUSTOMER_STATUS_SUGGEST",
@@ -141,7 +167,7 @@ export async function tickCustomerStatusSuggestions(now: Date = new Date()): Pro
           customerName: c.name,
           suggestedStatus: "LOST",
           suggestedStatusLabel: "已流失",
-          reason: `已 ${Math.floor(lastFollowAgeDays)} 天无跟进, 且无活跃合同`
+          reason: `已 ${Math.floor(lastActivityAgeDays)} 天无活动 (无合同/回款/资料更新), 且无活跃合同`
         },
         receivers: [c.ownerUserId]
       });
@@ -151,7 +177,7 @@ export async function tickCustomerStatusSuggestions(now: Date = new Date()): Pro
     // 规则 2: 建议 FROZEN (与规则 1 互不冲突, 一个客户可能同时满足, 各发一条)
     if (
       allowed.includes("FROZEN") &&
-      lastFollowAgeDays >= FROZEN_INACTIVE_DAYS &&
+      lastActivityAgeDays >= FROZEN_INACTIVE_DAYS &&
       c.allClosedOverGrace &&
       !c.hasPlannedOrConfirmedPayment
     ) {
@@ -163,7 +189,7 @@ export async function tickCustomerStatusSuggestions(now: Date = new Date()): Pro
           customerName: c.name,
           suggestedStatus: "FROZEN",
           suggestedStatusLabel: "已冻结",
-          reason: `所有合同已结清 ≥ ${CLOSED_GRACE_DAYS} 天, 已 ${Math.floor(lastFollowAgeDays)} 天无跟进, 且无未对账回款`
+          reason: `所有合同已结清 ≥ ${CLOSED_GRACE_DAYS} 天, 已 ${Math.floor(lastActivityAgeDays)} 天无活动, 且无未对账回款`
         },
         receivers: [c.ownerUserId]
       });

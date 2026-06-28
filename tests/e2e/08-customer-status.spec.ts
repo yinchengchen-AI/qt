@@ -172,45 +172,28 @@ test.describe.serial("场景 8: 客户状态机优化", () => {
     expect((r5.body as { errorCode?: string }).errorCode).toBe("CUSTOMER_STATUS_TRANSITION_INVALID");
   });
 
-  test("08.5 跑 suggest job → 收件箱 → 点消息 → 详情页 Popover → 输入 reason 走完状态变更", async ({ page, request: _request }) => {
+  // 08.5: 来自站内信 / 链接 ?suggest=LOST 进入详情页 → 变更状态 Popover 高亮 + 走完 LOST 流程
+  //
+  // 注: 旧版会通过 POST /api/customers/[id]/follow-ups 造一条 100 天前的跟进来触发
+  // 状态机建议 job. 2026-06 跟进功能下线后该路径不可用, 改为直接用 ?suggest=LOST 进入详情页
+  // 验证 UI 端的高亮 + 原因 + PATCH 全链路. job 自身逻辑见
+  // tests/unit/server/customer-status-suggest.test.ts (7 用例覆盖).
+  test("08.5 ?suggest=LOST 直接进入详情页 → Popover 高亮 + reason 走完状态变更", async ({ page, request: _request }) => {
     await loginAs(page, ADMIN.employeeNo, ADMIN.password);
-    // 建一个 LEAD 客户, 并补一条 100 天前的跟进 → 满足 90 天无跟进 + 无合同 → 建议 LOST
     const id = await createLeadCustomer(page.context().request, "suggest");
-    const followUpRes = await page.context().request.post(`/api/customers/${id}/follow-ups`, {
-      data: {
-        followAt: new Date(Date.now() - 100 * 86400_000).toISOString(),
-        method: "CALL",
-        content: "历史跟进,用于触发 LOST 建议"
-      }
-    });
-    if (followUpRes.status() >= 400) {
-      test.skip(true, "create old follow-up failed; cannot drive suggestion");
-      return;
-    }
-    // 触发 job
-    const jobRes = await page.context().request.post("/api/jobs/customer-status-suggest", { data: {} });
-    expect(jobRes.status()).toBeLessThan(500);
-    // 跳收件箱
-    await page.goto("/messages");
+    // 直接带 ?suggest=LOST 走详情页 (等同于点收件箱消息)
+    await page.goto(`/customers/${id}?suggest=LOST`);
     await page.waitForLoadState("networkidle");
-    // 寻找"建议将客户 ... 状态变更为"标题, 包含我们刚建的客户名
-    const titlePrefix = `建议将客户 E2E-suggest-`;
-    const item = page.getByText(new RegExp(titlePrefix.replace(/[.*+?^${}()|[\\]\\]/g, "\\$&")));
-    const count = await item.count();
-    if (count === 0) {
-      // 软跳过: 可能上次跑已发过, 当日去重; 至少确认 0 个 5xx
-      test.skip(true, "no suggestion message found (likely dedup or no eligible customer)");
-      return;
-    }
-    // 点开这条消息
-    await item.first().click();
-    // 应该跳到 /customers/<id>?suggest=LOST
-    await page.waitForURL(new RegExp(`/customers/${id}\\?suggest=LOST`));
-    // 详情页"变更状态" Popover 应显示, LOST 按钮高亮
+    // sessionStorage 应已写入
+    const stored = await page.evaluate(() =>
+      window.sessionStorage.getItem("customer-suggest-highlight")
+    );
+    expect(stored).toBeTruthy();
+    // 打开"变更状态" Popover
     await page.getByTestId("change-status-trigger").click();
     const popover = page.getByRole("tooltip");
     await expect(popover).toBeVisible();
-    // 高亮的按钮 (primary type) + "建议" 徽章
+    // 高亮的按钮 (primary type) + "建议" 徽章 — LOST
     const highlightBtn = popover.getByRole("button", { pressed: true }).or(popover.locator("button.ant-btn-primary"));
     await expect(highlightBtn).toContainText("已流失");
     await expect(highlightBtn).toContainText("建议");
@@ -227,7 +210,7 @@ test.describe.serial("场景 8: 客户状态机优化", () => {
       },
       { timeout: 10000 }
     );
-    // 收件箱建议消息点击后产生的高亮 sessionStorage 已被清除
+    // 状态变更成功后 sessionStorage 高亮已被清除
     const stillHighlighted = await page.evaluate(() =>
       window.sessionStorage.getItem("customer-suggest-highlight")
     );

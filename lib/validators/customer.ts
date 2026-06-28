@@ -29,17 +29,8 @@ export const customerCreateSchema = z.object({
 
 export const customerUpdateSchema = customerCreateSchema.partial().extend({ status: z.enum(CUSTOMER_STATUS).optional(), reason: z.string().max(200).optional() });
 
-export const followUpCreateSchema = z.object({
-  followAt: z.iso.datetime(),
-  method: z.enum(["VISIT", "CALL", "WECHAT", "EMAIL", "OTHER"]),
-  content: z.string().min(1, "请填写跟进内容").max(2000),
-  nextFollowAt: z.iso.datetime().optional(),
-  result: z.enum(["INTENT", "NO_INTENT", "PENDING", "SIGNED"]).optional()
-});
-
 export type CustomerCreateInput = z.infer<typeof customerCreateSchema>;
 export type CustomerUpdateInput = z.infer<typeof customerUpdateSchema>;
-export type FollowUpCreateInput = z.infer<typeof followUpCreateSchema>;
 
 // 客户列表 query:导出供 use-list-request 反射出 KNOWN_KEYS, 也供 app/api/customers/route.ts 用,
 // 不再在 route 文件里 inline 定义。

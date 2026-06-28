@@ -308,6 +308,10 @@ model ContactPerson {
   @@index([customerId])
 }
 
+// @deprecated 2026-06: 客户跟进 (FollowUp) 功能已下线, API 全部返回 410, UI 已隐藏.
+// 状态机建议信号改用 lastActivityAt (合同/回款/客户更新时间) — 见 server/jobs/customer-status-suggest.ts.
+// 表结构保留是为了历史数据可查; 后续清理数据可走 scripts/shared/cleanup-business-data.ts.
+// 新功能不要再读写此表.
 model FollowUp {
   id           String    @id @default(cuid())
   customerId   String
