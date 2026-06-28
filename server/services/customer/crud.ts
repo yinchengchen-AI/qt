@@ -90,8 +90,7 @@ export async function listCustomers(
 
 export async function getCustomer(user: SessionUser, id: string) {
   requirePermission(user.roleCode, RESOURCE.CUSTOMER, ACTION.READ);
-  // 详情页 (auto-status-banner) 需要 lastAutoAppliedAt / lastAutoRule 判断是否显示
-  // 撤销横幅, 显式 select 避免 prisma 把 Date | null 与 string | null 一起带回来
+  // 客户状态机 v0.5.0 下线, status / lastAutoAppliedAt / lastAutoRule 3 列已删
   const c = await prisma.customer.findFirst({
     where: { id, deletedAt: null, ...ownerEq(user) },
     select: {
@@ -104,7 +103,6 @@ export async function getCustomer(user: SessionUser, id: string) {
       industry: true,
       sourceChannel: true,
       scale: true,
-      status: true,
       contactName: true,
       contactTitle: true,
       contactPhone: true,
@@ -115,9 +113,6 @@ export async function getCustomer(user: SessionUser, id: string) {
       address: true,
       ownerUserId: true,
       createdAt: true,
-      // 状态机自动化 (§2.4): 详情页横幅 + 撤销窗口判断
-      lastAutoAppliedAt: true,
-      lastAutoRule: true
     }
   });
   if (!c) throw new ApiError(ERROR_CODES.NOT_FOUND, "客户不存在", 404);
