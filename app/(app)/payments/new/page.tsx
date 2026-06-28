@@ -8,7 +8,7 @@ import {
 } from "@ant-design/pro-components";
 import { App as AntdApp, Space, Tag, Typography } from "antd";
 import dayjs from "dayjs";
-import { toIsoDateTime } from "@/lib/format";
+import { toIsoDateTime, formatCurrency } from "@/lib/format";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useGoBack } from "@/lib/navigation";
 import { useRef, useState } from "react";
@@ -31,6 +31,7 @@ type Contract = {
   id: string;
   contractNo: string;
   title: string;
+  totalAmount: string;
   status: string;
   customerName: string;
 };
@@ -101,7 +102,7 @@ export default function NewPaymentPage() {
           }}
         >
           <FormSection title="合同与发票" description="合同必填；发票选填，留空表示合同预收款">
-            <FormGrid columns={2}>
+            <FormGrid columns={1}>
               <ProFormSelect
                 name="contractId"
                 label="合同"
@@ -120,7 +121,7 @@ export default function NewPaymentPage() {
                     .filter((c) => c.status === "ACTIVE")
                     .map((c) => ({
                       value: c.id,
-                      label: `${c.contractNo} · ${c.title}`,
+                      label: `${c.contractNo} · ${c.title} · ${formatCurrency(c.totalAmount)}`,
                       customerName: c.customerName
                     }));
                 }}
@@ -136,6 +137,8 @@ export default function NewPaymentPage() {
                   );
                 }}
               />
+            </FormGrid>
+            <FormGrid columns={1}>
               <ProFormSelect
                 name="invoiceId"
                 label="发票"

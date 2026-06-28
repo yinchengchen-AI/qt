@@ -15,6 +15,7 @@ import { Page } from "@/components/page";
 import { PageHeader } from "@/components/page-header";
 import { FormSection, FormGrid, FormCard, SubmitBar } from "@/components/form";
 import { proCustomRequest } from "@/lib/upload-client";
+import { formatCurrency } from "@/lib/format";
 import { PreviewableProFormUploadButton as UploadButton } from "@/components/file/pro-form-upload-button";
 import { TAX_RATE_OPTIONS, TAX_RATE_LABELS } from "@/lib/validators/_shared";
 
@@ -159,11 +160,12 @@ export default function NewInvoicePage() {
                   id: string;
                   contractNo: string;
                   title: string;
+                  totalAmount: string;
                   customerId: string;
                   customerName: string;
                 }>).map((c) => ({
                   value: c.id,
-                  label: `${c.contractNo} · ${c.title}`,
+                  label: `${c.contractNo} · ${c.title} · ${formatCurrency(c.totalAmount)}`,
                   customerId: c.customerId,
                   customerName: c.customerName
                 }));
