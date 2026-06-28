@@ -1,7 +1,7 @@
 #!/usr/bin/env tsx
 /**
- * 只插 4 个 system roles (ADMIN/SALES/FINANCE/OPS), 用 lib/permissions 里的
- * ROLE_PERMISSIONS 作为 permissions 字段。不插用户/客户/合同等 demo 数据。
+ * 插 5 个 system roles (ADMIN/SALES/FINANCE/OPS/EXPERT) + id="system" 的占位 user,
+ * 用 lib/permissions 里的 ROLE_PERMISSIONS 作为 permissions 字段。
  *
  * 适用场景: 生产部署 (不跑 seed) 但 create-admin.ts 需要 ADMIN role 存在。
  *
@@ -34,7 +34,30 @@ async function main(): Promise<void> {
     });
     console.log(`[OK] upsert role: ${role.code} (${role.name})  id=${role.id}`);
   }
-  console.log(`\n[OK] ${ROLE_DEFS.length} roles seeded. Now you can run \`pnpm create-admin\`.`);
+
+  // System actor: 状态机自动转换/定时任务 等"非人"行为共用 id="system" 的占位 user
+  // 见 lib/system.ts SYSTEM_USER_ID;不可登录(passwordHash 是不合法 bcrypt,isSystem=true)
+  const SYSTEM_USER_ID = "system";
+  const SYSTEM_USER_PASSWORD_HASH = "$2b$10$ZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZ";
+  const adminRole = await prisma.role.findUnique({ where: { code: "ADMIN" } });
+  if (!adminRole) throw new Error("ADMIN role not seeded; cannot create system user");
+  const sys = await prisma.user.upsert({
+    where: { id: SYSTEM_USER_ID },
+    update: { isSystem: true, name: "System", email: "system@internal.local", roleId: adminRole.id },
+    create: {
+      id: SYSTEM_USER_ID,
+      employeeNo: "SYSTEM",
+      name: "System",
+      email: "system@internal.local",
+      passwordHash: SYSTEM_USER_PASSWORD_HASH,
+      roleId: adminRole.id,
+      status: "ACTIVE",
+      isSystem: true
+    }
+  });
+  console.log(`[OK] upsert system user: id=${sys.id}  isSystem=${sys.isSystem}`);
+
+  console.log(`\n[OK] ${ROLE_DEFS.length} roles + system user seeded. Now you can run \`pnpm create-admin\`.`);
 }
 
 main()

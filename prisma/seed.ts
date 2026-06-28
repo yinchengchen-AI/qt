@@ -24,6 +24,16 @@ async function main() {
     { code: "EXPERT",  name: "技术专家", description: "承担现场勘查、报告撰写等专业工作" }
   ] as const;
 
+  // System actor: 状态机自动转换/定时任务 等"非人"行为共用 id="system" 的占位 user
+  // 见 lib/system.ts SYSTEM_USER_ID;不可登录(passwordHash 是不合法 bcrypt,isSystem=true)
+  const SYSTEM_USER = {
+    id: "system",
+    employeeNo: "SYSTEM",
+    name: "System",
+    email: "system@internal.local",
+    passwordHash: "$2b$10$ZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZ"
+  };
+
   for (const r of roleDefs) {
     await prisma.role.upsert({
       where: { code: r.code },
@@ -37,6 +47,25 @@ async function main() {
       }
     });
   }
+
+  // ----- System 占位 user: 状态机自动转换/定时任务 共用 actor -----
+  // 真实管理员用 scripts/create-admin.ts 创建
+  const adminRole = await prisma.role.findUnique({ where: { code: "ADMIN" } });
+  if (!adminRole) throw new Error("ADMIN role not seeded; cannot create system user");
+  await prisma.user.upsert({
+    where: { id: SYSTEM_USER.id },
+    update: { isSystem: true, name: SYSTEM_USER.name, email: SYSTEM_USER.email, roleId: adminRole.id },
+    create: {
+      id: SYSTEM_USER.id,
+      employeeNo: SYSTEM_USER.employeeNo,
+      name: SYSTEM_USER.name,
+      email: SYSTEM_USER.email,
+      passwordHash: SYSTEM_USER.passwordHash,
+      roleId: adminRole.id,
+      status: "ACTIVE",
+      isSystem: true
+    }
+  });
 
   // ----- 用户不在 seed 中创建 -----
   // 初始管理员用 scripts/create-admin.ts 创建: pnpm create-admin --employeeNo admin --name "..." --email ... --password ...
@@ -210,7 +239,7 @@ async function main() {
     create: { id: "dept_seed_tech_web", code: "tech_web", name: "前端组", parentId: techDept.id, sort: 2, isActive: true }
   });
 
-  console.log(`✅ 系统管理 seed 完成: 5 角色 + 5 部门 + ${dictDefs.length} 字典`);
+  console.log(`✅ 系统管理 seed 完成: 5 角色 + system actor + 5 部门 + ${dictDefs.length} 字典`);
 }
 
 main()
