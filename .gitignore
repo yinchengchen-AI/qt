@@ -47,6 +47,7 @@ prisma/migrations/dev
 # agent / e2e tooling state (not source)
 .omc/
 .playwright-mcp/
+.playwright-cli/
 
 # agent / e2e tooling state (not source)
 .omc/
