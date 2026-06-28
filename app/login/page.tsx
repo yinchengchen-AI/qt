@@ -28,13 +28,16 @@ const QUICK_FILL_PASSWORD =
   process.env.NODE_ENV !== "production"
     ? process.env.DEV_QUICK_FILL_PASSWORD ?? "dev-only-fill"
     : "";
+// 与 prisma/seed.ts 内置的 5 个角色一一对应(管理员/业务/财务/行政/技术专家)。
+// 配合 scripts/dev/seed-dev-accounts.ts 一次性建出对应账号,密码与 QUICK_FILL_PASSWORD 一致。
 const QUICK_ACCOUNTS: { no: string; label: string }[] =
   process.env.NODE_ENV !== "production"
     ? [
         { no: "admin", label: "管理员" },
-        { no: "sales", label: "业务" },
-        { no: "finance", label: "财务" },
-        { no: "ops", label: "运营" }
+        { no: "sales", label: "业务人员" },
+        { no: "finance", label: "财务人员" },
+        { no: "ops", label: "行政人员" },
+        { no: "expert", label: "技术专家" }
       ]
     : [];
 
