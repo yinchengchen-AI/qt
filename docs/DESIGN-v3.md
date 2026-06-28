@@ -301,119 +301,42 @@ PLANNED ─confirm(finance)─▶ CONFIRMED ─reconcile(finance)─▶ RECONCIL
 ### 5.5 `Customer.status`(5 态 + 自动化 + 7 天可撤销)
 
 ```
-LEAD ─manual/auto─▶ NEGOTIATING ─auto/manual─▶ SIGNED
+LEAD ─manual/auto─▶ NEGOTIATING ─auto/manual─▶ SIGNED ─[manual]─▶ LOST (终态)
+  │                    │                       │             │
+  │                    ├──[manual/auto]─▶ LOST │             └─▶ FROZEN (终态)
+  │                    │   (终态)              │            (LOST/FROZEN 只能走 NEGOTIATING 恢复)
   │                    │                       │
-  │                    ├──manual/auto──▶ LOST  │
-  │                    │   (终态, 只能 LOST→NEGOTIATING 恢复)
-  │                    │                       │
-  │                    └──auto/manual──▶ FROZEN│
-  │                        (终态, 只能 FROZEN→NEGOTIATING 恢复)
-  │                                        │
-  │                                        ▼
-  └────manual/auto──▶ LOST               (SIGNED→LOST/FROZEN, 终态)
+  │                    └──[auto/manual]─▶ FROZEN│
+  │                        (终态)              │
+  └─[manual/auto]─▶ LOST  (LEAD→FROZEN 暂不允许)
 ```
 
 **合法迁移表**(`lib/customer-status-transitions.ts:CUSTOMER_STATUS_TRANSITIONS`):
 
 | 起点 | 可去往 |
 |---|---|
-| `LEAD` 线索 | `NEGOTIATING` 洽谈中 / `SIGNED` 已签约 / `LOST` 已流失 |
+| `LEAD` 线索 | `NEGOTIATING` / `SIGNED` / `LOST` |
 | `NEGOTIATING` 洽谈中 | `SIGNED` / `LOST` / `FROZEN` |
-| `SIGNED` 已签约 | `LOST` / `FROZEN`(**不能**回 `NEGOTIATING`,见 §5.5.2) |
-| `LOST` 已流失 | `NEGOTIATING`(恢复推进, 单一去路) |
-| `FROZEN` 已冻结 | `NEGOTIATING`(恢复推进, 单一去路) |
+| `SIGNED` 已签约 | `LOST` / `FROZEN`(**不能**回 `NEGOTIATING`) |
+| `LOST` 已流失 | `NEGOTIATING`(恢复推进) |
+| `FROZEN` 已冻结 | `NEGOTIATING`(恢复推进) |
 
-#### 5.5.1 4 条自动写规则(2026-06 上线, 替代原 `CUSTOMER_STATUS_SUGGEST` 建议模式)
+**自动联动 4 条规则**(`lib/customer-auto-rules.ts:CUSTOMER_AUTO_RULES`):
 
-系统在以下触发器被命中时**直接改写**客户状态, 并发 `CUSTOMER_STATUS_AUTO_APPLIED` 站内信给
-owner;owner 在 7 天异议窗口内可走 `/api/customers/[id]/revert` 撤销。规则配置集中在
-`lib/customer-auto-rules.ts:CUSTOMER_AUTO_RULES`, 关单条规则
-`CUSTOMER_AUTO_RULES_DISABLED="RULE_ID"`(逗号分隔)。
+- 业务事件 2 条: `CONTRACT_ACTIVATED`(合同 DRAFT→ACTIVE, 目标 SIGNED) / `ALL_CONTRACTS_CLOSED`(全部合同 CLOSED, 目标 FROZEN)
+- 时间窗 2 条: `INACTIVE_LOST` 90 天无活动(目标 LOST) / `INACTIVE_FROZEN` 60 天无活动 + 全完结(目标 FROZEN)
+- 撤销回退走状态机迁移表, per-rule `rule.revertTarget` 字段;`CONTRACT_ACTIVATED` 因 SIGNED→NEGOTIATING 非法, 走 SIGNED→FROZEN
+- 7 天窗口 `CUSTOMER_AUTO_DISPUTE_DAYS`; 关单条 `CUSTOMER_AUTO_RULES_DISABLED="RULE_ID"`
 
-| 规则 ID | 触发器 | 触发条件 | 目标 | 撤销回退到 |
-|---|---|---|---|---|
-| `CONTRACT_ACTIVATED` | 业务事件 | 合同 `DRAFT → ACTIVE` | `SIGNED` | `FROZEN` (1) |
-| `ALL_CONTRACTS_CLOSED` | 业务事件 | 客户所有合同 `ACTIVE → CLOSED` | `FROZEN` | `NEGOTIATING` |
-| `INACTIVE_LOST` | 时间窗 (每日 `tickCustomerStatusSuggestions`) | 90 天无活动 + 无 `ACTIVE` 合同 | `LOST` | `NEGOTIATING` |
-| `INACTIVE_FROZEN` | 时间窗 (每日) | 60 天无活动 + 全合同 `CLOSED ≥ 30 天` + 无未对账回款 | `FROZEN` | `NEGOTIATING` |
+`silentSkip` 自动写(行锁 + Serializable + `runTransitionInTx`, 不抛错; 前置不满足或状态被改过返 `SKIPPED`), 时间窗 SKIPPED 时降级为 `CUSTOMER_STATUS_SUGGEST`。撤销走 `POST /api/customers/[id]/revert`, 7 天外返 `CUSTOMER_AUTO_DISPUTE_EXPIRED` (403), 状态被改过返 `CUSTOMER_AUTO_REVERT_TARGET_INVALID` (422)。
 
-> (1) `CONTRACT_ACTIVATED` 撤销走 `FROZEN` 而非 `NEGOTIATING`, 因为 `SIGNED → NEGOTIATING`
-> 不在 `ALLOWED_TRANSITIONS_BY_TARGET["NEGOTIATING"] = [LEAD, LOST, FROZEN]` 中; 但
-> `SIGNED → FROZEN` 合法 (`ALLOWED_TRANSITIONS_BY_TARGET["FROZEN"]` 含 `SIGNED`),
-> owner 后续可手动 `FROZEN → NEGOTIATING` 重新推进。`revertTarget` 是 per-rule 字段,
-> 新增规则时同步写测试。
+**关键校验**:
+- R-02 客户 → SIGNED 需 ≥ 1 份 ACTIVE 合同; R-13 客户 → FROZEN 需无 ACTIVE 合同 + 无 PLANNED/CONFIRMED 回款
+- R-13b 撤销窗口 7 天; R-13c 撤销前 status 必须等于 `lastAutoRule.targetStatus`(防竞态); R-13d 撤销路径必须走 `ALLOWED_TRANSITIONS_BY_TARGET`
+- R-13e `LEAD → FROZEN` 暂不允许
 
-#### 5.5.2 关键校验(自动写 / 撤销 / 手动变更共用)
-
-- **R-02 客户 `→ SIGNED`**: 至少 1 份 `ACTIVE` 合同。错误码 `CUSTOMER_STATUS_INVALID`。
-- **R-13 客户 `→ FROZEN`**: 无 `ACTIVE` 合同 + 无 `PLANNED/CONFIRMED` 回款。错误码分别
-  `CUSTOMER_HAS_ACTIVE_CONTRACT` / `CUSTOMER_FROZEN_ACTIVE_PAYMENT`。
-- **R-13b 撤销窗口**(`CUSTOMER_AUTO_DISPUTE_DAYS`, 默认 7): 超期返
-  `CUSTOMER_AUTO_DISPUTE_EXPIRED` (403)。
-- **R-13c 撤销目标合法性**(`CUSTOMER_AUTO_REVERT_TARGET_INVALID`, 422): 撤销前客户当前
-  `status` 必须等于 `lastAutoRule.targetStatus`(防竞态, 人工已改过则按钮不渲染)。
-- **R-13d 撤销路径合法性**: 撤销走 `runTransitionInTx` + `ALLOWED_TRANSITIONS_BY_TARGET`,
-  非法边返 `CUSTOMER_STATUS_TRANSITION_INVALID`。
-- **R-13e `LEAD → FROZEN` 暂不允许**: FROZEN 是合规/欠款场景, 不符合「线索」语义。
-
-#### 5.5.3 silentSkip 语义
-
-`autoChangeCustomerStatus` 与合同 `tryAutoPublish` 同款(行锁 + Serializable 事务 +
-`runTransitionInTx`), 但**不抛错**:
-
-- 客户不存在 / 已被软删 → `SKIPPED: not_found`
-- 当前 `status` 不在 `ALLOWED_TRANSITIONS_BY_TARGET[target]` → `SKIPPED: from_mismatch`
-- 业务前置不满足 (R-02 / R-13) → `SKIPPED: r02_failed` / `r13_failed`
-
-业务事件触发(`onContractActivated` / `onContractClosed`)时, SKIPPED 是正常分支
-(规则不命中或前置不满足), 不能打断合同提交/完结流程; 时间窗触发 (suggest job) 时,
-SKIPPED 时降级发 `CUSTOMER_STATUS_SUGGEST` 站内信, 走原建议路径。
-
-#### 5.5.4 数据流(自动写 → 撤销)
-
-```text
-合同 status transition       customer-status-suggest job (daily)
-  DRAFT → ACTIVE                      ↓
-       │                     loadCandidates
-       ▼                     (status ∈ {LEAD,NEGOTIATING,SIGNED}, 非 deleted)
-  tryAutoPublish                              ↓
-       │                     for each candidate:
-       ▼                       for each time-rule (INACTIVE_LOST / INACTIVE_FROZEN)
-  onContractActivated                autoChangeCustomerStatus(rule)
-       │                              ├─ DONE: 写 lastAutoAppliedAt/lastAutoRule + audit + emit APPLIED
-       ▼                              └─ SKIPPED: continue / fallthrough to SUGGEST
-  autoChangeCustomerStatus(CUSTOMER_AUTO_RULES.CONTRACT_ACTIVATED)
-       │                     done
-       ▼
-  ┌──── DONE ────┐
-  │ status = SIGNED                  详情页渲染 AutoStatusBanner (7 天内)
-  │ lastAutoAppliedAt = now()        ↓
-  │ lastAutoRule = CONTRACT_ACTIVATED  owner 点「撤销」
-  │ audit CUSTOMER_STATUS_AUTO_CHANGE    ↓
-  │ emit CUSTOMER_STATUS_AUTO_APPLIED    POST /api/customers/[id]/revert { reason }
-  │ (owner 收信, 横幅可见)                ↓
-  └────────────────────              revertCustomerStatus
-                                       ├─ 校验 lastAutoAppliedAt + 窗口
-                                       ├─ 校验 status == rule.targetStatus
-                                       ├─ runTransitionInTx (status → rule.revertTarget)
-                                       ├─ 清 lastAutoAppliedAt + lastAutoRule
-                                       ├─ audit CUSTOMER_STATUS_REVERT
-                                       └─ emit CUSTOMER_STATUS_AUTO_REVERTED
-```
-
-#### 5.5.5 Schema 增量 (2026-06-28 migration)
-
-```sql
-ALTER TABLE "Customer"
-  ADD COLUMN IF NOT EXISTS "lastAutoAppliedAt" TIMESTAMPTZ(6),
-  ADD COLUMN IF NOT EXISTS "lastAutoRule" TEXT;
--- ALTER TYPE "MessageType" ADD VALUE 'CUSTOMER_STATUS_AUTO_APPLIED' / 'CUSTOMER_STATUS_AUTO_REVERTED'
-```
-
-错误码新增 2 个: `CUSTOMER_AUTO_DISPUTE_EXPIRED` (403, 撤销超期) /
-`CUSTOMER_AUTO_REVERT_TARGET_INVALID` (422, 撤销目标与系统改的状态不一致)。
-
----
+**完整设计 / 数据流 / Schema 增量 / 错误码 / env 列表**: 见
+[docs/superpowers/specs/2026-06-28-customer-status-automation.md](superpowers/specs/2026-06-28-customer-status-automation.md)。
 
 ## 6. 跨模块校验规则（核心规则清单）
 
