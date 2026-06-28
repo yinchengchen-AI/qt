@@ -120,6 +120,62 @@ DB 层兜底：PG RLS policy  // 即使 service 漏写，DB 也会拦截
 
 **经验**：状态机 + 事务 + 校验是 B 端业务系统的**铁三角**。任何状态变更必须有事务、必须在 service、必须有错误码。
 
+#### 3.3.2 客户状态机自动化:从「建议」升级到「自动写 + 7 天可撤销」
+
+P1 上线时,客户状态的"非人工推动"是发 `CUSTOMER_STATUS_SUGGEST` 站内信让 owner 手动改;
+业务反馈 owner 容易忽略,导致 90 天未跟进的客户长期卡在 `NEGOTIATING`。升级后,系统直接改并给
+owner 7 天异议窗口:
+
+```text
+触发器                          规则                              目标      撤销回退
+业务事件 (合同 DRAFT→ACTIVE)    CONTRACT_ACTIVATED                SIGNED    FROZEN (1)
+业务事件 (全部合同 CLOSED)      ALL_CONTRACTS_CLOSED              FROZEN    NEGOTIATING
+时间窗 (每日 job)               INACTIVE_LOST  90 天无活动+无 ACTIVE  LOST      NEGOTIATING
+时间窗 (每日 job)               INACTIVE_FROZEN 60 天无活动+全完结  FROZEN    NEGOTIATING
+```
+
+> (1) `CONTRACT_ACTIVATED` 撤销回退走 `FROZEN` 而非 `NEGOTIATING`,因为状态机迁移表
+> `ALLOWED_TRANSITIONS_BY_TARGET["NEGOTIATING"] = [LEAD, LOST, FROZEN]`,**不含 SIGNED**;
+> 走 `FROZEN` 合法 (`ALLOWED_TRANSITIONS_BY_TARGET["FROZEN"]` 含 `SIGNED`),
+> owner 后续可手动 `FROZEN → NEGOTIATING` 重新推进。Per-rule `revertTarget` 在
+> `lib/customer-auto-rules.ts` 集中配置,新增规则时同步写测试。
+
+**关键设计点**:
+
+- **silentSkip 自动写**:`autoChangeCustomerStatus` 与合同 `tryAutoPublish` 同款 (行锁 +
+  Serializable 事务 + `runTransitionInTx`);前置不满足 (R-02 / R-13) 或当前状态已被人工
+  改过,直接返回 `SKIPPED` 而不抛错 — 业务事件触发时绝不能打断合同提交流程
+- **Per-rule 撤销目标**:不能统一 `→ NEGOTIATING`,因为 `SIGNED` 的合法去向往 LOST/FROZEN,
+  没有 NEGOTIATING。`CUSTOMER_AUTO_RULES[id].revertTarget` 把这个差异放在配置中心
+- **不能嵌套事务**:`onContractActivated` / `onContractClosed` 在 `crud.ts` /
+  `status.ts` 的外层 `prisma.$transaction` 里被调,内部 `autoChangeCustomerStatus` 必须自己
+  开新事务 (Prisma 7 嵌套事务需要 savepoint,显式开新事务更清晰)
+- **7 天窗口实现**:`Customer.lastAutoAppliedAt` + `lastAutoRule` 两列;撤销走
+  `revertCustomerStatus` 校验窗口 + 校验 `currentStatus == lastAutoRule.targetStatus` (防竞态)
+  + `runTransitionInTx` 走合法迁移,不是直接 `update`
+- **降级路径**:env `CUSTOMER_AUTO_RULES_DISABLED="INACTIVE_LOST"` 关闭某条规则,或自动写
+  SKIPPED,suggest job 走原来的 `CUSTOMER_STATUS_SUGGEST` 站内信
+- **审计 + 事件双写**:`CUSTOMER_STATUS_AUTO_CHANGE` (actor=SYSTEM) / `CUSTOMER_STATUS_REVERT`
+  (actor=user);`CUSTOMER_STATUS_AUTO_APPLIED` / `CUSTOMER_STATUS_AUTO_REVERTED` 两个新
+  `MessageType` enum 值 (PG `ALTER TYPE ADD VALUE` 在 transaction 内只能用一次,故迁移包
+  在独立 `BEGIN/COMMIT`)
+
+**测试覆盖** (39 用例,全绿):
+
+- `tests/unit/lib/customer-auto-rules.test.ts` (14) — 配置中心 + env 解析
+- `tests/unit/server/customer-status-automation.test.ts` (16) — autoChangeCustomerStatus 各
+  SKIPPED reason + revertCustomerStatus 窗口校验 / 状态机迁移
+- `tests/unit/server/customer-status-suggest.test.ts` (升级, +9 用例) — job 自动写 + 降级
+  SUGGEST + `applied++` 短路
+
+**关键经验**:
+
+- 状态机有合法边集合 (`ALLOWED_TRANSITIONS_BY_TARGET`),所有自动写 / 撤销必须走这个表,
+  **不能直接 update**,否则审计断链 + 状态机一致性破坏
+- "建议 → 自动写" 升级的关键是给人工**留撤销窗口**,否则系统会"乱改"用户数据,业务拒绝接受
+- 撤销 target 也要查状态机表,不是拍脑袋决定 — 这次踩到 SIGNED→NEGOTIATING 非法就是
+  spec §2.4 写错了,实现时以代码为准
+
 ### 3.4 错误码体系：让前后端对话有共同语言
 
 ```ts
@@ -225,6 +281,9 @@ dev 模式无：
 | 校验 | `lib/validators/*.ts` | 7 个 Zod schema |
 | 事件总线 | `server/events/{bus,channels,dispatcher}.ts` | inbox + 外部通道 |
 | 状态机 | 各 service 的 `submit/approve/issue/confirm` 函数 | switch 强制迁移 |
+| 状态机迁移表 | `lib/customer-status-transitions.ts` | `from → to` 单一事实源, 5 实体共用 |
+| 客户自动联动 | `lib/customer-auto-rules.ts` + `server/services/customer/automation.ts` | 4 条规则 + per-rule revertTarget + silentSkip 触发器 |
+| 客户撤销 API | `app/api/customers/[id]/revert/route.ts` + `revertCustomerStatus` | 7 天窗口 + 合法迁移 |
 | 统计 | `server/services/statistics.ts` | 总览 / 账龄 / Top / 业绩 |
 | 导出 | `lib/excel.ts` | exceljs 流式生成 |
 | RLS | `lib/rls.ts`、`prisma/migrations/20260614_init/migration.sql` | DB 层兜底 |
@@ -237,7 +296,7 @@ dev 模式无：
 | 单元 | `tests/permissions.test.ts` |
 | 压测 | `scripts/dev/loadtest.mjs` |
 | 运维 | `scripts/prod/backup.sh`、`scripts/prod/audit-cleanup.sh` |
-| 文档 | `docs/{CODE_REVIEW,P2_REVIEW,P3_REVIEW,RLS,PROJECT_SUMMARY}.md` |
+| 文档 | `docs/{CODE_REVIEW,P2_REVIEW,P3_REVIEW,RLS,PROJECT_SUMMARY,USER_MANUAL}.md` + `docs/superpowers/specs/2026-06-28-customer-status-automation.md` |
 
 ---
 

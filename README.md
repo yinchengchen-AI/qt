@@ -1,7 +1,7 @@
 # 杭州企泰安全科技 业务管理系统 (qt-biz)
 
 > 客户 / 合同 / 开票 / 回款 一体化管理,附件走 MinIO presigned 直传。
-> **当前版本: v0.3.0**(2026-06-24)
+> **当前版本: v0.4.0**(2026-06-28)
 > 详细设计见 [docs/DESIGN-v3.md](docs/DESIGN-v3.md),用户手册见 [docs/USER_MANUAL.md](docs/USER_MANUAL.md)。
 
 ## 目录
@@ -141,11 +141,10 @@ docker-compose.minio.yml
 
 | 模块 | 状态机 | 关键文件 |
 |---|---|---|
-| 客户 (Customer) | ACTIVE / INACTIVE / PENDING | `server/services/customer.ts` |
-| 合同 (Contract) | DRAFT / ACTIVE / CLOSED (3 态) | `server/services/contract.ts` |
+| 客户 (Customer) | LEAD / NEGOTIATING / SIGNED / LOST / FROZEN (5 态 + 自动联动) | `server/services/customer/{crud,status,automation}.ts` |
+| 合同 (Contract) | DRAFT / ACTIVE / CLOSED (3 态 + 自动转换) | `server/services/contract/{crud,status}.ts` |
 | 开票 (Invoice) | DRAFT / PENDING_FINANCE / ISSUED / REJECTED / VOIDED / RED_FLUSHED | `server/services/invoice.ts` |
 | 回款 (Payment) | PLANNED / CONFIRMED / RECONCILED / REFUNDED / CANCELLED | `server/services/payment.ts` |
-| 跟进 (FollowUp) | INTENT / NO_INTENT / PENDING / SIGNED | `server/services/customer.ts` |
 
 ### 支撑模块
 
@@ -184,6 +183,48 @@ PLANNED ──confirm──> CONFIRMED ──reconcile──> RECONCILED
                   ├─> REFUNDED (退款)
                   └─> CANCELLED (取消)
 ```
+
+### Customer 状态机(5 态 + 自动联动 + 7 天可撤销)
+
+```
+LEAD ─[manual/auto]─▶ NEGOTIATING ─[auto/manual]─▶ SIGNED ─[manual]─▶ LOST
+  │                       │                        │             │
+  │                       ├─[manual/auto]─▶ LOST  │             └─▶ FROZEN (终态)
+  │                       │   (终态)              │            (终态; LOST/FROZEN 只能
+  │                       │                       │             走 → NEGOTIATING 恢复)
+  │                       └─[auto/manual]─▶ FROZEN│
+  │                          (终态)               │
+  └─[manual/auto]─▶ LOST                          │
+   (LEAD→FROZEN 暂不允许)
+```
+
+**自动联动 4 条规则**(配置中心 `lib/customer-auto-rules.ts`, `env CUSTOMER_AUTO_RULES_DISABLED="RULE_ID"` 可关单条):
+
+| 规则 | 触发器 | 条件 | 目标 | 撤销回退 |
+|---|---|---|---|---|
+| `CONTRACT_ACTIVATED` | 业务事件(合同 `DRAFT→ACTIVE`) | R-02 满足(有 ACTIVE 合同) | `SIGNED` | `FROZEN` (1) |
+| `ALL_CONTRACTS_CLOSED` | 业务事件(全部合同 CLOSED) | R-13 满足(无 ACTIVE 合同 + 无 PLANNED/CONFIRMED 回款) | `FROZEN` | `NEGOTIATING` |
+| `INACTIVE_LOST` | 时间窗(每日 `tickCustomerStatusSuggestions`) | `CUSTOMER_AUTO_INACTIVE_LOST_DAYS=90` 天无活动 + 无 ACTIVE 合同 | `LOST` | `NEGOTIATING` |
+| `INACTIVE_FROZEN` | 时间窗(每日) | `CUSTOMER_AUTO_INACTIVE_FROZEN_DAYS=60` 天无活动 + 全部合同 CLOSED ≥ 30 天 + 无未对账回款 | `FROZEN` | `NEGOTIATING` |
+
+> (1) `CONTRACT_ACTIVATED` 撤销走 `FROZEN` 而非 `NEGOTIATING`,因为 `SIGNED → NEGOTIATING`
+> 不在 `ALLOWED_TRANSITIONS_BY_TARGET["NEGOTIATING"] = [LEAD, LOST, FROZEN]` 中;
+> 走 `FROZEN` 合法(`ALLOWED_TRANSITIONS_BY_TARGET["FROZEN"]` 含 `SIGNED`), owner 后续
+> 可手动 `FROZEN → NEGOTIATING` 重新推进。`revertTarget` 是 per-rule 字段,
+> 新增规则时同步写测试。
+
+**silentSkip 语义**:`autoChangeCustomerStatus` 与合同 `tryAutoPublish` 同款(行锁 + Serializable
+事务 + `runTransitionInTx`), 但**不抛错**;前置不满足或状态被人工改过时返回 `SKIPPED`,
+时间窗触发时降级为 `CUSTOMER_STATUS_SUGGEST` 站内信。
+
+**撤销 API**:`POST /api/customers/[id]/revert { reason: 5-200字 }`(`revertCustomerStatus`),
+走 `runTransitionInTx` 用 `rule.revertTarget` 作为合法迁移目标;7 天窗口外返
+`CUSTOMER_AUTO_DISPUTE_EXPIRED` (403), 撤销时状态已被改过返 `CUSTOMER_AUTO_REVERT_TARGET_INVALID` (422)。
+详情页顶部渲染 `<AutoStatusBanner>`,7 天内显示撤销入口,撤销成功即消失。
+
+详细 schema 增量、错误码、env 列表、UI 流程见 [docs/DESIGN-v3.md §5.5](docs/DESIGN-v3.md),
+用户操作见 [docs/USER_MANUAL.md §5.6](docs/USER_MANUAL.md), spec 见
+[docs/superpowers/specs/2026-06-28-customer-status-automation.md](docs/superpowers/specs/2026-06-28-customer-status-automation.md)。
 
 ## 跨模块校验规则
 
@@ -386,18 +427,33 @@ xlsx 导出走 `lib/excel.ts` + `exceljs`,带 BOM 支持中文。
 
 完整 scripts 见 [package.json](package.json)。
 
-## 质量基线(2026-06-26)
+## 质量基线(2026-06-28)
 
 | 项 | 状态 |
 |---|---|
 | `npm run typecheck` | 0 errors |
-| `npm run lint` | 0 errors / 19 warnings(`@typescript-eslint/no-unused-vars` / `no-explicit-any` 业务 warnings) |
-| `npm test` | 42 个 .test.ts 文件(15 unit / 19 api / 3 lib / 5 杂项),全绿 |
+| `npm run lint` | 0 errors / 0 warnings |
+| `npm test` | 61 个 .test.ts 文件(539 用例),全绿 |
 | `npm run test:e2e` | 11 specs / 全绿 |
+| `prisma generate` + `migrate deploy` | 25/25 migrations, client v7.8.0 |
 | `npm run build` | 成功 |
 | dev server `/login` `/dashboard` `/contracts` | 200 |
 
 ## 最近更新
+
+### v0.4.0(2026-06-28)客户状态机自动化 + 7 天可撤销
+
+- **feat(customer)**:客户状态机从「建议型 `CUSTOMER_STATUS_SUGGEST`」升级为「直接自动写」, 详情页顶部 7 天可撤销横幅。设计: [docs/DESIGN-v3.md §5.5](docs/DESIGN-v3.md)
+- **feat(schema)**:`Customer` 加 `lastAutoAppliedAt` / `lastAutoRule` 2 列; `MessageType` enum 加 `CUSTOMER_STATUS_AUTO_APPLIED` / `CUSTOMER_STATUS_AUTO_REVERTED` 2 值(migration `20260628_customer_auto_fields`)
+- **feat(env)**:`CUSTOMER_AUTO_DISPUTE_DAYS=7` / `CUSTOMER_AUTO_INACTIVE_LOST_DAYS=90` / `CUSTOMER_AUTO_INACTIVE_FROZEN_DAYS=60` / `CUSTOMER_AUTO_RULES_DISABLED=`(逗号分隔关单条)
+- **feat(service)**:新增 `autoChangeCustomerStatus`(silentSkip, 行锁 + Serializable) + `revertCustomerStatus`(per-rule `rule.revertTarget` 走合法迁移); 触发器入口 `onContractActivated` / `onContractClosed` 在合同 `tryAutoPublish` / `tryAutoClose` 内调
+- **feat(api)**:`POST /api/customers/[id]/revert` — 7 天窗口 + 状态机合法迁移 + audit `CUSTOMER_STATUS_REVERT` + emit `CUSTOMER_STATUS_AUTO_REVERTED`
+- **feat(ui)**:`components/customers/auto-status-banner.tsx` 详情页横幅(InfoBox + Modal 撤销)
+- **refactor(jobs)**:`tickCustomerStatusSuggestions` 升级: 先尝试 `autoChangeCustomerStatus`, 失败 fallthrough 到原 `CUSTOMER_STATUS_SUGGEST`(降级路径)
+- **docs**:USER_MANUAL §5.6 客户状态自动联动; DESIGN-v3 §5.5 + §7 加 2 个新事件 + §11 加第 11 条验收用例; PROJECT_SUMMARY §3.3.2 经验
+- **test**:vitest 539/539(新增 39 用例: customer-auto-rules 14 + customer-status-automation 16 + customer-status-suggest 升级 +9); typecheck 0 error; lint 0 warning; `prisma generate` + `migrate deploy` 已跑
+
+提交 `45dcfcd`。
 
 ### v0.3.1(2026-06-26)员工档案 + 证书到期 cron + 资产下线 + 导航重构
 
@@ -472,6 +528,7 @@ xlsx 导出走 `lib/excel.ts` + `exceljs`,带 BOM 支持中文。
 
 ## 历史里程碑
 
+- **v0.4.0(2026-06-28)**:客户状态机自动化 + 7 天可撤销横幅 + 4 条规则 + per-rule revertTarget
 - **v0.3.0(2026-06-23/24)**:企业资产库下线 + 统计分析 round-2 收尾 + 合同 7→3 状态机 + 项目/工作流模块删除
 - **v0.2.0(2026-06-22)**:合同/项目收紧 + 业务纯化
 - **v0.1.0(2026-06-11)**:上线前清理 — 清空 136 个 lint warnings,登录页 + 顶部导航品牌化,统一仓库 `core.autocrlf=false`
