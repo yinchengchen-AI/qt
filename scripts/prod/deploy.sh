@@ -44,4 +44,15 @@ sleep 3
 curl -fsS -o /dev/null -w "  login  : %{http_code}\n" http://127.0.0.1:3000/login
 curl -fsS -o /dev/null -w "  dashboard: %{http_code} (expect 307)\n" http://127.0.0.1:3000/dashboard
 curl -sS -o /dev/null -w "  api/customers: %{http_code} (expect 401)\n" http://127.0.0.1:3000/api/customers
+echo "==> crond self-check (RHEL: crond, Debian: cron)"
+if systemctl is-active --quiet crond 2>/dev/null; then
+  echo "  crond: active"
+elif systemctl is-active --quiet cron 2>/dev/null; then
+  echo "  cron:  active"
+else
+  echo "[ERR] neither crond nor cron is active" >&2
+  systemctl list-units --type=service --all 2>/dev/null | grep -iE 'cron|anacron' >&2 || true
+  exit 1
+fi
+
 echo "[OK] deploy done"
