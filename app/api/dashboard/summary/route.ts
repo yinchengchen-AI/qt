@@ -138,7 +138,7 @@ export async function GET(req: Request) {
         overview: { ...overview, range },
         distribution,
         agingBuckets: aging.buckets,
-        customers: { total: customerCount, newThisMonth: newCusts },
+        customers: { total: customerCount, newInRange: newCusts },
         contracts: {
           byStatus: contractSCs.map((x) => ({
             status: x.status,

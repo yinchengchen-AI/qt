@@ -21,7 +21,7 @@ type DashboardData = {
   distribution: { byScale: { key: string; count: number }[]; byType: { key: string; count: number }[]; byStatus: { key: string; count: number }[] };
   townDistribution: { town: string | null; count: number }[];
   agingBuckets: Record<string, number>;
-  customers: { total: number; newThisMonth: number };
+  customers: { total: number; newInRange: number };
   contracts: { byStatus: { status: string; count: number; totalAmount: number }[] };
   invoices: { total: number; byStatus: { status: string; count: number; totalAmount: number }[] };
   payments: { total: number; byStatus: { status: string; count: number; totalAmount: number }[] };
@@ -102,8 +102,8 @@ export default function DashboardPage() {
       tooltip: <>客户档案实时数量,包含潜在/在跟/已签约等全部状态。<br/><b>客户档案总数不受统计区间影响</b>;"本期新增"按所选区间统计。<br/>{permHint}</>,
       value: cust.total,
       suffix: "家",
-      description: `${rangeTagLabel}新增 ${cust.newThisMonth} 家`,
-      delta: { value: `${rangeTagLabel}新增 ${cust.newThisMonth} 家`, direction: "up" }
+      description: `${rangeTagLabel}新增 ${cust.newInRange} 家`,
+      delta: { value: `${rangeTagLabel}新增 ${cust.newInRange} 家`, direction: "up" }
     },
     {
       label: "合同总额",
