@@ -39,7 +39,6 @@ type Customer = {
   code: string;
   name: string;
   shortName: string | null;
-  status: string;
   contactName: string | null;
   contactTitle: string | null;
   contactPhone: string;
@@ -90,9 +89,9 @@ export default function NewContractPage() {
       <PageHeader
         back={goBack}
         title="新建合同"
-        subtitle="为洽谈中或已签约的客户创建合同，提交后进入审批流程"
+        subtitle="为客户创建合同，保存即生成草稿，可继续编辑后提交审批"
       />
-      <FormCard headerHint="客户必须处于「洽谈中」或「已签约」状态；服务止期必须晚于起期，否则无法提交">
+      <FormCard headerHint="服务止期必须晚于起期，否则无法提交">
         <ProForm
           formRef={formRef}
           layout="vertical"
@@ -126,7 +125,7 @@ export default function NewContractPage() {
             return true;
           }}
         >
-          <FormSection title="签约主体" description="仅可选「洽谈中」或「已签约」状态的客户">
+          <FormSection title="签约主体" description="选定客户作为合同甲方，并预填该客户的业务负责人（可手动修改）">
             <FormGrid columns={1}>
               <ProFormSelect
                 name="customerId"
@@ -162,7 +161,8 @@ export default function NewContractPage() {
                   const r = await fetch(`/api/customers?${qs}`, { credentials: "include" });
                   const j = await r.json();
                   if (j.code !== 0) return [];
-                  const list = (j.data.list as Customer[]).filter((c) => ["NEGOTIATING", "SIGNED"].includes(c.status));
+                  // 客户状态机已下线 (R-03): 不再按 status 过滤, 所有客户都可作为合同甲方
+                  const list = j.data.list as Customer[];
                   // 同步保存 id -> name 映射,供 onChange 在 ProFormSelect 把 label 改写成 React element 时反查
                   setCustomerNameById((prev) => {
                     const m = new Map(prev);
