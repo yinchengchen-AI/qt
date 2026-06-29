@@ -105,9 +105,12 @@ export default function ByRegionPage() {
   ];
 
   // 分组柱状图数据:每个区域 2 条记录(合同额 / 已回款),用 colorField 区分颜色
+  // 横坐标只显示街道名(避免 "南海区 桂城街道" 太长);fallback 到区名 / "未填写"
+  // 注意:跨区同名镇街会在 X 轴上出现重复条目(如"桂城街道"出现两次),这是用户接受的精简口径
+  const chartLabelOf = (r: RegionStatRow) => r.town || r.district || "未填写";
   const groupedChartData = visibleRows.flatMap((r) => [
-    { name: r.region, value: r.contractAmount, type: "合同额" },
-    { name: r.region, value: r.paymentAmount, type: "已回款" }
+    { name: chartLabelOf(r), value: r.contractAmount, type: "合同额" },
+    { name: chartLabelOf(r), value: r.paymentAmount, type: "已回款" }
   ]);
 
   return (
