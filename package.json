@@ -21,6 +21,7 @@
     "prisma:deploy": "prisma migrate deploy",
     "prisma:status": "prisma migrate status",
     "prisma:studio": "prisma studio",
+    "db:snapshot": "tsx scripts/shared/dump-current-schema.ts",
     "reset-password": "tsx scripts/shared/reset-password.ts",
     "seed": "tsx prisma/seed.ts",
     "seed:dev-users": "tsx scripts/shared/seed-test-users.ts",

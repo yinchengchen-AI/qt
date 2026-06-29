@@ -46,3 +46,10 @@ Node `>=20.9.0`. Use `npm`; `pnpm-lock.yaml` is kept in sync.
 - Dev defaults (`minioadmin/minioadmin`, `postgres/postgres`) are local only — rotate before any non-dev deploy.
 - Uploads/downloads go through the Next.js proxy; MinIO stays on the internal `:9000` and is never exposed publicly.
 - `npm run seed` is for system data only; production seeds run manually on fresh machines, not during routine updates.
+
+## Database Migrations
+
+- `prisma/migrations/<committed>/` 是不可变的。**已合并到 main 的迁移文件禁止删除、重命名或重写 SQL**。代码与 `_prisma_migrations` 表共同构成生产 schema 的合同，破坏任一边都会让所有已部署环境在 `prisma migrate deploy` 报 "migration not found"。
+- 删字段/删表通过新增的迁移做（`ALTER TABLE ... DROP COLUMN`），不要回滚历史迁移。
+- 新环境拉代码后用 `npm run prisma:deploy` 应用迁移；不要用 `prisma migrate dev`（它会建 shadow DB 跑完整重放，跟当前迁移历史不兼容）。
+- 撞上 drift（DB 已应用某迁移但本地缺文件）时参考 `docs/db-bootstrap.md` 的恢复流程，从 git 历史找回原文件，**不要** `migrate resolve` 凭空标记。

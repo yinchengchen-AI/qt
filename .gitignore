@@ -103,3 +103,7 @@ tests/e2e/.auth/
 
 # Codex 桌面会话临时文件 (untracked, 仅本地使用)
 .sess.xml
+
+# Prisma schema 快照: 由 `npm run db:snapshot` 生成, 含时间戳
+# 需要时本地重跑, 不入仓避免频繁 diff
+docs/db-schema-snapshot.sql
