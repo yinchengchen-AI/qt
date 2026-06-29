@@ -154,6 +154,45 @@ COMMIT;
 3. **强关前预警**：`server/jobs/contract-automation.ts`
    - `tryAutoCloseOnOverdue` 命中前 7/3/1 天发通知，给财务最后一次补单机会
 
+### 4.4 未来 reopen vs force 业务选择指南
+
+`reopenContract` 与 `createPayment({ force: true })` 是两条独立路径，未来类似事件怎么选：
+
+| 场景 | 推荐路径 | 原因 |
+|---|---|---|
+| **历史合同批量恢复 + 补录**（典型：cron 误关） | 直接 SQL 跑 `contract-fake-close-recovery.ts`（同本次） | 数据量大（百+），跑 API 太慢；恢复 + 补录是两个动作但 SQL 一次性处理最简单 |
+| **单合同 admin 误关**（手抖） | `POST /api/contracts/[id]/reopen` → 状态回 ACTIVE → 走正常流程 | 后续 cron 不会再误关（条件已变）；完整审计 trail |
+| **CLOSED 合同上有未结清付款要补录**（场景 1 残留 / 旧合同归档遗漏） | `POST /api/payments` body 加 `force: true` + `forceReason` | 不改合同状态（保持 CLOSED），仅 admin 可用，remark 自动追加 `[FORCE_BACKFILL:<reason>]` 审计标记 |
+| **DRAFT/其它非 ACTIVE 非 CLOSED 合同要录付款** | **拒绝**（force 旁路不适用） | 业务上没意义，强制会被服务层 422 拦下 |
+
+**关键提醒**：
+
+- `reopen` 后如果合同仍满足 `tryAutoCloseOnOverdue` 条件（endDate + GRACE_DAYS < now + 未结清），下次 cron 跑还会再次强关。**正确流程是 reopen → 立即补录付款 → 让 tryAutoComplete 走 completed 路径**。
+- `force` 不改合同状态（仍 CLOSED），所以**不影响未来 cron 行为**。适合"只需要录入付款的尾部动作"，不适合"要让合同回到业务流转"。
+
+### 4.5 接口参考
+
+```bash
+# 1. reopen (admin 专属, CLOSED → ACTIVE)
+curl -X POST http://app.example.com/api/contracts/<id>/reopen \
+  -H "Cookie: <admin-session>" \
+  -H "Content-Type: application/json" \
+  -d '{"reason":"recovered_from_fake_close","reasonNote":"cron 9 月静默失败回滚"}'
+
+# 2. force payment (admin 专属, 仅 CLOSED 合同可用)
+curl -X POST http://app.example.com/api/payments \
+  -H "Cookie: <admin-session>" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "contractId": "<id>",
+    "amount": "555340.00",
+    "receivedAt": "2026-06-29T10:00:00Z",
+    "remark": "余杭径山镇政府 第 1 期",
+    "force": true,
+    "forceReason": "recovered_from_fake_close: 历史应收补录"
+  }'
+```
+
 ### 4.2 运维层
 
 1. **cron 健康监控**：连续 2 天 `/api/jobs/run-all` 没成功 → 飞书/钉钉告警
