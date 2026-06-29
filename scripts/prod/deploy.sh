@@ -55,4 +55,38 @@ else
   exit 1
 fi
 
+echo "==> cron 健康检查 (防止 2025-09~2026-06 cron 静默失败 9 个月的重演)"
+# 1) 验证 /etc/cron.d/qt-jobs 是最新版本 (source .env 必须有)
+if ! grep -q "set -a && . /opt/qt/.env" /etc/cron.d/qt-jobs 2>/dev/null; then
+  echo "[ERR] /etc/cron.d/qt-jobs 漏 source .env — CRON_SECRET 在 crond 环境里会空, API 返回 401"
+  echo "      修法: sudo cp ops/qt-jobs.cron /etc/cron.d/qt-jobs && sudo chmod 644 /etc/cron.d/qt-jobs && sudo systemctl restart cron"
+  exit 1
+fi
+echo "  /etc/cron.d/qt-jobs: ✓ 含 source .env"
+
+# 2) 立即触发一次 run-all, 验证 token / API 通畅 (不阻塞 deploy, 仅记录)
+RUN_ALL_CODE=$(curl -fsS -o /tmp/run-all-test.json -w "%{http_code}" -X POST -H "Authorization: Bearer ${CRON_SECRET}" http://127.0.0.1:3000/api/jobs/run-all 2>/dev/null || echo "000")
+if [[ "$RUN_ALL_CODE" == "200" ]]; then
+  SCANNED=$(grep -oP '"scanned":\d+' /tmp/run-all-test.json 2>/dev/null | wc -l)
+  echo "  run-all 自检: ✓ HTTP 200 (扫了 $SCANNED 个 job)"
+  rm -f /tmp/run-all-test.json
+elif [[ "$RUN_ALL_CODE" == "401" ]]; then
+  echo "[ERR] run-all 自检: ✗ HTTP 401 — CRON_SECRET 不匹配!"
+  echo "      检查 .env 里 CRON_SECRET 跟 /etc/cron.d/qt-jobs 里的 \$CRON_SECRET 是否一致"
+  exit 1
+else
+  echo "[WARN] run-all 自检: HTTP $RUN_ALL_CODE (跳过, 等下次 cron 跑验证)"
+fi
+
+# 3) 跑一次 cron-healthcheck.sh (验证自检脚本本身能跑)
+if [[ -x /opt/qt/scripts/ops/cron-healthcheck.sh ]]; then
+  if /opt/qt/scripts/ops/cron-healthcheck.sh --once >> /var/log/qt-cron.log 2>&1; then
+    echo "  cron-healthcheck: ✓"
+  else
+    echo "[WARN] cron-healthcheck 自检有异常 — 看 /var/log/qt-cron.log"
+  fi
+else
+  echo "  cron-healthcheck: ⚠ 脚本不存在 (/opt/qt/scripts/ops/cron-healthcheck.sh), 跳过"
+fi
+
 echo "[OK] deploy done"

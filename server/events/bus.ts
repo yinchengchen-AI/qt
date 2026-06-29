@@ -109,14 +109,30 @@ function buildMessage(uid: string, ev: DomainEvent): ResolvedMessage {
       // 合同过期未结清提醒: endDate<now 但钱没收齐, 每天去重发一次
       // payload: contractId, contractNo, daysOverdue, graceDays, daysUntilForceClose,
       //          paidAmount, totalAmount
+      // 文案分档 (P3-2 防假完结 9 月没人察觉的根因之一 — 强关前预警不醒目):
+      //   - daysUntilForceClose ∈ {7, 3, 1}: 红色加粗 "⚠️ N 天后系统将自动强关"
+      //   - daysUntilForceClose = 0: "今天会被强关"
+      //   - daysUntilForceClose < 0: 已被强关前最后一次提醒 (实际此时已被强关, 不会到这)
+      //   - 其他: 普通 "还剩 N 天进入宽限期强关"
       const daysUntil = Math.max(0, Number(p.graceDays ?? 0) - Number(p.daysOverdue ?? 0));
+      const daysUntilRaw = Number(p.graceDays ?? 0) - Number(p.daysOverdue ?? 0);
+      const isFinalWarning = daysUntilRaw === 7 || daysUntilRaw === 3 || daysUntilRaw === 1;
+      const titlePrefix = isFinalWarning ? "⚠️ 【强关预警】合同" : "合同";
+      const titleSuffix = daysUntilRaw === 0 ? " — 今天将被系统强关" : "";
+      let content: string;
+      if (daysUntilRaw < 0) {
+        content = `已过宽限期 ${Math.abs(daysUntilRaw)} 天, 系统下次 cron 跑会强关为 overdue_terminated, 请立即处理`;
+      } else if (daysUntilRaw === 0) {
+        content = `⚠️ 今天会被系统强关 (reason=overdue_terminated)! 请立即补录回款或申请延期, 否则合同状态将变为 CLOSED`;
+      } else if (isFinalWarning) {
+        content = `⚠️ ${daysUntilRaw} 天后系统将自动强关 (reason=overdue_terminated)! 立即补录回款或申请延期, 否则合同状态将变为 CLOSED 且无法录回款`;
+      } else {
+        content = `还剩 ${daysUntil} 天进入宽限期强关, 请尽快催收或人工处理`;
+      }
       return {
         receiverUserId: uid,
-        title: `合同 ${p.contractNo} 已过期 ${p.daysOverdue} 天, 未结清 ¥${p.remaining ?? "-"}`,
-        content:
-          daysUntil > 0
-            ? `还剩 ${daysUntil} 天进入宽限期强关 (reason=overdue_terminated);请尽快催收或人工处理`
-            : `已过宽限期, 下一次 cron 会被系统强关为 overdue_terminated`,
+        title: `${titlePrefix} ${p.contractNo} 已过期 ${p.daysOverdue} 天, 未结清 ¥${p.remaining ?? "-"}${titleSuffix}`,
+        content,
         link: { kind: "contract", id: p.contractId }
       };
     case "CERTIFICATE_EXPIRING":

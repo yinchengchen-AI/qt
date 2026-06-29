@@ -844,3 +844,95 @@ PLANNED ─confirm─▶ CONFIRMED ─reconcile─▶ RECONCILED
 | 导出文件名 | 中文乱码 | 走 UTF-8 双形式(v0.5.1) |
 
 > 文档同步:本手册随系统版本迭代,新功能上线后由产品/技术同步更新
+
+---
+
+## 16. 运维小贴士(cron 健康与强关预警)
+
+> 本节面向**运维 / 技术接手者**。业务用户可跳过。
+> 历史教训:2025-09 ~ 2026-06 期间 cron 静默失败 9 个月无人察觉(详见 `docs/cron-silent-failure-postmortem.md`)。本节是该事故的产物。
+
+### 16.1 快速自检:cron 是否在跑
+
+每次接手巡检时,跑下面三个命令,30 秒内确认 cron 状态:
+
+```bash
+# 1) crond 服务本身是否 active
+systemctl is-active crond || systemctl is-active cron
+
+# 2) /var/log/qt-cron.log 最后一条记录时间 (2 小时内算正常)
+tail -1 /var/log/qt-cron.log
+# 或用自检脚本
+/opt/qt/scripts/ops/cron-healthcheck.sh --verbose
+
+# 3) 手动触发一次 run-all, 看是否 200
+curl -X POST -H "Authorization: Bearer ${CRON_SECRET}" \
+  http://127.0.0.1:3000/api/jobs/run-all | head -c 500
+```
+
+### 16.2 cron-healthcheck 自检脚本
+
+`scripts/ops/cron-healthcheck.sh` 每小时第 5 分钟跑一次,检查 4 个维度:
+
+- ✅ crond / cron 服务 active
+- ✅ `/var/log/qt-cron.log` 最近 2 小时有写入(run-all 跑过的痕迹)
+- ✅ qt-app 监听 3000 端口
+- ✅ PostgreSQL 容器 healthy
+
+**失败时**:
+- 写日志到 `/var/log/qt-cron.log`(运维巡检可见)
+- (可选) 推飞书 webhook,需在 `.env` 配置 `FEISHU_WEBHOOK_URL=https://open.feishu.cn/...`
+
+### 16.3 强关前 7/3/1 天预警
+
+合同 `endDate` 过期后,系统每天给 owner + admin 发 `CONTRACT_EXPIRED_UNPAID` 站内信。**强关前 7/3/1 天的消息文案会自动升级**(从 bus.ts 文案模板):
+
+| 剩余天数 | 文案标题 |
+|---|---|
+| 7 / 3 / 1 | ⚠️ **【强关预警】** 合同 ... — N 天后系统将自动强关 |
+| 0 | ⚠️ ... — **今天将被系统强关** |
+| 其他 (8+) | 合同 ... 还剩 N 天进入宽限期强关 |
+
+**强关后**:发 `CONTRACT_AUTO_OVERDUE_TERMINATED` 通知(`reason=overdue_terminated`)。
+
+### 16.4 部署后必做(deploy.sh 已自动化)
+
+`scripts/prod/deploy.sh` deploy 完成后会自动跑:
+
+1. ✅ 检查 `crond` / `cron` 服务 active
+2. ✅ 检查 `/etc/cron.d/qt-jobs` 包含 `source .env`(防 CRON_SECRET 401)
+3. ✅ 立即触发一次 `run-all`,验证 token / API 通畅
+4. ✅ 跑一次 `cron-healthcheck.sh`
+
+如果 deploy 报错停在"cron 健康检查"段,**不要强制继续**。先排查:
+
+| 报错 | 排查 |
+|---|---|
+| `neither crond nor cron is active` | `systemctl start crond`(或 `cron`) |
+| `/etc/cron.d/qt-jobs 漏 source .env` | `sudo cp ops/qt-jobs.cron /etc/cron.d/qt-jobs && sudo systemctl restart cron` |
+| `run-all 自检 HTTP 401` | 比对 `.env` 和 `/etc/cron.d/qt-jobs` 的 `CRON_SECRET` 是否一致 |
+| `cron-healthcheck 有异常` | 看 `/var/log/qt-cron.log` 的 FAIL 行 |
+
+### 16.5 "假完结合同"应急处理
+
+如果发现合同状态 = CLOSED 但实际还有应收未结清(典型场景:cron 长期未跑后批量强关):
+
+1. **批量数据修复** (SQL 脚本, 242 个合同 269 万应收案例可参考):
+   ```bash
+   pnpm tsx scripts/migrate/contract-fake-close-recovery.ts --execute
+   ```
+2. **代码层修复** (P2-3 已加):
+   - `POST /api/contracts/[id]/reopen` — admin 重开已完结合同
+   - `POST /api/payments` body 加 `force: true` + `forceReason: string` — admin 在 CLOSED 合同上强制录回款(自动加 `[FORCE_BACKFILL]` 审计标记)
+
+3. **完整流程文档**:`docs/contract-fake-close-recovery.md`
+
+### 16.6 关键运维文档
+
+| 文档 | 内容 |
+|---|---|
+| `docs/cron-silent-failure-postmortem.md` | 9 个月 cron 静默失败事故复盘报告 |
+| `docs/contract-fake-close-recovery.md` | "假完结合同"修复方案 + 长期方案 |
+| `scripts/ops/cron-healthcheck.sh --help` | cron 自检脚本用法 |
+| `scripts/prod/deploy.sh` | 部署脚本(已集成 cron 健康检查) |
+| `ops/qt-jobs.cron` | cron 任务模板(已含 cron-healthcheck 条目) |
