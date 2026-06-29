@@ -1,5 +1,8 @@
 # 杭州企泰安全科技有限公司 业务管理系统 — 完整设计文档（v3，最新版本矩阵审查版）
 
+> 最近同步：2026-06-29（追加 §0.5 v0.5.x 增量修订说明 + §14 增量索引）
+> 当前实现版本：v0.5.1（2026-06-29）
+
 ## 0. 修订说明（相对 v2）
 
 - **版本矩阵钉到当前 latest**，所有包名与具体版本号写入方案。
@@ -8,6 +11,70 @@
 - **Prisma 7** 新增的 ESM-only、`prisma-client` generator、ESM 导入方式变化补充。
 - **Zod 4** 语法变化点补充。
 - **next-auth v4** 在 Next 16 + RSC 下的边界场景补充（v4 与 RSC 协作需要 `auth()` 包装，详见 §8）。
+
+## 0.5 v0.5.x 增量修订说明（2026-06-29）
+
+> 本节记录 v0.5.0 / v0.5.1 / v0.5.1+ 相对本文档 v3 初稿的差异。**§1-§13 主章节内容仍为设计基线**，但有若干字段、状态机、模块、跨模块校验在实现期下线或收紧，详见下表与各章节引用。
+
+### 0.5.1 模块下线清单
+
+| 原模块 | 设计 v3 章节 | 下线版本 | 状态 |
+|---|---|---|---|
+| 项目管理（Project / WorkflowTemplate / WorkflowTask 等 5 张表） | §4 / §5.6 / §6 / §11 | v0.3.0 (2026-06-23) | **已下线**（DROP + 410 Gone + 5 个 dict 类别移除） |
+| 工作流引擎（WorkflowStage / WorkflowTaskInstance） | §5.6 / §7 | v0.3.0 | **已下线**（与项目模块同步） |
+| 企业资产库（CompanyAsset） | §4 / §5 | v0.3.0 (2026-06-24) | **已下线**（DROP + 9 目录移除 + ASSET 权限矩阵回收） |
+| 通知三通道（email / wechatWork） | §7 | v0.3.0 | **已下线**（统一走站内信） |
+| 客户状态机（5 态 + 4 自动规则） | §5.5 / §6 R-02/R-03/R-13 / §11 | v0.5.0 (2026-06-29) | **已下线**（BREAKING） |
+
+### 0.5.2 字段与索引移除
+
+| 表 | 移除字段 / 索引 | 版本 | 备注 |
+|---|---|---|---|
+| `Customer` | `status / lastAutoAppliedAt / lastAutoRule` 3 列 + `@@index([status])` | v0.5.0 | 迁移 `20260629_drop_customer_status`，idempotent |
+| `Customer` | `enum CustomerStatus`（5 态） | v0.5.0 | Prisma enum 整体移除 |
+| `Attachment` | `assetId / isPrimary` | v0.3.0 | 与资产库同步下线 |
+| `Attachment` | `category` | v0.3.1 | **新增**字段（非移除），员工档案 5 类附件分类 |
+| `Message` | `type` 由 `text` 收紧为 `enum MessageType` | v0.3.1 | + `type+receiverUserId+createdAt` 复合索引 |
+| `User` | `isSystem Boolean @default(false)` | v0.2.0 | **新增**字段，system 占位用户 |
+
+### 0.5.3 跨模块校验规则变动
+
+| 规则 | 原内容 | 现状态 |
+|---|---|---|
+| R-02 | 客户非 CLOSED 不能重复签合同 | v0.5.0 删除（客户无 status） |
+| R-03 | 客户 status 联动合同生成 | v0.5.0 删除 |
+| R-13 | 客户 status 联动回款 | v0.5.0 删除 |
+| R-16 | 跨模块状态机抽象 | 仍生效，指向 `lib/status-machine.ts`（合同 3 态 / 发票 5 态 / 回款 4 态 / 消息 7 态 通用） |
+| R-04 | 合同 → ACTIVE 必须 1 个附件 | 仍生效 |
+| R-08 | 开票累计 ≤ 合同总额 | 仍生效；DRAFT 计入 |
+
+### 0.5.4 错误码回收
+
+| 错误码 | 触发场景 | 状态 |
+|---|---|---|
+| `CUSTOMER_STATUS_TRANSITION_INVALID` | 客户状态非法迁移 | v0.5.0 回收 |
+| `CUSTOMER_AUTO_*` | 客户自动规则触发 | v0.5.0 回收（4 个） |
+| `ASSET_*` | 资产相关 | v0.3.0 回收 |
+
+### 0.5.5 新增枚举值
+
+| 枚举 | 新增值 | 版本 |
+|---|---|---|
+| `MessageType` | `CERTIFICATE_EXPIRING` | v0.3.1 |
+| `StatisticsRange` | `month / quarter / year` | v0.5.1+ |
+
+### 0.5.6 详情页引用
+
+如需查阅下线模块的设计原稿，路径已归档至 `docs/superpowers/specs/_archive/`：
+
+- `2026-06-23-drop-project-and-workflow.md`（项目/工作流）
+- `2026-06-23-drop-company-assets.md`（企业资产库）
+- `2026-06-28-customer-status-automation.md`（客户状态机 v0.4 设计稿，v0.5.0 触发后归档）
+- `2026-06-29-customer-status-deprecation.md`（v0.5.0 下线 deprecation 文档，**当前**）
+
+---
+
+## 1. 技术栈与版本矩阵（钉版本）
 
 ---
 
@@ -542,12 +609,37 @@ PLANNED ─confirm(finance)─▶ CONFIRMED ─reconcile(finance)─▶ RECONCIL
 
 ---
 
+## 14. 增量索引（v0.3.x / v0.5.x 相对本文档的差异）
+
+> 本节作为索引，详细修订说明见 §0.5；架构层面无破坏性变更。
+
+| 类别 | 项 | 版本 | 详细 |
+|---|---|---|---|
+| 模块下线 | 项目管理 / 工作流引擎 | v0.3.0 | §0.5.1 |
+| 模块下线 | 企业资产库 | v0.3.0 | §0.5.1 |
+| 模块下线 | 客户状态机 | v0.5.0 | §0.5.1 |
+| 模块下线 | 通知三通道（email/wechatWork） | v0.3.0 | §0.5.1 |
+| 字段新增 | `Attachment.category` | v0.3.1 | §0.5.2 |
+| 字段新增 | `Message.type` 收紧为 enum | v0.3.1 | §0.5.2 |
+| 字段新增 | `User.isSystem` | v0.2.0 | §0.5.2 |
+| 字段移除 | `Customer.status / lastAutoAppliedAt / lastAutoRule` | v0.5.0 | §0.5.2 |
+| 字段移除 | `Attachment.assetId / isPrimary` | v0.3.0 | §0.5.2 |
+| 校验规则 | R-02 / R-03 / R-13 客户 status 相关 | v0.5.0 | §0.5.3 |
+| 校验规则 | R-16 跨模块状态机抽象 | 仍生效 | §0.5.3 |
+| 错误码 | `CUSTOMER_STATUS_*` / `CUSTOMER_AUTO_*` 4 个 | v0.5.0 | §0.5.4 |
+| 错误码 | `ASSET_*` | v0.3.0 | §0.5.4 |
+| 枚举值 | `MessageType.CERTIFICATE_EXPIRING` | v0.3.1 | §0.5.5 |
+| 枚举值 | `StatisticsRange month/quarter/year` | v0.5.1+ | §0.5.5 |
+| 归档 spec | 项目/工作流 / 资产库 / 客户状态机 v0.4 设计稿 | 各版本 | §0.5.6 |
+
+---
+
 > **下一步**：请您审阅本文档。重点确认：
 > 1. **是否接受 pro-components 3.x beta 的不稳定风险**？若否，将方案降级为 antd 5.29.3 + pro 2.8.10（稳定组），其它版本保持。
 > 2. §3 权限矩阵 + RLS 行级兜底是否合用？
 > 3. §4 实体模型与字段（合同/开票/回款三块金额口径）是否完整？
-> 4. §5 状态机的合法迁移是否覆盖实际操作？
-> 5. §6 校验规则是否需要增减？
+> 4. §5 状态机的合法迁移是否覆盖实际操作？（注意：§5.5 客户状态机已下线，详见 §0.5）
+> 5. §6 校验规则是否需要增减？（R-02/R-03/R-13 已下线，详见 §0.5.3）
 > 6. §13 默认假设里有没有需要调整的（编号规则、税率、阈值、SSO、部署方式）？
 >
 > 审阅通过后回复「按文档进入实现」即可进入 P0 脚手架阶段。

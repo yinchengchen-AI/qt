@@ -1,7 +1,8 @@
 # 项目总结 — 杭州企泰安全科技 业务管理系统
 
 > 从设计文档到 P0/P1/P2/P3 全量交付的开发流程、经验沉淀与未来优化方向
-> 编制日期：2026-06-09
+> 编制日期：2026-06-09（初稿）
+> 最近同步：2026-06-29（追加 v0.3.x / v0.5.x 增量，见附录 A、B）
 
 ---
 
@@ -363,4 +364,102 @@ dev 模式无：
 > **写代码容易，写对代码难；上线容易，可观测难；功能完成容易，长期可维护难。**
 > 这个项目在三者之间取得了平衡，但远未到完美。
 > 后续 6 个月的迭代重点：**性能压测、SSO、可观测、多租户**。
+
+---
+
+## 附录 A：v0.3.x 业务收紧与新模块（2026-06-22 → 06-26）
+
+> P3 之后的几次大版本变动，主体已经覆盖在主文 §3.3 / §4，摘要如下以免读者翻历史 milestone 表。
+
+### A.1 v0.2.0（2026-06-22）合同/项目收紧 + 业务纯化
+
+- 合同管理加「负责人」字段，可从员工列表选任意 ACTIVE 员工，默认继承 `customer.ownerUserId`
+- 项目详情页 admin-only 删除按钮（状态门控 `PLANNED / CANCELLED`，级联软删 `WorkflowTaskInstance` + `ProjectProgressLog`）
+- 「项目预算」+「回款分配明细」两个非核心横切功能下线
+- `OperationLog` 补 `userAgent / requestId / method / path / status / errorMessage` 6 字段 + 配套索引 + 500 字符 `userAgent` CHECK 约束
+- `GET /api/operation-logs` + `GET /api/operation-logs/[id]` 上线，`/admin/operation-logs` 重写
+- 合同状态机自动转换三钩子 `tryAutoExecuteContract` / `tryAutoCompleteContract` / `tryAutoExpireContract` 落地，每日 01:00 扫过期合同
+- `User.isSystem Boolean @default(false)` + `system` 占位用户（不可登录）
+
+### A.2 v0.3.0（2026-06-23 → 06-24）三大改造
+
+- **项目/工作流模块下线**：彻底删除 5 张表（`Project / WorkflowTemplate / WorkflowStage / WorkflowTask / WorkflowTaskInstance`）、12 个 dead 路由 410 Gone、5 个 dict 类别移除、`action` 8→5
+- **合同 7→3 状态机**：DRAFT / ACTIVE / CLOSED；SQL 迁移带断言 + 备份到 `_Contract_status_simplify_bak`；4668 合同一次性收敛（524 ACTIVE / 4109 CLOSED / 35 DRAFT）
+- **合同自动状态机 cron**：`contract-auto-publish`（DRAFT 字段完整+附件 → ACTIVE）+ `contract-auto-complete`（ACTIVE 开票足额 → CLOSED）
+- **企业资产库下线**（v0.3.0 末尾）：`CompanyAsset` + `Attachment.assetId/isPrimary` DROP、`RESOURCE.ASSET` 权限矩阵回收、`asset-expiring` job 拆除、`app/(app)/assets/` 等 9 个目录/文件移除、`ASSET_*` 错误码/i18n/字典白名单清理
+- **统计分析 round-2 收尾**：`lib/date-range.ts` 统一前后端日期范围、`scripts/dev/seed-customers-contracts.ts` 测试数据、4 条真实 DB 集成断言
+- 部署 hotfix：Zod v4 `.partial()` 不允许在含 `.refine()` 的 schema — `announcementFields` 单点真理；`20260626_invoice_attachments_json` 加 `IF NOT EXISTS` 幂等
+
+### A.3 v0.3.1（2026-06-26）员工档案 + 证书到期 + 资产清理后续
+
+- **员工档案彻底重做**（PR1-PR11，11 个 commit）：`EmployeeProfile` 表 + 5 张子表（教育/证书/工作经历/合同/家庭成员）、`Attachment.category`、`MessageType.CERTIFICATE_EXPIRING` 枚举、5 步向导编辑、Anchor 详情页、批量操作、E2E 覆盖、P0 阻塞修复 12 项、用户手册 v0.4 重做
+- **证书到期 cron**：30/15/7 档提醒（`certificate-expiry-check`）+ 列表页 + 用户列表红色徽标
+- **导航重构**：统一返回按钮走 `useGoBack()` hook（浏览器历史优先 + fallback 兜底），删 30+ 处硬编码 `router.push('/x')`
+- `Message.type` 从 `text` 收紧到 `enum MessageType`（7 枚举值）
+- `Space direction='vertical'` → `orientation='vertical'`（antd 6 API）
+- dashboard summary 接口把 `range` 塞进 overview 返回；员工业绩页默认本月区间
+- `contract-auto-complete` job 已知问题：偶发 `TransactionWriteConflict`（PG 40001，单实例无分布式锁），v0.4.0 跟进
+
+---
+
+## 附录 B：v0.5.x 客户状态机下线与收敛（2026-06-29）
+
+> v0.4.0 上线的客户状态机（5 态 + 4 条自动规则 + 7 天可撤销横幅）经业务反馈语义不清、自动化规则常误判，整体硬下线。
+
+### B.1 v0.5.0 BREAKING（2026-06-29）客户状态机下线
+
+设计：[docs/superpowers/specs/2026-06-29-customer-status-deprecation.md](superpowers/specs/2026-06-29-customer-status-deprecation.md)
+
+- `Customer.status / lastAutoAppliedAt / lastAutoRule` 3 列 + `@@index([status])` DROP（migration `20260629_drop_customer_status`，idempotent）
+- `enum CustomerStatus`（5 态）移除
+- `lib/customer-status-transitions.ts` / `lib/customer-auto-rules.ts` 删除；6 个 lib 文件移除 `customer` StatusDomain 引用 / 字典 / 校验字段 / 错误码
+- `server/services/customer/{status,automation}.ts` + `customer-status.ts` + `customer-status-suggest.ts` 删除
+- `POST /api/customers/[id]/revert` 删除；7 个路由移除对外调用
+- 客户 PDF 改用合同级状态
+- `MessageType` enum 3 个 `CUSTOMER_STATUS_*` 值**保留**（历史消息 fallback），`bus.ts` `default` 分支渲染为「历史消息」
+- `DESIGN-v3 §5.5` / `PROJECT_SUMMARY §3.3.2` / `USER_MANUAL §5.1 状态表 + §5.6 + FAQ Q5` 全部清理
+- vitest 425/425（54 files，-14 customer-status 用例）、typecheck 0 error、eslint 0 warning
+- 16 commit 一次合并，单 `BREAKING CHANGE` commit
+
+### B.2 v0.5.1（2026-06-29）Excel 导出国际化 + 合同选择器增强
+
+- `lib/excel.ts` 新增 `attachmentHeader()`，统一 `filename=ASCII_fallback; filename*=UTF-8''<percent-encoded>` 双形式
+- 8 个导出端点（统计 4 / 合同 / 客户 / 回款 / 开票）+ `/api/files/raw/[id]` 走 `attachmentHeader`
+- 新建开票 / 登记回款 `ProFormSelect` option label 拼接 `合同号 · 合同标题 · 合同总额`
+- `lib/excel-client.ts` `downloadExcel` 解析逻辑改：优先 `filename*=UTF-8''` + `decodeURIComponent`，fallback 才退到 ASCII
+- `tests/unit/lib/excel.test.ts` 加 4 条 `attachmentHeader` 单测
+
+### B.3 v0.5.1+ 增量小修（2026-06-29）
+
+> v0.5.1 之后的 16 个 commit 摘要，按主题分组。
+
+- **Dashboard**：统计区间支持月度 / 季度 / 年度切换（`StatisticsRange` 枚举 + URL `?range=`）；`customers.newThisMonth` → `newInRange`（与统计区间语义对齐）
+- **系统 actor**：seed upsert `id=system` 占位用户，自动状态机转换（`tryAutoComplete` / `tryAutoCloseOnExpiry`）需要 `actorId`，否则外键错
+- **合同**：`SALES` 创建合同时 `ownerUserId` 默认 = 当前 user；Timeline 切 antd 6 API；清理未用 `Tag` 导入
+- **证书**：到期证书页 `request` 解包错位修复
+- **数据库**：恢复漂移的 3 个迁移文件（从 git 历史找回）+ `docs/db-bootstrap.md` + `prisma db-schema-snapshot.sql`
+- **工程化**：`dev / test / typecheck` 加 `predev` 钩子自动 `prisma generate`；登录页测试账号对齐 5 个内置角色（加 `expert` 用于权限矩阵测试）
+- **AI 团队**：初始化 Mavis 团队配置（`.harness/` + `AGENTS.md`），`harness / developer / prisma-expert / backend-expert / ui-expert / code-reviewer` 6 个 rein
+
+### B.4 经验沉淀（v0.5.x 增量）
+
+| 教训 | 适用场景 |
+|---|---|
+| **自动化状态机必须有 system actor** | 任何「无用户触发但需审计留痕」的转换（cron / 定时清理 / 自动状态推进），必须 seed 一个不可登录的占位用户，否则 `actorId` 外键失败 |
+| **`prisma-client` 自动生成不能少** | `dev / test / typecheck / build` 任一阶段必须强制 `prisma generate`，否则手动跑 `tsc --noEmit` 通过但 runtime `PrismaClientInitializationError` |
+| **迁移漂移只能从 git 历史恢复** | 撞 drift 不能 `migrate resolve` 凭空标记——既破坏了生产 schema 合同，也破坏了团队协作；保留 `db-bootstrap.md` 让新人自助恢复 |
+| **状态机是双刃剑** | 上线时容易、自动化规则难——v0.4.0 的客户状态机 5 态 + 4 规则，3 周后整体下线。后续类似功能先做「建议 + 人工确认」通道，再做全自动；不要直接全自动 |
+| **Excel 导出文件名的 UTF-8 兜底** | `Headers` API 拒绝非 ASCII，统一走 `attachmentHeader()` 双形式是 Node Web 标准答案，跨浏览器一致 |
+| **BREAKING 一次性合并** | v0.5.0 客户状态机下线涉及 16 个 commit（schema / lib / server / api / ui / types / tests / docs）一个 PR 合并，避免中间状态让 main 不可用 |
+
+### B.5 v0.5.x 与主文差异点
+
+| 主文章节 | 差异 |
+|---|---|
+| §1.2 技术栈 | 无变化（v0.5.x 未引入新依赖） |
+| §3.3 状态机 | §3.3.2 客户状态机整章作废（v0.5.0 硬删）；其余合同 7→3 / 发票 5 态 / 回款 4 态 / 消息 7 态 仍生效 |
+| §4 实体模型 | `Customer` 表少 3 列（status / lastAutoAppliedAt / lastAutoRule）；`@@index([status])` 移除 |
+| §6 跨模块校验 | R-02 / R-03 / R-13 删除；R-16 仍指向 `lib/status-machine.ts`（4 实体通用抽象） |
+| §5.1 错误码 | `CUSTOMER_STATUS_TRANSITION_INVALID` / `CUSTOMER_AUTO_*` 4 个错误码回收 |
+| §3.2 角色权限 | SALES 现在不会被客户 status 状态过滤（v0.4.0 时的 status 过滤逻辑一并移除） |
 

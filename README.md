@@ -1,8 +1,9 @@
 # 杭州企泰安全科技 业务管理系统 (qt-biz)
 
 > 客户 / 合同 / 开票 / 回款 一体化管理,附件走 MinIO presigned 直传。
-> **当前版本: v0.4.0**(2026-06-28)
+> **当前版本: v0.5.1**(2026-06-29)
 > 详细设计见 [docs/DESIGN-v3.md](docs/DESIGN-v3.md),用户手册见 [docs/USER_MANUAL.md](docs/USER_MANUAL.md)。
+> 2026-06-29 增量同步: v0.5.1 之后的 16 个 commit 已在文末「最近更新」末尾补一节。
 
 ## 目录
 
@@ -397,6 +398,23 @@ xlsx 导出走 `lib/excel.ts` + `exceljs`; 中文文件名通过 `attachmentHead
 
 ## 最近更新
 
+### v0.5.1+ (2026-06-29) 增量小修
+
+> 本节汇总 v0.5.1 之后、HEAD 之前的所有 commit(16 个)。覆盖客户状态机下线后的清理、客户统计区间增强、系统 actor 自动状态机、合同默认负责人、证书页 bug、迁移漂移恢复、AI 团队配置。
+
+- **feat(dashboard)**:统计区间支持月度 / 季度 / 年度切换(`StatisticsRange` 新枚举,顶部 Tab 与 URL `?range=` 同步,后端 `getOverview({ range })` 入参)
+- **refactor(dashboard)**: `customers.newThisMonth` → `newInRange`(语义对齐统计区间,Top 客户与 dashboard 一致)
+- **fix(customer)**:详情页 `select` 移除 v0.5.0 已删的 `status / lastAutoAppliedAt` 字段
+- **fix(seed)**:seed upsert system actor(`id=system`)—— 自动状态机转换需要 `actorId`,否则 `tryAutoComplete` / `tryAutoCloseOnExpiry` 抛外键错
+- **fix(contract)**:`SALES` 创建合同时 `ownerUserId` 默认 = 当前 user,与详情页 `ownerUserId` 一致;补 `tests/unit/server/contract-create.test.ts` 用例
+- **chore(contract)**:合同 Timeline 切 antd 6 API(`TimelineItem dot` → `dot` 接受 ReactNode),失败状态加红 icon
+- **chore(payments)**:清未使用的 `Tag` 导入(antd 6 lint 警告)
+- **fix(certificates)**:到期证书页 `request` 解包错位(`response` 二层包)→ 直接读 `data.items`
+- **chore(db)**:恢复漂移的 3 个迁移文件(从 git 历史找回,不能 `migrate resolve` 凭空标记),加 `docs/db-bootstrap.md` + `prisma db-schema-snapshot.sql` 兜底脚本
+- **chore(deps)**:`dev / test / typecheck` 加 `predev` 钩子自动 `prisma generate`,免手动 build 漏掉 client
+- **feat(dev)**:登录页测试账号对齐 5 个内置角色(原 4 个,加 `expert` 用于权限矩阵测试,不进快速填充卡)
+- **chore(harness)**:初始化 Mavis 团队配置(`.harness/` + `AGENTS.md`),`harness / developer / prisma-expert / backend-expert / ui-expert / code-reviewer` 6 个 rein,详见 [.harness/agent.md](.harness/agent.md)
+
 ### v0.5.1(2026-06-28)Excel 导出文件名国际化 + 合同选择器增强
 
 小版本集中修 8 个 xlsx 导出端点(统计 4 / 合同 / 客户 / 回款 / 开票)的 `Content-Disposition` 中文文件名 + 客户端 `downloadExcel` 解析。涉及 [lib/excel.ts](lib/excel.ts) 新增 `attachmentHeader()`,[app/api/statistics/export/route.ts](app/api/statistics/export/route.ts) 等 8 个导出路由 + [app/api/files/raw/[id]/route.ts](app/api/files/raw/%5Bid%5D/route.ts) 文件下载。
@@ -498,6 +516,8 @@ xlsx 导出走 `lib/excel.ts` + `exceljs`; 中文文件名通过 `attachmentHead
 
 ## 历史里程碑
 
+- **v0.5.1+(2026-06-29)**:统计区间月度/季度/年度切换 + dashboard 客户统计口径重命名 + system actor seed + 合同 owner 默认值 + 证书页 bug + 迁移漂移恢复 + AI 团队配置
+- **v0.5.1(2026-06-29)**:Excel 导出文件名国际化 + 合同选择器显示合同总额
 - **v0.5.0(2026-06-29)**:客户状态机下线(硬删, BREAKING; 5 态/4 规则/撤销横幅 全删; Customer 表无 status)
 - **v0.3.0(2026-06-23/24)**:企业资产库下线 + 统计分析 round-2 收尾 + 合同 7→3 状态机 + 项目/工作流模块删除
 - **v0.2.0(2026-06-22)**:合同/项目收紧 + 业务纯化

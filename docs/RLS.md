@@ -1,9 +1,12 @@
 # Row-Level Security (RLS) 部署说明
 
+> 最近同步：2026-06-29（Project 表 v0.3.0 下线，对应 RLS policy 一并 DROP；当前生效 4 张表）
+
 ## 现状
 
-- **5 张核心表**（Customer / Contract / Project / Invoice / Payment）已配置 RLS policy
-- 迁移文件：`prisma/migrations/20260614_init/migration.sql`
+- **4 张核心表**（Customer / Contract / Invoice / Payment）已配置 RLS policy
+  - Project 表及对应 RLS policy 已于 v0.3.0 (2026-06-23) 随项目模块下线 DROP
+- 迁移文件：`prisma/migrations/20260614_init/migration.sql`（含 4 张表 policy，Project policy 由后续 `20260623_drop_project_and_workflow` 移除）
 - 角色：`qt_app`（应用账户，**BYPASSRLS**）+ `qitai`（超管，迁移用）
 
 ## 设计权衡
@@ -47,7 +50,7 @@ COMMIT;
 ## 完整启用 RLS（可选）
 
 如果决定完全启用 RLS（去掉 BYPASSRLS），需要改造：
-1. 把 5 个 service 的 list / get / update 全部用 `rlsTransaction` 包装
+1. 把 4 个 service 的 list / get / update 全部用 `rlsTransaction` 包装（Project service 已下线，无需改造）
 2. `requireSession` 后立刻知道 user → 注入 rlsTransaction
 3. cron jobs / seed 改用 `bypassRlsContext` 包事务
 
