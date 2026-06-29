@@ -1,9 +1,9 @@
 # 杭州企泰安全科技 业务管理系统 (qt-biz)
 
 > 客户 / 合同 / 开票 / 回款 一体化管理,附件走 MinIO presigned 直传。
-> **当前版本: v0.5.1**(2026-06-29)
+> **当前版本: v0.6.0**(2026-06-29)
 > 详细设计见 [docs/DESIGN-v3.md](docs/DESIGN-v3.md),用户手册见 [docs/USER_MANUAL.md](docs/USER_MANUAL.md)。
-> 2026-06-29 增量同步: v0.5.1 之后的 16 个 commit 已在文末「最近更新」末尾补一节。
+> 2026-06-29 16:40 增量同步: 下午事故复盘 + 运维监控 + 修复 6 个 commit 已补到「最近更新」开头。
 
 ## 目录
 
@@ -398,6 +398,53 @@ xlsx 导出走 `lib/excel.ts` + `exceljs`; 中文文件名通过 `attachmentHead
 
 ## 最近更新
 
+### v0.6.0 (2026-06-29) cron 静默失败 9 个月事故复盘 + 运维监控 + 修复
+
+> 2025-09 ~ 2026-06-28 期间 cron 静默失败 9 个月无人察觉,恢复后 `tryAutoCloseOnOverdue` 批量强关 209 个 overdue_terminated 合同 + 31 个 admin 误关 + 2 个 completed 异常 = 共 242 个 CLOSED 合同 269 万应收被锁死。本次发版以"修复 + 防再发"为核心。
+
+**修复 (一) reopen + force 旁路** (`4502f182`)：
+
+- **feat(contract)**:新增 `POST /api/contracts/[id]/reopen` 接口, admin 专属, CLOSED → ACTIVE。4 档 `reason` 枚举 (`recovered_from_fake_close` / `data_correction` / `reopen_for_payment` / `other`, `other` 必填 `reasonNote`), 完整事务 + `ContractReviewLog` (`action=MANUAL_REOPEN`) + audit log + `reviewComment` 标记 `reopened:<reason>` 便于追溯
+- **feat(payment)**: `createPayment` 加 `force: true` / `forceReason` 旁路, 仅 ADMIN 可用, 仅 CLOSED 合同允许, 业务校验保留 (金额/发票), `remark` 自动追加 `[FORCE_BACKFILL:<reason>]` 审计标记
+- **feat(api)**: `POST /api/payments` body 加 `force + forceReason` overlay (不进 `PaymentCreateInput` 主 schema, 避免污染前端类型)
+- **docs**: postmortem `docs/cron-silent-failure-postmortem.md` (完整复盘 + 鱼骨图 + 修复时间线) + `docs/contract-fake-close-recovery.md` (修复方案 + 选择指南) + `scripts/migrate/contract-fake-close-recovery.{sql,ts}` (事务 + 备份 + 审计 + 回滚 SQL)
+- **部署记录**: 2026-06-29 已执行恢复脚本, 242 个合同已恢复 ACTIVE, 财务可补录回款
+
+**防再发 (二) cron 健康监控** (`af734c28`)：
+
+- **feat(ops)**: `scripts/ops/cron-healthcheck.sh` (183 行) — 每小时第 5 分钟跑的自检脚本, 4 维度检查 (crond 服务 / qt-cron.log 最近 2h 写入 / qt-app 3000 端口 / PostgreSQL 容器 healthy), 失败写日志 + 可选飞书 webhook 告警
+- **chore(ops)**: `ops/qt-jobs.cron` 加 `5 * * * * cron-healthcheck.sh` 条目 (跟 `0 * * * * run-all` 错开, 防止互相干扰)
+- **feat(deploy)**: `scripts/prod/deploy.sh` 加 deploy 后自检 — `/etc/cron.d/qt-jobs` 必须含 `source .env` + 立即触发 `run-all` 验证 token + 跑一次 `cron-healthcheck.sh` (防 deploy 静默 break cron)
+- **feat(events)**: `server/events/bus.ts` `CONTRACT_EXPIRED_UNPAID` 文案分档 — `daysUntilForceClose` ∈ {7, 3, 1} 红色醒目 `⚠️【强关预警】` + 立即处理指引; = 0 时 `⚠️ 今天将被系统强关`; 其它普通 `还剩 N 天`
+- **docs**: `docs/USER_MANUAL.md` 新增 §16 运维小贴士 (30 秒自检 / 健康监控 / 强关文案规则 / deploy 报错排查 / 应急处理入口)
+
+**选择指南 (三) postmortem 补 reopen vs force** (`c959b300`)：
+
+- **docs(postmortem)**: `docs/contract-fake-close-recovery.md` 新增 §4.4 / §4.5 — 4 档典型场景对应推荐路径 (历史批量 → SQL / 单合同误关 → reopen / CLOSED 补录 → force / DRAFT 拒绝), 关键提醒 (reopen 后 cron 仍可能再次强关, 正确流程是 reopen → 立即补录 → tryAutoComplete), 接口 curl 示例
+
+**审查修复 (四)** (`dd3cfa29`)：
+
+- **fix(contract)**: 合同操作日志 Timeline SUCCESS 补 `CheckCircleFilled` (`var(--ant-color-success)`) icon, 跟 FAILURE 的 `CloseCircleFilled` 对称
+- **chore(contract)**: `reopen` route 文件末尾补 newline (diff 标 `\ No newline at end of file`, eslint 警告)
+- **fix(statistics)**: by-region 柱状图 `groupedChartData` 加 `fullName` 字段, tooltip.title 显示完整"区 + 街道"组合 (解决跨区同名镇街在 X 轴重复条目难区分)
+
+**代码清理 (五)** (`07324d63`)：
+
+- **refactor(lib)**: 抽 `serviceTypeLabel(value: unknown): string` helper (lib/enum-maps.ts), 替换 5 处散落的 `SERVICE_TYPE_MAP[v] ?? v ?? "—"` 写法 (客户详情合同 tab / 付款详情 / 合同详情 / xlsx 导出 / PDF 导出), 客户端/服务端通用, 未来新增 serviceType code 不会漏改
+
+**质量基线**：typecheck 0 错误, lint 0 warning, vitest 56 文件 / 452 测试全过, deploy smoke test 全绿, post-deploy cron-healthcheck 5 维度全 OK
+
+**部署期特别提醒**：本次 deploy.sh 已自动跑 cron 自检, 但 `cron-healthcheck.sh` 是新加脚本, 服务器**首次安装**需要手工执行：
+
+```bash
+sudo cp /opt/qt/ops/qt-jobs.cron /etc/cron.d/qt-jobs
+sudo chmod 644 /etc/cron.d/qt-jobs
+sudo systemctl restart crond
+/opt/qt/scripts/ops/cron-healthcheck.sh --verbose  # 验证
+```
+
+后续 deploy 会自动验证 `cron-healthcheck.sh --once`, 不会再"装完忘装"。
+
 ### v0.5.1+ (2026-06-29) 增量小修
 
 > 本节汇总 v0.5.1 之后、HEAD 之前的所有 commit(16 个)。覆盖客户状态机下线后的清理、客户统计区间增强、系统 actor 自动状态机、合同默认负责人、证书页 bug、迁移漂移恢复、AI 团队配置。
@@ -516,7 +563,8 @@ xlsx 导出走 `lib/excel.ts` + `exceljs`; 中文文件名通过 `attachmentHead
 
 ## 历史里程碑
 
-- **v0.5.1+(2026-06-29)**:统计区间月度/季度/年度切换 + dashboard 客户统计口径重命名 + system actor seed + 合同 owner 默认值 + 证书页 bug + 迁移漂移恢复 + AI 团队配置
+- **v0.6.0(2026-06-29)**:cron 静默失败 9 个月事故复盘 (242 个合同 269 万应收恢复) + reopen API + force 旁路 + cron-healthcheck 自检 + 强关 7/3/1 醒目文案 + postmortem reopen vs force 业务选择指南 + Timeline icon 对称 + serviceTypeLabel helper + by-region Tooltip
+- **v0.5.1+(2026-06-29)**:统计区间月度/季度/年度切换 + dashboard 客户统计口径重命名 + system actor seed + 合同 owner 默认值 + 证书页 bug + 迁移漂移恢复 + AI 团队配置 + 清理 18 个孤儿脚本/lib 文件
 - **v0.5.1(2026-06-29)**:Excel 导出文件名国际化 + 合同选择器显示合同总额
 - **v0.5.0(2026-06-29)**:客户状态机下线(硬删, BREAKING; 5 态/4 规则/撤销横幅 全删; Customer 表无 status)
 - **v0.3.0(2026-06-23/24)**:企业资产库下线 + 统计分析 round-2 收尾 + 合同 7→3 状态机 + 项目/工作流模块删除
