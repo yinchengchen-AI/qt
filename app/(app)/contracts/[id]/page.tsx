@@ -23,7 +23,7 @@ import { PreviewableProFormUploadButton as UploadButton } from "@/components/fil
 import { proCustomRequest } from "@/lib/upload-client";
 import { useDict } from "@/lib/dict-client";
 import { useUserName } from "@/lib/user-lookup";
-import { PAYMENT_METHOD_MAP, SERVICE_TYPE_MAP, BILLING_STATUS_MAP, PAYMENT_PROGRESS_STATUS_MAP } from "@/lib/enum-maps";
+import { PAYMENT_METHOD_MAP, BILLING_STATUS_MAP, PAYMENT_PROGRESS_STATUS_MAP, serviceTypeLabel } from "@/lib/enum-maps";
 import { useResponsive } from "@/lib/use-breakpoint";
 import { useT } from "@/lib/i18n";
 import { OperationTimeline } from "@/components/contract/operation-timeline";
@@ -416,7 +416,7 @@ const handleDelete = () => {
             { title: "标题", dataIndex: "title" },
             { title: "客户", dataIndex: "customerName" },
             { title: "负责人", dataIndex: "ownerUserId", render: (_, r) => r.ownerName || "—" },
-            { title: "服务类型", dataIndex: "serviceType", render: (v) => SERVICE_TYPE_MAP[v as string] ?? v },
+            { title: "服务类型", dataIndex: "serviceType", render: (v: unknown) => serviceTypeLabel(v) },
             { title: "签订日", dataIndex: "signDate", valueType: "date", render: (_, r) => <DateTimeCell value={r.signDate as string} /> },
             { title: "起期", dataIndex: "startDate", valueType: "date", render: (_, r) => <DateTimeCell value={r.startDate as string} /> },
             { title: "止期", dataIndex: "endDate", valueType: "date", render: (_, r) => <DateTimeCell value={r.endDate as string} /> },

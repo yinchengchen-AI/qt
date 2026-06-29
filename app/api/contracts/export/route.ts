@@ -8,7 +8,7 @@ import { listContracts } from "@/server/services/contract";
 import { exportToXlsx, exportMaxRows, attachmentHeader } from "@/lib/excel";
 import { prisma } from "@/lib/prisma";
 import {
-  SERVICE_TYPE_MAP,
+  serviceTypeLabel,
   PAYMENT_METHOD_MAP,
   CONTRACT_STATUS_MAP,
   BILLING_STATUS_MAP,
@@ -62,8 +62,7 @@ export async function GET(req: Request) {
             header: "服务类型",
             key: "serviceType",
             width: 14,
-            formatter: (v) =>
-              v ? (SERVICE_TYPE_MAP[v as string] ?? (v as string)) : "",
+            formatter: (v) => serviceTypeLabel(v) || "",
           },
           {
             header: "签订人",

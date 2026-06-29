@@ -151,6 +151,21 @@ export const PAYMENT_STATUS_MAP: Record<string, string> = {
 export const SERVICE_TYPE_OPTIONS: { value: string; label: string }[] =
   Object.entries(SERVICE_TYPE_MAP).map(([value, label]) => ({ value, label }));
 
+/**
+ * 服务类型 code → 中文标签(单一来源, 客户端/服务端通用)
+ *
+ * 替换各页面散落的 `SERVICE_TYPE_MAP[v] ?? v ?? "—"` 写法,
+ * 避免下次新增 serviceType code 时某处忘记加 SERVICE_TYPE_MAP 的中文化。
+ *
+ * @param value 服务类型 code (unknown 接收, 非字符串时返回 "—")
+ * @returns 中文标签; 未知 code 原样返回; null/undefined/空 返回 "—"
+ */
+export function serviceTypeLabel(value: unknown): string {
+  if (value == null || value === "") return "—";
+  const code = String(value);
+  return SERVICE_TYPE_MAP[code] ?? code;
+}
+
 
 /* === 合同开票状态(列表/详情/导出共用中文标签) === */
 export const BILLING_STATUS_MAP: Record<string, string> = {

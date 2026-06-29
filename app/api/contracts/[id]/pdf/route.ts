@@ -6,7 +6,7 @@ import { requirePermission, RESOURCE, ACTION } from "@/lib/permissions";
 import { getContract, getContractOverview } from "@/server/services/contract";
 import { prisma } from "@/lib/prisma";
 import { renderPrintHtml, type PrintDoc } from "@/lib/print-html";
-import { SERVICE_TYPE_MAP, PAYMENT_METHOD_MAP, CONTRACT_STATUS_MAP, INVOICE_STATUS_MAP, PAYMENT_STATUS_MAP, REVIEW_ACTION_MAP } from "@/lib/enum-maps";
+import { serviceTypeLabel, PAYMENT_METHOD_MAP, CONTRACT_STATUS_MAP, INVOICE_STATUS_MAP, PAYMENT_STATUS_MAP, REVIEW_ACTION_MAP } from "@/lib/enum-maps";
 
 const fmtDate = (s: string | Date | null | undefined) =>
   s ? new Date(s).toLocaleDateString("zh-CN") : "—";
@@ -81,7 +81,7 @@ export async function GET(
           { label: "客户", value: c.customerName },
           {
             label: "服务类型",
-            value: SERVICE_TYPE_MAP[c.serviceType] ?? c.serviceType,
+            value: serviceTypeLabel(c.serviceType),
           },
           {
             label: "签订人",
