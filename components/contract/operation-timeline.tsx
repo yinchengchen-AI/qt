@@ -14,7 +14,7 @@ import {
   Button,
   Alert,
 } from "antd";
-import { RobotOutlined, ReloadOutlined } from "@ant-design/icons";
+import { RobotOutlined, ReloadOutlined, CloseCircleFilled } from "@ant-design/icons";
 import useSWRInfinite from "swr/infinite";
 import { DateTimeCell } from "@/components/table-cells";
 import { StatusTag } from "@/components/status-tag";
@@ -211,8 +211,12 @@ export function OperationTimeline({ contractId }: Props) {
           <Timeline
             items={g.items.map((l) => ({
               color: l.status === "SUCCESS" ? "green" : "red",
-              dot: l.status === "FAILURE" ? undefined : undefined,
-              children: <TimelineItem log={l} onOpen={setDrawerId} dense={isMobile} />,
+              // antd 6: dot 已 deprecated, 改用 icon; 失败状态用 close 圆点
+              icon:
+                l.status === "FAILURE" ? (
+                  <CloseCircleFilled style={{ color: "var(--ant-color-error)" }} />
+                ) : undefined,
+              content: <TimelineItem log={l} onOpen={setDrawerId} dense={isMobile} />,
             }))}
           />
         </div>
