@@ -16,6 +16,7 @@ import { useDict } from "@/lib/dict-client";
 import { CurrencyCell, DateCell, DateTimeCell } from "@/components/table-cells";
 import { openPrintWindow } from "@/lib/print-client";
 import { useResponsive } from "@/lib/use-breakpoint";
+import { SERVICE_TYPE_MAP } from "@/lib/enum-maps";
 
 type Customer = {
   id: string; code: string; name: string; shortName: string | null;
@@ -140,7 +141,7 @@ export default function CustomerDetailPage() {
             columns={[
               { title: "合同号", dataIndex: "contractNo", width: 180 },
               { title: "标题", dataIndex: "title" },
-              { title: "服务类型", dataIndex: "serviceType", width: 100 },
+              { title: "服务类型", dataIndex: "serviceType", width: 120, render: (v: unknown) => SERVICE_TYPE_MAP[v as string] ?? (v as string) ?? "—" },
               { title: "签订日", dataIndex: "signDate", width: 120, render: (_, r) => <DateCell value={r.signDate as string} /> },
               { title: "总额", dataIndex: "totalAmount", width: 140, render: (_, r) => <CurrencyCell value={r.totalAmount as string} /> },
               { title: "状态", dataIndex: "status", width: 100, render: (_, r) => <StatusTag status={r.status as string} domain="contract" /> }
