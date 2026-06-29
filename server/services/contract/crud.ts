@@ -175,9 +175,14 @@ export async function createContract(user: SessionUser, input: ContractCreateInp
   // 校验签订人:前端不传时回退为当前 user;若显式传入,确保目标用户存在且未停用
   const signerId = input.signerId ?? user.id;
   await assertActiveUser(signerId, "签订人");
-  // 校验负责人:前端不传时回退为客户业务负责人(customer.ownerUserId);
-  // 显式传入时同样要目标用户 ACTIVE, 防止前端传错 id 静默落到一个停用员工头上.
-  const ownerUserId = input.ownerUserId ?? customer.ownerUserId;
+  // 校验负责人:
+  //   - 前端显式传入 → 用前端值,但要目标用户 ACTIVE (防止传错 id 落到停用员工头上)
+  //   - 前端未传 → SALES/EXPERT 等"自然 owner = 创建人"角色: 默认 = 当前 user
+  //                  ADMIN: 默认沿用客户业务负责人 (customer.ownerUserId), 保留历史语义
+  //   之前的"所有角色都沿用 customer.ownerUserId"会让 SALES-B 在别人的客户上建合同时,
+  //   合同 owner 自动变成 SALES-A, 违反"合同 owner = 创建人"的直觉.
+  const ownerUserId = input.ownerUserId
+    ?? (user.roleCode === "ADMIN" ? customer.ownerUserId : user.id);
   await assertActiveUser(ownerUserId, "负责人");
   assertDateOrder(input.startDate, input.endDate);
   // 合同编号唯一性:DB 上是部分唯一索引 WHERE "deletedAt" IS NULL, 软删合同不阻塞同号新建.
