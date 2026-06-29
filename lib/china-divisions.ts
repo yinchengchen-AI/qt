@@ -1,5 +1,12 @@
 // Auto-generated. 杭州市区划已更新为最新数据（2024），含镇/街级。
 // Province → city → district → town/street tree for antd Cascader.
+//
+// ⚠️ 本文件由 `pnpm divisions`（scripts/shared/generate-divisions.cjs）自动生成，
+//   平时不要手改。区划调整（如杭州新增/撤销区）时：
+//     1. 升级 `china-area-data` 依赖
+//     2. 跑 `pnpm divisions` 重生成此文件
+//     3. 提交新的 lib/china-divisions.ts
+//   直接编辑会被下次 `pnpm divisions` 覆盖。
 
 export type DivisionNode = {
   value: string;
