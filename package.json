@@ -5,6 +5,9 @@
   "type": "module",
   "scripts": {
     "prebuild": "prisma generate",
+    "predev": "prisma generate",
+    "pretest": "prisma generate",
+    "pretypecheck": "prisma generate",
     "build": "next build",
     "create-admin": "tsx scripts/shared/create-admin.ts",
     "dev": "next dev",
