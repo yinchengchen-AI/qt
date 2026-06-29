@@ -14,7 +14,7 @@ import {
   Button,
   Alert,
 } from "antd";
-import { RobotOutlined, ReloadOutlined, CloseCircleFilled } from "@ant-design/icons";
+import { RobotOutlined, ReloadOutlined, CloseCircleFilled, CheckCircleFilled } from "@ant-design/icons";
 import useSWRInfinite from "swr/infinite";
 import { DateTimeCell } from "@/components/table-cells";
 import { StatusTag } from "@/components/status-tag";
@@ -211,11 +211,13 @@ export function OperationTimeline({ contractId }: Props) {
           <Timeline
             items={g.items.map((l) => ({
               color: l.status === "SUCCESS" ? "green" : "red",
-              // antd 6: dot 已 deprecated, 改用 icon; 失败状态用 close 圆点
+              // antd 6: dot 已 deprecated, 改用 icon; 成功/失败都显式 icon 保持对称
               icon:
                 l.status === "FAILURE" ? (
                   <CloseCircleFilled style={{ color: "var(--ant-color-error)" }} />
-                ) : undefined,
+                ) : (
+                  <CheckCircleFilled style={{ color: "var(--ant-color-success)" }} />
+                ),
               content: <TimelineItem log={l} onOpen={setDrawerId} dense={isMobile} />,
             }))}
           />

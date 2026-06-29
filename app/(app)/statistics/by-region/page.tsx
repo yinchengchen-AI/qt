@@ -105,12 +105,16 @@ export default function ByRegionPage() {
   ];
 
   // 分组柱状图数据:每个区域 2 条记录(合同额 / 已回款),用 colorField 区分颜色
-  // 横坐标只显示街道名(避免 "南海区 桂城街道" 太长);fallback 到区名 / "未填写"
-  // 注意:跨区同名镇街会在 X 轴上出现重复条目(如"桂城街道"出现两次),这是用户接受的精简口径
+  // X 轴短标签: 街道 > 区 > "未填写" (避免 "南海区 桂城街道" 太长)
+  // Tooltip 显示完整"区+街道"组合, 解决跨区同名镇街(如下城 桂城 vs 南海 桂城)在 X 轴重复条目难区分的问题
   const chartLabelOf = (r: RegionStatRow) => r.town || r.district || "未填写";
+  const tooltipLabelOf = (r: RegionStatRow) => {
+    if (r.town && r.district && r.town !== r.district) return `${r.district} ${r.town}`;
+    return r.district || r.town || "未填写";
+  };
   const groupedChartData = visibleRows.flatMap((r) => [
-    { name: chartLabelOf(r), value: r.contractAmount, type: "合同额" },
-    { name: chartLabelOf(r), value: r.paymentAmount, type: "已回款" }
+    { name: chartLabelOf(r), value: r.contractAmount, type: "合同额", fullName: tooltipLabelOf(r) },
+    { name: chartLabelOf(r), value: r.paymentAmount, type: "已回款", fullName: tooltipLabelOf(r) }
   ]);
 
   return (
@@ -158,6 +162,9 @@ export default function ByRegionPage() {
                     legend={{ color: { position: "top", layout: { justifyContent: "flex-end" } } }}
                     label={{ text: (d: Record<string, unknown>) => formatCompact(d.value as number), style: { fontSize: 10 } }}
                     xAxis={{ label: { autoRotate: true, autoHide: false } }}
+                    tooltip={{
+                      title: (d: Record<string, unknown>) => (d.fullName as string) ?? (d.name as string),
+                    }}
                   />
                 ) : <EmptyState empty title="暂无区域数据" description="当前时间范围内没有任何区域有合同、开票或回款" height={chartHeight} />}
               </ProCard>
