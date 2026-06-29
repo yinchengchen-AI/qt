@@ -74,15 +74,40 @@ export async function getPayment(user: SessionUser, id: string) {
   return p;
 }
 
-export async function createPayment(user: SessionUser, input: PaymentCreateInput) {
+export async function createPayment(
+  user: SessionUser,
+  input: PaymentCreateInput,
+  options?: { force?: boolean; forceReason?: string },
+) {
   requirePermission(user.roleCode, RESOURCE.PAYMENT, ACTION.CREATE);
+  // admin force 旁路: 仅 ADMIN 可用, 用于 CLOSED 合同上补录回款
+  // (典型场景: cron 误关 / admin 误关后, 重开+补录两步走)
+  if (options?.force && user.roleCode !== "ADMIN") {
+    throw new ApiError(ERROR_CODES.FORBIDDEN, "仅管理员可强制录回款（force）", 403);
+  }
+  if (options?.force === true && !options.forceReason?.trim()) {
+    throw new ApiError(ERROR_CODES.VALIDATION_FAILED, "force 模式下必须填写 forceReason 说明", 400);
+  }
+
   return prisma.$transaction(async (tx) => {
     const contract = await tx.contract.findFirst({
       where: { id: input.contractId, deletedAt: null, ...ownerEq(user) }
     });
     if (!contract) throw new ApiError(ERROR_CODES.NOT_FOUND, "合同不存在", 404);
     if (contract.status !== "ACTIVE") {
-      throw new ApiError(ERROR_CODES.VALIDATION_FAILED, `合同 ${contract.contractNo} 当前状态 ${contract.status}，不可登记回款（须 ACTIVE）`, 422);
+      // 旁路: admin + force + CLOSED 合同允许登记回款
+      // (其它状态如 DRAFT 不允许, 防止误操作)
+      const canBypass =
+        options?.force === true &&
+        user.roleCode === "ADMIN" &&
+        contract.status === "CLOSED";
+      if (!canBypass) {
+        throw new ApiError(
+          ERROR_CODES.VALIDATION_FAILED,
+          `合同 ${contract.contractNo} 当前状态 ${contract.status}，不可登记回款（须 ACTIVE${options?.force ? "，或 admin force + CLOSED" : ""}）`,
+          422,
+        );
+      }
     }
     let inv: Awaited<ReturnType<typeof tx.invoice.findFirst>> = null;
     if (input.invoiceId) {
@@ -96,6 +121,7 @@ export async function createPayment(user: SessionUser, input: PaymentCreateInput
     }
     const paymentNo = await nextBusinessNo("PAYMENT");
     // 登记阶段即做金额前置校验, 避免"登记通过、确认时才报超额"
+    // 即使 force 模式也校验: 防止 force 旁路下被滥用为超额录入
     const TOL = MONEY_TOLERANCE;
     const inputAmt = new Prisma.Decimal(input.amount.toString());
     if (input.invoiceId && inv) {
@@ -118,6 +144,12 @@ export async function createPayment(user: SessionUser, input: PaymentCreateInput
     if (sumCAmt.plus(inputAmt).greaterThan(contractAmt.plus(TOL))) {
       throw new ApiError(ERROR_CODES.PAYMENT_OVER_CONTRACT, "该合同累计回款将超过合同总额", 422);
     }
+    // force 模式下追加审计标记到 remark, 方便后续筛查所有 force 录入的回款
+    const baseRemark = input.remark ?? "";
+    const finalRemark =
+      options?.force === true
+        ? `[FORCE_BACKFILL:${options.forceReason?.trim().slice(0, 200) ?? "n/a"}] ${baseRemark}`.trim()
+        : baseRemark || null;
     return tx.payment.create({
       data: {
         paymentNo,
@@ -129,7 +161,7 @@ export async function createPayment(user: SessionUser, input: PaymentCreateInput
         method: input.method,
         bankRefNo: input.bankRefNo ?? null,
         bankName: input.bankName ?? null,
-        remark: input.remark ?? null,
+        remark: finalRemark,
         status: "PLANNED",
         recorderUserId: user.id,
         createdById: user.id,

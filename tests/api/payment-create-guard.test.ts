@@ -209,3 +209,96 @@ describe("createPayment 金额前置校验", () => {
     ).rejects.toMatchObject({ errorCode: ERROR_CODES.PAYMENT_OVER_CONTRACT });
   }));
 });
+
+// =====================================================
+// admin force 旁路 (P2-3): 用于 CLOSED 合同上补录回款
+//   - 触发场景: cron 误关 / admin 误关后, 通过 reopen+force 补录
+//   - 安全约束: 仅 ADMIN 可用; force 模式下必须填 forceReason
+//   - 业务校验不变: 金额仍需 ≤ 发票金额 / 合同总额
+// =====================================================
+describe("createPayment admin force 旁路 (P2-3)", () => {
+  it("ADMIN + force + CLOSED 合同 → 成功, remark 含 [FORCE_BACKFILL] 标记", guard(async () => {
+    const c = await mkContract("1000.00", "FORCE-OK", "CLOSED");
+    const p = await createPayment(
+      buildAdmin(),
+      { contractId: c.id, amount: 500, receivedAt: new Date().toISOString(), method: "BANK_TRANSFER", remark: "客户补打款" },
+      { force: true, forceReason: "cron 误关恢复后补录" },
+    );
+    expect(p.contractId).toBe(c.id);
+    expect(p.status).toBe("PLANNED");
+    expect(p.remark).toContain("[FORCE_BACKFILL:cron 误关恢复后补录]");
+    expect(p.remark).toContain("客户补打款");
+    createdPaymentIds.push(p.id);
+  }));
+
+  it("ADMIN + force + ACTIVE 合同 → 成功 (force 不影响 ACTIVE 路径)", guard(async () => {
+    const c = await mkContract("1000.00", "FORCE-ACTIVE", "ACTIVE");
+    const p = await createPayment(
+      buildAdmin(),
+      { contractId: c.id, amount: 200, receivedAt: new Date().toISOString(), method: "BANK_TRANSFER" },
+      { force: true, forceReason: "test" },
+    );
+    expect(p.contractId).toBe(c.id);
+    // 即使 force=true 也加 FORCE_BACKFILL 标记 (审计可追溯: 当时操作是否带 force)
+    expect(p.remark ?? "").toContain("[FORCE_BACKFILL:test]");
+    createdPaymentIds.push(p.id);
+  }));
+
+  it("FINANCE + force → 403 (非 ADMIN 拒绝 force)", guard(async () => {
+    const c = await mkContract("1000.00", "FORCE-FIN", "CLOSED");
+    await expect(
+      createPayment(
+        buildFinance(),
+        { contractId: c.id, amount: 100, receivedAt: new Date().toISOString(), method: "BANK_TRANSFER" },
+        { force: true, forceReason: "test" },
+      ),
+    ).rejects.toMatchObject({ errorCode: ERROR_CODES.FORBIDDEN });
+  }));
+
+  it("ADMIN + force + 不填 forceReason → 400", guard(async () => {
+    const c = await mkContract("1000.00", "FORCE-NONOTE", "CLOSED");
+    await expect(
+      createPayment(
+        buildAdmin(),
+        { contractId: c.id, amount: 100, receivedAt: new Date().toISOString(), method: "BANK_TRANSFER" },
+        { force: true },
+      ),
+    ).rejects.toMatchObject({ errorCode: ERROR_CODES.VALIDATION_FAILED });
+  }));
+
+  it("ADMIN + force + DRAFT 合同 → 拒绝 (DRAFT 不在 force 旁路白名单)", guard(async () => {
+    const c = await mkContract("1000.00", "FORCE-DRAFT", "DRAFT");
+    await expect(
+      createPayment(
+        buildAdmin(),
+        { contractId: c.id, amount: 100, receivedAt: new Date().toISOString(), method: "BANK_TRANSFER" },
+        { force: true, forceReason: "test" },
+      ),
+    ).rejects.toMatchObject({ errorCode: ERROR_CODES.VALIDATION_FAILED });
+  }));
+
+  it("ADMIN + force + 超合同总额 → 仍拒 (force 不绕过金额校验)", guard(async () => {
+    const c = await mkContract("50.00", "FORCE-OVER", "CLOSED");
+    await expect(
+      createPayment(
+        buildAdmin(),
+        { contractId: c.id, amount: 60, receivedAt: new Date().toISOString(), method: "BANK_TRANSFER" },
+        { force: true, forceReason: "test" },
+      ),
+    ).rejects.toMatchObject({ errorCode: ERROR_CODES.PAYMENT_OVER_CONTRACT });
+  }));
+
+  it("ADMIN + force + 关联 VOIDED 发票 → 仍拒 (force 不绕过发票状态校验)", guard(async () => {
+    // 合同必须 ACTIVE 才能开票, 但 force 旁路不绕过发票 ISSUED 校验
+    const c = await mkContract("1000.00", "FORCE-INVVOID", "ACTIVE");
+    const inv = await mkInvoice(c.id, 50, "VOID2", true);
+    await invoiceAction(buildFinance(), inv.id, { action: "void", reason: "测试作废" });
+    await expect(
+      createPayment(
+        buildAdmin(),
+        { contractId: c.id, invoiceId: inv.id, amount: 30, receivedAt: new Date().toISOString(), method: "BANK_TRANSFER" },
+        { force: true, forceReason: "test" },
+      ),
+    ).rejects.toMatchObject({ errorCode: ERROR_CODES.VALIDATION_FAILED });
+  }));
+});

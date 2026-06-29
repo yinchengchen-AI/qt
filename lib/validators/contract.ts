@@ -69,6 +69,22 @@ export const reviewActionSchema = z.object({
   comment: z.string().max(500).optional()
 });
 
+/**
+ * 合同 reopen (admin 重新打开已完结合同) 请求体.
+ * 跟 server/services/contract/reopen.ts 的 ContractReopenReason 保持同步.
+ * reason=other 时必填 reasonNote, 在 service 层校验.
+ */
+export const contractReopenSchema = z.object({
+  reason: z.enum([
+    "recovered_from_fake_close",
+    "data_correction",
+    "reopen_for_payment",
+    "other",
+  ]),
+  reasonNote: z.string().max(500).optional(),
+});
+export type ContractReopenInput = z.infer<typeof contractReopenSchema>;
+
 export type ContractCreateInput = z.infer<typeof contractCreateSchema>;
 export type ContractUpdateInput = z.infer<typeof contractUpdateSchema>;
 // 旧: 合同结构化交付物条目; 现已下线, 类型保留仅作占位以避免老 import 编译报错
