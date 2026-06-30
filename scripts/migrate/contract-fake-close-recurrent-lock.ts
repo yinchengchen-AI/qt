@@ -174,24 +174,26 @@ async function main() {
 }
 
 async function findRecurrentClosedIds(prisma: PrismaClient): Promise<string[]> {
-  // 用 6/29 那次的备份表作为白名单来源 (Contract_fake_close_recovery_20260629)
+  // 用 6/29 那次的备份表作为白名单来源
   // 因为 cron 的 tryAutoCloseOnOverdue 会把 reviewComment 覆盖成 'overdue_terminated',
   // 不能直接靠 reviewComment='recovered_from_fake_close' 匹配.
-  const BACKUP_20260629 = "Contract_fake_close_recovery_20260629";
+  // 注意: pg_tables 里存的 tablename 是小写 (Postgres 把未加引号的标识符折叠成小写),
+  //       原 6/29 脚本 CREATE TABLE 没加引号, 所以实际表名是全小写.
+  const BACKUP_TABLE = "contract_fake_close_recovery_20260629";
   const backupExists = await prisma.$queryRawUnsafe<Array<{ exists: boolean }>>(
     `SELECT EXISTS (SELECT 1 FROM pg_tables WHERE tablename = $1) AS exists`,
-    BACKUP_20260629
+    BACKUP_TABLE
   );
   if (!backupExists[0]?.exists) {
     throw new Error(
-      `备份表 ${BACKUP_20260629} 不存在, 无法确认 6/29 那批 242 个合同的 ID. 请人工核对目标合同列表`
+      `备份表 ${BACKUP_TABLE} 不存在, 无法确认 6/29 那批 242 个合同的 ID. 请人工核对目标合同列表`
     );
   }
 
   const rows = await prisma.$queryRaw<{ id: string }[]>`
     SELECT c.id
     FROM "Contract" c
-    INNER JOIN ${Prisma.raw(BACKUP_20260629)} b ON b.id = c.id
+    INNER JOIN ${Prisma.raw(BACKUP_TABLE)} b ON b.id = c.id
     LEFT JOIN (
       SELECT "contractId", SUM(amount) AS paid
       FROM "Payment" p
