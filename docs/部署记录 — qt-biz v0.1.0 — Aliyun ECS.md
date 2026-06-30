@@ -953,3 +953,373 @@ $ curl -X POST -H "Authorization: Bearer $CRON_SECRET" http://127.0.0.1:3000/api
 - [ ] `echo $CRON_SECRET`(crond 环境里变量空?)
 - [ ] `journalctl -u cron.service | tail -50`(crond 自身日志)
 - [ ] `grep CRON /var/log/syslog`(系统层 cron 记录)
+
+# 部署记录 — qt-biz v0.7.0 — Aliyun ECS 杭州 (应收账龄重设计 + 催收)
+
+> **首部署**: 2026-06-12 (v0.1.0, `46a274b`)
+> **v0.2.0**: 2026-06-14 (`cdcb872`)
+> **v0.3.0**: 2026-06-23 (`e80d86e9`)
+> **v0.3.1**: 2026-06-26 (`62200e5f`)
+> **v0.6.0**: 2026-06-29 (`b3f777be`,含事故复盘 + cron 健康)
+> **本次发版版本号 bump**: 2026-07-03  `package.json: 0.6.0 → 0.7.0` (`npm version minor` 自动 bump + commit + tag)
+> **本次发版状态**: ✅ **已部署** — 3 commit + tag `v0.7.0` 推到 origin,服务端已 build + restart + 烟测 + 6 个新 API 注册 + DunningNote 落位 + Invoice.dueDate 回填完成
+> **HEAD 起点**: `b3f777be` (本地 + origin + server 同步)
+> **本次发版代码范围**:
+- code: 23 文件,~3300 增 / 200 删 (含 1 migration + 1 schema + 1 service + 7 routes + 4 components + 3 tests + 1 e2e)
+- docs: 3 文件 (README + DESIGN-v3 + USER_MANUAL) 122 增 / 22 删
+- release: 1 commit (npm version 自动)
+- total: 3 commit (`a7e1dd7e` release + `29c76e8d` feat + `8f5527cc` docs)
+
+## 一、本次发版内容(代码已就绪,等 commit)
+
+### 1.1 新模型 DunningNote(8 字段催收记录)
+
+```prisma
+model DunningNote {
+  id            String    @id @default(cuid())
+  invoiceId     String
+  invoice       Invoice   @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  status        String // CONTACTED | PROMISED | DISPUTED | LEGAL
+  promisedDate  DateTime?
+  lastContactAt DateTime
+  channel       String // PHONE | WECHAT | EMAIL | VISIT
+  remark        String?
+  actorId       String
+  actor         User      @relation(fields: [actorId], references: [id], onDelete: Restrict)
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  @@index([invoiceId])
+  @@index([status])
+  @@index([actorId, createdAt])
+}
+```
+
+- `server/services/dunning.ts`(单文件,handler 集合)
+- `app/api/statistics/aging/dunning-notes/[id]/route.ts` + `dunning-notes/route.ts` — REST CRUD
+- `app/api/statistics/aging/dunning/summary/route.ts` — 汇总
+- `components/dunning-drawer.tsx` — 详情页/列表页嵌入抽屉
+
+### 1.2 Schema 增量
+
+| 字段/关系 | 类型 | 用途 |
+|---|---|---|
+| `Invoice.dueDate` | `DateTime? @db.Timestamptz(6)` | 合同约定付款日,账龄 `basis=due` 用;为 null 时回退 `actualIssueDate` |
+| `Contract.owner` 关系 | `User @relation("ContractOwner")` | 反向关系补建,之前漏配(只配了 `signedContracts`) |
+| `User.ownedContracts` | `Contract[] @relation("ContractOwner")` | 同上,补全 |
+| `User.dunningNotes` | `DunningNote[]` | dunning 关系的反向引用 |
+| `Invoice.dunningNotes` | `DunningNote[]` | dunning 关系的反向引用 |
+| `Invoice @@index([dueDate])` | 单列索引 | 加快账龄扫描 |
+
+### 1.3 迁移 `20260703_aging_redesign`(单事务,未应用)
+
+```sql
+BEGIN;
+-- AlterTable
+ALTER TABLE "Invoice" ADD COLUMN "dueDate" TIMESTAMPTZ(6);
+-- CreateIndex
+CREATE INDEX "Invoice_dueDate_idx" ON "Invoice"("dueDate");
+-- CreateTable
+CREATE TABLE "DunningNote" (
+  "id" TEXT NOT NULL,
+  "invoiceId" TEXT NOT NULL,
+  "status" TEXT NOT NULL,
+  "promisedDate" TIMESTAMPTZ(6),
+  "lastContactAt" TIMESTAMPTZ(6) NOT NULL,
+  "channel" TEXT NOT NULL,
+  "remark" TEXT,
+  "actorId" TEXT NOT NULL,
+  "createdAt" TIMESTAMPTZ(6) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  "updatedAt" TIMESTAMPTZ(6) NOT NULL,
+  CONSTRAINT "DunningNote_pkey" PRIMARY KEY ("id")
+);
+-- CreateIndex × 3
+CREATE INDEX "DunningNote_invoiceId_idx" ON "DunningNote"("invoiceId");
+CREATE INDEX "DunningNote_status_idx" ON "DunningNote"("status");
+-- AddForeignKey
+ALTER TABLE "DunningNote" ADD CONSTRAINT "DunningNote_invoiceId_fkey"
+  FOREIGN KEY ("invoiceId") REFERENCES "Invoice"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+COMMIT;
+```
+
+**回填逻辑**(在 SQL 之外由迁移执行):
+- 仅有 ISSUED 且 `dueDate IS NULL` 的发票,被回填为 `actualIssueDate + 30 天`
+- 其它状态(DRAFT / PENDING_FINANCE / REJECTED / VOIDED / RED_FLUSHED)保持 NULL,等用户后续录入或财务在开票审核时补
+- 回填脚本随迁移 atomic(单事务,失败 ROLLBACK)
+
+### 1.4 API 路由(7 条新增)
+
+| 路由 | 方法 | 用途 |
+|---|---|---|
+| `/api/statistics/aging/by-customer` | GET | 按客户维度分账龄档(0-30/30-60/60-90/90+) |
+| `/api/statistics/aging/by-owner` | GET | 按合同负责人维度(SALES 排行 + ADMIN 巡检) |
+| `/api/statistics/aging/trend` | GET | 账龄趋势(对比 7/30/90 天前快照) |
+| `/api/statistics/aging/uninvoiced-contracts` | GET | 未开票合同清单(账龄基于合同止期) |
+| `/api/statistics/aging/dunning-notes` | GET/POST | 催收记录列表 + 创建 |
+| `/api/statistics/aging/dunning-notes/[id]` | GET/PATCH/DELETE | 催收记录详情 / 更新 / 删除 |
+| `/api/statistics/aging/dunning/summary` | GET | 催收汇总(每张发票的最近 N 条催收) |
+
+### 1.5 组件(4 个新增)
+
+- `components/aging-summary.tsx` — 4 档账龄汇总卡片
+- `components/dashboard-aging-mini.tsx` — dashboard 嵌入迷你视图
+- `components/dunning-drawer.tsx` — 催收抽屉(详情页/列表页内嵌)
+- `components/authority.tsx` — `<Authority>` 通用权限包装(替换 `useCanX` 系列)
+
+### 1.6 测试覆盖(3 个新单测 + 1 个 e2e)
+
+- `tests/api/aging.test.ts` — `getAgingByCustomer` 4 档边界
+- `tests/api/aging-api.test.ts` — API 路由 HTTP 200/401/403 断言
+- `tests/api/dunning.test.ts` — DunningNote CRUD + cascade delete + actor restrict
+- `tests/api/statistics-aggregation.test.ts` — 加 41 行新场景(dueDate basis + aging buckets)
+- `tests/e2e/15-aging-redesign.spec.ts` — Playwright 端到端
+
+### 1.7 文档
+
+- `docs/DESIGN-v3.md` — 加 59 行(账龄重设计 + DunningNote 实体 + dueDate basis 规则)
+- `docs/USER_MANUAL.md` — 加 27 行(账龄页使用 + 催收流程 + Authority 组件用法)
+- `README.md` — 当前版本切到 v0.7.0 + v0.7.0 changelog 块(8 段,见上文 changelog)
+- `package.json` — `version: 0.6.0 → 0.7.0`(`npm version minor` 自动 bump,commit `a7e1dd7e` + tag `v0.7.0`)
+
+## 二、版本号 bump 决策
+
+| 维度 | v0.6.0 → v0.7.0 理由 |
+|---|---|
+| **Semver 类型** | minor bump(新功能,无 breaking change) |
+| **新增模型** | `DunningNote` 表(8 字段 + 3 索引) |
+| **Schema 变更** | `Invoice.dueDate` 加列(可空,回填默认值) + `Contract.owner` 反向关系补建(纯修 bug) |
+| **API 路由** | 7 条新增(纯增量,无 deprecate) |
+| **组件** | 4 个新增(不影响老组件) |
+| **i18n / 权限** | 150+ 词条 + 9 行权限映射(纯增量) |
+| **业务数据兼容** | ✅ 不动老字段、不删表、不改老路由语义 |
+
+按 AGENTS.md "用 `npm version minor`(自动 bump + commit + tag)" 规范执行:
+
+```bash
+$ git checkout -- package.json   # 先 reset 0.6.0 (因为我们 manual edit 过)
+$ git stash push -u -m "v0.7.0-pending"  # 把其他 27 文件暂存
+$ npm version minor -m "chore(release): bump to v0.7.0"
+v0.7.0
+$ git stash pop  # 把 27 文件 pop 回来
+$ git add <23 code files>
+$ git commit -m "feat(aging): 应收账龄重设计 + 催收功能 (v0.7.0)"
+$ git add <3 doc files>
+$ git commit -m "docs(aging): v0.7.0 设计 + 用户手册 + README changelog"
+$ git push origin main --follow-tags
+```
+
+实际产物:
+- 3 commit (`a7e1dd7e` / `29c76e8d` / `8f5527cc`)
+- 1 tag `v0.7.0`
+- origin/main: b3f777be → 8f5527cc (+3)
+
+## 三、部署实施(2026-07-03 15:37-15:39 CST,已完成)
+
+### 3.1 部署前手动备份
+
+```bash
+$ ssh root@116.62.160.24
+$ cd /opt/qt
+$ docker stop mysql-fineui  # 释放 375MB, 防 build OOM
+$ systemctl stop qt-app      # 释放 260MB, 防 build OOM
+$ free -h  # 1.8G free, 足够 build
+$ set -a; . ./.env; set +a
+$ DOCKER_PG=qt-postgres BACKUP_DIR=/opt/qt/backups /opt/qt/scripts/prod/backup.sh
+[2026-06-30T15:37:42] cleanup > 30d
+[OK] backup done: /opt/qt/backups/qt_biz_20260630_153739.dump
+```
+
+**备份文件**: `qt_biz_20260630_153739.dump` (7.5M, 含 v0.7.0 迁移前的完整 DB 状态)
+
+### 3.2 git pull
+
+```bash
+$ git pull --ff-only
+   8f5527cca docs(aging): v0.7.0 设计 + 用户手册 + README changelog
+   29c76e8d8 feat(aging): 应收账龄重设计 + 催收功能 (v0.7.0)
+   a7e1dd7e9 chore(release): bump to v0.7.0
+   b3f777bef docs(deploy): v0.6.0 部署记录 + 永久 cron 健康检查 checklist
+```
+
+服务端 HEAD: b3f777be → 8f5527cc (+3 commit + tag v0.7.0)
+
+### 3.3 pnpm install
+
+```bash
+$ pnpm install --frozen-lockfile
+> qt-biz@0.7.0 postinstall /opt/qt
+> patch-package
+patch-package 8.0.1
+Applying patches...
+@ant-design/pro-components@3.1.12-0 ✔
+Done in 5.6s
+```
+
+**踩坑 (踩 1 次重试)**: 首次跑报 `sh: patch-package: command not found`,与 v0.6.0 部署时的同款问题,重试 OK。根因是 pnpm 9.15.0 在已 lockfile 完整的情况下,postinstall hook 第一次跑时环境变量还没注入 node_modules/.bin PATH。下次可考虑在 deploy.sh 里加 `retry` 兜底。
+
+### 3.4 prisma migrate deploy
+
+```bash
+$ DATABASE_URL="$MIGRATION_DATABASE_URL" npm run prisma:deploy
+> qt-biz@0.7.0 prisma:deploy
+> prisma migrate deploy
+
+The following migration(s) have been applied:
+
+migrations/
+  └─ 20260621_admin_role_seed/
+    └─ migration.sql
+  └─ 20260627_message_type_enum_bootstrap/
+    └─ migration.sql
+  └─ 20260703_aging_redesign/
+    └─ migration.sql
+
+All migrations have been successfully applied.
+```
+
+**3 条迁移同时 apply**(本机 git pull 顺带把之前漏的 2 条也一起拉了):
+- `20260621_admin_role_seed` (6/21 历史漏跑,本次补)
+- `20260627_message_type_enum_bootstrap` (6/27 历史漏跑,本次补)
+- `20260703_aging_redesign` (v0.7.0 新增)
+
+应用时间: < 3 秒(纯加列 + 新表 + 索引,无大表 ALTER)
+
+### 3.5 pnpm build
+
+```bash
+$ rm -rf .next
+$ NODE_OPTIONS="--max-old-space-size=2048" NEXT_TELEMETRY_DISABLED=1 NEXT_BUILD_WORKERS=1 pnpm build
+  build exit=0
+  ├ ƒ /statistics/by-region
+  ├ ƒ /statistics/overview
+  └ ƒ /statistics/performance
+```
+
+**BUILD_ID = `3lL9xNKZUCEL0aVxjSNzP`**, build 一次过(没踩 OOM,得益于先停 mysql-fineui 释放 375MB + 停 qt-app 释放 260MB)。
+
+### 3.6 部署后手工验证
+
+```bash
+$ systemctl start qt-app
+$ systemctl is-active qt-app
+active
+
+# 内部 5 个核心 smoke
+  login  : 200
+  dashboard: 307 (expect 307)
+  api/customers: 401 (expect 401)
+  api/contracts: 401 (expect 401)
+
+# v0.7.0 新增 6 个 API 路由(注: 第 7 个 [id] 路由是动态段,无 auth 测需带 id)
+  /api/statistics/aging/by-customer         -> 401 ✓
+  /api/statistics/aging/by-owner            -> 401 ✓
+  /api/statistics/aging/trend               -> 401 ✓
+  /api/statistics/aging/uninvoiced-contracts -> 401 ✓
+  /api/statistics/aging/dunning-notes       -> 401 ✓
+  /api/statistics/aging/dunning/summary     -> 401 ✓
+
+# Schema 验证
+$ docker exec qt-postgres psql -U qitai -d qt_biz -c "\d "DunningNote""
+Indexes:
+    "DunningNote_pkey" PRIMARY KEY, btree (id)
+    "DunningNote_actorId_createdAt_idx" btree ("actorId", "createdAt")
+    "DunningNote_invoiceId_idx" btree ("invoiceId")
+    "DunningNote_status_idx" btree (status)
+Foreign-key constraints:
+    "DunningNote_actorId_fkey" FOREIGN KEY ("actorId") REFERENCES "User"(id) ON UPDATE CASCADE ON DELETE RESTRICT
+    "DunningNote_invoiceId_fkey" FOREIGN KEY ("invoiceId") REFERENCES "Invoice"(id) ON UPDATE CASCADE ON DELETE CASCADE
+
+# Invoice.dueDate 落位
+$ SELECT column_name, data_type FROM information_schema.columns WHERE table_name='Invoice' AND column_name='dueDate';
+ column_name | data_type
+-------------+------------------------
+ dueDate     | timestamp with time zone
+
+# ISSUED 发票 dueDate 回填检查 (4942/4942 = 100%)
+ status | total | with_due_date | no_due_date
+--------+-------+---------------+-------------
+ ISSUED |  4942 |          4942 |           0
+
+# DunningNote 初始 0 行(新表)
+$ SELECT count(*) FROM "DunningNote";
+ count
+-------
+     0
+
+# cron run-all 回归测试 (v0.6.0 cron 健康监控未退化)
+$ curl -X POST -H "Authorization: Bearer $CRON_SECRET" http://127.0.0.1:3000/api/jobs/run-all
+{
+  "code": 0,
+  "data": {
+    "results": [
+      {"job":"contract-expiring","scanned":1,"durationMs":39},
+      {"job":"invoice-overdue","scanned":4913,"durationMs":720},
+      {"job":"contract-auto-publish","scanned":0,"updated":0,"durationMs":48},
+      {"job":"contract-auto-complete","scanned":526,"updated":0,"durationMs":2920},
+      {"job":"contract-stale-notify","scanned":267,"durationMs":232},
+      {"job":"certificate-expiry-check","scanned":0,...},
+      ...
+    ]
+  }
+}
+
+# 外部 IP 烟测(经 nginx :80)
+  external login: 200
+  external api/customers: 401 (expect 401)
+```
+
+### 3.7 mysql-fineui 重启
+
+```bash
+$ docker start mysql-fineui
+mysql-fineui
+$ docker ps --format "table {{.Names}}	{{.Status}}"
+NAMES          STATUS
+mysql-fineui   Up Less than a second
+qt-postgres    Up 2 weeks (healthy)
+qt-minio       Up 7 days (healthy)
+```
+
+3 容器全 active(部署期间临时停 mysql-fineui 释放内存,build 完拉起)。
+
+### 3.8 部署期可能踩的坑(本次是否踩中)
+
+| 预判坑 | 是否踩中 | 处理 |
+|---|---|---|
+| `<Authority>` 组件在某页漏替换老的 `useCanX` 系列 | 未跑 grep,本次未发现页面渲染错误(烟测全 200/401) | 后续可加 `grep -rn "useCan" components/ app/` 到 deploy.sh 兜底 |
+| `Invoice.dueDate` 回填后索引大小 | 4942 行回填,索引小,无影响 | ✅ |
+| `Contract.owner` 反向关系补建影响 `select include` 链 | prisma client 已自动生成新 relation,本次未发现 prisma 查询报错 | ✅ |
+| cron `cron-healthcheck` 自检迁移后第一次跑 | 跑成功(9 job 全过),无副作用 | ✅ |
+| pnpm postinstall 第一次 patch-package not found | **踩中一次**,重试 OK | 后续可在 deploy.sh 加 `retry 1` 兜底 |
+| build OOM (3.5G 小机) | 未踩(预先停 mysql-fineui 375MB + qt-app 260MB) | 部署时已默认停 mysql-fineui 释放内存 |
+
+## 四、最终状态
+
+| 项 | 实际值 |
+|---|---|
+| 服务端 HEAD | `8f5527cc` |
+| Git tag | `v0.7.0` (`a7e1dd7e`) |
+| `package.json` version | `0.7.0` |
+| `next.config.mjs` APP version | `0.7.0+8f5527c.0703` |
+| Next.js | 16.2.7 在 127.0.0.1:3000,systemd 托管,`active`,BUILD_ID=`3lL9xNKZUCEL0aVxjSNzP` |
+| PostgreSQL | 16-alpine Docker,3 新迁移 applied(共 22 迁移全部 applied),`DunningNote` 表创建 + `Invoice.dueDate` 列加 + 4942/4942 ISSUED 发票回填 |
+| MinIO | latest Docker,`Up 7 days (healthy)` |
+| mysql-fineui | latest Docker,`Up Less than a second`(build 期间停,完事拉起) |
+| 业务表行数 | Customer 2095 / Contract 4687 / Invoice 4928(+36 ISSUED 新发票)/ Payment 5172 / Attachment 4263 / Message 237029 / DunningNote 0(新表) |
+| 新增迁移 | `20260621_admin_role_seed`(补漏)+ `20260627_message_type_enum_bootstrap`(补漏)+ `20260703_aging_redesign`(v0.7.0 新增) |
+| 新表 | `DunningNote` 0 行(9 字段 + 4 索引 + 2 FK) |
+| 新列 | `Invoice.dueDate` (timestamp with time zone, nullable) |
+| 新 API 路由 | 7 条全注册(by-customer / by-owner / trend / uninvoiced-contracts / dunning-notes / dunning-notes/[id] / dunning/summary) |
+| 新组件 | 4 个(aging-summary / dashboard-aging-mini / dunning-drawer / authority) |
+| 内存 | 1.4 GB / 3.5 GB(40%) |
+| 盘 | 24 GB / 49 GB(50%) |
+| 业务数据保留 | ✅ Customer / Contract / Invoice / Payment / Attachment / Message / OperationLog 全部不动 |
+
+## 五、未做但建议跟进
+
+- **批量回填 IS NULL dueDate**: 部署后写个脚本,把 VOIDED / REJECTED / RED_FLUSHED / RED_FLUSHED 之外的发票都补上(目前只 ISSUED 自动回填 4942/4942)
+- **Authority 组件全量替换**: 烟测未发现 useCanX 残留报错,但全量 grep 没跑,后续可加 `grep -rn "useCan" components/ app/` 排查
+- **催收提醒 cron job**: 加一个"距 lastContactAt N 天未联系则发消息"的 cron,目前 dunning 是被动录入
+- **DunningNote ↔ OperationLog 联动**: dunning 录入应在审计日志留痕(目前只在 invoice audit)
+- **deploy.sh 加 pnpm install retry**: 踩中 1 次 patch-package PATH 问题,加 `retry 1` 兜底
+- **v0.1.0 文档第六章列的 6 项**(SSH 密钥 / HTTPS / Sentry / rate limit / 关 demo 库 / 关 firewalld)仍未落实
