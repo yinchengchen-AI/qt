@@ -1,7 +1,7 @@
 # 杭州企泰安全科技 业务管理系统 (qt-biz)
 
 > 客户 / 合同 / 开票 / 回款 一体化管理,附件走 MinIO presigned 直传。
-> **当前版本: v0.6.0**(2026-06-29)
+> **当前版本: v0.7.0**(2026-07-03)
 > 详细设计见 [docs/DESIGN-v3.md](docs/DESIGN-v3.md),用户手册见 [docs/USER_MANUAL.md](docs/USER_MANUAL.md)。
 > 2026-06-29 16:40 增量同步: 下午事故复盘 + 运维监控 + 修复 6 个 commit 已补到「最近更新」开头。
 
@@ -384,7 +384,7 @@ xlsx 导出走 `lib/excel.ts` + `exceljs`; 中文文件名通过 `attachmentHead
 
 完整 scripts 见 [package.json](package.json)。
 
-## 质量基线(2026-06-28)
+## 质量基线(2026-07-03)
 
 | 项 | 状态 |
 |---|---|
@@ -397,6 +397,60 @@ xlsx 导出走 `lib/excel.ts` + `exceljs`; 中文文件名通过 `attachmentHead
 | dev server `/login` `/dashboard` `/contracts` | 200 |
 
 ## 最近更新
+
+### v0.7.0(2026-07-03)应收账龄重设计 + 催收功能
+
+> 在 v0.6.0 事故复盘之后,继续推进"应收侧的可控性"建设。本次以 `Invoice.dueDate` + `DunningNote` 为核心,补齐账龄 / 催收 / 跟单的全链路。
+
+**新模型 (一) DunningNote**(8 字段催收记录):
+- `server/services/dunning.ts` + `prisma/schema.prisma` 新 model:`DunningNote` (`invoiceId` FK CASCADE → `Invoice`, `actorId` FK RESTRICT → `User` 防 actor 误删)
+- 字段:`status` (CONTACTED / PROMISED / DISPUTED / LEGAL) / `promisedDate` / `lastContactAt` / `channel` (PHONE / WECHAT / EMAIL / VISIT) / `remark` / `actorId`
+- 索引:`(invoiceId)` / `(status)` / `(actorId, createdAt)`
+- 业务语义: 单一催收动作 = 1 行 DunningNote;PROMISED 状态填 `promisedDate`(客户承诺付款日);最近一次联系 = `lastContactAt` 用于"距上次跟进 N 天"提醒
+
+**Schema 增量 (二)**:
+- `Invoice.dueDate` (TIMESTAMPTZ, nullable): 合同约定付款日,账龄 `basis=due` 用;为 null 时回退 `actualIssueDate` 计龄。`@@index([dueDate])` 加快扫描
+- `Contract.owner` 反向关系补建:之前 `User.ownedContracts` 漏配(只配了 `signedContracts`),导致 `ownerUserName` 渲染走 `String` fallback 而非 `relation` join
+- 迁移 `20260703_aging_redesign`(单事务): `ADD COLUMN dueDate` + `CREATE TABLE DunningNote` + 3 索引 + 1 FK + 回填(只有 ISSUED 且 dueDate 为空的发票,默认 `actualIssueDate + 30 天`,其它状态保持 NULL 等用户后续录入)
+- 兼容:不动历史 migration,只新增对象,跟 `AGENTS.md` "不可变迁移" 规则一致
+
+**API 路由 (三) 7 条**:
+- `GET /api/statistics/aging/by-customer` — 按客户维度分账龄档(0-30/30-60/60-90/90+)
+- `GET /api/statistics/aging/by-owner` — 按合同负责人维度(给 SALES 排行 + ADMIN 巡检)
+- `GET /api/statistics/aging/trend` — 账龄趋势(对比 7/30/90 天前快照)
+- `GET /api/statistics/aging/uninvoiced-contracts` — 未开票合同清单(账龄基于合同止期)
+- `GET/POST /api/statistics/aging/dunning-notes` + `[id]` — 催收记录 CRUD(REST 风格)
+- `GET /api/statistics/aging/dunning/summary` — 催收汇总(每张发票的最近 N 条催收)
+
+**组件 (四) 4 个**:
+- `components/aging-summary.tsx` — 4 档账龄汇总卡片(总应收 / 0-30 / 30-60 / 90+)
+- `components/dashboard-aging-mini.tsx` — dashboard 嵌入的迷你账龄视图
+- `components/dunning-drawer.tsx` — 催收抽屉(详情页/列表页内嵌,展示 + 新增催收记录)
+- `components/authority.tsx` — `<Authority>` 通用权限包装(替换 `lib/permissions.ts` 旧 `useCanX` 系列,统一前端权限渲染)
+
+**统计页改造 (五)**:
+- `app/(app)/statistics/aging/page.tsx` — 700+ 行重写,新交互:客户 / 负责人双维度切换 + 催收入口
+- `app/(app)/statistics/by-region/page.tsx` / `performance/page.tsx` — 微调联动
+- `app/(app)/dashboard/page.tsx` — 加 aging mini
+- `app/api/statistics/export/route.ts` / `invoice-aging/route.ts` — 导出 + invoice aging API 适配 dueDate basis
+
+**基础设施 (六)**:
+- `lib/permissions.ts` — 加 9 行新资源/动作的权限映射(STATISTICS.AGING_READ, DUNNING.*)
+- `lib/i18n.ts` — 加 150+ 行 dunning / aging / authority 词条
+- `components/callout.tsx` — 微调
+- `server/services/statistics.ts` — 581 行重写,统一 dueDate basis 抽象
+
+**测试 (七)**:
+- `tests/api/aging.test.ts` / `aging-api.test.ts` / `dunning.test.ts` — 单测覆盖 3 大 API + 边界(dueDate null 回退 / cascade delete / force actor)
+- `tests/api/statistics-aggregation.test.ts` — 加 41 行新场景
+- `tests/e2e/15-aging-redesign.spec.ts` — Playwright 端到端(详情页打开催收抽屉 + 录入催收 + 列表显示)
+
+**文档 (八)**:
+- `docs/DESIGN-v3.md` — 加 59 行(账龄重设计 + DunningNote 实体 + dueDate basis 规则)
+- `docs/USER_MANUAL.md` — 加 27 行(账龄页使用 + 催收流程 + Authority 组件用法)
+
+**版本号**: `0.6.0` → `0.7.0`(minor bump,新功能 + 新 schema,无 breaking change)
+**部署说明**: 含 1 个新迁移(`20260703_aging_redesign`),含 DunningNote 表创建 + Invoice.dueDate 加列 + 回填;首次部署后 ISSUED 发票的 dueDate 会被自动回填为 `actualIssueDate + 30 天`,财务可在开票审核时手动覆盖
 
 ### v0.6.0 (2026-06-29) cron 静默失败 9 个月事故复盘 + 运维监控 + 修复
 
