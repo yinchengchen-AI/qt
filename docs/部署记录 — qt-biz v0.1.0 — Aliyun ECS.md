@@ -650,3 +650,306 @@ external api/customers: 401 (expect 401)
 - **中间 6 迁移未走 deploy.sh**:把 1.3 那段从 `docs/superpowers/specs/...` 摘出做"中间 hot-deploy"小节,后续 deploy.sh 加 `--no-migrate` 兜底
 - **`_prisma_migrations` 11 行 f 残留**:写个 `clean-failed-migrations.sql` 一次性清理
 - **v0.1.0 文档第六章列的 6 项**(改 SSH 密钥 / 加 HTTPS / Sentry / rate limit / 关 demo 库 / 关 firewalld)仍未落实
+
+# 部署记录 — qt-biz v0.6.0 — Aliyun ECS 杭州 (事故复盘 + cron 修复 + 242 合同恢复)
+
+> **首部署**: 2026-06-12 (v0.1.0, `46a274b`)
+> **v0.2.0**: 2026-06-14 (`cdcb872`)
+> **v0.3.0**: 2026-06-23 (`e80d86e9`)
+> **v0.3.1**: 2026-06-26 (`62200e5f`)
+> **v0.3.1 → v0.6.0 之间**: 2026-06-26 → 2026-06-30, 64 个 commit
+> **本次发版日期**: 2026-06-29
+> **本次发版起点**: `5ccb048f` (v0.5.0/v0.5.1/v0.6.0 第一批 hotfix,部署到生产)
+> **本次发版终点**: `fbc19e26` (本次文档起点,服务端当前 HEAD,2026-06-30 12:15)
+> **HEAD 终点**: `7c40216b` (本地 origin/main,2026-06-30;6 个 commit 是 docs/ci,服务端尚未 pull)
+> **发版模式**: 多日滚动发版,v0.5.0/v0.5.1/v0.6.0 三次小版本号 bump 集中在一周内
+> **服务模式**: 日常更新 + **生产事故应急恢复**
+
+## ⚠️ 一、本次生产事故(cron 静默失败 9 个月)
+
+### 1.1 事故摘要
+
+**事故发现时间**: 2026-06-29
+**实际静默期**: 2025-09 ~ 2026-06-28(9 个月)
+**影响范围**: 业务定时任务(合同自动发布/完结/逾期通知/证书到期)**全部静默失败,无告警**
+**根因**: `467468cd9` — cron 命令漏 `source .env`,`CRON_SECRET` 在 crond 环境里空,API 返 401
+**完整复盘**: `docs/cron-silent-failure-postmortem.md`(253 行,鱼骨图 + 修复时间线 + 应急话术)
+
+### 1.2 cron 静默失败后果链
+
+```
+2025-09        cron 突然全部返 401(没人察觉)
+   ↓
+2025-09 ~ 2026-06-28
+              - 合同自动完结(tryAutoClose)从未跑
+              - 合同逾期通知(contract-stale-notify)从未跑
+              - 证书到期检查从未跑
+              - 但 tryAutoCloseOnOverdue 在某次手动触发时跑过
+   ↓
+2026-06-22 17:00  cron 恢复扫描
+              - 给大量合同打 AUTO_EXPIRE 标记
+   ↓
+2026-06-25 ~ 26   tryAutoClose 双足额完结,大部分 SKIPPED
+   ↓
+2026-06-26 10:00  tryAutoCloseOnOverdue 触发: endDate + 60 天宽限期 < now
+              → 一次性 强关 209 个合同(AUTO_CLOSE_OVERDUE_TERMINATED)
+              + 31 个 admin 误关
+              + 2 个 completed 异常
+              = 共 242 个 CLOSED 合同, ¥2,692,907.97 应收未结被锁死
+```
+
+### 1.3 数据修复方案(2026-06-29 完成)
+
+| 项 | 值 |
+|---|---|
+| 恢复脚本 | `scripts/migrate/contract-fake-close-recovery.sql` + `.ts` |
+| 备份表 | `_Contract_recovery_20260629_bak`(242 行,事务前自动建) |
+| 审计字段 | `Contract.recoveryFrom` + `Contract.recoveryAt` + `Contract.recoveryReason` |
+| 影响合同数 | 242 |
+| 应收未结合计 | ¥2,692,907.97 |
+| 修复方式 | CLOSED → ACTIVE(脚本不走业务层,带显式 audit) |
+| 备份清单 | `docs/contract-fake-close-recovery-list.csv` 243 行(242 + 表头) |
+| 业务选择指南 | `docs/contract-fake-close-recovery.md` §4.4/§4.5(历史批量 / 单合同误关 / CLOSED 补录 / DRAFT 拒绝) |
+
+### 1.4 修复+防再发(本次 v0.6.0 重点)
+
+| commit | 用途 |
+|---|---|
+| `80936cfe5` | cron.d 不支持 `\` 续行的兜底 |
+| `467468cd9` | **根因** — source .env 修 CRON_SECRET 401 |
+| `4502f182` | P2-3 reopen 接口(单合同 CLOSED → ACTIVE 走业务层) |
+| `4502f182` | createPayment admin force 旁路(CLOSED 合同强制补录) |
+| `5ccb048f` | `lock:overdue_skip` 机制 + 复发处理脚本(防止 cron 反复强关) |
+| `af734c28` | cron-healthcheck 自检脚本(4 维度主动巡检) |
+| `af734c28` | 强关前 7/3/1 天醒目文案(给财务预警时间) |
+| `5ccb048f` | 宽限期调整(60 → 7 天,避免再次一次性强关 200+) |
+| `c1dea5f3` | package.json base version 0.6.0 |
+| `fbc19e26` | docs(agents): 发版规则与自动版本号派生说明 |
+
+## 二、本次发版内容(64 个 commit)
+
+### 2.1 v0.6.0 核心(2026-06-29)
+
+```
+7c40216b docs(postmortem): 提交 6/29 假完结恢复 242 个合同清单 (postmortem 引用但漏 commit)
+9a545f2e fix(ci): APP_ENC_KEY_HEX 加引号强制 YAML 视为字符串 (避免被解析成 number 截断)
+950f24ed fix(ci): 去掉 DATABASE_URL 的 ?schema=public 再传给 psql (libpq 不认这参数)
+84941b16 fix(ci): 用 PIPESTATUS[0] 拿 migrate deploy 的退出码 (之前 $? 拿到的是 tee 的, 0)
+07e0dba1 fix(ci): heredoc 终止符被 YAML 缩进污染, 改用 psql -c 单条命令
+65ac3064 fix(ci): 修复 fresh DB 上 2 个迁移的顺序死锁, vitest 端到端跑通
+fbc19e26 docs(agents): 发版规则与自动版本号派生说明
+c1dea5f3 chore(release): sync package.json base version to 0.6.0
+3615b246 chore(build): next.config 自动派生 APP version + .gitignore 加 .preview
+81963bfd feat(login): Apple 风重写 + 桌面端左右双栏 + 右上版本号 chip
+e7d7a245 fix(migrate): recurrent-lock 用小写备份表名 (pg 折叠未加引号标识符)
+5ccb048f feat(contract): 加 lock:overdue_skip 机制 + 复发处理脚本, 防止 cron 反复强关
+f4883cb4 docs: README bump 到 v0.6.0 + 加事故复盘章节
+dd3cfa29 fix: Timeline icon 对称化 + reopen route newline + by-region Tooltip
+07324d63 refactor(lib): 抽 serviceTypeLabel helper + 5 处替换
+c959b300 docs(postmortem): contract-fake-close-recovery 补 reopen vs force 业务选择指南
+c4a42008 fix(customer): 客户详情页合同 tab 的 serviceType 映射为中文
+66491882 docs(postmortem): cron 9 月静默失败事故复盘 + 假完结合同修复方案
+af734c28 feat(ops): cron-healthcheck 自检 + 强关前 7/3/1 天醒目文案
+4502f182 feat(contract): P2-3 reopen 接口 + createPayment admin force 旁路
+554dbcea refactor(statistics): show only town name as chart x-axis label
+08544200 chore(cleanup): 删 4 个 lib/components 孤儿文件
+```
+
+### 2.2 v0.5.1(2026-06-28/29)
+
+```
+3a1dafc7 docs: v0.5.1+ 增量同步 (README / DESIGN-v3 / PROJECT_SUMMARY / USER_MANUAL / RLS)
+04579a80 chore: add harness agent configuration files
+0f00470c test(contract): 覆盖 createContract ownerUserId 默认值规则
+e5d2267d chore(payments): 清未使用的 Tag 导入
+7c03ba46 chore(contract): 切 antd 6 Timeline API + 失败状态加 icon
+03b74b66 fix(contract): SALES 创建合同时 ownerUserId 默认 = 当前 user
+(... Excel 导出文件名国际化、合同选择器增强、message type enum 收紧、customer auto fields 等 ...)
+```
+
+### 2.3 v0.5.0(2026-06-29)
+
+```
+4c1dd71d? chore(cleanup): 删 14 个一次性脚本 + 根目录调试脚本  (v0.5.0 范围)
+1aec5110 docs(lib): china-divisions.ts 顶部加勿手改提示
+d7138fb4 chore(cleanup): 删 14 个一次性脚本 + 根目录调试脚本
+... (客户状态机下线 / Customer.status 字段 / 索引 / 触发器 硬删)
+```
+
+### 2.4 中间 hotfix(6/27 ~ 6/28 的零散修复)
+
+- 客户地区字段 `customer-district` 离线补全
+- `20260628_customer_auto_fields` 自动跟踪 lastContactedAt/lastFollowUpAt
+- `20260629_drop_customer_status` 客户状态机硬删
+- `20260630_message_type_enum_index` MessageType enum 收紧
+- `20260701_employee_profile_restructure` EmployeeProfile 5 张子表
+- `20260702_message_type_add_overdue_events` MessageType 加 3 个逾期事件
+
+## 三、新增/修改的部署相关文件
+
+| 路径 | 操作 | 备注 |
+|---|---|---|
+| `scripts/prod/deploy.sh` | **重大修改** | 加 cron 健康检查 3 段(见 §五) |
+| `scripts/ops/cron-healthcheck.sh` | **新文件** | 4 维度 cron 自检 |
+| `ops/qt-jobs.cron` | **重大修改** | 加 `5 * * * *` cron-healthcheck 任务 |
+| `scripts/migrate/contract-fake-close-recovery.{sql,ts}` | **新文件** | 242 合同恢复脚本(事务 + 备份 + 审计) |
+| `app/api/contracts/[id]/reopen/route.ts` | **新文件** | P2-3 reopen API |
+| `app/(app)/login/page.tsx` | **重写** | Apple 风 + 双栏 + 版本号 chip |
+| `docs/cron-silent-failure-postmortem.md` | **新文件** | 253 行事故复盘 |
+| `docs/contract-fake-close-recovery.md` | **新文件** | 304 行恢复方案 + 选择指南 |
+| `docs/contract-fake-close-recovery-list.csv` | **新文件** | 242 合同清单(¥2,692,907.97 应收) |
+| `next.config.mjs` | 修改 | 自动派生 APP version + .gitignore 加 .preview |
+| `package.json` | 修改 | base version 0.6.0 |
+
+## 四、踩坑与解决(本次发版期发现)
+
+### I1. CI 5 个隐患(已修,commit 见 §2.1)
+
+- `9a545f2e`: APP_ENC_KEY_HEX 在 YAML 里被解析成 number 截断 → 加引号
+- `950f24ed`: DATABASE_URL 的 `?schema=public` 给 psql 报 "no value for parameter" → 去掉
+- `84941b16`: migrate deploy 的退出码被 `tee` 吞掉 → `PIPESTATUS[0]`
+- `07e0dba1`: heredoc 终止符被 YAML 缩进污染 → 改 `psql -c` 单条
+- `65ac3064`: fresh DB 上 2 个迁移顺序死锁 → 拆顺序 + 加 advisory lock
+
+### I2. 242 合同恢复脚本的事务/审计/回滚(脚本设计)
+
+`scripts/migrate/contract-fake-close-recovery.ts` 三个安全护栏:
+1. **事务 + 备份表**: 跑前 `CREATE TABLE _Contract_recovery_<date>_bak AS SELECT ...`,事务内 UPDATE,失败 ROLLBACK
+2. **审计字段**: 加 `Contract.recoveryFrom` / `recoveryAt` / `recoveryReason` 三列,值写入
+3. **回滚 SQL**: 同目录 `*.sql` 留 `UPDATE Contract SET status = recoveryFrom WHERE recoveryAt = '...'` 兜底
+
+### I3. cron-healthcheck 设计权衡(commit `af734c28`)
+
+- 跑频率: **每小时第 5 分钟**(`5 * * * *`),与主 run-all(`0 * * * *`)错开
+- 检查 4 项: ① crond 服务 active ② qt-cron.log 最近 2h 有写入 ③ qt-app 监听 3000 ④ PG 可达
+- 告警渠道: 写 `/var/log/qt-cron.log`(主) + 飞书 webhook(可选,`FEISHU_WEBHOOK_URL` env)
+- 不告警条件: 静默成功(避免噪音)— 只有"应该跑但没跑"才告警
+- deploy.sh 自带 `--once` 模式: 部署完跑一次,验证脚本本身能跑
+
+## 五、烟测通过
+
+```
+$ systemctl status qt-app
+active (running) since Tue 2026-06-30 12:24:02 CST; 4h ago
+
+# 部署脚本自带 (deploy.sh 第 47-92 行)
+$ ./scripts/prod/deploy.sh
+==> git pull
+==> pnpm install --frozen-lockfile
+==> prisma migrate deploy
+==> prisma generate
+==> pnpm build
+==> systemctl restart qt-app
+==> smoke test
+  login  : 200
+  dashboard: 307
+  api/customers: 401
+==> crond self-check: cron: active
+==> cron 健康检查
+  /etc/cron.d/qt-jobs: ✓ 含 source .env
+  run-all 自检: ✓ HTTP 200 (扫了 9 个 job)
+  cron-healthcheck: ✓
+[OK] deploy done
+
+# cron run-all 实际跑 (v0.6.0 后 9 个 job 全部跑过, 0 失败)
+$ curl -X POST -H "Authorization: Bearer $CRON_SECRET" http://127.0.0.1:3000/api/jobs/run-all
+{
+  "code": 0,
+  "data": {
+    "results": [
+      {"job":"contract-expiring","scanned":0,"durationMs":28},
+      {"job":"invoice-overdue","scanned":4906,"durationMs":489},
+      {"job":"contract-expiry","scanned":0,"updated":0,"durationMs":82},
+      {"job":"contract-auto-publish","scanned":0,"updated":0,"durationMs":38},
+      {"job":"contract-auto-complete","scanned":193,"updated":1,"durationMs":1034},
+      {"job":"customer-status-suggest","scanned":2095,"durationMs":221},
+      {"job":"certificate-expiry-check","scanned":0,"durationMs":0},
+      {"job":"contract-overdue-stale-notify","scanned":0,"durationMs":0},
+      {"job":"contract-overdue-close-grace","scanned":0,"durationMs":0}
+    ]
+  }
+}
+```
+
+**v0.6.0 新增 2 个 cron job**:`contract-overdue-stale-notify`(逾期 7/3/1 天预警文案)+ `contract-overdue-close-grace`(强关前最后确认,7 天宽限)
+
+## 六、迁移表终态
+
+`_prisma_migrations` 共 49 行(35 distinct):
+- pre-squash 旧名 14 条 + 20260614_init 1 条 + 20260615 → 20260702 期间 20 条
+- 重试行:20260611_remove_customer_level (f/t), 20260626_invoice_attachments_json (f/t), 20260630_message_type_enum_index (f/f/t 3 行)
+
+新增迁移:
+- `20260627_message_type_enum_bootstrap`(MessageType enum 起步)
+- `20260628_customer_auto_fields`(客户自动跟踪字段)
+- `20260629_drop_customer_status`(客户状态机硬删)
+- `20260702_message_type_add_overdue_events`(加 3 个逾期事件)
+
+## 七、最终状态
+
+| 项 | 结果 |
+|---|---|
+| 服务端 HEAD | `fbc19e26`(本地 origin/main 领先 6 个 commit,全 docs/ci) |
+| Next.js | 16.2.7 在 127.0.0.1:3000,systemd 托管,`active`,BUILD_ID=`Om24FtLw0oVqDp_vVSmWt` |
+| PostgreSQL | 16-alpine Docker,20 本地迁移全部 applied,EmployeeProfile/MessageType enum/Customer 无 status 字段 |
+| MinIO | latest Docker,无变化,`Up 5 days (healthy)` |
+| 业务表行数 | Customer 2095 / Contract 4687 / Invoice 4928 / Payment 5172 / Attachment 4263(全部保留,3 天内用户小幅增长) |
+| 假完结合同 | 242 全部恢复 ACTIVE, `_Contract_recovery_20260629_bak` 备份表保留 |
+| Cron 健康 | crond active,run-all 9 job 跑过 0 失败,cron-healthcheck 自检 ✓ |
+| 内存 | 1.3 GB / 3.5 GB(37%) |
+| 盘 | 24 GB / 49 GB(50%) |
+
+## 八、未做但建议跟进
+
+- **242 合同财务补录**:reopen 后需要 242 个合同逐个补回款(¥2.69M),优先 P0 即将逾期的
+- **cron-healthcheck 加飞书 webhook 告警**:`FEISHU_WEBHOOK_URL` 还没在 .env,需要管理员给权限后启用
+- **强关 7 天宽限 + 醒目文案是否太频繁**:目前合同止期前 7/3/1 天每天弹,业务反馈后再调
+- **reopen vs force 业务选择指南需要复盘**:跑 1 个月后看哪种用得多,决定是否合并
+- **CI 5 个 fix 上生产了吗**:server HEAD 是 fbc19e26,CI fixes 在 6 个未 pull commit 里,下次 deploy 自动捎上
+- **v0.1.0 文档第六章列的 6 项**(改 SSH 密钥 / 加 HTTPS / Sentry / rate limit / 关 demo 库 / 关 firewalld)仍未落实
+
+---
+
+# 部署后 cron 健康检查 checklist(每次 deploy 后必跑)
+
+> **来源**: `docs/cron-silent-failure-postmortem.md` §6.4 要求"每次部署后追加 cron 健康检查 checklist"。本节是 v0.6.0 起永久追加,后续每次 deploy 都要勾选。
+
+## A. 部署完成立即跑(在 deploy.sh 跑完后,手工确认)
+
+- [ ] `systemctl is-active qt-app` → `active`
+- [ ] `curl -fsS -o /dev/null -w "%{http_code}\n" http://127.0.0.1:3000/login` → `200`
+- [ ] `curl -fsS -X POST -H "Authorization: Bearer $CRON_SECRET" http://127.0.0.1:3000/api/jobs/run-all` → `{"code":0,...}`
+- [ ] `systemctl is-active cron`(Debian)或 `systemctl is-active crond`(RHEL)→ `active`
+- [ ] `grep -q "set -a && . /opt/qt/.env" /etc/cron.d/qt-jobs` → 命中(deploy.sh 已自动检查)
+- [ ] `/opt/qt/scripts/ops/cron-healthcheck.sh --once` → 退出码 0
+
+## B. 1 小时后巡检(cron 至少跑过 1 次)
+
+- [ ] `tail -50 /var/log/qt-cron.log` → 末尾有本次 hour 的 run-all 输出
+- [ ] `grep "scanned" /var/log/qt-cron.log | tail -5` → 各 job 都有 scanned 数字
+- [ ] `journalctl -u qt-app --since "1 hour ago" | grep -c "error"` → 个位数(可接受的 INFO 噪音除外)
+
+## C. 24 小时后巡检
+
+- [ ] `ls -lh /opt/qt/backups/qt_biz_$(date +%Y%m%d)*.dump` → 今天 03:00 的 cron 备份文件存在
+- [ ] `docker exec qt-postgres psql -U qitai -d qt_biz -c "SELECT count(*) FROM \"Message\" WHERE \"createdAt\" > NOW() - INTERVAL '24 hours';"` → 业务 cron 触发的消息数 > 0
+- [ ] 抽样一个 contract auto transition: `SELECT id, status, "updatedAt" FROM "Contract" WHERE "updatedAt" > NOW() - INTERVAL '24 hours' AND status != 'DRAFT' LIMIT 5;` → 有合理条数
+
+## D. 7 天后复盘
+
+- [ ] 复盘 7 天内 cron 跑过的总次数 vs 失败次数(失败率 < 0.1%)
+- [ ] 复盘是否有"假完结"类事件复现(`Contract.recoveryFrom IS NOT NULL` 计数应保持 242)
+- [ ] 复盘 reopen 接口的调用量(预期 < 5/月,多了说明有 cron 误关)
+
+## E. 应急快速排查(下次再发现 cron 静默失败)
+
+照搬 `cron-silent-failure-postmortem.md` §7 清单:
+- [ ] `stat /var/log/qt-cron.log`(文件 Birth 时间合理?)
+- [ ] `wc -l /var/log/qt-cron.log`(有写入?)
+- [ ] `zcat /var/log/cron-*.gz | grep "qt-jobs"`(crond 触发了?)
+- [ ] `cat /etc/cron.d/qt-jobs`(有 `\` 续行?)
+- [ ] `sudo -u root crontab -l`(其他用户 crontab 干扰?)
+- [ ] `curl -v -X POST -H "Authorization: Bearer xxx" http://127.0.0.1:3000/api/jobs/run-all`(API 401?)
+- [ ] `echo $CRON_SECRET`(crond 环境里变量空?)
+- [ ] `journalctl -u cron.service | tail -50`(crond 自身日志)
+- [ ] `grep CRON /var/log/syslog`(系统层 cron 记录)
