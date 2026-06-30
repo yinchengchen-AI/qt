@@ -193,6 +193,75 @@ curl -X POST http://app.example.com/api/payments \
   }'
 ```
 
+### 4.6 Lock 机制（防止复发反复强关）
+
+**问题**：6/29 跑完 `contract-fake-close-recovery.ts` 后，242 个合同恢复成 `ACTIVE`，但财务还没补录完付款，cron 每小时扫一次又把满足 `tryAutoCloseOnOverdue` 条件的合同再次强关（reason=overdue_terminated）。反复关-开-关，财务永远录不进去。
+
+**方案**：临时 lock 标记 + cron 过滤。
+
+#### 4.6.1 lock 标记约定
+
+| 字段 | 值 | 说明 |
+|---|---|---|
+| `Contract.reviewComment` | `lock:overdue_skip:<batch_id>` | 锁定合同，跳过 `tryAutoCloseOnOverdue` 强关 |
+
+`<batch_id>` 命名约定：`<原因>-<日期>-batch`，例如 `recurrent-20260630-batch` / `covid-2023-batch`。
+
+#### 4.6.2 cron 行为（`server/jobs/contract-automation.ts`）
+
+| 自动完结路径 | 锁定合同是否执行 | 备注 |
+|---|---|---|
+| `tryAutoClose`（双足额 + endDate<now → CLOSED reason=completed）| **执行** | 钱齐了就能正常完结，`reviewComment` 被覆盖为 `completed`，lock 自然消除 |
+| `tryAutoCloseOnOverdue`（endDate+GRACE<now + 未结清 → CLOSED reason=overdue_terminated）| **跳过** | 财务补录期间临时豁免 |
+
+#### 4.6.3 复发处理脚本（`scripts/migrate/contract-fake-close-recurrent-lock.ts`）
+
+```bash
+# 1) 备份整库
+pg_dump -Fc qt_biz > /backup/qt_biz_20260630.dump
+
+# 2) 暂停应用
+sudo systemctl stop qt-app
+
+# 3) DRY-RUN 预览
+pnpm tsx scripts/migrate/contract-fake-close-recurrent-lock.ts --dry-run
+
+# 4) 实际执行（5 秒倒计时，可 Ctrl+C 取消）
+pnpm tsx scripts/migrate/contract-fake-close-recurrent-lock.ts --execute --batch recurrent-20260630-batch
+
+# 5) 启动应用
+sudo systemctl start qt-app
+```
+
+**目标合同筛选**：`status='CLOSED' AND reviewComment='recovered_from_fake_close' AND 未结清` —— 即 6/29 修过、又被 cron 关回去的那批。**不动自然新增的假完结合同**（那些走 reopen + force 旁路的人工流程，见 §4.4）。
+
+**写入内容**：
+- 备份表 `Contract_fake_close_recurrent_<date>`（与 6/29 那次分开，便于追踪）
+- `ContractReviewLog`：action=`MANUAL_REOPEN`，comment 注明触发原因和 batch_id
+- `Contract`：status `CLOSED → ACTIVE`，`reviewComment` 改为 `lock:overdue_skip:<batch_id>`
+
+#### 4.6.4 解锁 SOP
+
+```sql
+-- 单合同解锁（财务补录完成后，cron 想让它走正常 tryAutoCloseOnOverdue）
+UPDATE "Contract" SET "reviewComment" = NULL WHERE "id" = '<id>';
+
+-- 批量解锁（某 batch 全部补录完了，清掉 lock 标记）
+UPDATE "Contract" SET "reviewComment" = NULL
+WHERE "reviewComment" = 'lock:overdue_skip:recurrent-20260630-batch';
+```
+
+#### 4.6.5 安全阈值与注意事项
+
+| 项 | 阈值 / 行为 |
+|---|---|
+| 复发合同数下限 | 1（如果 SQL 出来是 0 说明没复发，跳过即可）|
+| 复发合同数上限 | 500（超过要人工确认是否误伤）|
+| `batch_id` 字符限制 | 仅 `[a-zA-Z0-9_\-:.]`（防 SQL 注入）|
+| lock 是否影响 PDF / 详情页显示 | **不影响**（`reviewComment` 字段本来就展示在合同详情页"审批意见"位）|
+| 是否影响 reopen API | **不影响**（reopen 会把 lock 标记覆盖为 `reopened:<reason>`）|
+| 极端情况：lock 合同钱齐了但 endDate 还没到 | `tryAutoClose` SKIP（endDate 不满足），`tryAutoCloseOnOverdue` 也 SKIP（endDate+GRACE 还没到），合同保持 ACTIVE — **正确行为** |
+
 ### 4.2 运维层
 
 1. **cron 健康监控**：连续 2 天 `/api/jobs/run-all` 没成功 → 飞书/钉钉告警
