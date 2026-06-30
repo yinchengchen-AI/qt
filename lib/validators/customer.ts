@@ -36,7 +36,8 @@ export type CustomerUpdateInput = z.infer<typeof customerUpdateSchema>;
 // 不再在 route 文件里 inline 定义。
 export const customerListQuerySchema = z.object({
   page: z.coerce.number().int().min(1).default(1),
-  pageSize: z.coerce.number().int().min(1).max(100).default(20),
+  // max=1000: aging 页的'客户'下拉一次性加载 (pageSize=200), 普通列表默认 20
+  pageSize: z.coerce.number().int().min(1).max(1000).default(20),
   keyword: z.string().optional(),
   scale: z.string().optional(),
   customerType: z.string().optional(),

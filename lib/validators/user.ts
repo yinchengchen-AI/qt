@@ -24,7 +24,9 @@ export const userUpdateSchema = z.object({
 
 export const userListQuerySchema = z.object({
   page: z.coerce.number().int().min(1).default(1),
-  pageSize: z.coerce.number().int().min(1).max(100).default(20),
+  // max=1000: aging 页 / 客户列表页 / 部门详情页 的'负责人'下拉一次性加载
+  // (pageSize=50/100/200), 普通列表默认 20。500 ~ 1000 足够未来增长。
+  pageSize: z.coerce.number().int().min(1).max(1000).default(20),
   keyword: z.string().optional(),
   roleId: z.string().optional(),
   status: z.string().optional(),
