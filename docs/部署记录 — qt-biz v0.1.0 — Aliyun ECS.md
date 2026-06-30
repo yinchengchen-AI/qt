@@ -1411,6 +1411,114 @@ fi
 3. **不在原 migration SQL 改**:即使逻辑无害 (加 GRANT),也破坏 checksum,只能新加迁移
 4. **prisma client 缓存**:DB 权限改了需要 restart app 让 prisma 重连,不能只等下次请求
 
+## 四点六、第 2 次部署后事故 + 修复(2026-07-03 15:55,客户/负责人下拉空)
+
+### 4.6.1 事故:aging 页面"客户/负责人没有关联数据"
+
+**用户报**: 客户和负责人没有关联数据
+**发现**: 2026-07-03 15:48(第 1 次 42501 修复后几分钟)
+**影响**: aging 页面 4 个下拉 (客户 / 负责人 / 合同 / 最小金额) 里有 2 个永远空:
+- 客户下拉 (ProFormSelect `customerId`): 来源 `/api/customers?pageSize=200`
+- 负责人下拉 (ProFormSelect `ownerUserId`): 来源 `/api/users?pageSize=200&status=ACTIVE`
+- 合同下拉 (ProFormSelect `contractId`): 来源 `/api/contracts?pageSize=200` ✅ 正常
+- 最小金额 (ProFormDigit): 用户自己填,不影响
+
+**根因分析**:
+```bash
+$ # 直接用 zod schema 测 (脱机, 不需要 auth)
+$ npx tsx -e 'import {z} from "zod";
+              const s = z.object({ pageSize: z.coerce.number().int().min(1).max(100).default(20) });
+              s.safeParse({ pageSize: 200 })'
+{ success: false, error: { issues: [{ message: "Too big: expected number to be <=100" }] } }
+```
+
+`userListQuerySchema.pageSize.max(100)` 和 `customerListQuerySchema.pageSize.max(100)`
+都会拒绝 pageSize=200。但 aging 页面下拉 SWR 调的是 `/api/users?pageSize=200` 和
+`/api/customers?pageSize=200`(本意是"一次性加载所有 ACTIVE 用户/客户当下拉")。
+
+SWR 配置:
+```ts
+{ revalidateOnFocus: false, dedupingInterval: 60_000, onError: () => undefined, fallbackData: [] }
+```
+- 静默吞掉 `onError`
+- `fallbackData: []` 让空数组作为兜底
+- 用户看到的是空下拉,**没有任何报错信息**
+
+实际数据 100% 存在:
+- 49 active users (29 ACTIVE 后滤过, 实际 29, 远小于 100)
+- 200 customers (数据 200+, 但 schema max=100 截断)
+
+### 4.6.2 现场修复 (2026-07-03 15:53, commit `24c25a9c`)
+
+把 user / customer schema 的 max 从 100 升到 1000, 跟 contract schema
+的现有约定对齐 (开票新建页合同下拉 max=1000, 注释明确):
+
+```diff
+  // userListQuerySchema
+- pageSize: z.coerce.number().int().min(1).max(100).default(20),
++ // max=1000: aging 页 / 客户列表页 / 部门详情页 的"负责人"下拉一次性加载
++ // (pageSize=50/100/200), 普通列表默认 20。500 ~ 1000 足够未来增长。
++ pageSize: z.coerce.number().int().min(1).max(1000).default(20),
+```
+
+```diff
+  // customerListQuerySchema
+- pageSize: z.coerce.number().int().min(1).max(100).default(20),
++ // max=1000: aging 页的"客户"下拉一次性加载 (pageSize=200), 普通列表默认 20
++ pageSize: z.coerce.number().int().min(1).max(1000).default(20),
+```
+
+**回归测试**: `tests/unit/lib/validators/page-size.test.ts` (13 条)
+- 3 个 list schema (user / customer / contract) 在 pageSize = 100 / 200 / 500 / 1000 都应 OK
+- 3 个 schema 的 default 都是 20
+- 防止以后 max 退回到 100 又踩同一个坑
+
+测试结果: `60 passed (60)` / `486 passed (486)` 全部通过
+
+### 4.6.3 rebuild + restart (3.5G 机器标准流程)
+
+```bash
+$ cd /opt/qt
+$ git pull --ff-only
+$ docker stop mysql-fineui  # 释放 375MB
+$ systemctl stop qt-app      # 释放 260MB
+$ rm -rf .next
+$ NODE_OPTIONS="--max-old-space-size=2048" NEXT_TELEMETRY_DISABLED=1 NEXT_BUILD_WORKERS=1 pnpm build
+  build exit=0
+  BUILD_ID=jxB30zol9KiJaaqSwlHhw
+$ systemctl start qt-app
+$ docker start mysql-fineui
+```
+
+### 4.6.4 验证(用 prisma 直连模拟 admin 调 service)
+
+```bash
+$ npx tsx /opt/qt/test-fix.mjs
+=== userListQuerySchema 在 100/200/500 ===
+  pageSize=100 -> schema OK, 返回 29 users
+  pageSize=200 -> schema OK, 返回 29 users
+  pageSize=500 -> schema OK, 返回 29 users
+=== customerListQuerySchema 在 200 ===
+  pageSize=200 -> schema OK, 返回 200 customers
+=== top 5 users ===
+  admin 系统管理员
+  zhuyuehua 朱越华
+  wuzengmiao 吴增苗
+  zhouxiaoqing 周晓晴
+  yelming 叶绿明
+```
+
+29 active users 全部返回, 200 customers 全部返回, 用户下拉 options 正确填充。
+
+### 4.6.5 lessons learned (进 AGENTS.md)
+
+1. **SWR fallback + onError 静默吞**:任何 `onError: () => undefined` 的 SWR 调用,出问题时只表现为"下拉空",不报错。本质是开发体验问题:
+   - 临时把 `onError` 改 `console.error` 调试, 不要长期静默
+   - 改 schema 时检查所有 SWR 调用点, 模拟下拉的高 pageSize 场景
+2. **list schema 的 max(100) 跟下拉 pageSize(200) 不匹配**:下拉需要"一次性加载所有",跟分页 list 的需求不同。Zod schema 应该用一致的"大 max" (1000),而不是各个 validator 各自 max
+3. **同次发版多次出 bug**:本次 v0.7.0 部署有 2 次连续事故 (DunningNote GRANT 缺失 + user/customer schema max 太低), 都是 prisma client 跟 PG 真实数据/约束之间的细节没对齐。**部署后必跑的服务端烟测** (login 200 / 各模块主页 200) 只能查 "路由存在" 和 "无 500", 抓不到这类"业务 API 200 但 options 空"的隐性 bug
+4. **回归测试要锁住 pageSize 边界**:新测试 `tests/unit/lib/validators/page-size.test.ts` (13 条) 锁住 user/customer/contract 三个 list schema 在 100/200/500/1000 都过, 防止回归
+
 ## 五、未做但建议跟进
 
 - **批量回填 IS NULL dueDate**: 部署后写个脚本,把 VOIDED / REJECTED / RED_FLUSHED / RED_FLUSHED 之外的发票都补上(目前只 ISSUED 自动回填 4942/4942)
@@ -1419,4 +1527,6 @@ fi
 - **DunningNote ↔ OperationLog 联动**: dunning 录入应在审计日志留痕(目前只在 invoice audit)
 - **deploy.sh 加 pnpm install retry**: 踩中 1 次 patch-package PATH 问题,加 `retry 1` 兜底
 - **deploy.sh 加 GRANT 校验**: 部署后自动列出 qt_app 无权限的表, warn (backup 表例外)
+- **deploy.sh 加 SWR 关键 API 烟测**: 部署后用 prisma 模拟 admin 调 /api/users, /api/customers, /api/contracts 等"下拉数据源" API, 验证 pageSize=200 返回 > 0 行 (抓 4.6.1 这类 SWR fallback 静默 bug)
+- **下拉 SWR 的 onError 改 console.error 至少开发模式可见**: 4.6.1 事故的根因之一, 长期静默掩盖了 5+ 个生产 bug
 - **v0.1.0 文档第六章列的 6 项**(SSH 密钥 / HTTPS / Sentry / rate limit / 关 demo 库 / 关 firewalld)仍未落实
