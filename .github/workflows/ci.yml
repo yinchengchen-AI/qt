@@ -58,11 +58,10 @@ jobs:
           set -e
           if [ $EXIT -ne 0 ] && grep -q "20260630_message_type_enum_index" /tmp/migrate.log; then
             echo "::warning::20260630 fails (MessageType pre-created by 20260627 bootstrap). Schema already correct; resolving as applied."
-            PGPASSWORD=qitai_pass psql $DATABASE_URL <<'SQL'
-            ALTER TABLE "Message" ALTER COLUMN "type" TYPE "MessageType" USING "type"::"MessageType";
-            DROP INDEX IF EXISTS "Message_type_idx";
-            CREATE INDEX "Message_type_receiverUserId_createdAt_idx" ON "Message"("type", "receiverUserId", "createdAt");
-            SQL
+            PGPASSWORD=qitai_pass psql "$DATABASE_URL" -v ON_ERROR_STOP=1 \
+              -c 'ALTER TABLE "Message" ALTER COLUMN "type" TYPE "MessageType" USING "type"::"MessageType";' \
+              -c 'DROP INDEX IF EXISTS "Message_type_idx";' \
+              -c 'CREATE INDEX "Message_type_receiverUserId_createdAt_idx" ON "Message"("type", "receiverUserId", "createdAt");'
             pnpm prisma migrate resolve --rolled-back 20260630_message_type_enum_index
             pnpm prisma migrate resolve --applied 20260630_message_type_enum_index
             pnpm prisma migrate deploy
@@ -151,11 +150,10 @@ jobs:
           set -e
           if [ $EXIT -ne 0 ] && grep -q "20260630_message_type_enum_index" /tmp/migrate.log; then
             echo "::warning::20260630 fails (MessageType pre-created). Schema already correct; resolving as applied."
-            PGPASSWORD=qitai_pass psql $DATABASE_URL <<'SQL'
-            ALTER TABLE "Message" ALTER COLUMN "type" TYPE "MessageType" USING "type"::"MessageType";
-            DROP INDEX IF EXISTS "Message_type_idx";
-            CREATE INDEX "Message_type_receiverUserId_createdAt_idx" ON "Message"("type", "receiverUserId", "createdAt");
-            SQL
+            PGPASSWORD=qitai_pass psql "$DATABASE_URL" -v ON_ERROR_STOP=1 \
+              -c 'ALTER TABLE "Message" ALTER COLUMN "type" TYPE "MessageType" USING "type"::"MessageType";' \
+              -c 'DROP INDEX IF EXISTS "Message_type_idx";' \
+              -c 'CREATE INDEX "Message_type_receiverUserId_createdAt_idx" ON "Message"("type", "receiverUserId", "createdAt");'
             pnpm prisma migrate resolve --rolled-back 20260630_message_type_enum_index
             pnpm prisma migrate resolve --applied 20260630_message_type_enum_index
             pnpm prisma migrate deploy
@@ -172,18 +170,18 @@ jobs:
         env:
           DATABASE_URL: postgresql://qitai:qitai_pass@localhost:5432/qt_biz_ci?schema=public
         run: |
-          PGPASSWORD=qitai_pass psql $DATABASE_URL <<'SQL'
-          INSERT INTO "Customer" (
-            "id", "code", "name", "customerType", "contactPhone", "province", "city",
-            "ownerUserId", "createdById", "updatedById", "createdAt", "updatedAt"
-          ) VALUES (
-            'ci-fixture-customer', 'CI-FIXTURE-001', 'CI 测试客户 (fixture)',
-            'OTHER', '13800000000', '浙江省', '杭州市',
-            (SELECT id FROM "User" WHERE "employeeNo" = 'admin' LIMIT 1),
-            (SELECT id FROM "User" WHERE "employeeNo" = 'admin' LIMIT 1),
-            (SELECT id FROM "User" WHERE "employeeNo" = 'admin' LIMIT 1),
-            NOW(), NOW()
-          ) ON CONFLICT ("code") DO NOTHING;
-          SQL
+          PGPASSWORD=qitai_pass psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -c "
+            INSERT INTO \"Customer\" (
+              \"id\", \"code\", \"name\", \"customerType\", \"contactPhone\", \"province\", \"city\",
+              \"ownerUserId\", \"createdById\", \"updatedById\", \"createdAt\", \"updatedAt\"
+            ) VALUES (
+              'ci-fixture-customer', 'CI-FIXTURE-001', 'CI 测试客户 (fixture)',
+              'OTHER', '13800000000', '浙江省', '杭州市',
+              (SELECT id FROM \"User\" WHERE \"employeeNo\" = 'admin' LIMIT 1),
+              (SELECT id FROM \"User\" WHERE \"employeeNo\" = 'admin' LIMIT 1),
+              (SELECT id FROM \"User\" WHERE \"employeeNo\" = 'admin' LIMIT 1),
+              NOW(), NOW()
+            ) ON CONFLICT (\"code\") DO NOTHING;
+          "
       - name: vitest
         run: pnpm test
