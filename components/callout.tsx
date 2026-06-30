@@ -12,7 +12,7 @@ import type { CSSProperties, ReactNode } from "react";
  * 用法:
  *   <ErrorBox title="加载失败">网络异常,请稍后重试。<Button>重试</Button></ErrorBox>
  *   <InfoBox>置顶的公告会钉在用户消息中心顶部。</InfoBox>
- *   <HintBox>管理员/财务可看全员;销售仅看本人 owner 的合同。</HintBox>
+ *   <HintBox>管理员/财务看全员;业务人员(SALES)看自己负责的合同。</HintBox>
  */
 
 type Tone = "error" | "info" | "hint";

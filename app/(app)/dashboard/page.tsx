@@ -1,5 +1,6 @@
 "use client";
 import { useEffect, useState } from "react";
+import useSWR from "swr";
 import { ProCard } from "@ant-design/pro-components";
 import { Column } from "@ant-design/charts";
 import { Badge, Col, Row, Segmented, Space, Tag, Typography, theme } from "antd";
@@ -12,6 +13,7 @@ import { HintBox } from "@/components/callout";
 import { formatCompact, formatCurrency, formatDate } from "@/lib/format";
 import { StatusTag } from "@/components/status-tag";
 import { useResponsive } from "@/lib/use-breakpoint";
+import { DashboardAgingMini } from "@/components/dashboard-aging-mini";
 
 const { Text } = Typography;
 const { useToken } = theme;
@@ -51,6 +53,19 @@ export default function DashboardPage() {
       })
       .finally(() => setLoading(false));
   }, [range]);
+
+  // 催收汇总 — 拉失败时整段隐藏,不阻塞 dashboard 主数据
+  const dunningFetcher = async (url: string) => {
+    const r = await fetch(url, { credentials: "include" });
+    const j = await r.json();
+    if (j.code !== 0) throw new Error(j.message);
+    return j.data as { byStatus: Record<"CONTACTED" | "PROMISED" | "DISPUTED" | "LEGAL", number> };
+  };
+  const { data: dunningData } = useSWR<{ byStatus: Record<"CONTACTED" | "PROMISED" | "DISPUTED" | "LEGAL", number> }>(
+    "/api/statistics/aging/dunning/summary",
+    dunningFetcher,
+    { revalidateOnFocus: false, dedupingInterval: 60_000, onError: () => undefined }
+  );
 
   // 图表高度在窄屏上压缩,避免单屏只能看到 1-2 根柱子
   const chartHeight = isMobile ? 280 : 420;
@@ -93,7 +108,7 @@ export default function DashboardPage() {
   })();
   const rangeTagLabel = range === "month" ? "本月" : range === "quarter" ? "本季" : "本年";
   // 权限提示:SALES 角色只看到自己 owner 的合同/发票/回款(由后端 ownerEq / ownerViaContract 注入)
-  const permHint = "数据权限：管理员/财务可看全员；销售仅看本人负责的合同、对应发票与回款。";
+  const permHint = "数据权限：管理员/财务看全员；业务人员(SALES)看自己负责的合同与对应发票/回款；技术专家(EXPERT)同业务人员。";
 
   // ── 五大维度 KPI ──
   const kpiItems: StatItem[] = [
@@ -198,7 +213,7 @@ export default function DashboardPage() {
                 <StatusTag status={s.status} domain="invoice" />
                 <Space>
                   <Text strong>{s.count} 张</Text>
-                  <Text type="secondary">{formatCurrency(s.totalAmount).replace("¥", "¥")}</Text>
+                  <Text type="secondary">{formatCurrency(s.totalAmount)}</Text>
                 </Space>
               </div>
             ))}
@@ -211,13 +226,18 @@ export default function DashboardPage() {
                 <StatusTag status={s.status} domain="payment" />
                 <Space>
                   <Text strong>{s.count} 笔</Text>
-                  <Text type="secondary">{formatCurrency(s.totalAmount).replace("¥", "¥")}</Text>
+                  <Text type="secondary">{formatCurrency(s.totalAmount)}</Text>
                 </Space>
               </div>
             ))}
           </ProCard>
         </Col>
       </Row>
+
+      <DashboardAgingMini
+        buckets={data.agingBuckets as never}
+        dunningByStatus={dunningData?.byStatus}
+      />
 
       {/*** Top 客户 ***/}
       <ProCard title="Top 5 客户（按合同额）" style={{ marginBottom: 24 }}>

@@ -16,6 +16,7 @@ export const RESOURCE = {
   ANNOUNCEMENT: "ANNOUNCEMENT",
   OPERATION_LOG: "OPERATION_LOG",
   DEPARTMENT: "DEPARTMENT",
+  DUNNING: "DUNNING",
 } as const;
 export type Resource = (typeof RESOURCE)[keyof typeof RESOURCE];
 
@@ -41,7 +42,7 @@ const R_EXPORT: Action[] = ["READ", "EXPORT"];
 export const ROLE_PERMISSIONS: Record<RoleCode, Permission[]> = {
   ADMIN: Object.values(RESOURCE).map((resource) =>
     resource === RESOURCE.STATISTICS || resource === RESOURCE.CUSTOMER || resource === RESOURCE.CONTRACT ||
-    resource === RESOURCE.INVOICE || resource === RESOURCE.PAYMENT
+    resource === RESOURCE.INVOICE || resource === RESOURCE.PAYMENT || resource === RESOURCE.DUNNING
       ? { resource, actions: [...CRUD, ACTION.EXPORT] }
       : { resource, actions: CRUD }
   ),
@@ -54,6 +55,7 @@ export const ROLE_PERMISSIONS: Record<RoleCode, Permission[]> = {
     { resource: RESOURCE.INVOICE, actions: [...CR, ACTION.EXPORT] },
     { resource: RESOURCE.PAYMENT, actions: [...CR, ACTION.EXPORT] },
     { resource: RESOURCE.STATISTICS, actions: R },
+    { resource: RESOURCE.DUNNING, actions: CRUD },
     { resource: RESOURCE.MESSAGE, actions: CRUD },
     { resource: RESOURCE.ANNOUNCEMENT, actions: R },
   ],
@@ -66,6 +68,7 @@ export const ROLE_PERMISSIONS: Record<RoleCode, Permission[]> = {
     { resource: RESOURCE.INVOICE, actions: [...CRUD, ACTION.EXPORT] },
     { resource: RESOURCE.PAYMENT, actions: [...CRUD, ACTION.EXPORT] },
     { resource: RESOURCE.STATISTICS, actions: R_EXPORT },
+    { resource: RESOURCE.DUNNING, actions: CRU },
     { resource: RESOURCE.MESSAGE, actions: CRUD },
     { resource: RESOURCE.ANNOUNCEMENT, actions: R },
   ],
@@ -79,10 +82,11 @@ export const ROLE_PERMISSIONS: Record<RoleCode, Permission[]> = {
     { resource: RESOURCE.INVOICE, actions: [...R, ACTION.EXPORT] },
     { resource: RESOURCE.PAYMENT, actions: [...R, ACTION.EXPORT] },
     { resource: RESOURCE.STATISTICS, actions: R },
+    { resource: RESOURCE.DUNNING, actions: R },
     { resource: RESOURCE.MESSAGE, actions: CRUD },
     { resource: RESOURCE.ANNOUNCEMENT, actions: CRUD },
   ],
-  // 技术专家：现场勘查 / 报告撰写等"专业执行"角色,权限与 SALES 同
+  // 技术专家: 现场勘查 / 报告撰写等"专业执行"角色,权限与 SALES (业务人员) 同
   EXPERT: [
     { resource: RESOURCE.DEPARTMENT, actions: R },
     { resource: RESOURCE.USER, actions: R },
@@ -92,6 +96,7 @@ export const ROLE_PERMISSIONS: Record<RoleCode, Permission[]> = {
     { resource: RESOURCE.INVOICE, actions: [...CR, ACTION.EXPORT] },
     { resource: RESOURCE.PAYMENT, actions: [...CR, ACTION.EXPORT] },
     { resource: RESOURCE.STATISTICS, actions: R },
+    { resource: RESOURCE.DUNNING, actions: CRUD },
     { resource: RESOURCE.MESSAGE, actions: CRUD },
     { resource: RESOURCE.ANNOUNCEMENT, actions: R },
   ]

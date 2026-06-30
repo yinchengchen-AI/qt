@@ -232,10 +232,43 @@ describe("getEmployeePerformance SALES 隔离", () => {
   });
 });
 
+// 应收账龄重设计 round-3 回归
+// 锁住"旧响应字段 { buckets, total, rows } 仍存在 + basis=issue 旧语义不变",保证 dashboard 不破
+describe("getInvoiceAging 旧字段(回归 dashboard)", () => {
+  it("默认行为保持 4 桶 + 旧字段", async () => {
+    if (!dbReachable || !adminUser) return;
+    const r = await getInvoiceAging(buildAdmin());
+    expect(r).toHaveProperty("buckets");
+    expect(r).toHaveProperty("total");
+    expect(r).toHaveProperty("rows");
+    expect(r.buckets).toHaveProperty("0-30");
+    expect(r.buckets).toHaveProperty("31-60");
+    expect(r.buckets).toHaveProperty("61-90");
+    expect(r.buckets).toHaveProperty("90+");
+    // 新字段(可选, 不破坏老消费者)
+    expect(r).toHaveProperty("summary");
+    expect(r).toHaveProperty("pagination");
+  });
+
+  it("basis=issue 旧语义: 用 actualIssueDate 计龄", async () => {
+    if (!dbReachable || !adminUser) return;
+    // 上一 describe 的 aging-1 发票 (45 天前开票) 应该归 31-60
+    const ctr = await makeContract(testCustomerId!, `${TAG}-客户`, adminUser.id, adminUser.id, 5000, "issue-baseline");
+    createdContractNos.push(ctr.contractNo);
+    await makeIssuedInvoice(ctr.id, adminUser.id, 500, "issue-baseline", 45);
+    const r = await getInvoiceAging(buildAdmin(), { basis: "issue" });
+    // 45 天 -> 31-60
+    const row = r.rows.find((x) => x.invoiceNo === `${TAG}-INV-issue-baseline`);
+    expect(row).toBeDefined();
+    expect(row!.bucket).toBe("31-60");
+    expect(row!.basisUsed).toBe("issue");
+  });
+});
+
 describe("getRegionStatistics", () => {
   // 准备:建 3 个客户(2 个有 district+town,1 个没有 town),
   //     各自挂一份合同 + 发票, 用本测试独有 TAG 前缀, 跑完由 afterAll 收尾.
-  //     SALES 隔离用例额外建一个"销售拥有但 admin 看不到"的客户
+  //     SALES 隔离用例额外建一个"业务人员拥有但 admin 看不到"的客户
   const TAG_REG = `${TAG}-REG`;
   const regionContractNos: string[] = [];
   const regionInvoiceIds: string[] = [];
@@ -263,11 +296,11 @@ describe("getRegionStatistics", () => {
 
   it("按 district+town 分桶:同名 town 跨区不合并;SALES 只看自己的客户", async () => {
     if (!dbReachable || !adminUser || !salesUser) return;
-    // 客户 A: 销售拥有, 余杭区 闲林街道
+    // 客户 A: SALES 拥有 (业务人员视角), 余杭区 闲林街道
     const custA = await makeRegionCustomer("A", salesUser.id, "余杭区", "闲林街道");
-    // 客户 B: 销售拥有, 临平区 闲林街道 (同名镇街, 不同区)
+    // 客户 B: SALES 拥有 (业务人员视角), 临平区 闲林街道 (同名镇街, 不同区)
     const custB = await makeRegionCustomer("B", salesUser.id, "临平区", "闲林街道");
-    // 客户 C: 销售拥有, 没填 town
+    // 客户 C: SALES 拥有 (业务人员视角), 没填 town
     const custC = await makeRegionCustomer("C", salesUser.id, "余杭区", null);
     // 各自挂一份合同 + 发票
     for (const [cust, suffix] of [[custA, "A"], [custB, "B"], [custC, "C"]] as const) {

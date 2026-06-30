@@ -121,7 +121,7 @@ export default function ByRegionPage() {
     <Page>
       <PageHeader
         title="区域统计"
-        subtitle="按客户所在镇街汇总合同、开票、回款（销售仅看自己负责的客户）；支持时间范围筛选"
+        subtitle="按客户所在镇街汇总合同、开票、回款(业务人员仅看自己负责的合同);支持时间范围筛选"
         actions={
           <Space wrap>
             <DatePicker.RangePicker

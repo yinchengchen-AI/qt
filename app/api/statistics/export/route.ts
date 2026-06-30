@@ -8,16 +8,24 @@ import {
   getEmployeePerformance,
   getOverview,
   getRegionStatistics,
+  getInvoiceAging
 } from "@/server/services/statistics";
 import { exportToXlsx, exportMaxRows, attachmentHeader } from "@/lib/excel";
 import { parseDateRangeQuery } from "@/lib/date-range";
 
 const query = z.object({
-  type: z.enum(["overview", "top-customers", "employee-performance", "by-region"]),
+  type: z.enum(["overview", "top-customers", "employee-performance", "by-region", "aging"]),
   metric: z.enum(["contract", "payment"]).optional(),
   from: z.string().optional(),
   to: z.string().optional(),
-  userId: z.string().optional()
+  userId: z.string().optional(),
+  // 账龄导出专属参数
+  basis: z.enum(["issue", "due"]).optional(),
+  customerId: z.string().optional(),
+  ownerUserId: z.string().optional(),
+  contractId: z.string().optional(),
+  buckets: z.string().optional(),
+  minAmount: z.string().optional()
 });
 
 // 数字格式化辅助: 给统计页统一保留两位
@@ -106,6 +114,54 @@ export async function GET(req: Request) {
             "Content-Type":
               "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
             "Content-Disposition": attachmentHeader(`区域统计_${ts}.xlsx`),
+            "Cache-Control": "no-store"
+          }
+        });
+      }
+      if (parsed.type === "aging") {
+        // 导出账龄明细(走 getInvoiceAging, 应用与页面同口径的过滤)
+        const agingResult = await getInvoiceAging(user, {
+          basis: parsed.basis as "issue" | "due" | undefined,
+          customerId: parsed.customerId,
+          ownerUserId: parsed.ownerUserId,
+          contractId: parsed.contractId,
+          buckets: parsed.buckets
+            ? parsed.buckets.split(",").map((s) => s.trim()).filter(Boolean)
+            : undefined,
+          minAmount: parsed.minAmount ? Number(parsed.minAmount) : undefined,
+          pageSize: MAX_ROWS
+        });
+        const basisTag = agingResult.basisUsed;
+        const rows = agingResult.rows.map((r: typeof agingResult.rows[number]) => ({
+          发票号: r.invoiceNo,
+          客户: r.customerName,
+          合同号: r.contractNo ?? "-",
+          业务人员: r.ownerName,
+          账龄段: r.bucket,
+          逾期天数: r.daysOverdue,
+          剩余未收: r.remaining.toFixed(2),
+          状态: r.status,
+          基准: r.basisUsed,
+          已有催收: r.hasDunning ? "是" : "否",
+          最新催收状态: r.latestDunningStatus ?? "-"
+        }));
+        const buf = await exportToXlsx(rows, [
+          { header: "发票号", key: "发票号", width: 22 },
+          { header: "客户", key: "客户", width: 24 },
+          { header: "合同号", key: "合同号", width: 22 },
+          { header: "业务人员", key: "业务人员", width: 12 },
+          { header: "账龄段", key: "账龄段", width: 10 },
+          { header: "逾期天数", key: "逾期天数", width: 10 },
+          { header: "剩余未收", key: "剩余未收", width: 14 },
+          { header: "状态", key: "状态", width: 12 },
+          { header: "基准", key: "基准", width: 10 },
+          { header: "已有催收", key: "已有催收", width: 10 },
+          { header: "最新催收状态", key: "最新催收状态", width: 16 }
+        ]);
+        return new Response(new Uint8Array(buf), {
+          headers: {
+            "Content-Type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            "Content-Disposition": attachmentHeader(`账龄分析_${basisTag}_${ts}.xlsx`),
             "Cache-Control": "no-store"
           }
         });

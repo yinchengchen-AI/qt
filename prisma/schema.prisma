@@ -73,8 +73,10 @@ model User {
 
   uploadedAttachments    Attachment[]
   signedContracts        Contract[]       @relation("ContractSigner")
+  ownedContracts         Contract[]       @relation("ContractOwner")
   messages               Message[]
   publishedAnnouncements Announcement[]   @relation("AnnouncementPublishUser")
+  dunningNotes           DunningNote[]
   profile                EmployeeProfile?
 
   @@index([roleId])
@@ -379,6 +381,7 @@ model Contract {
   reviewLogs     ContractReviewLog[]
   attachmentRefs Attachment[]        @relation("ContractAttachments")
   signer         User                @relation("ContractSigner", fields: [signerId], references: [id])
+  owner          User                @relation("ContractOwner", fields: [ownerUserId], references: [id])
 
   @@index([customerId])
   @@index([status])
@@ -418,6 +421,8 @@ model Invoice {
   applyDate          DateTime  @db.Timestamptz(6)
   expectedIssueDate  DateTime? @db.Timestamptz(6)
   actualIssueDate    DateTime? @db.Timestamptz(6)
+  // 合同约定付款日(账龄 basis=due 用);为 null 时回退到 actualIssueDate 计龄
+  dueDate            DateTime? @db.Timestamptz(6)
   titleType          String // COMPANY | PERSONAL
   titleName          String
   taxNo              String?
@@ -443,9 +448,11 @@ model Invoice {
   payments       Payment[]
   auditLogs      InvoiceAuditLog[]
   attachmentRefs Attachment[]      @relation("InvoiceAttachments")
+  dunningNotes   DunningNote[]
 
   @@index([status])
   @@index([actualIssueDate])
+  @@index([dueDate])
   @@index([contractId])
   @@index([customerId])
 }
@@ -657,4 +664,32 @@ model Attachment {
   @@index([uploadedById])
   @@index([contractId, isDeliverable, deletedAt])
   @@index([deletedAt])
+}
+
+// =====================================================
+// 催收记录
+//   - 与 Invoice 1:N (cascade delete, 发票删除则催收记录一起删)
+//   - 与 User N:1 (actor 记录谁创建, restrict 防止 actor 误删导致历史失主)
+//   - status: CONTACTED(已联系) | PROMISED(客户承诺) | DISPUTED(争议) | LEGAL(法务介入)
+//   - promisedDate: 客户承诺付款日(可空,只有 PROMISED 时填)
+//   - lastContactAt: 最近一次联系时间(用于"距上次跟进 N 天"提醒)
+//   - channel: PHONE | WECHAT | EMAIL | VISIT
+// =====================================================
+model DunningNote {
+  id            String    @id @default(cuid())
+  invoiceId     String
+  invoice       Invoice   @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  status        String // CONTACTED | PROMISED | DISPUTED | LEGAL
+  promisedDate  DateTime? @db.Timestamptz(6)
+  lastContactAt DateTime  @db.Timestamptz(6)
+  channel       String // PHONE | WECHAT | EMAIL | VISIT
+  remark        String?
+  actorId       String
+  actor         User      @relation(fields: [actorId], references: [id], onDelete: Restrict)
+  createdAt     DateTime  @default(now()) @db.Timestamptz(6)
+  updatedAt     DateTime  @updatedAt @db.Timestamptz(6)
+
+  @@index([invoiceId])
+  @@index([status])
+  @@index([actorId, createdAt])
 }
