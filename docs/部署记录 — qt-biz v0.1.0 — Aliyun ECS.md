@@ -1315,6 +1315,102 @@ qt-minio       Up 7 days (healthy)
 | 盘 | 24 GB / 49 GB(50%) |
 | 业务数据保留 | ✅ Customer / Contract / Invoice / Payment / Attachment / Message / OperationLog 全部不动 |
 
+## 四点五、部署后事故 + 修复(2026-07-03 15:44-15:50)
+
+### 4.5.1 事故:aging 页 500 错误
+
+**用户报**: 服务器上 aging 页面加载失败,服务器内部错误
+**发现**: 2026-07-03 15:41(部署后 2 分钟)
+**影响**: `/statistics/aging` 页面 500;6 个 v0.7.0 新 API 路由 (by-customer / by-owner / trend / uninvoiced-contracts / dunning-notes / dunning/summary) 全部报 500
+**日志**(节选):
+```
+Jun 30 15:41:09 qt-app[3714075]: prisma:error permission denied for table DunningNote
+Jun 30 15:41:09 qt-app[3714075]: Unhandled API error: Error [DriverAdapterError]: permission denied for table DunningNote
+Jun 30 15:41:09 qt-app[3714075]:     originalCode: '42501',
+Jun 30 15:41:09 qt-app[3714075]:     originalMessage: 'permission denied for table DunningNote',
+```
+
+### 4.5.2 根因分析
+
+| 维度 | 详情 |
+|---|---|
+| **症状** | PostgreSQL 42501 permission denied for table DunningNote |
+| **表所有者** | `qitai`(迁移用户) — 因为 `20260703_aging_redesign` 迁移用 qitai 跑 |
+| **应用用户** | `qt_app` (BYPASSRLS) — Prisma 用它连 DB |
+| **权限矩阵** | `DunningNote` 上 qt_app 有 0 个 GRANT(只有 qitai 有 7 个:SELECT/INSERT/UPDATE/DELETE/REFERENCES/TRIGGER/TRUNCATE) |
+| **误解点** | `BYPASSRLS` 只旁路 **行级安全策略 (Row-Level Security)**,**不**旁路**表级 GRANT**。PostgreSQL 文档明确写:`BYPASSRLS` = "Bypass row-level security." 不是 "Bypass all permissions." |
+| **新表漏洞** | `20260703_aging_redesign` 迁移只 CREATE TABLE 没 GRANT。其它表(Invoice / Customer / Contract / EmployeeProfile / EmployeeEducation / 等 22 张)都是 v0.1.0 首部署时手动 GRANT 或 ALTER DEFAULT PRIVILEGES 设置的,新表 DunningNote 漏了 |
+
+### 4.5.3 现场修复 (2026-07-03 15:44)
+
+```bash
+# qt_app 角色直接连 DB 验证权限
+$ docker exec -e PGPASSWORD="$APP_PW" qt-postgres psql -U qt_app -d qt_biz -c 'SELECT count(*) FROM "DunningNote";'
+ERROR: permission denied for table DunningNote
+$ docker exec -e PGPASSWORD="$APP_PW" qt-postgres psql -U qt_app -d qt_biz -c 'SELECT count(*) FROM "Invoice";'
+ count
+-------
+  4942  # 老表 OK
+```
+
+在线 GRANT 修复 (不动原 migration,避免 checksum mismatch):
+```bash
+$ docker exec qt-postgres psql -U qitai -d qt_biz -c 'GRANT ALL ON TABLE "DunningNote" TO qt_app;'
+GRANT
+$ docker exec qt-postgres psql -U qitai -d qt_biz -c "SELECT grantee, privilege_type FROM information_schema.role_table_grants WHERE table_name='DunningNote' ORDER BY grantee;"
+ grantee | privilege_type
+---------+----------------
+ qitai   | DELETE / INSERT / REFERENCES / SELECT / TRIGGER / TRUNCATE / UPDATE
+ qt_app  | DELETE / INSERT / REFERENCES / SELECT / TRIGGER / TRUNCATE / UPDATE
+(14 rows)
+
+$ systemctl restart qt-app  # 重启让 prisma client 重连
+```
+
+### 4.5.4 后续修复(防 fresh DB 重演,commit `c742ba44`)
+
+不动 `20260703_aging_redesign` SQL (AGENTS.md 不可变迁移规则,改了就 checksum mismatch),
+加新迁移 `20260704_grant_dunning_note_qt_app`:
+```sql
+GRANT ALL ON TABLE "DunningNote" TO qt_app;
+```
+幂等 (GRANT 重复跑无副作用),在已部署环境是 noop,在 fresh DB 给 DunningNote 兜底。
+
+AGENTS.md 加 DDL 约定:
+> 新表必须显式 GRANT 给 qt_app:`qt_app` 是 BYPASSRLS 应用运行时用户
+> (BYPASSRLS 只旁路 RLS 策略,**不**旁路表级权限)。任何 CREATE TABLE
+> 迁移在末尾追加 GRANT ALL ON TABLE "<TableName>" TO qt_app;
+> 漏了会报 42501 permission denied for table <X>(v0.7.0 真实事故:DunningNote)。
+> 回填用新迁移 GRANT ... TO qt_app;(幂等),不要改原 SQL 破坏 checksum。
+
+### 4.5.5 部署期可改进:deploy.sh 加 GRANT 校验
+
+下次 deploy.sh 可在 `prisma migrate deploy` 后加一段:
+```bash
+# 防 42501 漏 GRANT: 列出所有 public 表, 检查 qt_app grants
+TABLES_WITHOUT_GRANT=$(docker exec qt-postgres psql -U qitai -d qt_biz -At -c "
+  SELECT t.tablename FROM pg_tables t
+  WHERE t.schemaname='public' AND t.tablename NOT LIKE '\_%'
+  EXCEPT
+  SELECT DISTINCT table_name FROM information_schema.role_table_grants
+  WHERE grantee='qt_app';
+")
+if [ -n "$TABLES_WITHOUT_GRANT" ]; then
+  echo "[WARN] 这些表 qt_app 没权限, 业务 API 会报 42501:"
+  echo "$TABLES_WITHOUT_GRANT"
+  echo "      修法: 现场 GRANT 或加新迁移 \`GRANT ALL ON TABLE \"X\" TO qt_app;\`"
+  # 不 exit 1, 因为有些表是 backup 表 (intentionally not granted)
+fi
+```
+本次没改 deploy.sh,加进 v0.7.0+ 后续优化清单。
+
+### 4.5.6 lessons learned(进 AGENTS.md)
+
+1. **BYPASSRLS ≠ 全部权限**:必须 GRANT 表级权限,不能假设有 BYPASSRLS 就自动有 ALL
+2. **新表必须有 GRANT 兜底**:v0.1.0 设了 ALTER DEFAULT PRIVILEGES 之后,后续新表也都 OK,但本次 20260703_aging_redesign 漏写,说明"约定"不够强制
+3. **不在原 migration SQL 改**:即使逻辑无害 (加 GRANT),也破坏 checksum,只能新加迁移
+4. **prisma client 缓存**:DB 权限改了需要 restart app 让 prisma 重连,不能只等下次请求
+
 ## 五、未做但建议跟进
 
 - **批量回填 IS NULL dueDate**: 部署后写个脚本,把 VOIDED / REJECTED / RED_FLUSHED / RED_FLUSHED 之外的发票都补上(目前只 ISSUED 自动回填 4942/4942)
@@ -1322,4 +1418,5 @@ qt-minio       Up 7 days (healthy)
 - **催收提醒 cron job**: 加一个"距 lastContactAt N 天未联系则发消息"的 cron,目前 dunning 是被动录入
 - **DunningNote ↔ OperationLog 联动**: dunning 录入应在审计日志留痕(目前只在 invoice audit)
 - **deploy.sh 加 pnpm install retry**: 踩中 1 次 patch-package PATH 问题,加 `retry 1` 兜底
+- **deploy.sh 加 GRANT 校验**: 部署后自动列出 qt_app 无权限的表, warn (backup 表例外)
 - **v0.1.0 文档第六章列的 6 项**(SSH 密钥 / HTTPS / Sentry / rate limit / 关 demo 库 / 关 firewalld)仍未落实
