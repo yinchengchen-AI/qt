@@ -58,7 +58,9 @@ jobs:
           set -e
           if [ $EXIT -ne 0 ] && grep -q "20260630_message_type_enum_index" /tmp/migrate.log; then
             echo "::warning::20260630 fails (MessageType pre-created by 20260627 bootstrap). Schema already correct; resolving as applied."
-            PGPASSWORD=qitai_pass psql "$DATABASE_URL" -v ON_ERROR_STOP=1 \
+            # psql 不认 prisma 的 ?schema=public 参数, 去掉 query string 再传
+            PGURL=$(echo "$DATABASE_URL" | sed 's/?schema=public//')
+            PGPASSWORD=qitai_pass psql "$PGURL" -v ON_ERROR_STOP=1 \
               -c 'ALTER TABLE "Message" ALTER COLUMN "type" TYPE "MessageType" USING "type"::"MessageType";' \
               -c 'DROP INDEX IF EXISTS "Message_type_idx";' \
               -c 'CREATE INDEX "Message_type_receiverUserId_createdAt_idx" ON "Message"("type", "receiverUserId", "createdAt");'
@@ -150,7 +152,9 @@ jobs:
           set -e
           if [ $EXIT -ne 0 ] && grep -q "20260630_message_type_enum_index" /tmp/migrate.log; then
             echo "::warning::20260630 fails (MessageType pre-created). Schema already correct; resolving as applied."
-            PGPASSWORD=qitai_pass psql "$DATABASE_URL" -v ON_ERROR_STOP=1 \
+            # psql 不认 prisma 的 ?schema=public 参数, 去掉 query string 再传
+            PGURL=$(echo "$DATABASE_URL" | sed 's/?schema=public//')
+            PGPASSWORD=qitai_pass psql "$PGURL" -v ON_ERROR_STOP=1 \
               -c 'ALTER TABLE "Message" ALTER COLUMN "type" TYPE "MessageType" USING "type"::"MessageType";' \
               -c 'DROP INDEX IF EXISTS "Message_type_idx";' \
               -c 'CREATE INDEX "Message_type_receiverUserId_createdAt_idx" ON "Message"("type", "receiverUserId", "createdAt");'
@@ -170,7 +174,9 @@ jobs:
         env:
           DATABASE_URL: postgresql://qitai:qitai_pass@localhost:5432/qt_biz_ci?schema=public
         run: |
-          PGPASSWORD=qitai_pass psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -c "
+          # psql 不认 prisma 的 ?schema=public 参数, 去掉 query string 再传
+          PGURL=$(echo "$DATABASE_URL" | sed 's/?schema=public//')
+          PGPASSWORD=qitai_pass psql "$PGURL" -v ON_ERROR_STOP=1 -c "
             INSERT INTO \"Customer\" (
               \"id\", \"code\", \"name\", \"customerType\", \"contactPhone\", \"province\", \"city\",
               \"ownerUserId\", \"createdById\", \"updatedById\", \"createdAt\", \"updatedAt\"
