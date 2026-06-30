@@ -54,7 +54,7 @@ jobs:
         run: |
           set +e
           pnpm prisma migrate deploy 2>&1 | tee /tmp/migrate.log
-          EXIT=$?
+          EXIT=${PIPESTATUS[0]}  # 取管道首命令 (migrate deploy) 的退出码, 不是 tee 的
           set -e
           if [ $EXIT -ne 0 ] && grep -q "20260630_message_type_enum_index" /tmp/migrate.log; then
             echo "::warning::20260630 fails (MessageType pre-created by 20260627 bootstrap). Schema already correct; resolving as applied."
@@ -146,7 +146,7 @@ jobs:
         run: |
           set +e
           pnpm prisma migrate deploy 2>&1 | tee /tmp/migrate.log
-          EXIT=$?
+          EXIT=${PIPESTATUS[0]}  # 取管道首命令 (migrate deploy) 的退出码, 不是 tee 的
           set -e
           if [ $EXIT -ne 0 ] && grep -q "20260630_message_type_enum_index" /tmp/migrate.log; then
             echo "::warning::20260630 fails (MessageType pre-created). Schema already correct; resolving as applied."
