@@ -1,13 +1,11 @@
 "use client";
 
-import { Suspense, useEffect, useState } from "react";
-import { App as AntdApp, Button, Checkbox, Form, Input, Typography } from "antd";
-import { LockOutlined, UserOutlined, SafetyCertificateOutlined } from "@ant-design/icons";
+import { Suspense, useState } from "react";
+import { App as AntdApp, Button, Checkbox, Form, Input } from "antd";
+import { LockOutlined, UserOutlined, FileTextOutlined, TeamOutlined, BarChartOutlined } from "@ant-design/icons";
 import { signIn } from "next-auth/react";
 import { useRouter, useSearchParams } from "next/navigation";
 import styles from "./login.module.css";
-
-const { Text } = Typography;
 
 const ERROR_MAP: Record<string, string> = {
   CredentialsSignin: "工号或密码错误，请检查后重试",
@@ -42,6 +40,11 @@ const QUICK_ACCOUNTS: { no: string; label: string }[] =
     : [];
 
 const SHOW_QUICK_FILL = process.env.NODE_ENV !== "production";
+
+// 系统对外展示的版本号(右上角轻量徽标)。
+// 优先读 NEXT_PUBLIC_APP_VERSION,缺省回落到 "v2.0",跟原 V2 提交保持一致;
+// 改版时只需调 env 或这里,不动 UI 代码。
+const APP_VERSION = process.env.NEXT_PUBLIC_APP_VERSION ?? "v2.0";
 
 type FormValues = { employeeNo: string; password: string };
 
@@ -86,8 +89,6 @@ function LoginForm() {
       const res = await signIn("credentials", {
         employeeNo,
         password,
-        // NextAuth 在内部把任意非内置字段塞进 creds 传给 authorize;
-        // 这里 "true"/"false" 是字符串,与 authorize 里的归一化逻辑对应
         remember: remember ? "true" : "false",
         redirect: false
       });
@@ -120,8 +121,8 @@ function LoginForm() {
       onFinish={handleFinish}
     >
       <header className={styles.formHead}>
-        <h2 className={styles.formTitle}>欢迎回来</h2>
-        <p className={styles.formSubtitle}>请使用工号与密码进入业务管理系统</p>
+        <h1 className={styles.formTitle}>欢迎回来</h1>
+        <p className={styles.formSubtitle}>登录以继续使用业务管理系统</p>
       </header>
 
       {error ? (
@@ -140,8 +141,8 @@ function LoginForm() {
         <Input
           size="large"
           name="employeeNo"
-          prefix={<UserOutlined style={{ color: "#9CA3AF" }} />}
-          placeholder="请输入工号，如：admin"
+          prefix={<UserOutlined />}
+          placeholder="工号"
           autoFocus
           autoComplete="username"
         />
@@ -156,8 +157,8 @@ function LoginForm() {
         <Input.Password
           size="large"
           name="password"
-          prefix={<LockOutlined style={{ color: "#9CA3AF" }} />}
-          placeholder="请输入密码（8 ～ 72 个字符）"
+          prefix={<LockOutlined />}
+          placeholder="密码"
           autoComplete="current-password"
         />
       </Form.Item>
@@ -169,7 +170,7 @@ function LoginForm() {
           disabled={loading}
           className={styles.remember}
         >
-          7 天内免登录
+          保持登录
         </Checkbox>
         <a className={styles.forgot} href="mailto:it@qt.com">
           忘记密码？
@@ -184,15 +185,14 @@ function LoginForm() {
           block
           loading={loading}
           className={styles.submit}
-          style={{ background: "#0A1C33", borderColor: "#0A1C33" }}
         >
-          登 录
+          {loading ? "正在登录 …" : "登录"}
         </Button>
       </Form.Item>
 
       {SHOW_QUICK_FILL && QUICK_ACCOUNTS.length > 0 ? (
         <details className={styles.testCard}>
-          <summary>开发 / 预览环境：点击下方账号可一键填充</summary>
+          <summary>开发 / 预览 · 点击下方账号可一键填充</summary>
           <div className={styles.testGrid}>
             {QUICK_ACCOUNTS.map((a) => (
               <span key={a.no}>
@@ -206,191 +206,146 @@ function LoginForm() {
         </details>
       ) : null}
 
-      <div className={styles.foot}>
-        © 2026 杭州企泰安全科技有限公司
-      </div>
+      <div className={styles.foot}>© 2026 杭州企泰安全科技有限公司</div>
     </Form>
   );
 }
 
-function useCountUp(target: number, duration = 1400, delay = 300) {
-  const [value, setValue] = useState(0);
-  useEffect(() => {
-    let raf = 0;
-    const t = setTimeout(() => {
-      const start = performance.now();
-      const tick = (now: number) => {
-        const t = Math.min((now - start) / duration, 1);
-        const eased = 1 - Math.pow(1 - t, 3);
-        setValue(Math.round(target * eased));
-        if (t < 1) raf = requestAnimationFrame(tick);
-      };
-      raf = requestAnimationFrame(tick);
-    }, delay);
-    return () => {
-      clearTimeout(t);
-      cancelAnimationFrame(raf);
-    };
-  }, [target, duration, delay]);
-  return value;
-}
-
-function useClock() {
-  const [now, setNow] = useState<Date | null>(null);
-  useEffect(() => {
-    setNow(new Date());
-    const id = setInterval(() => setNow(new Date()), 1000);
-    return () => clearInterval(id);
-  }, []);
-  return now;
-}
-
-function Stat({ value, suffix }: { value: number; suffix?: string }) {
-  const v = useCountUp(value, 1400, 400);
-  return (
-    <>
-      {v}
-      {suffix}
-    </>
-  );
-}
-
-function formatStamp(d: Date | null) {
-  if (!d) return "----.--.-- --:--";
-  const pad = (n: number) => String(n).padStart(2, "0");
-  return `${d.getFullYear()}.${pad(d.getMonth() + 1)}.${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
-}
-
-/* 企泰 logo */
-function BrandMark({ size = 28 }: { size?: number }) {
+/* 企泰 logo · 极简圆角方块(纯黑 + 单字母 Q,Apple 风单色感) */
+function BrandMark({ size = 22 }: { size?: number }) {
   return (
     <svg
       width={size}
       height={size}
-      viewBox="0 0 48 48"
+      viewBox="0 0 24 24"
       xmlns="http://www.w3.org/2000/svg"
       aria-hidden="true"
     >
-      <defs>
-        <mask id={`bm-${size}-v2`}>
-          <rect width="48" height="48" fill="white" />
-          <rect x="24" y="14" width="24" height="20" fill="black" />
-        </mask>
-      </defs>
-      <rect width="48" height="48" rx="6" fill="#0A1C33" mask={`url(#bm-${size}-v2)`} />
-      <rect x="32" y="28" width="20" height="20" rx="3" fill="#E11A2A" />
-      <rect x="58" y="14" width="6" height="6" rx="1" fill="#0A1C33" transform="translate(-48 0)" />
+      <rect width="24" height="24" rx="6" fill="#1D1D1F" />
+      <text
+        x="12"
+        y="16.5"
+        textAnchor="middle"
+        fontSize="13.5"
+        fontWeight="500"
+        fontFamily="-apple-system, BlinkMacSystemFont, system-ui, sans-serif"
+        fill="#FFFFFF"
+        letterSpacing="-0.04em"
+      >
+        Q
+      </text>
     </svg>
   );
 }
 
+/* 桌面端左栏叙事(Apple 风"轻"叙述) */
+function Narrative() {
+  return (
+    <aside className={styles.narrative} aria-label="品牌叙事">
+      <h2 className={styles.hero}>
+        让安全管理<br />
+        <span className={styles.heroAccent}>有据可循。</span>
+      </h2>
+      <p className={styles.heroSub}>
+        浙江省 A 级安全生产社会化服务机构,临平区首家。
+        10 年深耕,把每一次现场检查、风险评估与体系建设
+        沉淀为可追溯的数据资产。
+      </p>
+
+      <ul className={styles.features} role="list">
+        <li className={styles.feature}>
+          <span className={styles.featureIcon} aria-hidden>
+            <FileTextOutlined />
+          </span>
+          <span className={styles.featureText}>
+            <span className={styles.featureTitle}>合同全生命周期留痕</span>
+            <span className={styles.featureDesc}>签署 · 履行 · 归档全程可追溯,风险点自动提示</span>
+          </span>
+        </li>
+        <li className={styles.feature}>
+          <span className={styles.featureIcon} aria-hidden>
+            <TeamOutlined />
+          </span>
+          <span className={styles.featureText}>
+            <span className={styles.featureTitle}>客户分级与精准服务</span>
+            <span className={styles.featureDesc}>2,500+ 生产经营单位档案,服务画像实时更新</span>
+          </span>
+        </li>
+        <li className={styles.feature}>
+          <span className={styles.featureIcon} aria-hidden>
+            <BarChartOutlined />
+          </span>
+          <span className={styles.featureText}>
+            <span className={styles.featureTitle}>收款统计与现金流可视化</span>
+            <span className={styles.featureDesc}>月度趋势 · 客户分布 · 风险预警,一张图掌握全局</span>
+          </span>
+        </li>
+      </ul>
+
+      <p className={styles.brandFoot}>
+        杭州企泰安全科技有限公司 · 浙江省 A 级安全生产服务机构 · 临平区首家
+      </p>
+    </aside>
+  );
+}
+
 export default function LoginPage() {
-  const clock = useClock();
   return (
     <div className={styles.page}>
       <div className={styles.bgLayer} />
-      <div className={styles.bgMark}>QT</div>
 
       {/* 顶栏 */}
       <header className={styles.topBar}>
         <div className={styles.topBarLeft}>
-          <BrandMark size={28} />
+          <BrandMark size={22} />
           <span className={styles.topBarLogoCn}>
             <span>企泰安全</span>
-            <span className={styles.topBarLogoSub}>QITAI SAFETY · 业务管理系统</span>
+            <span className={styles.topBarLogoSub}>业务管理系统</span>
           </span>
         </div>
         <div className={styles.topBarRight}>
-          <span className={styles.secureBadge}>
-            <SafetyCertificateOutlined style={{ fontSize: 11 }} />
-            SECURE 256-BIT
+          <span
+            className={styles.versionChip}
+            aria-label={`系统版本 ${APP_VERSION}`}
+            title={`系统版本 ${APP_VERSION}`}
+          >
+            {APP_VERSION}
           </span>
-          <span className={styles.statusDot} />
-          <Text type="secondary" style={{ fontSize: 12 }}>服务正常</Text>
+          <a className={styles.topBarLink} href="mailto:it@qt.com">
+            需要帮助？
+          </a>
         </div>
       </header>
 
-      {/* 主区 */}
+      {/* 主区:桌面端左右双栏,移动端单列 */}
       <main className={styles.main}>
-        {/* 左:叙事 */}
-        <section className={styles.narrative} aria-label="品牌叙事">
-          <div className={styles.eyebrow}>
-            <span>EST <strong>2015</strong></span>
-            <span>· 安全生产服务 ·</span>
-            <span><strong>A</strong> 级信用</span>
+        <div className={styles.layout}>
+          <Narrative />
+          <div className={styles.formShell}>
+            <section className={styles.formCard} aria-label="登录">
+              <Suspense fallback={null}>
+                <LoginForm />
+              </Suspense>
+            </section>
+
+            {/* 备案 / 链接放表单区下方 */}
+            <footer className={styles.footer}>
+              <span>© 2026 杭州企泰安全科技有限公司</span>
+              <span className={styles.footerSep}>·</span>
+              <a href="mailto:it@qt.com">联系我们</a>
+              <span className={styles.footerSep}>·</span>
+              <a
+                href="https://beian.miit.gov.cn"
+                target="_blank"
+                rel="noreferrer"
+                suppressHydrationWarning
+              >
+                {process.env.NEXT_PUBLIC_BEIAN_NO ?? "浙ICP备 0000000 号"}
+              </a>
+            </footer>
           </div>
-
-          <h1 className={styles.headline}>
-            让安全管理<br />
-            <em>有据可循</em>
-          </h1>
-
-          <p className={styles.sub}>
-            浙江省 A 级安全生产社会化服务机构,临平区首家。
-            10 年深耕,服务 20+ 政府部门与 2,500+ 生产经营单位,
-            把每一次现场检查、风险评估与体系建设都沉淀为可追溯的数据资产。
-          </p>
-
-          <div className={styles.stats}>
-            <span className={styles.statChip}>
-              <strong>
-                <Stat value={22} />
-              </strong>
-              名注册安全工程师
-            </span>
-            <span className={styles.statChip}>
-              <strong>
-                <Stat value={2547} />
-              </strong>
-              家企业服务
-            </span>
-            <span className={styles.statChip}>
-              <strong>
-                <Stat value={20} suffix="+" />
-              </strong>
-              政府部门
-            </span>
-            <span className={`${styles.statChip} ${styles.statChipAccent}`}>
-              <strong>A</strong>
-              级信用 · 浙江
-            </span>
-          </div>
-
-          <div className={styles.narrativeFoot}>
-            <span className={styles.narrativeFootItem}>
-              <span className={styles.tickerBlink} />
-              STATUS · NOMINAL
-            </span>
-            <span className={styles.tickerSep}>{"//"}</span>
-            <span className={styles.narrativeFootItem}>SECTOR 04</span>
-            <span className={styles.tickerSep}>{"//"}</span>
-            <span className={styles.narrativeFootItem}>T+ {formatStamp(clock)}</span>
-            <span className={styles.tickerSep}>{"//"}</span>
-            <span className={styles.narrativeFootItem}>ALERTS 0</span>
-          </div>
-        </section>
-
-        {/* 右:表单卡 */}
-        <section className={styles.formCard} aria-label="登录">
-          <Suspense fallback={null}>
-            <LoginForm />
-          </Suspense>
-        </section>
+        </div>
       </main>
-
-      {/* 页脚 */}
-      <footer className={styles.footer}>
-        <span>© 2026 杭州企泰安全科技有限公司 · 业务管理系统 v2.0</span>
-        <a
-          className={styles.beian}
-          href="https://beian.miit.gov.cn"
-          target="_blank"
-          rel="noreferrer"
-          suppressHydrationWarning
-        >
-          {process.env.NEXT_PUBLIC_BEIAN_NO ?? "浙ICP备 0000000 号"}
-        </a>
-      </footer>
     </div>
   );
 }
