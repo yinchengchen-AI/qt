@@ -54,3 +54,4 @@ Node `>=20.9.0`. Use `npm`; `pnpm-lock.yaml` is kept in sync.
 - 删字段/删表通过新增的迁移做（`ALTER TABLE ... DROP COLUMN`），不要回滚历史迁移。
 - 新环境拉代码后用 `npm run prisma:deploy` 应用迁移；不要用 `prisma migrate dev`（它会建 shadow DB 跑完整重放，跟当前迁移历史不兼容）。
 - 撞上 drift（DB 已应用某迁移但本地缺文件）时参考 `docs/db-bootstrap.md` 的恢复流程，从 git 历史找回原文件，**不要** `migrate resolve` 凭空标记。
+- **新表必须显式 GRANT 给 qt_app**：`qt_app` 是 BYPASSRLS 应用运行时用户（BYPASSRLS 只旁路 RLS 策略，**不**旁路表级权限）。任何 `CREATE TABLE` 迁移在末尾追加 `GRANT ALL ON TABLE "<TableName>" TO qt_app;`；漏了会报 `42501 permission denied for table <X>`（v0.7.0 真实事故：`DunningNote`）。回填用新迁移 `GRANT ... TO qt_app;`（幂等），不要改原 SQL 破坏 checksum。
