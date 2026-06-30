@@ -120,7 +120,7 @@ jobs:
       # APP_ENC_KEY_HEX 全 0 是 .env.example 的默认值,生产环境会被 assertProductionConfig 拦下
       NEXTAUTH_SECRET: ci-dummy-secret-please-change-me-in-real-env-32chars
       NEXTAUTH_URL: http://localhost:3000
-      APP_ENC_KEY_HEX: 0000000000000000000000000000000000000000000000000000000000000000
+      APP_ENC_KEY_HEX: "0000000000000000000000000000000000000000000000000000000000000000"
       NODE_ENV: test
       # dev 测试账号密码源 (admin/sales/finance/ops/expert), 跟登录页快速填充卡一致
       DEV_QUICK_FILL_PASSWORD: dev-only-fill
