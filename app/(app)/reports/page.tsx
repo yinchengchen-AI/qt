@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { Card, Row, Col, Tag, Spin, Button, Empty } from "antd";
+import { Card, Row, Col, Tag, Button, Empty } from "antd";
 import {
   FileTextOutlined,
   ReloadOutlined,
@@ -13,8 +13,7 @@ import Link from "next/link";
 import { Page } from "@/components/page";
 import { PageHeader } from "@/components/page-header";
 import { EmptyState } from "@/components/empty-state";
-import { useResponsive } from "@/lib/use-breakpoint";
-import { reportPeriodLabel, reportStatusLabel } from "@/lib/report-labels";
+import { reportPeriodLabel } from "@/lib/report-labels";
 
 const TYPE_ICON: Record<string, React.ReactNode> = {
   FINANCIAL: <BarChartOutlined />,
@@ -53,7 +52,6 @@ type Snapshot = {
 };
 
 export default function ReportsPage() {
-  const { isMobile } = useResponsive();
   const [defs, setDefs] = useState<Definition[]>([]);
   const [snapshots, setSnapshots] = useState<Snapshot[]>([]);
   const [loading, setLoading] = useState(true);
@@ -91,7 +89,7 @@ export default function ReportsPage() {
     <Page>
       <PageHeader
         title="报表中心"
-        subtitle="按月、季、年自动生成经营报表，支持自定义日期范围与手动重新生成"
+        subtitle="按月/季/年手动生成经营报表，支持自定义日期范围与重新生成"
         actions={
           <Button icon={<ReloadOutlined />} onClick={load} loading={loading}>
             刷新
@@ -128,10 +126,10 @@ export default function ReportsPage() {
                         </span>
                         {snap ? (
                           <Tag color={snap.status === "READY" ? "success" : "warning"}>
-                            {snap.periodLabel} · {reportStatusLabel(snap.status)}
+                            已生成 · {snap.periodLabel}
                           </Tag>
                         ) : (
-                          <Tag>未生成</Tag>
+                          <Tag color="orange">未生成</Tag>
                         )}
                       </div>
                       {snap && (
@@ -150,34 +148,6 @@ export default function ReportsPage() {
             <Empty description="暂无报表模板" style={{ marginTop: 48 }} />
           )}
 
-          <div style={{ marginTop: 32 }}>
-            <PageHeader level="section" title="最近生成的快照" />
-            <Spin spinning={loading}>
-              <Row gutter={[16, 16]}>
-                {snapshots.slice(0, isMobile ? 4 : 6).map((snap) => (
-                  <Col key={snap.id} xs={24} sm={12} lg={8}>
-                    <Link href={`/reports/${snap.definitionCode}`} style={{ textDecoration: "none" }}>
-                      <Card size="small" title={snap.definitionName} hoverable>
-                        <div>周期: {snap.periodLabel}</div>
-                        <div>
-                          状态:{" "}
-                          <Tag color={snap.status === "READY" ? "success" : "warning"}>
-                            {reportStatusLabel(snap.status)}
-                          </Tag>
-                        </div>
-                        <div style={{ fontSize: 12, color: "#9ca3af", marginTop: 4 }}>
-                          {new Date(snap.generatedAt).toLocaleString("zh-CN")}
-                        </div>
-                      </Card>
-                    </Link>
-                  </Col>
-                ))}
-                {snapshots.length === 0 && !loading && (
-                  <Empty description="暂无快照" style={{ margin: "24px auto" }} />
-                )}
-              </Row>
-            </Spin>
-          </div>
         </>
       )}
     </Page>

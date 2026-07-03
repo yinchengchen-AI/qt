@@ -169,38 +169,6 @@ export function resolvePeriod(
   return resolvePeriod("MONTH", now);
 }
 
-/** 按参考日期倒退一个周期，用于定时任务生成“上一个”周期快照 */
-export function previousPeriod(
-  periodType: Exclude<ReportPeriodType, "CUSTOM">,
-  reference?: Date
-): { periodLabel: string; from: Date; to: Date } {
-  const now = reference ?? new Date();
-  if (periodType === "MONTH") {
-    const d = new Date(now.getFullYear(), now.getMonth() - 1, 1);
-    return resolvePeriod("MONTH", d);
-  }
-  if (periodType === "QUARTER") {
-    const currentQuarter = Math.floor(now.getMonth() / 3);
-    const year = currentQuarter === 0 ? now.getFullYear() - 1 : now.getFullYear();
-    const month = currentQuarter === 0 ? 9 : (currentQuarter - 1) * 3;
-    return resolvePeriod("QUARTER", new Date(year, month, 1));
-  }
-  return resolvePeriod("YEAR", new Date(now.getFullYear() - 1, 0, 1));
-}
-
-/** 判断当前日期是否适合生成某周期的快照（避免季/年报每月都被刷新） */
-export function shouldGeneratePeriod(
-  periodType: Exclude<ReportPeriodType, "CUSTOM">,
-  now = new Date()
-): boolean {
-  const day = now.getDate();
-  if (day !== 1) return false;
-  if (periodType === "MONTH") return true;
-  const month = now.getMonth();
-  if (periodType === "QUARTER") return month % 3 === 0;
-  return month === 0;
-}
-
 /** 把 DateRange 转成展示标签 */
 export function customPeriodLabel(from: Date, to: Date): string {
   const fmt = (d: Date) =>
@@ -296,7 +264,14 @@ export async function aggregatePayload(
 }
 
 /** 公共入口：查询快照；不存在或数据已过期则重新生成（非 CUSTOM 周期） */
-export async function getOrBuildSnapshot(
+/**
+ * 公共入口（只读）：查询快照。
+ * - CUSTOM 周期: 走 live aggregate, 不存快照, 永远能返回 ReportResult (无 snapshotId)
+ * - MONTH/QUARTER/YEAR: 仅查表; 找不到抛 ApiError(NOT_FOUND), 引导用户先手动生成
+ *
+ * 这是渲染报表中心详情页 mount 时的入口, 不再隐式建快照。
+ */
+export async function findSnapshot(
   user: SessionUser,
   code: string,
   periodType: ReportPeriodType,
@@ -306,6 +281,72 @@ export async function getOrBuildSnapshot(
   const definition = await findDefinition(code);
 
   if (periodType === "CUSTOM") {
+    if (!customRange?.from || !customRange?.to) {
+      throw new ApiError(ERROR_CODES.VALIDATION_FAILED, "自定义周期必须提供 from/to", 400);
+    }
+    const payload = await aggregatePayload(user, definition, customRange);
+    return {
+      definition,
+      periodType: "CUSTOM",
+      periodLabel: customPeriodLabel(customRange.from, customRange.to),
+      from: customRange.from,
+      to: customRange.to,
+      status: "READY",
+      payload,
+    };
+  }
+
+  const { periodLabel } = resolvePeriod(periodType);
+  const existing = await prisma.reportSnapshot.findUnique({
+    where: {
+      definitionId_periodType_periodLabel: {
+        definitionId: definition.id,
+        periodType,
+        periodLabel,
+      },
+    },
+  });
+  if (!existing || existing.deletedAt !== null) {
+    throw new ApiError(
+      ERROR_CODES.NOT_FOUND,
+      `该周期未生成报表（${definition.name} / ${periodLabel}）`,
+      404
+    );
+  }
+  return {
+    snapshotId: existing.id,
+    definition,
+    periodType: existing.periodType as ReportPeriodType,
+    periodLabel: existing.periodLabel,
+    from: existing.from,
+    to: existing.to,
+    status: existing.status as SnapshotStatus,
+    payload: existing.payload as ReportPayload,
+    generatedAt: existing.generatedAt,
+    hash: existing.hash ?? undefined,
+  };
+}
+
+/**
+ * 公共入口（写）：手动生成快照。
+ * - 找不到该周期的快照: 全新创建
+ * - 找到但源数据 hash 变化: update (重算 payload)
+ * - 找到且 hash 一致: skip, 直接返回旧 payload (避免无意义写库)
+ * - CUSTOM 周期: 跟 findSnapshot 一样走 live, 不持久化
+ *
+ * 业务约束: 仅 REPORT_CENTER:UPDATE 权限可调, 报表中心 admin/finance 可以手动生成。
+ */
+export async function generateSnapshot(
+  user: SessionUser,
+  code: string,
+  periodType: ReportPeriodType,
+  customRange?: DateRange
+): Promise<ReportResult> {
+  assertUpdate(user);
+  const definition = await findDefinition(code);
+
+  if (periodType === "CUSTOM") {
+    // CUSTOM 不存快照, 走 live, 行为与 findSnapshot 一致
     if (!customRange?.from || !customRange?.to) {
       throw new ApiError(ERROR_CODES.VALIDATION_FAILED, "自定义周期必须提供 from/to", 400);
     }
@@ -334,7 +375,7 @@ export async function getOrBuildSnapshot(
     },
   });
 
-  // 如果存在 READY 快照，校验源数据 hash 是否变化；未变化直接返回
+  // hash 比对: 数据未变则直接返回旧快照, 不重算
   if (existing && existing.status === "READY" && existing.deletedAt === null) {
     const currentHash = await computeSourceHash(range);
     if (existing.hash === currentHash) {
@@ -353,8 +394,6 @@ export async function getOrBuildSnapshot(
     }
   }
 
-  // 未命中、状态非 READY 或 hash 已变化：同步重新生成并落库
-  // 注：当前为同步生成；数据量较大时可能超时，后续可改为异步 PENDING + 轮询
   const payload = await aggregatePayload(user, definition, range);
   const hash = await computeSourceHash(range);
   const upsertData = {
@@ -704,98 +743,4 @@ export async function prepareExportSections(
   return { definition, sections: section ? [section] : [] };
 }
 
-/** 定时任务入口：生成上一周期的快照 */
-export async function generatePeriodSnapshots(
-  now = new Date(),
-  actorId = "system"
-): Promise<{ created: number; updated: number; skipped: number; failed: number }> {
-  const definitions = await prisma.reportDefinition.findMany({
-    where: { isActive: true, deletedAt: null, periodType: { not: "CUSTOM" } },
-  });
 
-  let created = 0;
-  let updated = 0;
-  let skipped = 0;
-  let failed = 0;
-
-  for (const def of definitions) {
-    try {
-      const definition = toDefItem(def);
-      const periodType = definition.periodType as Exclude<ReportPeriodType, "CUSTOM">;
-
-      // 按定义自身周期判断当前是否应生成，避免季/年报每月都被刷新
-      if (!shouldGeneratePeriod(periodType, now)) {
-        skipped++;
-        continue;
-      }
-
-      const { periodLabel, from, to } = previousPeriod(periodType, now);
-      const range: DateRange = { from, to };
-
-      const payload = await buildPayloadForActor(definition, range);
-      const hash = await computeSourceHash(range);
-
-      const existing = await prisma.reportSnapshot.findUnique({
-        where: {
-          definitionId_periodType_periodLabel: {
-            definitionId: def.id,
-            periodType,
-            periodLabel,
-          },
-        },
-      });
-
-      if (existing) {
-        await prisma.reportSnapshot.update({
-          where: { id: existing.id },
-          data: {
-            status: "READY",
-            payload: payload as object,
-            hash,
-            generatedById: actorId,
-            generatedAt: now,
-          },
-        });
-        updated++;
-      } else {
-        await prisma.reportSnapshot.create({
-          data: {
-            definitionId: def.id,
-            periodType,
-            periodLabel,
-            from,
-            to,
-            status: "READY",
-            payload: payload as object,
-            hash,
-            generatedById: actorId,
-            generatedAt: now,
-          },
-        });
-        created++;
-      }
-    } catch (e) {
-      console.error(`[report-snapshot] failed for definition ${def.code}:`, e);
-      failed++;
-    }
-  }
-
-  return { created, updated, skipped, failed };
-}
-
-/** 定时任务内部用：不鉴权，直接聚合 */
-async function buildPayloadForActor(
-  definition: ReportDefinitionItem,
-  range: DateRange
-): Promise<ReportPayload> {
-  // 构造一个虚拟的 SessionUser，用于复用 statistics 服务
-  const actor: SessionUser = {
-    id: "system",
-    employeeNo: "SYSTEM",
-    name: "System",
-    email: "system@internal.local",
-    roleCode: "ADMIN",
-    permissions: [],
-  };
-  return aggregatePayload(actor, definition, range);
-}

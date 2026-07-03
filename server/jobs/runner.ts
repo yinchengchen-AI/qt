@@ -6,7 +6,6 @@ import { emit } from "@/server/events/bus";
 import { tickPublishableDraffts, tickCompletionCandidates } from "@/server/jobs/contract-automation";
 import { runCertificateExpiryCheck } from "@/server/jobs/certificate-expiry-check";
 import { tickStaleContracts } from "@/server/jobs/stale-contract";
-import { runReportSnapshotJob } from "@/server/jobs/report-snapshot";
 
 /**
  * 单个 job 一次执行的统计。
@@ -53,8 +52,6 @@ export async function runAllJobs(now = new Date()): Promise<JobResult[]> {
     { name: "contract-auto-publish", run: () => tickPublishableDraffts() },
     { name: "contract-auto-complete", run: () => tickCompletionCandidates(now) },
     { name: "contract-stale-notify", run: () => tickStaleContracts(now) },
-    // 报表中心：每日生成上一周期快照（月/季/年各自判断）
-    { name: "report-snapshot", run: () => runReportSnapshotJob(now) },
     // P0-11: 证书到期检查,跟 01:00 通用入口打通,便于监控和手动触发
     {
       name: "certificate-expiry-check",

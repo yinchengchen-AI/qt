@@ -136,7 +136,7 @@ export default function ReportDetailPage() {
     setLoading(true);
     setError(null);
     try {
-      const body: Record<string, unknown> = { code, periodType };
+      const body: Record<string, unknown> = { code, periodType, action: "find" };
       if (periodType === "CUSTOM" && customRange) {
         const { from, to } = toDateRangeQuery(customRange);
         body.from = from;
@@ -149,6 +149,11 @@ export default function ReportDetailPage() {
         credentials: "include",
       });
       const j = await r.json();
+      // 404 = 未生成报表, 不当作错误, 进入空态
+      if (j.code === 404) {
+        setData(null);
+        return;
+      }
       if (j.code !== 0) throw new Error(j.message);
       setData(j.data);
     } catch (e) {
@@ -167,23 +172,43 @@ export default function ReportDetailPage() {
     }
   }, [code, periodType, load]);
 
-  const regenerate = async () => {
-    if (!data?.snapshotId) {
-      message.warning("自定义范围报表不支持重新生成快照");
+  /**
+   * 手动生成报表 (空态按钮 + 重新生成按钮共用同一接口)
+   * - 已有快照: snapshotId 走 regenerateSnapshot (强制重算)
+   * - 无快照:   action="generate" 走 generateSnapshot (建新)
+   * - CUSTOM:   实时 live query, 不存快照
+   */
+  const handleGenerate = async () => {
+    if (periodType === "CUSTOM" && (!customRange || !customRange[0] || !customRange[1])) {
+      message.warning("请选择自定义日期范围");
       return;
     }
     setGenerating(true);
+    setError(null);
     try {
+      const body: Record<string, unknown> = { code, periodType };
+      if (data?.snapshotId) {
+        // 已有快照 → regenerate (强制重算)
+        body.snapshotId = data.snapshotId;
+      } else {
+        // 无快照 → generate (按需创建, 带 hash 比对)
+        body.action = "generate";
+      }
+      if (periodType === "CUSTOM" && customRange) {
+        const { from, to } = toDateRangeQuery(customRange);
+        body.from = from;
+        body.to = to;
+      }
       const r = await fetch("/api/reports/snapshots", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ code, periodType, snapshotId: data.snapshotId }),
+        body: JSON.stringify(body),
         credentials: "include",
       });
       const j = await r.json();
       if (j.code !== 0) throw new Error(j.message);
-      message.success("重新生成成功");
       setData(j.data);
+      message.success(data?.snapshotId ? "重新生成成功" : "生成成功");
     } catch (e) {
       message.error((e as Error).message);
     } finally {
@@ -193,7 +218,7 @@ export default function ReportDetailPage() {
 
   const exportExcel = async () => {
     if (!data?.snapshotId) {
-      message.warning("请先选择周期并生成快照");
+      message.warning("请先生成报表再导出");
       return;
     }
     try {
@@ -206,6 +231,11 @@ export default function ReportDetailPage() {
   const exportPdf = () => {
     if (periodType === "CUSTOM" && (!customRange || !customRange[0] || !customRange[1])) {
       message.warning("请选择自定义日期范围");
+      return;
+    }
+    // 非 CUSTOM 周期: 没快照时 PDF 走 findSnapshot 会 404, 禁止导出
+    if (periodType !== "CUSTOM" && !data?.snapshotId) {
+      message.warning("请先生成报表再导出 PDF");
       return;
     }
     const qs = new URLSearchParams({ periodType });
@@ -314,21 +344,40 @@ export default function ReportDetailPage() {
               <Button icon={<SearchOutlined />} onClick={load} loading={loading}>
                 查询
               </Button>
-            ) : (
+            ) : data ? (
               <Authority code="REPORT_CENTER:UPDATE">
                 <Button
                   icon={<ReloadOutlined />}
-                  onClick={regenerate}
-                  loading={generating || loading}
+                  onClick={handleGenerate}
+                  loading={generating}
                 >
                   重新生成
                 </Button>
               </Authority>
+            ) : (
+              <Authority code="REPORT_CENTER:UPDATE">
+                <Button
+                  type="primary"
+                  icon={<ReloadOutlined />}
+                  onClick={handleGenerate}
+                  loading={generating}
+                >
+                  生成报表
+                </Button>
+              </Authority>
             )}
-            <Button icon={<DownloadOutlined />} onClick={exportExcel}>
+            <Button
+              icon={<DownloadOutlined />}
+              onClick={exportExcel}
+              disabled={!data?.snapshotId}
+            >
               导出 Excel
             </Button>
-            <Button icon={<FilePdfOutlined />} onClick={exportPdf}>
+            <Button
+              icon={<FilePdfOutlined />}
+              onClick={exportPdf}
+              disabled={periodType !== "CUSTOM" && !data?.snapshotId}
+            >
               导出 PDF
             </Button>
           </Space>
@@ -339,7 +388,31 @@ export default function ReportDetailPage() {
         <EmptyState error={{ message: error, onRetry: load }} title="加载失败" />
       ) : (
         <Spin spinning={loading}>
-          {data && (
+          {!data && !loading && periodType !== "CUSTOM" ? (
+            // 未生成快照的空态: 显示大「生成报表」按钮, 引导用户手动生成
+            <Card style={{ marginTop: 32 }}>
+              <div style={{ textAlign: "center", padding: "40px 16px" }}>
+                <div style={{ fontSize: 16, color: "var(--qt-text-secondary)", marginBottom: 8 }}>
+                  本周期尚未生成经营报表
+                </div>
+                <div style={{ fontSize: 13, color: "var(--qt-text-tertiary)", marginBottom: 24 }}>
+                  报表中心不再自动生成，请点击下方按钮手动生成。
+                  生成过程会聚合当前数据并保存为快照，下次进入直接展示。
+                </div>
+                <Authority code="REPORT_CENTER:UPDATE">
+                  <Button
+                    type="primary"
+                    size="large"
+                    icon={<ReloadOutlined />}
+                    onClick={handleGenerate}
+                    loading={generating}
+                  >
+                    立即生成报表
+                  </Button>
+                </Authority>
+              </div>
+            </Card>
+          ) : data ? (
             <>
               <Card size="small" style={{ marginBottom: 16 }}>
                 <Space>
@@ -442,10 +515,14 @@ export default function ReportDetailPage() {
               )}
 
               {tableData.length === 0 && !loading && (
-                <EmptyState empty title="暂无明细数据" description="当前周期范围内没有相关记录" />
+                periodType === "CUSTOM" ? (
+                  <EmptyState empty title="请选择日期范围" description="自定义周期需先选择起止日期，再点「查询」" />
+                ) : (
+                  <EmptyState empty title="暂无明细数据" description="当前周期范围内没有相关记录" />
+                )
               )}
             </>
-          )}
+          ) : null}
         </Spin>
       )}
     </Page>

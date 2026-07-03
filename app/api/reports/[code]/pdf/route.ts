@@ -4,7 +4,7 @@ import { err } from "@/lib/api";
 import { requireSession } from "@/lib/session";
 import { parseDateRangeQuery } from "@/lib/date-range";
 import {
-  getOrBuildSnapshot,
+  findSnapshot,
   assertExportPermission,
   type ReportPayload,
   type ReportMetric,
@@ -157,7 +157,7 @@ export async function GET(
       const parsed = query.parse(Object.fromEntries(url.searchParams));
       const range = parseDateRangeQuery({ from: parsed.from, to: parsed.to });
 
-      const result = await getOrBuildSnapshot(
+      const result = await findSnapshot(
         user,
         code,
         parsed.periodType,

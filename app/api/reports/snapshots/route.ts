@@ -5,7 +5,8 @@ import { requireSession } from "@/lib/session";
 import { parseDateRangeQuery } from "@/lib/date-range";
 import {
   listSnapshots,
-  getOrBuildSnapshot,
+  findSnapshot,
+  generateSnapshot,
   regenerateSnapshot,
   getSnapshot,
   type ReportPeriodType,
@@ -26,8 +27,11 @@ const postBody = z.object({
   periodType: z.enum(PERIOD_TYPES),
   from: z.string().optional(),
   to: z.string().optional(),
-  // 如果提供 snapshotId，则表示重新生成该快照
+  // 提供 snapshotId: 重新生成该快照 (regenerateSnapshot, 强制重算)
   snapshotId: z.string().optional(),
+  // action 显式语义: "find" 只读查询 / "generate" 手动生成 (含 hash 比对)
+  // 两者都不传: 兼容老调用 → 走 findSnapshot (返回 404 提示生成)
+  action: z.enum(["find", "generate"]).optional(),
 });
 
 export async function GET(req: Request) {
@@ -69,12 +73,11 @@ export async function POST(req: Request) {
       }
 
       const range = parseDateRangeQuery({ from: parsed.from, to: parsed.to });
-      const result = await getOrBuildSnapshot(
-        user,
-        parsed.code,
-        parsed.periodType,
-        parsed.periodType === "CUSTOM" ? range : undefined
-      );
+      // action 默认值: "find" (只读); "generate" 走手动生成入口
+      const action = parsed.action ?? "find";
+      const result = action === "generate"
+        ? await generateSnapshot(user, parsed.code, parsed.periodType, parsed.periodType === "CUSTOM" ? range : undefined)
+        : await findSnapshot(user, parsed.code, parsed.periodType, parsed.periodType === "CUSTOM" ? range : undefined);
       return ok(result);
     } catch (e) {
       return err(e);

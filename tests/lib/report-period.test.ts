@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { resolvePeriod, previousPeriod, customPeriodLabel } from "@/server/services/report";
+import { resolvePeriod, customPeriodLabel } from "@/server/services/report";
 
 describe("report period helpers", () => {
   it("resolve MONTH for 2026-06-15", () => {
@@ -26,24 +26,9 @@ describe("report period helpers", () => {
     expect(r.to).toEqual(new Date(2026, 11, 31, 23, 59, 59, 999));
   });
 
-  it("previous MONTH from 2026-06-01", () => {
-    const r = previousPeriod("MONTH", new Date(2026, 5, 1));
-    expect(r.periodLabel).toBe("2026年5月");
-  });
-
-  it("previous QUARTER from 2026-04-01", () => {
-    const r = previousPeriod("QUARTER", new Date(2026, 3, 1));
-    expect(r.periodLabel).toBe("2026年Q1");
-  });
-
-  it("previous YEAR from 2026-01-01", () => {
-    const r = previousPeriod("YEAR", new Date(2026, 0, 1));
-    expect(r.periodLabel).toBe("2025年");
-  });
-
-  it("customPeriodLabel formats range", () => {
-    const from = new Date(2026, 0, 5);
-    const to = new Date(2026, 3, 20);
-    expect(customPeriodLabel(from, to)).toBe("2026-01-05 ~ 2026-04-20");
+  it("customPeriodLabel formats yyyy-mm-dd ~ yyyy-mm-dd", () => {
+    const from = new Date(2026, 0, 15);
+    const to = new Date(2026, 1, 14);
+    expect(customPeriodLabel(from, to)).toBe("2026-01-15 ~ 2026-02-14");
   });
 });
