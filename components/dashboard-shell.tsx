@@ -37,6 +37,7 @@ import { ACTION, RESOURCE, type Action, type Resource } from "@/lib/permissions"
 import { useResponsive } from "@/lib/use-breakpoint";
 import { ROLE_LABEL } from "@/lib/status";
 import { useT } from "@/lib/i18n";
+import { ReleasePopup, type ReleasePopupData } from "@/components/release-popup";
 
 const { Sider, Header, Content } = Layout;
 const { Text } = Typography;
@@ -115,7 +116,8 @@ const MENU: MenuItem[] = [
     icon: <BellOutlined />,
     children: [
       { path: "/messages", name: "消息中心", permission: { resource: RESOURCE.MESSAGE, action: ACTION.READ } },
-      { path: "/announcements", name: "公告", permission: { resource: RESOURCE.ANNOUNCEMENT, action: ACTION.READ } }
+      { path: "/announcements", name: "公告", permission: { resource: RESOURCE.ANNOUNCEMENT, action: ACTION.READ } },
+      { path: "/releases", name: "更新日志", permission: { resource: RESOURCE.APP_RELEASE, action: ACTION.READ } }
     ]
   },
   {
@@ -134,6 +136,7 @@ const MENU: MenuItem[] = [
     icon: <SettingOutlined />,
     children: [
       { path: "/admin/dictionaries", name: "数据字典", permission: { resource: RESOURCE.DICTIONARY, action: ACTION.CREATE } },
+      { path: "/admin/releases", name: "发布更新", permission: { resource: RESOURCE.APP_RELEASE, action: ACTION.CREATE } },
       { path: "/admin/operation-logs", name: "操作日志", permission: { resource: RESOURCE.OPERATION_LOG, action: ACTION.READ } },
       // /admin/trash 走 trash 服务, 仅 ADMIN 可看全部; 用 ROLE.CREATE 代理(仅 ADMIN)
       { path: "/admin/trash", name: "回收站", permission: { resource: RESOURCE.ROLE, action: ACTION.CREATE } }
@@ -201,6 +204,10 @@ export function DashboardShell({ user, children }: Props) {
   const [messages, setMessages] = useState<
     Array<{ id: string; title: string; type: string; readAt: string | null; createdAt: string; link: { kind: string; id: string } | null }>
   >([]);
+  // 应用更新弹窗:登录后若有未读的 AppRelease 弹出
+  // (release=null + open=false 表示没有未读 / 已关闭)
+  const [pendingRelease, setPendingRelease] = useState<ReleasePopupData | null>(null);
+  const [releasePopupOpen, setReleasePopupOpen] = useState(false);
 
   const { key: selectedKey, open: defaultOpen } = useMemo(
     () => findSelectedKey(pathname),
@@ -264,6 +271,31 @@ export function DashboardShell({ user, children }: Props) {
     loadUnread();
     const t = setInterval(loadUnread, 60000);
     return () => clearInterval(t);
+  }, []);
+
+  // 拉取"未读首发"AppRelease,登录后弹窗。
+  // 设计取舍:
+  //  - 仅在 mount 时拉一次(本 layout 在路由间复用,避免每次切页都打接口)
+  //  - 静默失败:接口 500/超时不能让 layout 整个崩;忽略即可
+  //  - 跟现有消息 unread 轮询不同步:release 是低频操作(管理员手动发布),不需要轮询
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const r = await fetch("/api/app-releases/latest", { credentials: "include" });
+        const j = await r.json();
+        if (cancelled) return;
+        if (j.code === 0 && j.data?.release) {
+          setPendingRelease(j.data.release);
+          setReleasePopupOpen(true);
+        }
+      } catch {
+        /* ignore */
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   const userMenu: MenuProps["items"] = [
@@ -746,6 +778,27 @@ export function DashboardShell({ user, children }: Props) {
           ) : null}
         </div>
       </Drawer>
+
+      {/* 登录后弹窗:展示未读 AppRelease */}
+      <ReleasePopup
+        release={pendingRelease}
+        open={releasePopupOpen && !!pendingRelease}
+        onClose={async () => {
+          // 关闭语义:打 /read 接口 + 清本地状态,避免下次刷新还弹同一条
+          if (pendingRelease) {
+            try {
+              await fetch(`/api/app-releases/${pendingRelease.id}/read`, {
+                method: "POST",
+                credentials: "include"
+              });
+            } catch {
+              /* 标记失败不影响关闭体验:用户已表达"已读"意图 */
+            }
+          }
+          setReleasePopupOpen(false);
+          setPendingRelease(null);
+        }}
+      />
     </Layout>
   );
 }
@@ -768,6 +821,7 @@ const CRUMB_LABEL: Record<string, string> = {
   "by-region": "区域统计",
   messages: "消息中心",
   announcements: "公告",
+  releases: "更新日志",
   admin: "系统管理",
   users: "员工管理",
   roles: "角色权限",

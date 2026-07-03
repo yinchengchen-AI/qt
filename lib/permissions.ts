@@ -17,6 +17,7 @@ export const RESOURCE = {
   OPERATION_LOG: "OPERATION_LOG",
   DEPARTMENT: "DEPARTMENT",
   DUNNING: "DUNNING",
+  APP_RELEASE: "APP_RELEASE",
 } as const;
 export type Resource = (typeof RESOURCE)[keyof typeof RESOURCE];
 
@@ -52,12 +53,13 @@ export const ROLE_PERMISSIONS: Record<RoleCode, Permission[]> = {
     { resource: RESOURCE.DICTIONARY, actions: R },
     { resource: RESOURCE.CUSTOMER, actions: [...CRU, ACTION.EXPORT] },
     { resource: RESOURCE.CONTRACT, actions: [...CRU, ACTION.EXPORT] },
-    { resource: RESOURCE.INVOICE, actions: [...CR, ACTION.EXPORT] },
+    { resource: RESOURCE.INVOICE, actions: [...CRU, ACTION.EXPORT] },
     { resource: RESOURCE.PAYMENT, actions: [...CR, ACTION.EXPORT] },
     { resource: RESOURCE.STATISTICS, actions: R },
     { resource: RESOURCE.DUNNING, actions: CRUD },
     { resource: RESOURCE.MESSAGE, actions: CRUD },
     { resource: RESOURCE.ANNOUNCEMENT, actions: R },
+    { resource: RESOURCE.APP_RELEASE, actions: R },
   ],
   FINANCE: [
     { resource: RESOURCE.DEPARTMENT, actions: R },
@@ -71,6 +73,7 @@ export const ROLE_PERMISSIONS: Record<RoleCode, Permission[]> = {
     { resource: RESOURCE.DUNNING, actions: CRU },
     { resource: RESOURCE.MESSAGE, actions: CRUD },
     { resource: RESOURCE.ANNOUNCEMENT, actions: R },
+    { resource: RESOURCE.APP_RELEASE, actions: R },
   ],
   OPS: [
     { resource: RESOURCE.DEPARTMENT, actions: CRUD },
@@ -85,6 +88,7 @@ export const ROLE_PERMISSIONS: Record<RoleCode, Permission[]> = {
     { resource: RESOURCE.DUNNING, actions: R },
     { resource: RESOURCE.MESSAGE, actions: CRUD },
     { resource: RESOURCE.ANNOUNCEMENT, actions: CRUD },
+    { resource: RESOURCE.APP_RELEASE, actions: R },
   ],
   // 技术专家: 现场勘查 / 报告撰写等"专业执行"角色,权限与 SALES (业务人员) 同
   EXPERT: [
@@ -93,12 +97,13 @@ export const ROLE_PERMISSIONS: Record<RoleCode, Permission[]> = {
     { resource: RESOURCE.DICTIONARY, actions: R },
     { resource: RESOURCE.CUSTOMER, actions: [...CRU, ACTION.EXPORT] },
     { resource: RESOURCE.CONTRACT, actions: [...CRU, ACTION.EXPORT] },
-    { resource: RESOURCE.INVOICE, actions: [...CR, ACTION.EXPORT] },
+    { resource: RESOURCE.INVOICE, actions: [...CRU, ACTION.EXPORT] },
     { resource: RESOURCE.PAYMENT, actions: [...CR, ACTION.EXPORT] },
     { resource: RESOURCE.STATISTICS, actions: R },
     { resource: RESOURCE.DUNNING, actions: CRUD },
     { resource: RESOURCE.MESSAGE, actions: CRUD },
     { resource: RESOURCE.ANNOUNCEMENT, actions: R },
+    { resource: RESOURCE.APP_RELEASE, actions: R },
   ]
 };
 

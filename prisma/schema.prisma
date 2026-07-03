@@ -77,6 +77,8 @@ model User {
   messages               Message[]
   publishedAnnouncements Announcement[]   @relation("AnnouncementPublishUser")
   dunningNotes           DunningNote[]
+  publishedReleases      AppRelease[]       @relation("AppReleasePublishUser")
+  releaseReads           AppReleaseRead[]
   profile                EmployeeProfile?
 
   @@index([roleId])
@@ -692,4 +694,67 @@ model DunningNote {
   @@index([invoiceId])
   @@index([status])
   @@index([actorId, createdAt])
+}
+
+// =====================================================
+// AppRelease (应用更新记录 / 发布日志)
+//   - 项目每次发版后,管理员在此记录"本次更新内容/修复/优化"。
+//   - 用户登录后,若存在 publishedAt 晚于该用户上次已读时间的 release,
+//     在 DashboardShell 弹出更新说明(见 components/release-popup.tsx)。
+//   - AppReleaseRead: per-user 已读时间;同一 release + user 唯一,避免重复计数。
+//   - 与 Announcement 的区别:
+//       * Announcement 是一次性公告 (有生效期 / 目标角色 / 置顶)
+//       * AppRelease 是一条发版日志 (按 publishedAt 倒序展示,全员可见)
+//   - 不挂 RLS: 所有登录用户都应该看到全部 release(按 publishedAt + 已读状态
+//     决定 popup 是否弹出,不需要行级隔离)。
+// =====================================================
+model AppRelease {
+  id            String    @id @default(cuid())
+  // 版本号,如 "v0.7.0";允许自由填写,但本项目默认按 package.json 同步。
+  version       String    @db.VarChar(50)
+  title         String    @db.VarChar(200)
+  // 概要:卡片/列表的 1-2 行简介(<=500 字符)
+  summary       String    @db.VarChar(500)
+  // 详情:支持换行的 Markdown 文本(<=10000),在弹窗/详情页用白名单渲染。
+  content       String    @db.VarChar(10000)
+  // 是否"重要"更新:important=true 时,即使已读,顶部仍展示红点提示用户回顾
+  // (popup 的视觉权重不同: important → 大弹窗, normal → 小提示)
+  important     Boolean   @default(false)
+  publishedAt   DateTime  @default(now()) @db.Timestamptz(6)
+  publishedById String
+  publishedBy   User      @relation("AppReleasePublishUser", fields: [publishedById], references: [id], onDelete: Restrict)
+  createdAt     DateTime  @default(now()) @db.Timestamptz(6)
+  updatedAt     DateTime  @updatedAt @db.Timestamptz(6)
+  deletedAt     DateTime? @db.Timestamptz(6)
+  reads         AppReleaseRead[]
+
+  // 来源:MANUAL 管理员手敲;GIT_COMMITS 从 git log 自动生成 (scripts/release/generate.ts)
+  // - MANUAL 为旧数据 / 紧急补丁的兼容值,新版本应优先用 GIT_COMMITS
+  // - gitFrom/gitTo 记录该 release 覆盖的 commit 区间(可空:手敲的 release 没源)
+  // - gitCommitCount 用于列表展示"基于 N 个 commit",辅助审计
+  source          String    @default("MANUAL")
+  gitFrom         String?   @db.VarChar(40)
+  gitTo           String?   @db.VarChar(40)
+  gitCommitCount  Int?
+
+  @@index([publishedAt])
+  @@index([deletedAt])
+  @@index([important, publishedAt])
+  @@index([source])
+}
+
+// 用户对一条 release 的"已读"记录。
+// - unique(userId, releaseId) 防重复;
+// - 不挂 deletedAt: 用户撤销已读 = 删行;无需软删(审计意义不大)。
+model AppReleaseRead {
+  id        String     @id @default(cuid())
+  userId    String
+  releaseId String
+  user      User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  release   AppRelease @relation(fields: [releaseId], references: [id], onDelete: Cascade)
+  readAt    DateTime   @default(now()) @db.Timestamptz(6)
+
+  @@unique([userId, releaseId])
+  @@index([userId, readAt])
+  @@index([releaseId])
 }
