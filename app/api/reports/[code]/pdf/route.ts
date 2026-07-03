@@ -75,8 +75,8 @@ function buildPrintDoc(
           企业名称: r.customerName ?? "-",
           服务项目: r.serviceTypeLabel ?? r.serviceType ?? "-",
           签约人: r.signerName ?? "-",
-          合同金额: renderSignerAmount(r.totalAmount),
-          小计万元: "",
+          "合同金额（元）": renderSignerAmount(r.totalAmount),
+          "小计（万元）": "",
         });
       }
       // 签约人小计行: 签约人位置写 "{姓名} 小计", 末列写万元合计
@@ -85,8 +85,8 @@ function buildPrintDoc(
         企业名称: "",
         服务项目: "",
         签约人: `${g.signerName} 小计`,
-        合同金额: renderSignerAmount(g.contractAmount),
-        小计万元: typeof g.subtotalWan === "number" ? g.subtotalWan.toFixed(2) : String(g.subtotalWan ?? ""),
+        "合同金额（元）": renderSignerAmount(g.contractAmount),
+        "小计（万元）": typeof g.subtotalWan === "number" ? g.subtotalWan.toFixed(2) : String(g.subtotalWan ?? ""),
       });
     }
     // 全公司合计
@@ -97,8 +97,8 @@ function buildPrintDoc(
       企业名称: "",
       服务项目: "",
       签约人: "全公司合计",
-      合同金额: renderSignerAmount(grandTotal),
-      小计万元: grandWan.toFixed(2),
+      "合同金额（元）": renderSignerAmount(grandTotal),
+      "小计（万元）": grandWan.toFixed(2),
     });
     if (flat.length > 0) {
       sections.push({
