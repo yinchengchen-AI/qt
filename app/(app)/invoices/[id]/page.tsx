@@ -7,7 +7,7 @@ import { hasPermission, RESOURCE, ACTION } from "@/lib/permissions";
 import type { AttachmentSnapshot, Invoice as InvoiceEntity } from "@/lib/types/entities";
 import useSWR from "swr";
 import { useSession } from "next-auth/react";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { Page } from "@/components/page";
 import { PageHeader } from "@/components/page-header";
 import { DetailPageSkeleton } from "@/components/detail-page-skeleton";
@@ -31,11 +31,18 @@ export default function InvoiceDetailPage() {
   const { message } = AntdApp.useApp();
   const { data, isLoading, mutate } = useSWR<InvoiceEntity>(`/api/invoices/${id}`);
   const invoice = data;
+  type ModalType = "issue" | "redFlush" | "reject" | "void" | null;
+  const [modalOpen, setModalOpen] = useState<ModalType>(null);
   const [reason, setReason] = useState("");
   const [invoiceNo, setInvoiceNo] = useState("");
-  useEffect(() => {
-    if (invoice?.invoiceNo) setInvoiceNo(invoice.invoiceNo);
-  }, [invoice?.invoiceNo]);
+
+  const openModal = (type: NonNullable<ModalType>) => {
+    setModalOpen(type);
+    setReason("");
+    setInvoiceNo(invoice?.invoiceNo ?? "");
+  };
+  const closeModal = () => setModalOpen(null);
+
   const { run } = useActionCall({ baseUrl: `/api/invoices/${id}`, reload: () => mutate() });
 
   if (isLoading || !invoice) {
@@ -53,30 +60,30 @@ export default function InvoiceDetailPage() {
   const canUpdate = hasPermission(roleCode, RESOURCE.INVOICE, ACTION.UPDATE);
   const status = invoice?.status;
 
-  const askIssue = () => Modal.confirm({
-    title: "确认开票（财务操作）",
-    content: <div><div style={{ marginBottom: 6 }}>请填写 20 位电子发票号：</div><Input value={invoiceNo} onChange={(e) => setInvoiceNo(e.target.value)} placeholder="如：01100210031112345678" /></div>,
-    onOk: async () => {
-      if (!invoiceNo) { message.warning("请先填写 20 位电子发票号"); return; }
-      await run("issue", { invoiceNo, actualIssueDate: new Date().toISOString() });
-      setInvoiceNo("");
-    }
-  });
-  const askRedFlush = () => Modal.confirm({
-    title: "确认红冲发票？",
-    content: <Input.TextArea rows={3} value={reason} onChange={(e) => setReason(e.target.value)} placeholder="请填写红冲原因，将记入操作记录" />,
-    onOk: async () => { await run("red-flush", { reason }); setReason(""); }
-  });
-  const askReject = () => Modal.confirm({
-    title: "确认驳回该开票？",
-    content: <Input.TextArea rows={3} value={reason} onChange={(e) => setReason(e.target.value)} placeholder="请填写驳回原因，业务员可见" />,
-    onOk: async () => { await run("reject", { reason }); setReason(""); }
-  });
-  const askVoid = () => Modal.confirm({
-    title: "确认作废该发票？（仅当日有效）",
-    content: <Input.TextArea rows={2} value={reason} onChange={(e) => setReason(e.target.value)} placeholder="请填写作废原因，将记入操作记录" />,
-    onOk: async () => { await run("void", { reason }); setReason(""); }
-  });
+  const handleIssue = async () => {
+    if (!invoiceNo) { message.warning("请先填写 20 位电子发票号"); throw new Error("empty invoiceNo"); }
+    const ok = await run("issue", { invoiceNo, actualIssueDate: new Date().toISOString() });
+    if (!ok) throw new Error("issue failed");
+    setInvoiceNo("");
+  };
+  const handleRedFlush = async () => {
+    if (!reason.trim()) { message.warning("请填写红冲原因"); throw new Error("empty reason"); }
+    const ok = await run("red-flush", { reason });
+    if (!ok) throw new Error("red-flush failed");
+    setReason("");
+  };
+  const handleReject = async () => {
+    if (!reason.trim()) { message.warning("请填写驳回原因"); throw new Error("empty reason"); }
+    const ok = await run("reject", { reason });
+    if (!ok) throw new Error("reject failed");
+    setReason("");
+  };
+  const handleVoid = async () => {
+    if (!reason.trim()) { message.warning("请填写作废原因"); throw new Error("empty reason"); }
+    const ok = await run("void", { reason });
+    if (!ok) throw new Error("void failed");
+    setReason("");
+  };
   return (
     <Page>
       <PageHeader
@@ -93,14 +100,14 @@ export default function InvoiceDetailPage() {
             {status === "DRAFT" && isFinance && <Button type="primary" onClick={() => run("submit")}>提交</Button>}
             {status === "PENDING_FINANCE" && isFinance && (
               <>
-                <Button danger onClick={askReject}>驳回</Button>
-                <Button type="primary" onClick={askIssue}>开票</Button>
+                <Button danger onClick={() => openModal("reject")}>驳回</Button>
+                <Button type="primary" onClick={() => openModal("issue")}>开票</Button>
               </>
             )}
             {status === "ISSUED" && isFinance && (
               <>
-                <Button onClick={askVoid}>作废(当日)</Button>
-                <Button danger onClick={askRedFlush}>红冲</Button>
+                <Button onClick={() => openModal("void")}>作废(当日)</Button>
+                <Button danger onClick={() => openModal("redFlush")}>红冲</Button>
               </>
             )}
           </Space>
@@ -139,6 +146,43 @@ export default function InvoiceDetailPage() {
           onDeleted={() => mutate()}
         />
       </ProCard>
+      <Modal
+        title="确认开票（财务操作）"
+        open={modalOpen === "issue"}
+        onOk={handleIssue}
+        onCancel={closeModal}
+        destroyOnClose
+      >
+        <div style={{ marginBottom: 6 }}>请填写 20 位电子发票号：</div>
+        <Input value={invoiceNo} onChange={(e) => setInvoiceNo(e.target.value)} placeholder="如：01100210031112345678" />
+      </Modal>
+      <Modal
+        title="确认红冲发票？"
+        open={modalOpen === "redFlush"}
+        onOk={handleRedFlush}
+        onCancel={closeModal}
+        destroyOnClose
+      >
+        <Input.TextArea rows={3} value={reason} onChange={(e) => setReason(e.target.value)} placeholder="请填写红冲原因，将记入操作记录" />
+      </Modal>
+      <Modal
+        title="确认驳回该开票？"
+        open={modalOpen === "reject"}
+        onOk={handleReject}
+        onCancel={closeModal}
+        destroyOnClose
+      >
+        <Input.TextArea rows={3} value={reason} onChange={(e) => setReason(e.target.value)} placeholder="请填写驳回原因，业务员可见" />
+      </Modal>
+      <Modal
+        title="确认作废该发票？（仅当日有效）"
+        open={modalOpen === "void"}
+        onOk={handleVoid}
+        onCancel={closeModal}
+        destroyOnClose
+      >
+        <Input.TextArea rows={2} value={reason} onChange={(e) => setReason(e.target.value)} placeholder="请填写作废原因，将记入操作记录" />
+      </Modal>
     </Page>
   );
 }
