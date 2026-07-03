@@ -1,6 +1,6 @@
 // PUT /api/files/upload/[id]
 // 代理上传:浏览器 PUT raw body 到这里,服务端用 SDK 写到 MinIO。
-// 设计原因:MinIO 绑在 server-localhost:9000,公网到不了;用 Next.js 代理可以让前端只走 3000。
+// 设计原因:MinIO 绑在 server-localhost:9100 (docker-compose.minio.yml host 端口 9100 -> container 9000),公网到不了;用 Next.js 代理可以让前端只走 3000。
 // 鉴权 + 业务校验:
 //   - 必须是登录用户
 //   - 必须是该 Attachment 的 uploadedById(防止越权 PUT 到别人记录里)

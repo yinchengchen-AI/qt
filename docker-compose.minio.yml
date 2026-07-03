@@ -2,8 +2,10 @@
 # 启动: docker compose -f docker-compose.minio.yml up -d
 # 停止: docker compose -f docker-compose.minio.yml down
 # 数据卷:  ./docker-data/minio  (删除卷 = 清空所有对象)
-# Console: http://localhost:9001  账号 minioadmin / minioadmin
-# API:     http://localhost:9000
+# Console: http://localhost:9101  账号 minioadmin / minioadmin
+# API:     http://localhost:9100
+# 主机端口 9100/9101 = 默认 9000/9001 + 100,避开 Colima/Lima ssh.sock 占用的 :9000/:9001
+# 容器内仍是 9000/9001(qitai-minio-init 用容器名 + 9000,不受影响),改 host 侧即可。
 
 services:
   qitai-minio:
@@ -14,8 +16,8 @@ services:
       MINIO_ROOT_USER: minioadmin
       MINIO_ROOT_PASSWORD: minioadmin
     ports:
-      - "127.0.0.1:9000:9000"   # S3 API
-      - "127.0.0.1:9001:9001"   # Web Console
+      - "127.0.0.1:9100:9000"   # S3 API  (host 9100 -> container 9000)
+      - "127.0.0.1:9101:9001"   # Web Console (host 9101 -> container 9001)
     volumes:
       - ./docker-data/minio:/data
     healthcheck:

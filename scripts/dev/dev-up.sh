@@ -40,7 +40,7 @@ say "起 MinIO 容器 ($MINIO_CONTAINER)"
 docker compose -f "$MINIO_COMPOSE" up -d
 say "等待 MinIO healthy"
 for i in $(seq 1 30); do
-  if curl -fsS "http://127.0.0.1:9000/minio/health/ready" >/dev/null 2>&1; then
+  if curl -fsS "http://127.0.0.1:9100/minio/health/ready" >/dev/null 2>&1; then
     green "  MinIO ready (${i}s)"; break
   fi
   sleep 1

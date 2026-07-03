@@ -2,7 +2,7 @@
 // - 上传:鉴权 + MIME/大小校验 + 写 Attachment 记录 + 返回代理上传 URL
 // - 下载:鉴权(角色) + 校验对象存在 + 返回代理下载 URL
 // 浏览器实际拿数据走 Next.js 代理(/api/files/upload/[id] / /api/files/raw/[id]),
-// 而不是直接打 MinIO — 因为 MinIO 绑在 server-localhost:9000,公网到不了;
+// 而不是直接打 MinIO — 因为 MinIO 绑在 server-localhost:9100 (docker-compose.minio.yml host 端口 9100 -> container 9000),公网到不了;
 // 代理让前端只走 3000,不需要在阿里云安全组开 9000
 import { HeadObjectCommand } from "@aws-sdk/client-s3";
 import { Prisma } from "@prisma/client";
