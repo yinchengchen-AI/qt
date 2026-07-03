@@ -14,6 +14,7 @@ import { Page } from "@/components/page";
 import { PageHeader } from "@/components/page-header";
 import { EmptyState } from "@/components/empty-state";
 import { useResponsive } from "@/lib/use-breakpoint";
+import { reportPeriodLabel, reportStatusLabel } from "@/lib/report-labels";
 
 const TYPE_ICON: Record<string, React.ReactNode> = {
   FINANCIAL: <BarChartOutlined />,
@@ -116,7 +117,7 @@ export default function ReportsPage() {
                           {TYPE_ICON[def.type]} <span style={{ marginLeft: 8 }}>{def.name}</span>
                         </span>
                       }
-                      extra={<Tag color={TYPE_COLOR[def.type]}>{def.periodType}</Tag>}
+                      extra={<Tag color={TYPE_COLOR[def.type]}>{reportPeriodLabel(def.periodType)}</Tag>}
                     >
                       <p style={{ color: "#6b7280", minHeight: 40 }}>
                         {def.description ?? "-"}
@@ -127,7 +128,7 @@ export default function ReportsPage() {
                         </span>
                         {snap ? (
                           <Tag color={snap.status === "READY" ? "success" : "warning"}>
-                            {snap.periodLabel}
+                            {snap.periodLabel} · {reportStatusLabel(snap.status)}
                           </Tag>
                         ) : (
                           <Tag>未生成</Tag>
@@ -161,7 +162,7 @@ export default function ReportsPage() {
                         <div>
                           状态:{" "}
                           <Tag color={snap.status === "READY" ? "success" : "warning"}>
-                            {snap.status}
+                            {reportStatusLabel(snap.status)}
                           </Tag>
                         </div>
                         <div style={{ fontSize: 12, color: "#9ca3af", marginTop: 4 }}>

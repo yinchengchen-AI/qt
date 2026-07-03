@@ -15,6 +15,7 @@ import {
 } from "@/server/services/statistics";
 import { createHash } from "crypto";
 import { z } from "zod";
+import { REPORT_COLUMN_LABELS } from "@/lib/report-labels";
 
 export type ReportType = "FINANCIAL" | "BUSINESS" | "PERFORMANCE" | "CUSTOM";
 export type ReportPeriodType = "MONTH" | "QUARTER" | "YEAR" | "CUSTOM";
@@ -507,8 +508,8 @@ export async function prepareExportRows(
   const payload = result.payload;
   const definition = result.definition;
 
-  // 指标 key -> 中文 label 映射
-  const labelMap: Record<string, string> = {};
+  // 指标 key -> 中文 label 映射(默认指标 + 通用字段)
+  const labelMap: Record<string, string> = { ...REPORT_COLUMN_LABELS };
   for (const m of definition.defaultMetrics) {
     labelMap[m.key] = m.label;
   }

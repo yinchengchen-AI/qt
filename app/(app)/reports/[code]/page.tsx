@@ -31,6 +31,7 @@ import { openPrintWindow } from "@/lib/print-client";
 import { toDateRangeQuery } from "@/lib/date-range";
 import { formatCurrency } from "@/lib/format";
 import { Authority } from "@/components/authority";
+import { reportColumnLabel, reportStatusLabel } from "@/lib/report-labels";
 
 const PERIOD_TABS = [
   { key: "MONTH", label: "月报" },
@@ -214,7 +215,7 @@ export default function ReportDetailPage() {
   const columns = useMemo(() => {
     if (tableData.length === 0) return [];
     return Object.keys(tableData[0]!).map((key) => ({
-      title: key,
+      title: reportColumnLabel(key),
       dataIndex: key,
       key,
       render: (v: unknown) => formatTableValue(key, v),
@@ -281,7 +282,7 @@ export default function ReportDetailPage() {
                   <span>
                     状态:{" "}
                     <Tag color={data.status === "READY" ? "success" : "warning"}>
-                      {data.status}
+                      {reportStatusLabel(data.status)}
                     </Tag>
                   </span>
                   {data.generatedAt && (

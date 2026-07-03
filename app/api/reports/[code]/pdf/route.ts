@@ -11,6 +11,7 @@ import {
 } from "@/server/services/report";
 import { renderPrintHtml, type PrintDoc, type PrintSummaryItem, type PrintTableSection } from "@/lib/print-html";
 import { formatCurrency } from "@/lib/format";
+import { reportColumnLabel } from "@/lib/report-labels";
 
 const query = z.object({
   periodType: z.enum(["MONTH", "QUARTER", "YEAR", "CUSTOM"]),
@@ -52,7 +53,7 @@ function buildPrintDoc(
     const perf = payload.performance as Record<string, string | number | null | undefined>[];
     sections.push({
       title: "员工业绩明细",
-      columns: Object.keys(perf[0]!),
+      columns: Object.keys(perf[0]!).map(reportColumnLabel),
       rows: perf,
     });
   }
@@ -61,7 +62,7 @@ function buildPrintDoc(
     const region = payload.region as Record<string, string | number | null | undefined>[];
     sections.push({
       title: "区域统计明细",
-      columns: Object.keys(region[0]!),
+      columns: Object.keys(region[0]!).map(reportColumnLabel),
       rows: region,
     });
   }
@@ -70,7 +71,7 @@ function buildPrintDoc(
     const series = payload.series as Record<string, string | number | null | undefined>[];
     sections.push({
       title: "趋势明细",
-      columns: Object.keys(series[0]!),
+      columns: Object.keys(series[0]!).map(reportColumnLabel),
       rows: series,
     });
   }
