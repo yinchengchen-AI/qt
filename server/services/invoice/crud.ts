@@ -127,7 +127,10 @@ export async function updateInvoice(user: SessionUser, id: string, input: Invoic
     where: { id, deletedAt: null, ...(ownerViaContract(user) as Prisma.InvoiceWhereInput) }
   });
   if (!inv) throw new ApiError(ERROR_CODES.NOT_FOUND, "发票不存在", 404);
-  if (inv.status !== "DRAFT") throw new ApiError(ERROR_CODES.ENTITY_IMMUTABLE, "仅 DRAFT 可修改", 403);
+  // 状态机门控: admin 任意态可改; 非 admin 仅 DRAFT 可改 (与 server/services/contract/crud.ts:248 一致)
+  if (user.roleCode !== "ADMIN" && inv.status !== "DRAFT") {
+    throw new ApiError(ERROR_CODES.ENTITY_IMMUTABLE, "当前状态不可修改", 403);
+  }
 
   // 防御: 即使 schema 允许 partial(), service 层也显式丢弃不可更新字段, 防止 spread 时写进 DB
   const safeInput = { ...input } as Record<string, unknown>;

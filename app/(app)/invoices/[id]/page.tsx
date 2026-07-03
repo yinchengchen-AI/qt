@@ -1,8 +1,9 @@
 "use client";
 import { ProCard, ProDescriptions } from "@ant-design/pro-components";
 import { Button, Space, Modal, Input, App as AntdApp } from "antd";
-import { useParams } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
 import { useGoBack } from "@/lib/navigation";
+import { hasPermission, RESOURCE, ACTION } from "@/lib/permissions";
 import type { AttachmentSnapshot, Invoice as InvoiceEntity } from "@/lib/types/entities";
 import useSWR from "swr";
 import { useSession } from "next-auth/react";
@@ -13,7 +14,7 @@ import { DetailPageSkeleton } from "@/components/detail-page-skeleton";
 import { StatusTag } from "@/components/status-tag";
 import { useActionCall } from "@/lib/use-action-call";
 import { CurrencyCell, DateTimeCell, PercentCell } from "@/components/table-cells";
-import { FilePdfOutlined } from "@ant-design/icons";
+import { EditOutlined, FilePdfOutlined } from "@ant-design/icons";
 import { openPrintWindow } from "@/lib/print-client";
 import { AttachmentList } from "@/components/file/attachment-list";
 import { INVOICE_TYPE_MAP, TITLE_TYPE_MAP } from "@/lib/enum-maps";
@@ -25,6 +26,7 @@ export default function InvoiceDetailPage() {
   const id = String(params.id);
 
   const goBack = useGoBack("/invoices");
+  const router = useRouter();
   const { data: session } = useSession();
   const { message } = AntdApp.useApp();
   const { data, isLoading, mutate } = useSWR<InvoiceEntity>(`/api/invoices/${id}`);
@@ -44,8 +46,11 @@ export default function InvoiceDetailPage() {
       </Page>
     );
   }
-  const roleCode = session?.user?.roleCode;
+  const roleCode = (session?.user?.roleCode ?? "") as Parameters<typeof hasPermission>[0];
   const isFinance = roleCode === "FINANCE" || roleCode === "ADMIN";
+  const isAdmin = roleCode === "ADMIN";
+  // 与 server/services/invoice/crud.ts:130 的状态机门控保持一致: 非 admin 仅 DRAFT 可改, admin 任意态
+  const canUpdate = hasPermission(roleCode, RESOURCE.INVOICE, ACTION.UPDATE);
   const status = invoice?.status;
 
   const askIssue = () => Modal.confirm({
@@ -82,6 +87,9 @@ export default function InvoiceDetailPage() {
         actions={
           <Space wrap>
             <Button key="pdf" icon={<FilePdfOutlined />} onClick={() => openPrintWindow(`/api/invoices/${id}/pdf`)}>导出 PDF</Button>
+            {canUpdate && (isAdmin || status === "DRAFT") && (
+              <Button key="edit" icon={<EditOutlined />} onClick={() => router.push(`/invoices/${id}/edit`)}>编辑</Button>
+            )}
             {status === "DRAFT" && isFinance && <Button type="primary" onClick={() => run("submit")}>提交</Button>}
             {status === "PENDING_FINANCE" && isFinance && (
               <>

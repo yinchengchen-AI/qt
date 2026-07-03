@@ -10,11 +10,24 @@ describe("Role permissions", () => {
     }
   });
 
-  it("SALES can CRUD Customer/Contract but not Invoice delete", () => {
+  it("SALES can CRUD Customer/Contract and update Invoice draft, but not delete", () => {
     expect(hasPermission("SALES", RESOURCE.CUSTOMER, ACTION.CREATE)).toBe(true);
     expect(hasPermission("SALES", RESOURCE.CONTRACT, ACTION.UPDATE)).toBe(true);
+    // 开票管理开放编辑后: 业务可改 DRAFT, 但不能删除
+    expect(hasPermission("SALES", RESOURCE.INVOICE, ACTION.UPDATE)).toBe(true);
     expect(hasPermission("SALES", RESOURCE.INVOICE, ACTION.DELETE)).toBe(false);
     expect(hasPermission("SALES", RESOURCE.STATISTICS, ACTION.EXPORT)).toBe(false);
+  });
+
+  it("EXPERT 同样可以编辑 DRAFT 开票", () => {
+    expect(hasPermission("EXPERT", RESOURCE.INVOICE, ACTION.UPDATE)).toBe(true);
+    expect(hasPermission("EXPERT", RESOURCE.INVOICE, ACTION.DELETE)).toBe(false);
+  });
+
+  it("OPS 不能创建/编辑开票, 只能读", () => {
+    expect(hasPermission("OPS", RESOURCE.INVOICE, ACTION.READ)).toBe(true);
+    expect(hasPermission("OPS", RESOURCE.INVOICE, ACTION.CREATE)).toBe(false);
+    expect(hasPermission("OPS", RESOURCE.INVOICE, ACTION.UPDATE)).toBe(false);
   });
 
   it("FINANCE has full CRUD on Invoice/Payment and EXPORT statistics", () => {
@@ -24,10 +37,8 @@ describe("Role permissions", () => {
     expect(hasPermission("FINANCE", RESOURCE.CUSTOMER, ACTION.CREATE)).toBe(false);
   });
 
-  it("OPS can CRUD Announcement but not Invoice create", () => {
+  it("OPS can CRUD Announcement", () => {
     expect(hasPermission("OPS", RESOURCE.ANNOUNCEMENT, ACTION.CREATE)).toBe(true);
-    expect(hasPermission("OPS", RESOURCE.INVOICE, ACTION.READ)).toBe(true);
-    expect(hasPermission("OPS", RESOURCE.INVOICE, ACTION.CREATE)).toBe(false);
   });
 
   it("ROLE_PERMISSIONS covers all 5 built-in roles", () => {
