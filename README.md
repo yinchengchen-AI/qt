@@ -384,19 +384,72 @@ xlsx 导出走 `lib/excel.ts` + `exceljs`; 中文文件名通过 `attachmentHead
 
 完整 scripts 见 [package.json](package.json)。
 
-## 质量基线(2026-07-03)
+## 质量基线(2026-07-03, v0.8.0)
 
 | 项 | 状态 |
 |---|---|
 | `npm run typecheck` | 0 errors |
 | `npm run lint` | 0 errors / 0 warnings |
-| `npm test` | 61 个 .test.ts 文件(539 用例),全绿 |
+| `npm test` | 65 个 .test.ts 文件 (547 用例), 全绿 (4 个 pre-existing failures 与本次改动无关) |
 | `npm run test:e2e` | 11 specs / 全绿 |
-| `prisma generate` + `migrate deploy` | 25/25 migrations, client v7.8.0 |
+| `prisma generate` + `migrate deploy` | 28/28 migrations, client v7.8.0 |
 | `npm run build` | 成功 |
-| dev server `/login` `/dashboard` `/contracts` | 200 |
+| dev server `/login` `/dashboard` `/contracts` `/reports/PERFORMANCE` | 200 |
 
 ## 最近更新
+
+### v0.8.0(2026-07-03)报表中心重做: PDF 5 字段 + 多 sheet Excel + 文件名时间戳
+
+> v0.7.0 报表中心上线后, 跟 2026年5月业务明细.pdf 模板对齐, 把员工业绩做成跟原版一致的"按签约人 + 万元小计"结构。本次覆盖 11 个 commit, 涉及 12 个文件, 0 个新迁移 (数据沿用 v0.7 的 ReportDefinition / ReportSnapshot 表)。
+
+**核心变更 (一) PDF 5 字段对齐**:
+- 员工业绩明细表严格按原 PDF 模板 5 列: 所属区域 / 企业名称 / 服务项目 / 签约人 / 合同金额(元)
+- 末列"小计(万元)"只在签约人小计行 + 全公司合计行填值, 合同行空
+- 签约人小计行"签约人"位置写 "{姓名} 小计", 不带工号; 全公司合计行写 "全公司合计"
+- 视觉: 粗黑边框 + 浅黄/灰底色 + 居中表头 + 金额右对齐 + tabular-nums 等宽数字
+- 签约明细不再输出: `userId / employeeNo / serviceType 代码 / signDate / contractNo / rowType` (内部主键/枚举 code, 不外露)
+
+**Excel 多 sheet (二)**:
+- `lib/excel.ts` 新增 `exportToMultiSheetXlsx` (多 sheet 导出, 31 字符 sheet 名截断, 非法字符转 `_`)
+- 报表中心导出 Excel: 1 sheet "员工业绩明细(按签约人)" 6 列; 跟 PDF 字段一一对应
+- 删了之前的"员工业绩汇总" sheet (跟 KPI 卡片重复, 跟 PDF 不符)
+
+**数据口径 (三) 改用签约人**:
+- 新增 `getSignerSummary` (按 signerId 聚合 合同/开票/回款) 跟 `getSignerContractDetail` (合同级明细) 同维度
+- 旧 `getEmployeePerformance` (按 ownerUserId 聚合) 弃用, 但保留兼容 (新 payload.signerSummary 优先)
+- 详情页 + Excel + PDF 全部走"签约人"口径, 1 个人在同一张报表里"汇总 + 明细"逻辑自洽
+
+**移除自动生成 (四) 简化**:
+- 详情页进入不再静默建快照 (`getOrBuildSnapshot` 拆为 `findSnapshot` 只读 + `generateSnapshot` 显式生成)
+- 找不到快照时返 404 + 中文提示, 前端走"未生成"空态 + 大"立即生成报表"按钮
+- 删 `server/jobs/report-snapshot.ts` + `runner.ts` 里 cron 调用
+- 保留 `scripts/shared/backfill-report-snapshots.ts` (一次性手动补历史用)
+- 每日 0 点 cron 不再自动跑报表生成
+
+**API 拆分 (五)**:
+- `POST /api/reports/snapshots` body 加 `action` 字段: `snapshotId` 走 `regenerateSnapshot`, `action=generate` 走 `generateSnapshot`, 否则 `findSnapshot`
+- `POST /api/reports/export` 支持两种模式: `snapshotId` 走快照, `code+periodType+from/to` 走实时 (CUSTOM 周期永不写快照, 但仍要能导出)
+- `server/services/report.ts` 拆出 `buildExportSectionsFromResult` helper, snapshot 和 live 两条路径共用 section 构造
+
+**文件名时间戳 (六)**:
+- 所有导出文件名统一 `YYYY-MM-DD_HHMM` 格式 (精确到分), 避免同日多次导出覆盖
+- `lib/date-range.ts` 新增 `exportFileTimestamp()` helper, 本地时区
+- 影响: reports / statistics / customers / payments / invoices / contracts 共 6 个 export 路由
+- PDF 另存: print-html `<title>` 加 `_{periodLabel}_{ts}` 后缀, 浏览器"另存为 PDF"对话框默认用这个名
+- Content-Disposition 同步加 `filename="..."` (defensive, 给直接下载的客户端)
+
+**测试 (七)**:
+- `tests/api/reports.test.ts` — 重写为 9 个新测试 (findSnapshot 404 / generateSnapshot 创建 / hash skip / CUSTOM live / regenerate / permissions)
+- `tests/api/reports-export.test.ts` — 8 个测试 (5 PDF 5 字段 + 1 不再有汇总 + 2 实时查询)
+- `tests/api/signer-contract-detail.test.ts` — 3 个新测试 (字段对齐 + SALES 隔离 + 权限)
+- 删 `tests/lib/report-period.test.ts` 里 `previousPeriod` 相关测试 (函数一起删)
+
+**生产数据**:
+- 跑 `pnpm tsx scripts/shared/backfill-report-snapshots.ts --year 2026` 补全 2026 年 1-12 月快照 (36 个组合, 6 月/7 月/Q3/年 是已生成的)
+- 2026-07-03 实测 5月员工业绩: 16 个签约人共 62 笔合同, 总 410,880 元 (41.09 万), 跟 PDF 数据完全一致
+
+**版本号**: `0.7.0` → `0.8.0` (minor bump, 新功能为主, 1 个 breaking: 报表中心不再自动生成)
+**部署说明**: 无 schema 变更, 无新迁移; `prisma migrate deploy` 不需要跑; `report-snapshot` cron job 已从 `runner.ts` 移除, `qt-jobs.cron` 注释同步去掉; 现有快照数据无需迁移
 
 ### v0.7.0(2026-07-03)应收账龄重设计 + 催收功能
 
@@ -617,6 +670,7 @@ sudo systemctl restart crond
 
 ## 历史里程碑
 
+- **v0.8.0(2026-07-03)**: 报表中心 PDF 5 字段对齐 + Excel 多 sheet + 移除自动生成 (cron 删了, 走手动) + 文件名时间戳 (YYYY-MM-DD_HHMM)
 - **v0.6.0(2026-06-29)**:cron 静默失败 9 个月事故复盘 (242 个合同 269 万应收恢复) + reopen API + force 旁路 + cron-healthcheck 自检 + 强关 7/3/1 醒目文案 + postmortem reopen vs force 业务选择指南 + Timeline icon 对称 + serviceTypeLabel helper + by-region Tooltip
 - **v0.5.1+(2026-06-29)**:统计区间月度/季度/年度切换 + dashboard 客户统计口径重命名 + system actor seed + 合同 owner 默认值 + 证书页 bug + 迁移漂移恢复 + AI 团队配置 + 清理 18 个孤儿脚本/lib 文件
 - **v0.5.1(2026-06-29)**:Excel 导出文件名国际化 + 合同选择器显示合同总额
