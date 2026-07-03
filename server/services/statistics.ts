@@ -1059,6 +1059,105 @@ export async function getSignerContractDetail(
   return out;
 }
 
+/**
+ * 5.2 签约人业绩汇总（与签约明细同口径，按签约人聚合）
+ *
+ * 用途：员工业绩报表的"员工业绩汇总"区块。
+ * 与 getEmployeePerformance 的区别：
+ *   - getEmployeePerformance: 按 ownerUserId（负责人/业务人员）聚合
+ *   - getSignerSummary:       按 signerId（签约人）聚合 — 跟签约明细同维度，
+ *     同一张报表里"汇总"和"明细"是同一个人，逻辑自洽。
+ *
+ * 字段：签约人/工号/合同数/合同额/已开票额/已回款额，与原 getEmployeePerformance 同结构。
+ * SALES 角色：只看自己作为签约人的合同。
+ */
+export type SignerSummaryRow = {
+  userId: string;        // 签约人 userId（兼容原 aggregatePerformance 字段名）
+  name: string;
+  employeeNo: string;
+  contractCount: number;
+  contractAmount: number;
+  invoiceAmount: number;
+  paymentAmount: number;
+};
+
+export async function getSignerSummary(
+  user: SessionUser,
+  range?: DateRange
+): Promise<SignerSummaryRow[]> {
+  requirePermission(user.roleCode, RESOURCE.STATISTICS, ACTION.READ);
+  // 拉该 range 内所有 ACTIVE/CLOSED 合同，按 signerId 聚合
+  const isSales = user.roleCode === "SALES";
+  const contractWhere: Prisma.ContractWhereInput = {
+    deletedAt: null,
+    status: { in: ["ACTIVE", "CLOSED"] },
+    ...(range ? { signDate: dateWhere(range) } : {}),
+    ...(isSales
+      ? { OR: [{ ownerUserId: user.id }, { signerId: user.id }] }
+      : ownerEq(user)),
+  };
+  const contracts = await prisma.contract.findMany({
+    where: contractWhere,
+    select: {
+      id: true,
+      ownerUserId: true,
+      signerId: true,
+      totalAmount: true,
+    },
+  });
+  if (contracts.length === 0) return [];
+  // 拉 ISSUED invoice / CONFIRMED+RECONCILED payment, 按 contractId 聚合
+  const contractIds = contracts.map((c) => c.id);
+  const invoiceWhere: Prisma.InvoiceWhereInput = {
+    deletedAt: null,
+    status: "ISSUED",
+    contractId: { in: contractIds },
+    ...(range ? { actualIssueDate: dateWhere(range, "actualIssueDate") } : {}),
+  };
+  const paymentWhere: Prisma.PaymentWhereInput = {
+    deletedAt: null,
+    status: { in: ["CONFIRMED", "RECONCILED"] },
+    contractId: { in: contractIds },
+    ...(range ? { receivedAt: dateWhere(range, "receivedAt") } : {}),
+  };
+  const [invoiceRows, paymentRows, signers] = await Promise.all([
+    prisma.invoice.groupBy({ by: ["contractId"], where: invoiceWhere, _sum: { amount: true } }),
+    prisma.payment.groupBy({ by: ["contractId"], where: paymentWhere, _sum: { amount: true } }),
+    prisma.user.findMany({
+      where: { id: { in: [...new Set(contracts.map((c) => c.signerId))] } },
+      select: { id: true, name: true, employeeNo: true },
+    }),
+  ]);
+  const invoiceByContract = new Map(invoiceRows.map((r) => [r.contractId, Number(r._sum.amount ?? 0)]));
+  const paymentByContract = new Map(paymentRows.map((r) => [r.contractId, Number(r._sum.amount ?? 0)]));
+  const signerMap = new Map(signers.map((s) => [s.id, s]));
+
+  // 按 signerId 累加
+  const out = new Map<string, SignerSummaryRow>();
+  for (const c of contracts) {
+    const signer = signerMap.get(c.signerId);
+    if (!signer) continue;
+    let row = out.get(signer.id);
+    if (!row) {
+      row = {
+        userId: signer.id,
+        name: signer.name,
+        employeeNo: signer.employeeNo,
+        contractCount: 0,
+        contractAmount: 0,
+        invoiceAmount: 0,
+        paymentAmount: 0,
+      };
+      out.set(signer.id, row);
+    }
+    row.contractCount += 1;
+    row.contractAmount = round2(row.contractAmount + Number(c.totalAmount));
+    row.invoiceAmount = round2(row.invoiceAmount + (invoiceByContract.get(c.id) ?? 0));
+    row.paymentAmount = round2(row.paymentAmount + (paymentByContract.get(c.id) ?? 0));
+  }
+  return Array.from(out.values()).sort((a, b) => b.contractAmount - a.contractAmount);
+}
+
 // 6. 客户分布
 export async function getCustomerDistribution(user: SessionUser) {
   requirePermission(user.roleCode, RESOURCE.STATISTICS, ACTION.READ);

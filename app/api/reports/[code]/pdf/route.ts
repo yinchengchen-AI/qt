@@ -55,12 +55,23 @@ function buildPrintDoc(
 
   const sections: PrintTableSection[] = [];
 
-  if (payload.performance && payload.performance.length > 0) {
-    const perf = payload.performance as Record<string, string | number | null | undefined>[];
+  // 员工业绩汇总: 与签约明细同口径, 按签约人聚合 (signerSummary);
+  // 旧 payload.performance 是按 owner 聚合, 跟签约明细对不上, 弃用
+  // 显式列出列, 不暴露 userId/employeeNo
+  const summarySource = ((payload.signerSummary ?? payload.performance) ?? []) as Record<string, string | number | null | undefined>[];
+  if (summarySource.length > 0) {
+    const summaryColumns = ["姓名", "合同数", "合同额", "已开票额", "已回款额"];
+    const summaryRows = summarySource.map((r) => ({
+      姓名: r.name ?? "-",
+      合同数: r.contractCount ?? 0,
+      合同额: formatCurrency(Number(r.contractAmount ?? 0)),
+      已开票额: formatCurrency(Number(r.invoiceAmount ?? 0)),
+      已回款额: formatCurrency(Number(r.paymentAmount ?? 0)),
+    }));
     sections.push({
-      title: "员工业绩汇总",
-      columns: Object.keys(perf[0]!).map(reportColumnLabel),
-      rows: perf,
+      title: "员工业绩汇总（按签约人）",
+      columns: summaryColumns,
+      rows: summaryRows,
     });
   }
 
@@ -85,10 +96,11 @@ function buildPrintDoc(
           合同金额: renderSignerAmount(r.totalAmount),
         });
       }
+      // 签约人小计行: 服务项目位置写 "{姓名} 小计 (X.XX万)", 合同金额写元
       flat.push({
         所属区域: "",
         企业名称: "",
-        服务项目: `${g.signerName}（${g.signerEmployeeNo}）小计`,
+        服务项目: `${g.signerName} 小计 (${g.subtotalWan} 万)`,
         签约人: "",
         合同金额: renderSignerAmount(g.contractAmount),
       });

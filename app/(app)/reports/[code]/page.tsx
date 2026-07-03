@@ -225,7 +225,9 @@ export default function ReportDetailPage() {
     if (type === "PERFORMANCE") {
       // 员工业绩汇总场景: 不展示 userId / employeeNo (跟签约人 + 区域定位即可,
       // 不暴露工号/主键; 与 Excel Sheet 1 "员工业绩汇总" 行为保持一致)
-      const raw = (payload.performance as Record<string, unknown>[]) ?? [];
+      // 同时: 用 signerSummary (按签约人), 跟签约明细 + Excel Sheet 2 同口径;
+      // 旧 payload.performance 按 owner 聚合, 跟签约明细对不上, 已弃用
+      const raw = ((payload.signerSummary ?? payload.performance) as Record<string, unknown>[]) ?? [];
       return raw.map((r) => {
         const { userId: _u, employeeNo: _e, ...rest } = r;
         return rest as Record<string, unknown>;

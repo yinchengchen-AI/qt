@@ -13,6 +13,7 @@ import {
   getTopCustomers,
   getInvoiceAging,
   getSignerContractDetail,
+  getSignerSummary,
 } from "@/server/services/statistics";
 import { createHash } from "crypto";
 import { z } from "zod";
@@ -70,6 +71,11 @@ export type ReportPayload = {
    * 对应 2026年5月业务明细.pdf 模板。每组带 subtotalWan 字段,用于表格右侧小计。
    */
   signerDetail?: Array<Record<string, unknown>>;
+  /**
+   * PERFORMANCE 报表专属:按签约人聚合的业绩汇总(姓名/工号/合同数/合同额/已开票额/已回款额)。
+   * 跟 signerDetail 同一维度, 报表导出 Sheet 1 "员工业绩汇总" 走这份, 不再用 owner 维度的 performance。
+   */
+  signerSummary?: Array<Record<string, unknown>>;
 };
 
 export type ReportResult = {
@@ -259,13 +265,15 @@ export async function aggregatePayload(
     payload.series = series;
     payload.region = region;
   } else if (type === "PERFORMANCE") {
-    const [overview, performance, signerDetail] = await Promise.all([
+    const [overview, performance, signerSummary, signerDetail] = await Promise.all([
       getOverview(user, range),
       getEmployeePerformance(user, undefined, range),
+      getSignerSummary(user, range),
       getSignerContractDetail(user, range),
     ]);
     payload.overview = overview;
     payload.performance = performance;
+    payload.signerSummary = signerSummary as unknown as Array<Record<string, unknown>>;
     payload.signerDetail = signerDetail as unknown as Array<Record<string, unknown>>;
   } else if (type === "CUSTOM") {
     const [overview, series, region, performance, topCustomers, aging] = await Promise.all([
@@ -596,9 +604,10 @@ export async function prepareExportSections(
     const sections: ExportSection[] = [];
 
     // Sheet 1: 员工业绩汇总
-    // 汇总场景不需要 userId/employeeNo — 用户看合同/开票/回款汇总即可,
-    // 跟具体员工 ID 解耦(签约明细里有签约人 + 区域 + 企业已能定位到人)
-    const summaryRaw = (payload.performance ?? []) as Record<string, unknown>[];
+    // 关键: 与签约明细同口径, 按签约人 (signerId) 聚合, 不是按 owner
+    // (旧 getEmployeePerformance 按 ownerUserId 聚合, 跟签约明细对不上, 已替换为 signerSummary)
+    // 汇总场景不需要 userId/employeeNo — 姓名已能定位到人, 工号是内部主键不该外露
+    const summaryRaw = ((payload.signerSummary ?? payload.performance) ?? []) as Record<string, unknown>[];
     const summary = summaryRaw.map((r) => {
       const { userId: _u, employeeNo: _e, ...rest } = r;
       return rest as Record<string, unknown>;
@@ -606,19 +615,19 @@ export async function prepareExportSections(
     const summarySection = buildSection("员工业绩汇总", summary);
     if (summarySection) sections.push(summarySection);
 
-    // Sheet 2: 签约明细 (PDF 5 字段 + 签约人小计 + 全公司合计)
-    // 不暴露签约人工号(姓名已能定位到人; 工号是内部主键, 不该外露到导出)
+    // Sheet 2: 签约明细 (PDF 5 字段 + 合同号 + 签订日期 + 签约人小计 + 全公司合计)
+    // 不暴露: 签约人工号 (姓名已能定位到人, 工号是内部主键), 服务项目代码 (内部 enum)
+    // 合同号/签订日期 是为了方便从导出对回实际合同, 跟 PDF 模板的 5 字段不冲突
     const signerLabels: Record<string, string> = {
+      rowType: "类型",
       region: "所属区域",
       customerName: "企业名称",
       serviceTypeLabel: "服务项目",
-      serviceType: "服务项目代码",
       signerName: "签约人",
+      contractNo: "合同号",
       signDate: "签订日期",
       totalAmount: "合同金额（元）",
-      contractNo: "合同号",
       subtotalWan: "小计（万元）",
-      rowType: "类型",
     };
     const groups = (payload.signerDetail ?? []) as Array<{
       signerName: string;
@@ -636,23 +645,22 @@ export async function prepareExportSections(
             region: r.region ?? "-",
             customerName: r.customerName ?? "-",
             serviceTypeLabel: r.serviceTypeLabel ?? r.serviceType ?? "-",
-            serviceType: r.serviceType ?? "",
             signerName: r.signerName ?? "-",
-            signDate: r.signDate ? String(r.signDate).slice(0, 10) : "",
             contractNo: r.contractNo ?? "",
+            signDate: r.signDate ? String(r.signDate).slice(0, 10) : "",
             totalAmount: r.totalAmount,
+            subtotalWan: "",
           });
         }
-        // 签约人小计行 — 小计 rowType 用纯姓名, 不带工号
+        // 签约人小计行 — rowType 纯姓名, 不带工号; subtotalWan 写万元
         detailRows.push({
           rowType: `${g.signerName} 小计`,
           region: "",
           customerName: "",
           serviceTypeLabel: "",
-          serviceType: "",
           signerName: g.signerName,
-          signDate: "",
           contractNo: "",
+          signDate: "",
           totalAmount: g.contractAmount,
           subtotalWan: g.subtotalWan,
         });
@@ -665,10 +673,9 @@ export async function prepareExportSections(
         region: "",
         customerName: "",
         serviceTypeLabel: "",
-        serviceType: "",
         signerName: "",
-        signDate: "",
         contractNo: "",
+        signDate: "",
         totalAmount: total,
         subtotalWan: totalWan,
       });
