@@ -223,7 +223,13 @@ export default function ReportDetailPage() {
     const payload = data?.payload ?? {};
     const type = data?.definition.type;
     if (type === "PERFORMANCE") {
-      return (payload.performance as Record<string, unknown>[]) ?? [];
+      // 员工业绩汇总场景: 不展示 userId / employeeNo (跟签约人 + 区域定位即可,
+      // 不暴露工号/主键; 与 Excel Sheet 1 "员工业绩汇总" 行为保持一致)
+      const raw = (payload.performance as Record<string, unknown>[]) ?? [];
+      return raw.map((r) => {
+        const { userId: _u, employeeNo: _e, ...rest } = r;
+        return rest as Record<string, unknown>;
+      });
     }
     if (type === "BUSINESS") {
       return (payload.region as Record<string, unknown>[]) ?? [];

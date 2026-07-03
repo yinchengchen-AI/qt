@@ -596,18 +596,24 @@ export async function prepareExportSections(
     const sections: ExportSection[] = [];
 
     // Sheet 1: 员工业绩汇总
-    const summary = (payload.performance ?? []) as Record<string, unknown>[];
+    // 汇总场景不需要 userId/employeeNo — 用户看合同/开票/回款汇总即可,
+    // 跟具体员工 ID 解耦(签约明细里有签约人 + 区域 + 企业已能定位到人)
+    const summaryRaw = (payload.performance ?? []) as Record<string, unknown>[];
+    const summary = summaryRaw.map((r) => {
+      const { userId: _u, employeeNo: _e, ...rest } = r;
+      return rest as Record<string, unknown>;
+    });
     const summarySection = buildSection("员工业绩汇总", summary);
     if (summarySection) sections.push(summarySection);
 
     // Sheet 2: 签约明细 (PDF 5 字段 + 签约人小计 + 全公司合计)
+    // 不暴露签约人工号(姓名已能定位到人; 工号是内部主键, 不该外露到导出)
     const signerLabels: Record<string, string> = {
       region: "所属区域",
       customerName: "企业名称",
       serviceTypeLabel: "服务项目",
       serviceType: "服务项目代码",
       signerName: "签约人",
-      signerEmployeeNo: "签约人工号",
       signDate: "签订日期",
       totalAmount: "合同金额（元）",
       contractNo: "合同号",
@@ -632,21 +638,19 @@ export async function prepareExportSections(
             serviceTypeLabel: r.serviceTypeLabel ?? r.serviceType ?? "-",
             serviceType: r.serviceType ?? "",
             signerName: r.signerName ?? "-",
-            signerEmployeeNo: r.signerEmployeeNo ?? "",
             signDate: r.signDate ? String(r.signDate).slice(0, 10) : "",
             contractNo: r.contractNo ?? "",
             totalAmount: r.totalAmount,
           });
         }
-        // 签约人小计行
+        // 签约人小计行 — 小计 rowType 用纯姓名, 不带工号
         detailRows.push({
-          rowType: `${g.signerName}（${g.signerEmployeeNo}）小计`,
+          rowType: `${g.signerName} 小计`,
           region: "",
           customerName: "",
           serviceTypeLabel: "",
           serviceType: "",
           signerName: g.signerName,
-          signerEmployeeNo: g.signerEmployeeNo,
           signDate: "",
           contractNo: "",
           totalAmount: g.contractAmount,
@@ -663,7 +667,6 @@ export async function prepareExportSections(
         serviceTypeLabel: "",
         serviceType: "",
         signerName: "",
-        signerEmployeeNo: "",
         signDate: "",
         contractNo: "",
         totalAmount: total,
