@@ -922,6 +922,143 @@ export async function getEmployeePerformance(user: SessionUser, targetUserId?: s
   return aggregatePerformance(owners, range);
 }
 
+
+// 5.1 签约明细（按签约人汇总的合同级明细）
+// 用途:员工业绩报表详情页 / 报表中心 PERFORMANCE 报告的"签约明细"小节。
+// 字段对应 2026年5月业务明细.pdf 模板:
+//   所属区域 | 企业名称 | 服务项目 | 签约人 | 合同金额
+// - 按签约人 (signerId) 分组,组内按 signDate 升序排序
+// - 每组末尾追加 subtotalWan (万元, 保留 2 位小数) 行,便于 Excel 透视
+// - SALES 角色:只能看自己签约的合同
+// - range 同时过滤 signDate;signDate 为 null 的合同排除
+// - 单租户默认无 MAX_ROWS 限制(业务报表需要全量明细),由调用方按需兜底
+export type SignerDetailRow = {
+  contractId: string;
+  contractNo: string;
+  district: string | null;       // 区 (e.g. "余杭区")
+  town: string | null;           // 镇街 (e.g. "塘栖镇")
+  /** 展示用 "区 镇街" / 仅镇街 / 仅区 / "未填写" */
+  region: string;
+  customerId: string;
+  customerName: string;
+  serviceType: string;           // 原始 code
+  serviceTypeLabel: string;      // 中文 label
+  signerId: string;
+  signerName: string;
+  signerEmployeeNo: string;
+  signDate: string;              // ISO
+  totalAmount: number;
+};
+
+export type SignerDetailGroup = {
+  signerId: string;
+  signerName: string;
+  signerEmployeeNo: string;
+  rows: SignerDetailRow[];
+  /** 该签约人合同总额 (元) */
+  contractAmount: number;
+  /** 万元, 保留 2 位小数 (用于表格右侧小计列) */
+  subtotalWan: number;
+};
+
+export async function getSignerContractDetail(
+  user: SessionUser,
+  range?: DateRange
+): Promise<SignerDetailGroup[]> {
+  requirePermission(user.roleCode, RESOURCE.STATISTICS, ACTION.READ);
+  // 合同查询条件:deletedAt/状态/range + 行级隔离
+  // SALES 角色:行级隔离要求 owner/signer 至少匹配一个(因业务上 SALES 既是
+  // 业务人员 [owner] 也可能作为签约人 [signer] 出现, 单一维度会漏);其它角色
+  // 走 ownerEq 走 ownerUserId 过滤即可。
+  const isSales = user.roleCode === "SALES";
+  const where: Prisma.ContractWhereInput = {
+    deletedAt: null,
+    status: { in: ["ACTIVE", "CLOSED"] },
+    ...(range ? { signDate: dateWhere(range) } : {}),
+    ...(isSales ? { OR: [{ ownerUserId: user.id }, { signerId: user.id }] } : ownerEq(user)),
+  };
+
+  const contracts = await prisma.contract.findMany({
+    where,
+    select: {
+      id: true,
+      contractNo: true,
+      customerId: true,
+      customer: { select: { name: true, district: true, town: true } },
+      serviceType: true,
+      signerId: true,
+      signDate: true,
+      totalAmount: true,
+      signer: { select: { id: true, name: true, employeeNo: true } }
+    },
+    orderBy: [{ signerId: "asc" }, { signDate: "asc" }]
+  });
+
+  if (contracts.length === 0) return [];
+
+  // 一次性查 serviceType -> 中文 label (内存映射,免 N+1)
+  // 优先 Dictionary(category=SERVICE_TYPE) 实时拉,fallback 到 SERVICE_TYPE_MAP 静态表
+  const dictRows = await prisma.dictionary.findMany({
+    where: { category: "SERVICE_TYPE", isActive: true },
+    select: { code: true, label: true }
+  });
+  const dictMap = new Map(dictRows.map((d) => [d.code, d.label]));
+
+  // 按签约人分组
+  const groups = new Map<string, SignerDetailGroup>();
+  for (const c of contracts) {
+    const signer = c.signer;
+    if (!signer) continue; // 签约人被软删/缺失,跳过
+    let g = groups.get(signer.id);
+    if (!g) {
+      g = {
+        signerId: signer.id,
+        signerName: signer.name,
+        signerEmployeeNo: signer.employeeNo,
+        rows: [],
+        contractAmount: 0,
+        subtotalWan: 0
+      };
+      groups.set(signer.id, g);
+    }
+    const district = c.customer?.district ?? null;
+    const town = c.customer?.town ?? null;
+    const region =
+      district && town ? `${district} ${town}` :
+      town ? town :
+      district ? `${district} (未填镇街)` :
+      "未填写";
+    const amount = round2(Number(c.totalAmount));
+    const svcCode = c.serviceType;
+    const svcLabel = dictMap.get(svcCode) ?? svcCode;
+    g.rows.push({
+      contractId: c.id,
+      contractNo: c.contractNo,
+      district,
+      town,
+      region,
+      customerId: c.customerId,
+      customerName: c.customer?.name ?? "",
+      serviceType: svcCode,
+      serviceTypeLabel: svcLabel,
+      signerId: signer.id,
+      signerName: signer.name,
+      signerEmployeeNo: signer.employeeNo,
+      signDate: c.signDate.toISOString(),
+      totalAmount: amount
+    });
+    g.contractAmount = round2(g.contractAmount + amount);
+  }
+
+  // 排序:签约人按 employeeNo 升序(对齐 PDF 手填习惯),同组内按 signDate 已在 SQL 排好
+  const out = Array.from(groups.values()).map((g) => ({
+    ...g,
+    subtotalWan: round2(g.contractAmount / 10_000)
+  }));
+  out.sort((a, b) => a.signerEmployeeNo.localeCompare(b.signerEmployeeNo, "zh-CN"));
+  return out;
+}
+
 // 6. 客户分布
 export async function getCustomerDistribution(user: SessionUser) {
   requirePermission(user.roleCode, RESOURCE.STATISTICS, ACTION.READ);

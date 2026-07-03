@@ -63,6 +63,32 @@ type ReportResult = {
   generatedAt?: string;
 };
 
+// 签约明细:与 2026年5月业务明细.pdf 字段一一对应(district+town / customer / service / signer / amount)
+type SignerDetailRow = {
+  contractId: string;
+  contractNo: string;
+  district: string | null;
+  town: string | null;
+  region: string;
+  customerId: string;
+  customerName: string;
+  serviceType: string;
+  serviceTypeLabel: string;
+  signerId: string;
+  signerName: string;
+  signerEmployeeNo: string;
+  signDate: string;
+  totalAmount: number;
+};
+type SignerDetailGroup = {
+  signerId: string;
+  signerName: string;
+  signerEmployeeNo: string;
+  rows: SignerDetailRow[];
+  contractAmount: number;
+  subtotalWan: number;
+};
+
 function formatTableValue(key: string, value: unknown): string {
   if (value == null) return "-";
   if (typeof value === "number") {
@@ -212,6 +238,39 @@ export default function ReportDetailPage() {
     return (payload.series as Record<string, unknown>[]) ?? [];
   }, [data?.definition.type, data?.payload]);
 
+  // PERFORMANCE 专属:签约明细(按签约人分组的合同级明细,字段对齐 PDF 模板)
+  const signerDetailGroups = useMemo<SignerDetailGroup[]>(() => {
+    if (data?.definition.type !== "PERFORMANCE") return [];
+    return (data.payload.signerDetail as SignerDetailGroup[] | undefined) ?? [];
+  }, [data?.definition.type, data?.payload]);
+
+  // 拼接签约明细 FlatList,每组末尾追加小计行(万元,带 rowType 区分)
+  const signerDetailRows = useMemo(() => {
+    const flat: Array<SignerDetailRow & { rowType: "detail" | "subtotal"; subtotalWan?: number; signerName?: string; signerEmployeeNo?: string }> = [];
+    for (const g of signerDetailGroups) {
+      for (const r of g.rows) flat.push({ ...r, rowType: "detail" });
+      flat.push({
+        contractId: `${g.signerId}-subtotal`,
+        contractNo: "",
+        district: null,
+        town: null,
+        region: "",
+        customerId: "",
+        customerName: "",
+        serviceType: "",
+        serviceTypeLabel: "",
+        signerId: g.signerId,
+        signerName: g.signerName,
+        signerEmployeeNo: g.signerEmployeeNo,
+        signDate: "",
+        totalAmount: g.contractAmount,
+        rowType: "subtotal",
+        subtotalWan: g.subtotalWan
+      });
+    }
+    return flat;
+  }, [signerDetailGroups]);
+
   const columns = useMemo(() => {
     if (tableData.length === 0) return [];
     return Object.keys(tableData[0]!).map((key) => ({
@@ -315,6 +374,53 @@ export default function ReportDetailPage() {
                 </Row>
               )}
 
+              {signerDetailGroups.length > 0 && (
+                <Card
+                  title="签约明细（按签约人）"
+                  style={{ marginBottom: 16 }}
+                  extra={
+                    <span style={{ color: "var(--qt-text-secondary)", fontSize: 12 }}>
+                      字段:所属区域 / 企业名称 / 服务项目 / 签约人 / 合同金额;每签约人末行小计（万元）
+                    </span>
+                  }
+                >
+                  <Table<typeof signerDetailRows[number]>
+                    dataSource={signerDetailRows}
+                    pagination={false}
+                    size="small"
+                    scroll={{ x: "max-content" }}
+                    rowKey={(r) => (r.rowType === "subtotal" ? r.contractId : `${r.contractId}-${r.signDate}`)}
+                    rowClassName={(r) => (r.rowType === "subtotal" ? "signer-subtotal-row" : "")}
+                    columns={[
+                      { title: "所属区域", dataIndex: "region", key: "region", width: 160 },
+                      { title: "企业名称", dataIndex: "customerName", key: "customerName", width: 220, render: (v: string, r) => r.rowType === "subtotal" ? "" : v },
+                      { title: "服务项目", dataIndex: "serviceTypeLabel", key: "serviceTypeLabel", width: 160, render: (v: string, r) => r.rowType === "subtotal" ? <span style={{ color: "var(--qt-text-secondary)" }}>{r.signerName} 小计</span> : v },
+                      { title: "签约人", dataIndex: "signerName", key: "signerName", width: 100, render: (v: string, r) => r.rowType === "subtotal" ? `${v}（${r.signerEmployeeNo}）` : v },
+                      { title: "合同金额（元）", dataIndex: "totalAmount", key: "totalAmount", width: 140, align: "right" as const, render: (v: number, r) => r.rowType === "subtotal" ? <strong>{formatCurrency(v)}</strong> : formatCurrency(v) },
+                      { title: "小计（万元）", dataIndex: "subtotalWan", key: "subtotalWan", width: 120, align: "right" as const, render: (_: unknown, r) => r.rowType === "subtotal" ? <strong>{r.subtotalWan?.toFixed(2)}</strong> : "" }
+                    ]}
+                    summary={() => {
+                      if (signerDetailGroups.length === 0) return null;
+                      const total = signerDetailGroups.reduce((s, g) => s + g.contractAmount, 0);
+                      const totalWan = round2(total / 10_000);
+                      return (
+                        <Table.Summary.Row style={{ background: "var(--qt-bg-subtle, #fafafa)" }}>
+                          <Table.Summary.Cell index={0} colSpan={4}>
+                            <strong>全公司合计</strong>
+                          </Table.Summary.Cell>
+                          <Table.Summary.Cell index={4} align="right">
+                            <strong>{formatCurrency(total)}</strong>
+                          </Table.Summary.Cell>
+                          <Table.Summary.Cell index={5} align="right">
+                            <strong>{totalWan.toFixed(2)}</strong>
+                          </Table.Summary.Cell>
+                        </Table.Summary.Row>
+                      );
+                    }}
+                  />
+                </Card>
+              )}
+
               {tableData.length > 0 && (
                 <Card title="明细数据">
                   <Table
@@ -336,4 +442,8 @@ export default function ReportDetailPage() {
       )}
     </Page>
   );
+}
+
+function round2(v: number): number {
+  return Math.round(v * 100) / 100;
 }

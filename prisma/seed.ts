@@ -274,7 +274,8 @@ async function main() {
     {
       code: "PERFORMANCE",
       name: "员工业绩报表",
-      description: "按业务人员统计合同额、开票额、回款额",
+      // description 包含"签约明细"字段提示,前端详情页会渲染 PDF 模板对齐的明细表
+      description: "按业务人员统计合同额、开票额、回款额;含签约明细(所属区域/企业/服务项目/签约人/合同金额)",
       type: "PERFORMANCE",
       periodType: "MONTH",
       defaultMetrics: [
@@ -283,7 +284,8 @@ async function main() {
         { key: "paymentAmount", label: "已回款额", unit: "元" },
         { key: "contractCount", label: "合同数", unit: "份" }
       ],
-      dimensions: ["month", "owner"]
+      // 增加 signer 维度,与 getSignerContractDetail 的分组一致
+      dimensions: ["month", "owner", "signer"]
     },
     {
       code: "CUSTOM",

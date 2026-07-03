@@ -12,6 +12,7 @@ import {
   getRegionStatistics,
   getTopCustomers,
   getInvoiceAging,
+  getSignerContractDetail,
 } from "@/server/services/statistics";
 import { createHash } from "crypto";
 import { z } from "zod";
@@ -63,6 +64,12 @@ export type ReportPayload = {
   topCustomers?: Array<Record<string, unknown>>;
   aging?: Array<Record<string, unknown>>;
   dimensions?: Record<string, unknown>;
+  /**
+   * PERFORMANCE 报表专属:按签约人汇总的合同级明细。
+   * 字段:所属区域(district+town) / 企业名称 / 服务项目 / 签约人 / 合同金额,
+   * 对应 2026年5月业务明细.pdf 模板。每组带 subtotalWan 字段,用于表格右侧小计。
+   */
+  signerDetail?: Array<Record<string, unknown>>;
 };
 
 export type ReportResult = {
@@ -94,7 +101,7 @@ export function assertExportPermission(user: SessionUser) {
   requirePermission(user.roleCode, RESOURCE.REPORT_CENTER, ACTION.EXPORT);
 }
 
-function toDefItem(row: {
+export function toDefItem(row: {
   id: string;
   code: string;
   name: string;
@@ -196,7 +203,7 @@ export function customPeriodLabel(from: Date, to: Date): string {
 }
 
 /** 计算源数据版本 hash：取关键表最近更新时间 + 日期范围 */
-async function computeSourceHash(range: DateRange): Promise<string> {
+export async function computeSourceHash(range: DateRange): Promise<string> {
   const [contractMax, invoiceMax, paymentMax, customerMax] = await Promise.all([
     prisma.contract.aggregate({ where: { deletedAt: null }, _max: { updatedAt: true } }),
     prisma.invoice.aggregate({ where: { deletedAt: null }, _max: { updatedAt: true } }),
@@ -224,7 +231,7 @@ async function findDefinition(code: string): Promise<ReportDefinitionItem> {
   return toDefItem(row);
 }
 
-async function aggregatePayload(
+export async function aggregatePayload(
   user: SessionUser,
   definition: ReportDefinitionItem,
   range: DateRange
@@ -252,12 +259,14 @@ async function aggregatePayload(
     payload.series = series;
     payload.region = region;
   } else if (type === "PERFORMANCE") {
-    const [overview, performance] = await Promise.all([
+    const [overview, performance, signerDetail] = await Promise.all([
       getOverview(user, range),
       getEmployeePerformance(user, undefined, range),
+      getSignerContractDetail(user, range),
     ]);
     payload.overview = overview;
     payload.performance = performance;
+    payload.signerDetail = signerDetail as unknown as Array<Record<string, unknown>>;
   } else if (type === "CUSTOM") {
     const [overview, series, region, performance, topCustomers, aging] = await Promise.all([
       getOverview(user, range),
