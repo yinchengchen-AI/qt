@@ -49,6 +49,18 @@ export function defaultMonthRange(): DateRange {
 }
 
 /**
+ * 导出文件名用时间戳: YYYY-MM-DD_HHMM (精确到分, 避免同日多次导出覆盖)
+ * 用本地时区, 不是 UTC, 跟用户在文件管理器看到的"今天"一致
+ */
+export function exportFileTimestamp(now: Date = new Date()): string {
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return (
+    `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}` +
+    `_${pad(now.getHours())}${pad(now.getMinutes())}`
+  );
+}
+
+/**
  * 把查询参数解析成最终使用的 DateRange：调用方传了 from/to 就用,否则用默认本月。
  * 各统计页路由(员工业绩 / 区域统计)统一用这个,避免手写 parse + fallback 漂移。
  */

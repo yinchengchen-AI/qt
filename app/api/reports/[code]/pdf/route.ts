@@ -2,7 +2,7 @@ import { z } from "zod";
 import { runWithRequestContext } from "@/lib/request-context";
 import { err } from "@/lib/api";
 import { requireSession } from "@/lib/session";
-import { parseDateRangeQuery } from "@/lib/date-range";
+import { parseDateRangeQuery, exportFileTimestamp } from "@/lib/date-range";
 import {
   findSnapshot,
   assertExportPermission,
@@ -190,9 +190,15 @@ export async function GET(
       );
       const html = renderPrintHtml(doc);
 
+      // 文件名: definition.name + periodLabel + ts (YYYY-MM-DD_HHMM)
+      // 加 Content-Disposition: 用 inline (让浏览器内嵌显示, 不强制下载),
+      // 但带 filename= 建议, 用户在浏览器"另存为 PDF"时默认用这个文件名
+      const ts = exportFileTimestamp();
+      const pdfName = `${result.definition.name}_${result.periodLabel}_${ts}.html`;
       return new Response(html, {
         headers: {
           "Content-Type": "text/html; charset=utf-8",
+          "Content-Disposition": `inline; filename="${encodeURIComponent(pdfName)}"`,
           "Cache-Control": "no-store",
         },
       });

@@ -8,7 +8,7 @@ import {
   prepareLiveExport,
   type ExportSection,
 } from "@/server/services/report";
-import { parseDateRangeQuery } from "@/lib/date-range";
+import { parseDateRangeQuery, exportFileTimestamp} from "@/lib/date-range";
 
 // query 支持两种模式:
 //   1) snapshotId -> 走快照
@@ -44,7 +44,8 @@ export async function GET(req: Request) {
           );
       const { definition, sections } = result;
       // 文件名: snapshot 走 periodLabel, 实时查询走 periodType + 日期范围
-      const ts = new Date().toISOString().slice(0, 10);
+      // ts 用 YYYY-MM-DD_HHMM 格式, 避免同日多次导出覆盖
+      const ts = exportFileTimestamp();
       const periodTag = parsed.snapshotId
         ? definition.type
         : `${parsed.periodType}_${parsed.from?.slice(0, 10) ?? ""}_${parsed.to?.slice(0, 10) ?? ""}`;

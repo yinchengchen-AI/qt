@@ -7,6 +7,8 @@
 // - 支持 KV 表(主信息)、汇总卡片(财务高亮)、富表(列表/明细)、签字占位
 // - 长内容用 page-break-inside: avoid 切分,避免撑破单页
 
+import { exportFileTimestamp } from "@/lib/date-range";
+
 export type PrintRow = { label: string; value: string | number | null | undefined };
 
 export type PrintSummaryItem = {
@@ -52,6 +54,9 @@ export type PrintSection = PrintKvSection | PrintTableSection;
 export type PrintDoc = {
   /** 顶部大字,通常是资源名 + 编号 */
   title: string;
+  /** 周期标签 (例如 "2026年5月" / "2026年Q3" / "2026-01-01 ~ 2026-01-31"),
+   *  用作浏览器"另存为 PDF"默认文件名 + 内容页副标题 */
+  periodLabel?: string;
   /** 副标题,通常是客户/关联单据 */
   subtitle?: string;
   /** header 右上小字:编号 / 创建人 / 创建时间等 */
@@ -188,7 +193,7 @@ export function renderPrintHtml(doc: PrintDoc): string {
 <html lang="zh-CN">
 <head>
   <meta charset="utf-8" />
-  <title>${esc(doc.title)}</title>
+  <title>${esc(doc.title)}${doc.periodLabel ? "_" + esc(doc.periodLabel) : ""}_${exportFileTimestamp()}</title>
   <style>
     :root {
       --brand-navy: #0A1C33;

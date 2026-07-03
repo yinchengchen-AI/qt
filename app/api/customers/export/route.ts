@@ -3,6 +3,7 @@
 // - 行级隔离: 仍调 listCustomers, SALES 用户只会导出自己负责的客户
 // - 上限 10000 行, 够用
 import { z } from "zod";
+import { exportFileTimestamp } from "@/lib/date-range";
 import { runWithRequestContext } from "@/lib/request-context";
 import { err } from "@/lib/api";
 import { requireSession } from "@/lib/session";
@@ -60,7 +61,7 @@ export async function GET(req: Request) {
       const dict = await loadDict();
       const label = (cat: string, code?: string | null) =>
         code ? (dict[`${cat}::${code}`] ?? code) : "";
-      const ts = new Date().toISOString().slice(0, 10);
+      const ts = exportFileTimestamp();
       const buf = await exportToXlsx(
         list as unknown as Record<string, unknown>[],
         [

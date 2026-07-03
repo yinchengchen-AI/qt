@@ -11,7 +11,7 @@ import {
   getInvoiceAging
 } from "@/server/services/statistics";
 import { exportToXlsx, exportMaxRows, attachmentHeader } from "@/lib/excel";
-import { parseDateRangeQuery } from "@/lib/date-range";
+import { parseDateRangeQuery, exportFileTimestamp} from "@/lib/date-range";
 
 const query = z.object({
   type: z.enum(["overview", "top-customers", "employee-performance", "by-region", "aging"]),
@@ -43,7 +43,7 @@ export async function GET(req: Request) {
       const url = new URL(req.url);
       const parsed = query.parse(Object.fromEntries(url.searchParams));
       const range = parseDateRangeQuery(parsed);
-      const ts = new Date().toISOString().slice(0, 10);
+      const ts = exportFileTimestamp();
 
       if (parsed.type === "overview") {
         const o = await getOverview(user, range);

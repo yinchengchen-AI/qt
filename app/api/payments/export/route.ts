@@ -1,5 +1,6 @@
 // 回款列表导出 XLSX
 import { z } from "zod";
+import { exportFileTimestamp } from "@/lib/date-range";
 import { runWithRequestContext } from "@/lib/request-context";
 import { err } from "@/lib/api";
 import { requireSession } from "@/lib/session";
@@ -27,7 +28,7 @@ export async function GET(req: Request) {
         pageSize: exportMaxRows(),
         ...params,
       });
-      const ts = new Date().toISOString().slice(0, 10);
+      const ts = exportFileTimestamp();
       const buf = await exportToXlsx(
         list as unknown as Record<string, unknown>[],
         [

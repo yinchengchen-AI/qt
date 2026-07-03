@@ -1,5 +1,6 @@
 // 合同列表导出 XLSX — 入参与 GET /api/contracts 对齐
 import { z } from "zod";
+import { exportFileTimestamp } from "@/lib/date-range";
 import { runWithRequestContext } from "@/lib/request-context";
 import { err } from "@/lib/api";
 import { requireSession } from "@/lib/session";
@@ -51,7 +52,7 @@ export async function GET(req: Request) {
           })
         : [];
       const userById = new Map(users.map((u) => [u.id, u]));
-      const ts = new Date().toISOString().slice(0, 10);
+      const ts = exportFileTimestamp();
       const buf = await exportToXlsx(
         enriched as unknown as Record<string, unknown>[],
         [
