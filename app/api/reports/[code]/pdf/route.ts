@@ -13,10 +13,13 @@ import { renderPrintHtml, type PrintDoc, type PrintSummaryItem, type PrintTableS
 import { formatCurrency } from "@/lib/format";
 import { reportColumnLabel } from "@/lib/report-labels";
 
-// 合同金额在 PDF 表格里需要带千分位;serviceTypeLabel 已是中文 label,原样展示
+// 员工业绩明细 PDF 专用:
+// 合同金额 走纯数字格式 (与原 PDF 一致: "5000" / "7500" / "20000", 不带 ¥/千分位/小数)
+// serviceTypeLabel 已是中文 label, 原样展示
 function renderSignerAmount(v: unknown): string {
   if (typeof v !== "number") return String(v ?? "-");
-  return formatCurrency(v);
+  // 原 PDF 用整数, 不带小数点. 万元小数 (subtotalWan) 单独走
+  return String(Math.round(v));
 }
 
 const query = z.object({
@@ -71,6 +74,7 @@ function buildPrintDoc(
     for (const g of groups) {
       for (const r of g.rows) {
         flat.push({
+          rowType: "detail",
           所属区域: r.region ?? "-",
           企业名称: r.customerName ?? "-",
           服务项目: r.serviceTypeLabel ?? r.serviceType ?? "-",
@@ -81,6 +85,7 @@ function buildPrintDoc(
       }
       // 签约人小计行: 签约人位置写 "{姓名} 小计", 末列写万元合计
       flat.push({
+        rowType: "subtotal",
         所属区域: "",
         企业名称: "",
         服务项目: "",
@@ -93,6 +98,7 @@ function buildPrintDoc(
     const grandTotal = groups.reduce((s, g) => s + Number(g.contractAmount ?? 0), 0);
     const grandWan = Math.round((grandTotal / 10_000) * 100) / 100;
     flat.push({
+      rowType: "total",
       所属区域: "",
       企业名称: "",
       服务项目: "",
@@ -101,11 +107,28 @@ function buildPrintDoc(
       "小计（万元）": grandWan.toFixed(2),
     });
     if (flat.length > 0) {
+      // 通过 row["rowType"] 区分 合同行 / 签约人小计 / 全公司合计, 给 tr 加 class 高亮
+      // 通过 cellClass 给 合同金额/小计(万元) 列加 right-align + 等宽数字 class
+      // 注: 这里的 rowType 字段不渲染在 table 里 (table 用的是 columns + r[c] 取值),
+      // 但我们仍然可以读它来做样式
+      const tagged = flat.map((r) => ({ ...r, _rowType: (r as { rowType?: string }).rowType ?? "detail" }));
       sections.push({
         title: "员工业绩明细（按签约人）",
         columns: signerColumns,
-        rows: flat,
+        rows: tagged as Array<Record<string, string | number | null | undefined>>,
         emptyText: "当前周期暂无签约明细",
+        tableClass: "signer-detail",
+        rowClass: (r) => {
+          const t = (r as { _rowType?: string })._rowType;
+          if (t === "total") return "signer-total";
+          if (t === "subtotal") return "signer-subtotal";
+          return "detail-row";
+        },
+        cellClass: (col, _v) => {
+          if (col === "合同金额（元）") return "amount";
+          if (col === "小计（万元）") return "subtotal-wan";
+          return undefined;
+        },
       });
     }
   }

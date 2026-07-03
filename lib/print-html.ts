@@ -23,6 +23,21 @@ export type PrintTableSection = {
   /** 单元格 key 对应 columns 中同名元素;值里可塞 HTML(模板里已 esc) */
   rows: Array<Record<string, string | number | null | undefined>>;
   emptyText?: string;
+  /**
+   * 自定义 <table> 的 class (拼接在 "grid" 后面),
+   * 例如 "signer-detail" 会渲染成 <table class="grid signer-detail">
+   */
+  tableClass?: string;
+  /**
+   * 行级别 class 钩子,根据当前行返回 class 字符串 (会拼到 <tr class="...">)
+   * 配合 tableClass 用, 例如签约人小计/合计行高亮
+   */
+  rowClass?: (row: Record<string, string | number | null | undefined>) => string | undefined;
+  /**
+   * 单元格级别 class 钩子,根据 (列名, 值) 返回 class 字符串 (会拼到 <td class="...">)
+   * 配合 tableClass 用, 例如金额列右对齐
+   */
+  cellClass?: (column: string, value: unknown) => string | undefined;
 };
 
 /** 键值表分节(用于审批记录/跟进记录等) */
@@ -90,16 +105,22 @@ function renderTable(s: PrintTableSection): string {
   if (!s.rows.length) {
     return `<div class="empty">${esc(s.emptyText ?? "(无)")}</div>`;
   }
+  const tableClass = s.tableClass ? `grid ${esc(s.tableClass)}` : "grid";
   const head = `<thead><tr>${s.columns.map((c) => `<th>${esc(c)}</th>`).join("")}</tr></thead>`;
   const body = `<tbody>${s.rows
-    .map(
-      (r) =>
-        `<tr>${s.columns
-          .map((c) => `<td>${esc(r[c] ?? "")}</td>`)
-          .join("")}</tr>`
-    )
+    .map((r) => {
+      const rowCls = s.rowClass ? s.rowClass(r) : undefined;
+      const trAttr = rowCls ? ` class="${esc(rowCls)}"` : "";
+      return `<tr${trAttr}>${s.columns
+        .map((c) => {
+          const cellCls = s.cellClass ? s.cellClass(c, r[c]) : undefined;
+          const tdAttr = cellCls ? ` class="${esc(cellCls)}"` : "";
+          return `<td${tdAttr}>${esc(r[c] ?? "")}</td>`;
+        })
+        .join("")}</tr>`;
+    })
     .join("")}</tbody>`;
-  return `<table class="grid">${head}${body}</table>`;
+  return `<table class="${tableClass}">${head}${body}</table>`;
 }
 
 function renderKv(s: PrintKvSection): string {
@@ -327,6 +348,46 @@ export function renderPrintHtml(doc: PrintDoc): string {
       white-space: nowrap;
     }
     table.grid tr { page-break-inside: avoid; }
+
+    /* 员工业绩明细 (PDF 5 字段 + 小计(万元)) — 跟原 PDF 模板视觉对齐 */
+    table.grid.signer-detail { font-size: 11.5px; }
+    table.grid.signer-detail th,
+    table.grid.signer-detail td {
+      padding: 6px 8px;
+      border: 1.5px solid #1f2937;
+    }
+    table.grid.signer-detail th {
+      background: #fff;
+      color: #000;
+      font-size: 12px;
+      text-align: center;
+      font-weight: 700;
+    }
+    /* 合同行: 金额右对齐 */
+    table.grid.signer-detail td.amount,
+    table.grid.signer-detail td.subtotal-wan {
+      text-align: right;
+      font-variant-numeric: tabular-nums;
+    }
+    /* 签约人小计行: 浅灰底 + 加粗 */
+    table.grid.signer-detail tr.signer-subtotal {
+      background: #e5e7eb;
+    }
+    table.grid.signer-detail tr.signer-subtotal td {
+      font-weight: 700;
+    }
+    /* 全公司合计行: 深灰底 + 加粗 */
+    table.grid.signer-detail tr.signer-total {
+      background: #d1d5db;
+    }
+    table.grid.signer-detail tr.signer-total td {
+      font-weight: 700;
+      font-size: 12px;
+    }
+    /* 签约人组内逐行交替底色 (浅黄/白) — 模拟原 PDF */
+    table.grid.signer-detail tr.detail-row {
+      background: #fffbe6;
+    }
 
     /* 文档备注 */
     .doc-note {
