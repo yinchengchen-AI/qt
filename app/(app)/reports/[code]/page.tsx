@@ -217,12 +217,28 @@ export default function ReportDetailPage() {
   };
 
   const exportExcel = async () => {
-    if (!data?.snapshotId) {
-      message.warning("请先生成报表再导出");
+    if (!data) {
+      message.warning("请先生成报表或选择自定义日期范围");
       return;
     }
     try {
-      await downloadExcel(`/api/reports/export?snapshotId=${data.snapshotId}`);
+      if (data.snapshotId) {
+        // 快照路径 (MONTH/QUARTER/YEAR)
+        await downloadExcel(`/api/reports/export?snapshotId=${data.snapshotId}`);
+        return;
+      }
+      // 实时查询路径 (CUSTOM: data 没 snapshotId 但 payload 是 live aggregate 结果)
+      if (periodType === "CUSTOM" && (!customRange || !customRange[0] || !customRange[1])) {
+        message.warning("请选择自定义日期范围");
+        return;
+      }
+      const params = new URLSearchParams({ code, periodType });
+      if (periodType === "CUSTOM" && customRange) {
+        const { from, to } = toDateRangeQuery(customRange);
+        if (from) params.set("from", from);
+        if (to) params.set("to", to);
+      }
+      await downloadExcel(`/api/reports/export?${params}`);
     } catch (e) {
       message.error((e as Error).message);
     }
@@ -391,7 +407,7 @@ export default function ReportDetailPage() {
             <Button
               icon={<DownloadOutlined />}
               onClick={exportExcel}
-              disabled={!data?.snapshotId}
+              disabled={!data}
             >
               导出 Excel
             </Button>

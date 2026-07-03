@@ -3,11 +3,29 @@ import { runWithRequestContext } from "@/lib/request-context";
 import { err } from "@/lib/api";
 import { requireSession } from "@/lib/session";
 import { exportToMultiSheetXlsx, attachmentHeader } from "@/lib/excel";
-import { prepareExportSections, type ExportSection } from "@/server/services/report";
+import {
+  prepareExportSections,
+  prepareLiveExport,
+  type ExportSection,
+} from "@/server/services/report";
+import { parseDateRangeQuery } from "@/lib/date-range";
 
-const query = z.object({
-  snapshotId: z.string(),
-});
+// query 支持两种模式:
+//   1) snapshotId -> 走快照
+//   2) code + periodType (+ from/to for CUSTOM) -> 实时查询导出
+//      用于 CUSTOM 周期 (不走快照) 的导出
+const query = z
+  .object({
+    snapshotId: z.string().optional(),
+    code: z.string().optional(),
+    periodType: z.enum(["MONTH", "QUARTER", "YEAR", "CUSTOM"]).optional(),
+    from: z.string().optional(),
+    to: z.string().optional(),
+  })
+  .refine(
+    (v) => Boolean(v.snapshotId) || (Boolean(v.code) && Boolean(v.periodType)),
+    { message: "需要 snapshotId 或 (code + periodType) 其中之一" }
+  );
 
 export async function GET(req: Request) {
   return runWithRequestContext(req, async () => {
@@ -16,9 +34,21 @@ export async function GET(req: Request) {
       const url = new URL(req.url);
       const parsed = query.parse(Object.fromEntries(url.searchParams));
 
-      const { definition, sections } = await prepareExportSections(user, parsed.snapshotId);
+      const result = parsed.snapshotId
+        ? await prepareExportSections(user, parsed.snapshotId)
+        : await prepareLiveExport(
+            user,
+            parsed.code!,
+            parsed.periodType!,
+            parsed.periodType === "CUSTOM" ? parseDateRangeQuery({ from: parsed.from, to: parsed.to }) : undefined
+          );
+      const { definition, sections } = result;
+      // 文件名: snapshot 走 periodLabel, 实时查询走 periodType + 日期范围
       const ts = new Date().toISOString().slice(0, 10);
-      const filename = `${definition.name}_${definition.type}_${ts}.xlsx`;
+      const periodTag = parsed.snapshotId
+        ? definition.type
+        : `${parsed.periodType}_${parsed.from?.slice(0, 10) ?? ""}_${parsed.to?.slice(0, 10) ?? ""}`;
+      const filename = `${definition.name}_${periodTag}_${ts}.xlsx`;
 
       // PERFORMANCE 等多 sheet 类型: 每个 section 一个 sheet;
       // 其它类型: 1 个 sheet(保留老行为)

@@ -598,12 +598,41 @@ export type ExportResult = {
  *   2) 签约明细 (PDF 5 字段, 含签约人小计 + 全公司合计)
  * 其它类型 1 sheet。
  */
+/**
+ * 公共导出入口 (snapshot 路径): 通过 snapshotId 取快照, 再调 buildExportSectionsFromResult
+ */
 export async function prepareExportSections(
   user: SessionUser,
   snapshotId: string
 ): Promise<ExportResult> {
   assertExportPermission(user);
   const result = await getSnapshot(user, snapshotId);
+  return buildExportSectionsFromResult(result);
+}
+
+/**
+ * 公共导出入口 (实时查询路径): 不依赖 snapshot, 用 findSnapshot 走 live aggregate
+ * - MONTH/QUARTER/YEAR: 找已有快照, 没快照抛 404 (与详情页行为一致)
+ * - CUSTOM: 永远走 live, 不持久化
+ */
+export async function prepareLiveExport(
+  user: SessionUser,
+  code: string,
+  periodType: ReportPeriodType,
+  customRange?: DateRange
+): Promise<ExportResult> {
+  assertExportPermission(user);
+  const result = await findSnapshot(user, code, periodType, customRange);
+  return buildExportSectionsFromResult(result);
+}
+
+/**
+ * Section 构造核心: 从 ReportResult (含 payload + definition) 出发,
+ * 按报表类型生成对应的导出 sections. 快照路径和实时查询路径共用.
+ */
+export function buildExportSectionsFromResult(
+  result: ReportResult
+): ExportResult {
   const payload = result.payload;
   const definition = result.definition;
 

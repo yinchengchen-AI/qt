@@ -1,6 +1,20 @@
+// 报表中心导出测试
+//
+// 覆盖 (按 2026年5月业务明细.pdf 模板):
+//   1) PERFORMANCE 报表: 1 个 sheet "员工业绩明细（按签约人）"（不再有"员工业绩汇总" sheet）
+//   2) 签约明细列: 所属区域 / 企业名称 / 服务项目 / 签约人 / 合同金额（元）/ 小计（万元）
+//   3) 不暴露 userId / employeeNo / serviceType 代码 / signDate / contractNo
+//   4) 签约人小计行: 签约人位置写 "{姓名} 小计", 末列写万元合计
+//   5) 末行: "全公司合计" 写入小计(万元)列
+//   6) FINANCIAL / BUSINESS 报表导出: 各 1 个 section
+//   7) 实时查询路径: CUSTOM 周期不依赖快照, 直接走 live aggregate
+
 import { describe, it, expect } from "vitest";
 import { prisma } from "@/lib/prisma";
-import { prepareExportSections } from "@/server/services/report";
+import {
+  prepareExportSections,
+  prepareLiveExport,
+} from "@/server/services/report";
 import type { SessionUser } from "@/lib/session";
 
 const SYSTEM_ACTOR: SessionUser = {
@@ -62,7 +76,7 @@ describe("报表中心导出 prepareExportSections (按 PDF 5 字段 + 小计万
     if (!id) return;
     const res = await prepareExportSections(SYSTEM_ACTOR, id);
     const detail = res.sections[0]!;
-    const last = detail.rows[detail.rows.length - 1] as { signerName: string; subtotalWan: number; totalAmount: number };
+    const last = detail.rows[detail.rows.length - 1] as { signerName: string; subtotalWan: number };
     expect(last.signerName).toBe("全公司合计");
     expect(typeof last.subtotalWan).toBe("number");
     expect(last.subtotalWan).toBeGreaterThan(0);
@@ -105,5 +119,17 @@ describe("报表中心导出 prepareExportSections (按 PDF 5 字段 + 小计万
     const res = await prepareExportSections(SYSTEM_ACTOR, id);
     expect(res.sections.length).toBe(1);
     expect(res.sections[0]!.name).toBe("区域统计明细");
+  });
+});
+
+describe("报表中心导出 prepareLiveExport (实时查询路径, 不依赖快照)", () => {
+  it("CUSTOM 周期: 实时导出也能生成 sections (不写库)", async () => {
+    // 关键: CUSTOM 周期永不写快照, 但导出仍要能走
+    // 验证: 1) 不会因找不到快照而抛 404; 2) 走 live aggregate 返回 definition + sections
+    const from = new Date(2026, 0, 1);
+    const to = new Date(2026, 0, 31, 23, 59, 59);
+    const res = await prepareLiveExport(SYSTEM_ACTOR, "CUSTOM", "CUSTOM", { from, to });
+    expect(res.definition.code).toBe("CUSTOM");
+    expect(Array.isArray(res.sections)).toBe(true);
   });
 });
