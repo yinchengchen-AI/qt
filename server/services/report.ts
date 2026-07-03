@@ -503,6 +503,10 @@ export async function deleteSnapshot(user: SessionUser, snapshotId: string): Pro
 }
 
 /** 导出快照为 Excel 行数据（供 /api/reports/export 使用） */
+/**
+ * 准备导出 rows + columns(单 sheet 版本, 给老调用方用)。
+ * PERFORMANCE 类型额外带签约明细 (PDF 5 字段), 多个 sheet 由 prepareExportSections 输出。
+ */
 export async function prepareExportRows(
   user: SessionUser,
   snapshotId: string
@@ -513,31 +517,181 @@ export async function prepareExportRows(
   labelMap: Record<string, string>;
 }> {
   assertExportPermission(user);
+  const { definition, sections } = await prepareExportSections(user, snapshotId);
+  // 兼容老用法: 返回第一个 sheet
+  const first = sections[0];
+  if (!first) {
+    return { definition, rows: [], columns: [], labelMap: {} };
+  }
+  return {
+    definition,
+    rows: first.rows,
+    columns: first.columns.map((c) => c.key),
+    labelMap: first.labelMap,
+  };
+}
+
+export type ExportSection = {
+  /** 用于多 sheet 文件的 sheet 名 */
+  name: string;
+  /** 单 section 的列(中文 label 已映射) */
+  columns: Array<{ header: string; key: string; width?: number; formatter?: (v: unknown) => string | number }>;
+  rows: Record<string, unknown>[];
+  labelMap: Record<string, string>;
+};
+
+export type ExportResult = {
+  definition: ReportDefinitionItem;
+  sections: ExportSection[];
+};
+
+/**
+ * 把快照 payload 转成导出 sections。PERFORMANCE 走 2 sheets:
+ *   1) 员工业绩汇总 (原有 4 字段 summary)
+ *   2) 签约明细 (PDF 5 字段, 含签约人小计 + 全公司合计)
+ * 其它类型 1 sheet。
+ */
+export async function prepareExportSections(
+  user: SessionUser,
+  snapshotId: string
+): Promise<ExportResult> {
+  assertExportPermission(user);
   const result = await getSnapshot(user, snapshotId);
   const payload = result.payload;
   const definition = result.definition;
 
-  // 指标 key -> 中文 label 映射(默认指标 + 通用字段)
-  const labelMap: Record<string, string> = { ...REPORT_COLUMN_LABELS };
+  // 通用 label 映射(默认指标 + 通用字段)
+  const baseLabelMap: Record<string, string> = { ...REPORT_COLUMN_LABELS };
   for (const m of definition.defaultMetrics) {
-    labelMap[m.key] = m.label;
+    baseLabelMap[m.key] = m.label;
   }
 
-  let rows: Record<string, unknown>[] = [];
+  // 单 section 构造 helper
+  const buildSection = (
+    name: string,
+    rows: Record<string, unknown>[],
+    extraLabels: Record<string, string> = {}
+  ): ExportSection | null => {
+    if (rows.length === 0) return null;
+    const labelMap = { ...baseLabelMap, ...extraLabels };
+    const columns = Object.keys(rows[0]!).map((k) => ({
+      header: labelMap[k] ?? k,
+      key: k,
+      width: 18,
+      formatter: (v: unknown) => {
+        if (v == null || v === "") return "";
+        if (typeof v === "number") {
+          const lowerKey = k.toLowerCase();
+          if (lowerKey.includes("count") || lowerKey.includes("days")) return String(v);
+          if (lowerKey.includes("rate") || lowerKey.includes("ratio")) return `${v.toFixed(2)}%`;
+          return v.toFixed(2);
+        }
+        return String(v);
+      },
+    }));
+    return { name, columns, rows, labelMap };
+  };
+
   if (definition.type === "PERFORMANCE") {
-    rows = (payload.performance ?? []) as Record<string, unknown>[];
-  } else if (definition.type === "BUSINESS") {
-    rows = (payload.region ?? []) as Record<string, unknown>[];
-  } else if (definition.type === "CUSTOM") {
-    // 自定义报表优先导出区域统计；无数据则 fallback 到趋势
-    rows = ((payload.region?.length ? payload.region : payload.series) ?? []) as Record<string, unknown>[];
-  } else {
-    // FINANCIAL：导出趋势明细
-    rows = (payload.series ?? []) as Record<string, unknown>[];
+    const sections: ExportSection[] = [];
+
+    // Sheet 1: 员工业绩汇总
+    const summary = (payload.performance ?? []) as Record<string, unknown>[];
+    const summarySection = buildSection("员工业绩汇总", summary);
+    if (summarySection) sections.push(summarySection);
+
+    // Sheet 2: 签约明细 (PDF 5 字段 + 签约人小计 + 全公司合计)
+    const signerLabels: Record<string, string> = {
+      region: "所属区域",
+      customerName: "企业名称",
+      serviceTypeLabel: "服务项目",
+      serviceType: "服务项目代码",
+      signerName: "签约人",
+      signerEmployeeNo: "签约人工号",
+      signDate: "签订日期",
+      totalAmount: "合同金额（元）",
+      contractNo: "合同号",
+      subtotalWan: "小计（万元）",
+      rowType: "类型",
+    };
+    const groups = (payload.signerDetail ?? []) as Array<{
+      signerName: string;
+      signerEmployeeNo: string;
+      contractAmount: number;
+      subtotalWan: number;
+      rows: Array<Record<string, unknown>>;
+    }>;
+    if (groups.length > 0) {
+      const detailRows: Array<Record<string, unknown>> = [];
+      for (const g of groups) {
+        for (const r of g.rows) {
+          detailRows.push({
+            rowType: "合同",
+            region: r.region ?? "-",
+            customerName: r.customerName ?? "-",
+            serviceTypeLabel: r.serviceTypeLabel ?? r.serviceType ?? "-",
+            serviceType: r.serviceType ?? "",
+            signerName: r.signerName ?? "-",
+            signerEmployeeNo: r.signerEmployeeNo ?? "",
+            signDate: r.signDate ? String(r.signDate).slice(0, 10) : "",
+            contractNo: r.contractNo ?? "",
+            totalAmount: r.totalAmount,
+          });
+        }
+        // 签约人小计行
+        detailRows.push({
+          rowType: `${g.signerName}（${g.signerEmployeeNo}）小计`,
+          region: "",
+          customerName: "",
+          serviceTypeLabel: "",
+          serviceType: "",
+          signerName: g.signerName,
+          signerEmployeeNo: g.signerEmployeeNo,
+          signDate: "",
+          contractNo: "",
+          totalAmount: g.contractAmount,
+          subtotalWan: g.subtotalWan,
+        });
+      }
+      // 全公司合计
+      const total = groups.reduce((s, g) => s + g.contractAmount, 0);
+      const totalWan = Math.round((total / 10_000) * 100) / 100;
+      detailRows.push({
+        rowType: "全公司合计",
+        region: "",
+        customerName: "",
+        serviceTypeLabel: "",
+        serviceType: "",
+        signerName: "",
+        signerEmployeeNo: "",
+        signDate: "",
+        contractNo: "",
+        totalAmount: total,
+        subtotalWan: totalWan,
+      });
+
+      const detailSection = buildSection("签约明细", detailRows, signerLabels);
+      if (detailSection) sections.push(detailSection);
+    }
+    return { definition, sections };
   }
 
-  const columns = rows.length > 0 ? Object.keys(rows[0]!) : [];
-  return { definition, rows, columns, labelMap };
+  if (definition.type === "BUSINESS") {
+    const rows = (payload.region ?? []) as Record<string, unknown>[];
+    const section = buildSection("区域统计明细", rows);
+    return { definition, sections: section ? [section] : [] };
+  }
+
+  if (definition.type === "CUSTOM") {
+    const rows = (payload.region?.length ? payload.region : payload.series ?? []) as Record<string, unknown>[];
+    const section = buildSection("自定义组合报表", rows);
+    return { definition, sections: section ? [section] : [] };
+  }
+
+  // FINANCIAL
+  const rows = (payload.series ?? []) as Record<string, unknown>[];
+  const section = buildSection("财务趋势明细", rows);
+  return { definition, sections: section ? [section] : [] };
 }
 
 /** 定时任务入口：生成上一周期的快照 */
