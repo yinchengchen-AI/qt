@@ -642,29 +642,15 @@ export async function prepareExportSections(
   if (definition.type === "PERFORMANCE") {
     const sections: ExportSection[] = [];
 
-    // Sheet 1: 员工业绩汇总
-    // 关键: 与签约明细同口径, 按签约人 (signerId) 聚合, 不是按 owner
-    // (旧 getEmployeePerformance 按 ownerUserId 聚合, 跟签约明细对不上, 已替换为 signerSummary)
-    // 汇总场景不需要 userId/employeeNo — 姓名已能定位到人, 工号是内部主键不该外露
-    const summaryRaw = ((payload.signerSummary ?? payload.performance) ?? []) as Record<string, unknown>[];
-    const summary = summaryRaw.map((r) => {
-      const { userId: _u, employeeNo: _e, ...rest } = r;
-      return rest as Record<string, unknown>;
-    });
-    const summarySection = buildSection("员工业绩汇总", summary);
-    if (summarySection) sections.push(summarySection);
-
-    // Sheet 2: 签约明细 (PDF 5 字段 + 合同号 + 签订日期 + 签约人小计 + 全公司合计)
-    // 不暴露: 签约人工号 (姓名已能定位到人, 工号是内部主键), 服务项目代码 (内部 enum)
-    // 合同号/签订日期 是为了方便从导出对回实际合同, 跟 PDF 模板的 5 字段不冲突
+    // PERFORMANCE 报表只导出 1 个 sheet: 签约明细 (按 PDF 模板)
+    // 字段: 所属区域 / 企业名称 / 服务项目 / 签约人 / 合同金额（元） / 小计（万元）
+    // 不再输出"员工业绩汇总" sheet — KPI 卡片 + 签约明细 已覆盖高/低聚合,
+    // 避免重复冗余。
     const signerLabels: Record<string, string> = {
-      rowType: "类型",
       region: "所属区域",
       customerName: "企业名称",
       serviceTypeLabel: "服务项目",
       signerName: "签约人",
-      contractNo: "合同号",
-      signDate: "签订日期",
       totalAmount: "合同金额（元）",
       subtotalWan: "小计（万元）",
     };
@@ -678,28 +664,24 @@ export async function prepareExportSections(
     if (groups.length > 0) {
       const detailRows: Array<Record<string, unknown>> = [];
       for (const g of groups) {
+        // 合同行: 5 PDF 字段, 小计(万元)列空
         for (const r of g.rows) {
           detailRows.push({
-            rowType: "合同",
             region: r.region ?? "-",
             customerName: r.customerName ?? "-",
             serviceTypeLabel: r.serviceTypeLabel ?? r.serviceType ?? "-",
             signerName: r.signerName ?? "-",
-            contractNo: r.contractNo ?? "",
-            signDate: r.signDate ? String(r.signDate).slice(0, 10) : "",
             totalAmount: r.totalAmount,
             subtotalWan: "",
           });
         }
-        // 签约人小计行 — rowType 纯姓名, 不带工号; subtotalWan 写万元
+        // 签约人小计行: 签约人位置写 "{姓名} 小计", 小计(万元)列填万元数
+        // 跟 PDF 右侧万元数对齐 (PDF 是合并单元格, 这里是单行展示)
         detailRows.push({
-          rowType: `${g.signerName} 小计`,
           region: "",
           customerName: "",
           serviceTypeLabel: "",
-          signerName: g.signerName,
-          contractNo: "",
-          signDate: "",
+          signerName: `${g.signerName} 小计`,
           totalAmount: g.contractAmount,
           subtotalWan: g.subtotalWan,
         });
@@ -708,13 +690,10 @@ export async function prepareExportSections(
       const total = groups.reduce((s, g) => s + g.contractAmount, 0);
       const totalWan = Math.round((total / 10_000) * 100) / 100;
       detailRows.push({
-        rowType: "全公司合计",
         region: "",
         customerName: "",
         serviceTypeLabel: "",
-        signerName: "",
-        contractNo: "",
-        signDate: "",
+        signerName: "全公司合计",
         totalAmount: total,
         subtotalWan: totalWan,
       });

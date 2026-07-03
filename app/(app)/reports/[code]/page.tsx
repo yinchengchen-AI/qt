@@ -282,9 +282,10 @@ export default function ReportDetailPage() {
     return (data.payload.signerDetail as SignerDetailGroup[] | undefined) ?? [];
   }, [data?.definition.type, data?.payload]);
 
-  // 拼接签约明细 FlatList,每组末尾追加小计行(万元,带 rowType 区分)
+  // 拼接签约明细 FlatList,每组末尾追加小计行,末行追加全公司合计
+  // rowType: "detail" | "subtotal" | "total"
   const signerDetailRows = useMemo(() => {
-    const flat: Array<SignerDetailRow & { rowType: "detail" | "subtotal"; subtotalWan?: number; signerName?: string; signerEmployeeNo?: string }> = [];
+    const flat: Array<SignerDetailRow & { rowType: "detail" | "subtotal" | "total"; subtotalWan?: number; signerName?: string; signerEmployeeNo?: string }> = [];
     for (const g of signerDetailGroups) {
       for (const r of g.rows) flat.push({ ...r, rowType: "detail" });
       flat.push({
@@ -306,6 +307,27 @@ export default function ReportDetailPage() {
         subtotalWan: g.subtotalWan
       });
     }
+    // 全公司合计行 (末行)
+    const grandTotal = signerDetailGroups.reduce((s, g) => s + g.contractAmount, 0);
+    const grandWan = round2(grandTotal / 10_000);
+    flat.push({
+      contractId: "__total__",
+      contractNo: "",
+      district: null,
+      town: null,
+      region: "",
+      customerId: "",
+      customerName: "",
+      serviceType: "",
+      serviceTypeLabel: "",
+      signerId: "",
+      signerName: "全公司合计",
+      signerEmployeeNo: "",
+      signDate: "",
+      totalAmount: grandTotal,
+      rowType: "total",
+      subtotalWan: grandWan,
+    });
     return flat;
   }, [signerDetailGroups]);
 
@@ -457,11 +479,11 @@ export default function ReportDetailPage() {
 
               {signerDetailGroups.length > 0 && (
                 <Card
-                  title="签约明细（按签约人）"
+                  title="员工业绩明细（按签约人）"
                   style={{ marginBottom: 16 }}
                   extra={
                     <span style={{ color: "var(--qt-text-secondary)", fontSize: 12 }}>
-                      字段:所属区域 / 企业名称 / 服务项目 / 签约人 / 合同金额;每签约人末行小计（万元）
+                      字段:所属区域 / 企业名称 / 服务项目 / 签约人 / 合同金额;末列「小计(万元)」只对签约人小计行与全公司合计行填充
                     </span>
                   }
                 >
@@ -470,42 +492,42 @@ export default function ReportDetailPage() {
                     pagination={false}
                     size="small"
                     scroll={{ x: "max-content" }}
-                    rowKey={(r) => (r.rowType === "subtotal" ? r.contractId : `${r.contractId}-${r.signDate}`)}
-                    rowClassName={(r) => (r.rowType === "subtotal" ? "signer-subtotal-row" : "")}
-                    columns={[
-                      { title: "所属区域", dataIndex: "region", key: "region", width: 160 },
-                      { title: "企业名称", dataIndex: "customerName", key: "customerName", width: 220, render: (v: string, r) => r.rowType === "subtotal" ? "" : v },
-                      { title: "服务项目", dataIndex: "serviceTypeLabel", key: "serviceTypeLabel", width: 160, render: (v: string, r) => r.rowType === "subtotal" ? <span style={{ color: "var(--qt-text-secondary)" }}>{r.signerName} 小计</span> : v },
-                      { title: "签约人", dataIndex: "signerName", key: "signerName", width: 100, render: (v: string, r) => r.rowType === "subtotal" ? `${v}（${r.signerEmployeeNo}）` : v },
-                      { title: "合同金额（元）", dataIndex: "totalAmount", key: "totalAmount", width: 140, align: "right" as const, render: (v: number, r) => r.rowType === "subtotal" ? <strong>{formatCurrency(v)}</strong> : formatCurrency(v) },
-                      { title: "小计（万元）", dataIndex: "subtotalWan", key: "subtotalWan", width: 120, align: "right" as const, render: (_: unknown, r) => r.rowType === "subtotal" ? <strong>{r.subtotalWan?.toFixed(2)}</strong> : "" }
-                    ]}
-                    summary={() => {
-                      if (signerDetailGroups.length === 0) return null;
-                      const total = signerDetailGroups.reduce((s, g) => s + g.contractAmount, 0);
-                      const totalWan = round2(total / 10_000);
-                      return (
-                        <Table.Summary.Row style={{ background: "var(--qt-bg-subtle, #fafafa)" }}>
-                          <Table.Summary.Cell index={0} colSpan={4}>
-                            <strong>全公司合计</strong>
-                          </Table.Summary.Cell>
-                          <Table.Summary.Cell index={4} align="right">
-                            <strong>{formatCurrency(total)}</strong>
-                          </Table.Summary.Cell>
-                          <Table.Summary.Cell index={5} align="right">
-                            <strong>{totalWan.toFixed(2)}</strong>
-                          </Table.Summary.Cell>
-                        </Table.Summary.Row>
-                      );
+                    rowKey={(r) =>
+                      r.rowType === "subtotal" || r.rowType === "total"
+                        ? r.contractId
+                        : `${r.contractId}-${r.signDate}`
+                    }
+                    rowClassName={(r) => {
+                      if (r.rowType === "total") return "signer-total-row";
+                      if (r.rowType === "subtotal") return "signer-subtotal-row";
+                      return "";
                     }}
+                    columns={[
+                      { title: "所属区域", dataIndex: "region", key: "region", width: 180, render: (v: string, r) => r.rowType === "detail" ? (v || "-") : "" },
+                      { title: "企业名称", dataIndex: "customerName", key: "customerName", width: 240, render: (v: string, r) => r.rowType === "detail" ? (v || "-") : "" },
+                      { title: "服务项目", dataIndex: "serviceTypeLabel", key: "serviceTypeLabel", width: 180, render: (v: string, r) => r.rowType === "detail" ? (v || "-") : "" },
+                      { title: "签约人", dataIndex: "signerName", key: "signerName", width: 110, render: (v: string, r) => r.rowType === "detail" ? (v || "-") : <strong>{v}</strong> },
+                      { title: "合同金额（元）", dataIndex: "totalAmount", key: "totalAmount", width: 150, align: "right" as const,
+                        render: (v: number, r) => {
+                          if (r.rowType === "detail") return formatCurrency(v);
+                          return <strong>{formatCurrency(v)}</strong>;
+                        }
+                      },
+                      { title: "小计（万元）", dataIndex: "subtotalWan", key: "subtotalWan", width: 130, align: "right" as const,
+                        render: (_: unknown, r) => r.rowType === "detail" ? "" : <strong>{r.subtotalWan != null ? Number(r.subtotalWan).toFixed(2) : ""}</strong>
+                      },
+                    ]}
+                    summary={undefined}
                   />
                 </Card>
               )}
 
-              {tableData.length > 0 && (
+              {/* PERFORMANCE 类型的明细已通过上面的"签约明细"展示, 此处不再重复"明细数据"卡
+                  (旧逻辑: 把 signerSummary 当明细数据表展示, 跟签约明细 + KPI 卡片重复) */}
+              {data.definition.type !== "PERFORMANCE" && (tableData as Record<string, unknown>[]).length > 0 && (
                 <Card title="明细数据">
                   <Table
-                    dataSource={tableData}
+                    dataSource={tableData as Record<string, unknown>[]}
                     columns={columns}
                     rowKey={stableRowKey}
                     pagination={{ pageSize: 10 }}
@@ -514,13 +536,11 @@ export default function ReportDetailPage() {
                 </Card>
               )}
 
-              {tableData.length === 0 && !loading && (
-                periodType === "CUSTOM" ? (
-                  <EmptyState empty title="请选择日期范围" description="自定义周期需先选择起止日期，再点「查询」" />
-                ) : (
+              {data.definition.type !== "PERFORMANCE" &&
+                (tableData as Record<string, unknown>[]).length === 0 &&
+                !loading && (
                   <EmptyState empty title="暂无明细数据" description="当前周期范围内没有相关记录" />
-                )
-              )}
+                )}
             </>
           ) : null}
         </Spin>

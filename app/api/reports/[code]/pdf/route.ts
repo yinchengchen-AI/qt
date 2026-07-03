@@ -55,36 +55,18 @@ function buildPrintDoc(
 
   const sections: PrintTableSection[] = [];
 
-  // 员工业绩汇总: 与签约明细同口径, 按签约人聚合 (signerSummary);
-  // 旧 payload.performance 是按 owner 聚合, 跟签约明细对不上, 弃用
-  // 显式列出列, 不暴露 userId/employeeNo
-  const summarySource = ((payload.signerSummary ?? payload.performance) ?? []) as Record<string, string | number | null | undefined>[];
-  if (summarySource.length > 0) {
-    const summaryColumns = ["姓名", "合同数", "合同额", "已开票额", "已回款额"];
-    const summaryRows = summarySource.map((r) => ({
-      姓名: r.name ?? "-",
-      合同数: r.contractCount ?? 0,
-      合同额: formatCurrency(Number(r.contractAmount ?? 0)),
-      已开票额: formatCurrency(Number(r.invoiceAmount ?? 0)),
-      已回款额: formatCurrency(Number(r.paymentAmount ?? 0)),
-    }));
-    sections.push({
-      title: "员工业绩汇总（按签约人）",
-      columns: summaryColumns,
-      rows: summaryRows,
-    });
-  }
-
-  // 签约明细(按签约人分组的合同级明细,字段对齐 2026年5月业务明细.pdf)
+  // 员工业绩报表: 详情只有 1 段 — 签约明细 (按 PDF 5 字段 + 万元小计)
+  // KPI 卡片由 buildPrintDoc 的 summary 承载, 不重复员工业绩汇总表 (与 PDF 不符)
+  // 签约明细 (PDF 5 字段 + 小计万元列) — 与 PDF 模板一一对应
   if (payload.signerDetail && (payload.signerDetail as unknown[]).length > 0) {
     const groups = payload.signerDetail as Array<{
       signerName: string;
-      signerEmployeeNo: string;
       rows: Array<Record<string, string | number | null | undefined>>;
       contractAmount: number;
       subtotalWan: number;
     }>;
-    const signerColumns = ["所属区域", "企业名称", "服务项目", "签约人", "合同金额（元）"];
+    // 列顺序: 5 PDF 字段 + 末列小计(万元)
+    const signerColumns = ["所属区域", "企业名称", "服务项目", "签约人", "合同金额（元）", "小计（万元）"];
     const flat: Array<Record<string, string | number | null | undefined>> = [];
     for (const g of groups) {
       for (const r of g.rows) {
@@ -94,20 +76,33 @@ function buildPrintDoc(
           服务项目: r.serviceTypeLabel ?? r.serviceType ?? "-",
           签约人: r.signerName ?? "-",
           合同金额: renderSignerAmount(r.totalAmount),
+          小计万元: "",
         });
       }
-      // 签约人小计行: 服务项目位置写 "{姓名} 小计 (X.XX万)", 合同金额写元
+      // 签约人小计行: 签约人位置写 "{姓名} 小计", 末列写万元合计
       flat.push({
         所属区域: "",
         企业名称: "",
-        服务项目: `${g.signerName} 小计 (${g.subtotalWan} 万)`,
-        签约人: "",
+        服务项目: "",
+        签约人: `${g.signerName} 小计`,
         合同金额: renderSignerAmount(g.contractAmount),
+        小计万元: typeof g.subtotalWan === "number" ? g.subtotalWan.toFixed(2) : String(g.subtotalWan ?? ""),
       });
     }
+    // 全公司合计
+    const grandTotal = groups.reduce((s, g) => s + Number(g.contractAmount ?? 0), 0);
+    const grandWan = Math.round((grandTotal / 10_000) * 100) / 100;
+    flat.push({
+      所属区域: "",
+      企业名称: "",
+      服务项目: "",
+      签约人: "全公司合计",
+      合同金额: renderSignerAmount(grandTotal),
+      小计万元: grandWan.toFixed(2),
+    });
     if (flat.length > 0) {
       sections.push({
-        title: "签约明细（按签约人）",
+        title: "员工业绩明细（按签约人）",
         columns: signerColumns,
         rows: flat,
         emptyText: "当前周期暂无签约明细",
