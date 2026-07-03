@@ -168,6 +168,9 @@ export type AgingQuery = {
   page?: number;
   pageSize?: number;
   sort?: "daysOverdue:desc" | "amount:desc" | "customerName:asc";
+  // 报表中心:按发票开具/到期日期范围过滤
+  from?: Date;
+  to?: Date;
 };
 
 export type AgingRow = {
@@ -258,6 +261,17 @@ export async function getInvoiceAging(
   if (query.ownerUserId) {
     const existing = (baseWhere.contract ?? {}) as Prisma.ContractWhereInput;
     baseWhere.contract = { ...existing, ownerUserId: query.ownerUserId } as Prisma.InvoiceWhereInput['contract'];
+  }
+  // 报表中心:按日期范围过滤发票开具/到期日
+  if (query.from || query.to) {
+    const dateFilter: Prisma.DateTimeFilter = {};
+    if (query.from) dateFilter.gte = query.from;
+    if (query.to) dateFilter.lte = query.to;
+    if (basis === "issue") {
+      baseWhere.actualIssueDate = dateFilter;
+    } else {
+      baseWhere.dueDate = dateFilter;
+    }
   }
 
   const invoices = await prisma.invoice.findMany({

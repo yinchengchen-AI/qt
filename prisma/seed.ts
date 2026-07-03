@@ -239,7 +239,77 @@ async function main() {
     create: { id: "dept_seed_tech_web", code: "tech_web", name: "前端组", parentId: techDept.id, sort: 2, isActive: true }
   });
 
-  console.log(`✅ 系统管理 seed 完成: 5 角色 + system actor + 5 部门 + ${dictDefs.length} 字典`);
+  // ----- 报表中心默认模板 -----
+  const reportDefs = [
+    {
+      code: "FINANCIAL",
+      name: "财务经营报表",
+      description: "合同额、开票额、回款额、应收账龄等财务指标",
+      type: "FINANCIAL",
+      periodType: "MONTH",
+      defaultMetrics: [
+        { key: "contractAmount", label: "合同额", unit: "元" },
+        { key: "invoiceAmount", label: "已开票额", unit: "元" },
+        { key: "paymentAmount", label: "已回款额", unit: "元" },
+        { key: "unpaidAmount", label: "未回款额", unit: "元" },
+        { key: "invoiceRate", label: "开票率", unit: "%" },
+        { key: "paymentRate", label: "回款率", unit: "%" }
+      ],
+      dimensions: ["month"]
+    },
+    {
+      code: "BUSINESS",
+      name: "业务经营报表",
+      description: "客户新增、合同签订、区域分布、服务类型占比",
+      type: "BUSINESS",
+      periodType: "MONTH",
+      defaultMetrics: [
+        { key: "newCustomerCount", label: "新增客户数", unit: "家" },
+        { key: "contractCount", label: "合同数", unit: "份" },
+        { key: "contractAmount", label: "合同额", unit: "元" },
+        { key: "regionCount", label: "覆盖区域数", unit: "个" }
+      ],
+      dimensions: ["month", "region", "serviceType"]
+    },
+    {
+      code: "PERFORMANCE",
+      name: "员工业绩报表",
+      description: "按业务人员统计合同额、开票额、回款额",
+      type: "PERFORMANCE",
+      periodType: "MONTH",
+      defaultMetrics: [
+        { key: "contractAmount", label: "合同额", unit: "元" },
+        { key: "invoiceAmount", label: "已开票额", unit: "元" },
+        { key: "paymentAmount", label: "已回款额", unit: "元" },
+        { key: "contractCount", label: "合同数", unit: "份" }
+      ],
+      dimensions: ["month", "owner"]
+    },
+    {
+      code: "CUSTOM",
+      name: "自定义组合报表",
+      description: "可自由选择指标与日期范围",
+      type: "CUSTOM",
+      periodType: "CUSTOM",
+      defaultMetrics: [
+        { key: "contractAmount", label: "合同额", unit: "元" },
+        { key: "invoiceAmount", label: "已开票额", unit: "元" },
+        { key: "paymentAmount", label: "已回款额", unit: "元" }
+      ],
+      dimensions: ["month", "region", "owner", "serviceType"]
+    }
+  ];
+
+  for (const r of reportDefs) {
+    await prisma.reportDefinition.upsert({
+      where: { code: r.code },
+      // update 只覆盖字段结构（type/periodType/sortOrder），不覆盖运营人员可能修改的 name/description/metrics/dimensions
+      update: { type: r.type, periodType: r.periodType, sortOrder: r.sortOrder },
+      create: { ...r }
+    });
+  }
+
+  console.log(`✅ 系统管理 seed 完成: 5 角色 + system actor + 5 部门 + ${dictDefs.length} 字典 + ${reportDefs.length} 报表模板`);
 }
 
 main()
