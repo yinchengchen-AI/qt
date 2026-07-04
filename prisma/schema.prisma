@@ -1,4 +1,4 @@
-// Prisma 7 schema for 鏉窞浼佹嘲瀹夊叏绉戞妧 涓氬姟绠＄悊绯荤粺
+// Prisma 7 schema for 杭州企泰安全科技 业务管理系统
 // PostgreSQL 16; soft delete via deletedAt; monetary fields @db.Decimal(18,2); time @db.Timestamptz(6)
 // NOTE: Prisma 7's schema validator has known wasm issues with `enum` + `@@index` on enum fields.
 //       We model enums as String columns (constrained by PG native ENUM types via raw SQL in migration)
@@ -29,10 +29,10 @@ model Role {
   @@index([code])
 }
 
-// 閫氱煡浜嬩欢绫诲瀷:涓?server/events/bus.ts 鐨?DomainEventType 涓€涓€瀵瑰簲
-//   - bus.emit 鍐欏叆鐨?type 蹇呴』钀藉湪杩欓噷
-//   - cron 浠诲姟鐨勫幓閲嶆煡璇篃鎸夎繖浜涘€煎尮閰?
-// 澧炲噺闇€瑕佸悓姝ヤ慨鏀?server/events/bus.ts (骞惰窇 prisma migrate)
+// 通知事件类型:与 server/events/bus.ts 的 DomainEventType 一一对应
+//   - bus.emit 写入的 type 必须落在这里
+//   - cron 任务的去重查询也按这些值匹配
+// 增减需要同步修改 server/events/bus.ts (并跑 prisma migrate)
 enum MessageType {
   CONTRACT_EXPIRING
   INVOICE_OVERDUE_PAYMENT
@@ -41,13 +41,13 @@ enum MessageType {
   CONTRACT_AUTO_EXECUTED
   CONTRACT_AUTO_COMPLETED
   CONTRACT_AUTO_EXPIRED
-  // 鍚堝悓杩囨湡瀹介檺鏈熷己鍏?(endDate+GRACE<now 浠嶆湭缁撴竻, tryAutoCloseOnOverdue 瑙﹀彂)
+  // 合同过期宽限期强关 (endDate+GRACE<now 仍未结清, tryAutoCloseOnOverdue 触发)
   CONTRACT_AUTO_OVERDUE_TERMINATED
-  // 鍚堝悓杩囨湡鏈粨娓呮彁閱?(endDate<now 浣嗛挶娌℃敹榻? tickStaleContracts 瑙﹀彂)
+  // 合同过期未结清提醒 (endDate<now 但钱没收齐, tickStaleContracts 触发)
   CONTRACT_EXPIRED_UNPAID
-  // 璇佷功 N 澶╁唴鍒版湡 (30/15/7 涓夋。闃堝€煎悇鍙戜竴娆?
+  // 证书 N 天内到期 (30/15/7 三档阈值各发一次)
   CERTIFICATE_EXPIRING
-  // 瀹㈡埛鐘舵€佹満鑷姩鍖? 绯荤粺鑷姩鍐欑姸鎬?(搂1.2 / 搂3.1)
+  // 客户状态机自动化: 系统自动写状态 (§1.2 / §3.1)
   CUSTOMER_STATUS_AUTO_APPLIED
   CUSTOMER_STATUS_AUTO_REVERTED
 }
@@ -79,6 +79,7 @@ model User {
   dunningNotes           DunningNote[]
   publishedReleases      AppRelease[]       @relation("AppReleasePublishUser")
   releaseReads           AppReleaseRead[]
+  reportSnapshots        ReportSnapshot[]
   profile                EmployeeProfile?
 
   @@index([roleId])
@@ -91,19 +92,19 @@ model EmployeeProfile {
   userId String @unique
   user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  // 鍩虹妗ｆ
+  // 基础档案
   gender        String? // MALE | FEMALE | OTHER
   birthday      DateTime? @db.Timestamptz(6)
-  idCard        String?   @unique // 韬唤璇佸彿锛堟晱鎰燂紝鍔犲瘑瀛樺偍锛?
-  education     String? // 瀛﹀巻瀛楀吀鍊?
+  idCard        String?   @unique // 身份证号（敏感，加密存储）
+  education     String? // 学历字典值
   entryDate     DateTime? @db.Timestamptz(6)
-  // 鍦板潃锛氱粨鏋勫寲涓虹渷/甯?鍖?+ 璇︾粏鍦板潃,鐪佸競鍖鸿蛋 lib/china-divisions.ts 涓夌骇鑱斿姩
+  // 地址：结构化为省/市/区 + 详细地址,省市区走 lib/china-divisions.ts 三级联动
   province      String?
   city          String?
   district      String?
   addressDetail String?
 
-  // 浜轰簨/宀椾綅
+  // 人事/岗位
   position         String?
   jobLevel         String?
   employmentType   String?   @default("FULL_TIME") // FULL_TIME | PART_TIME | INTERN | CONTRACTOR
@@ -111,48 +112,48 @@ model EmployeeProfile {
   formalDate       DateTime? @db.Timestamptz(6)
   resignationDate  DateTime? @db.Timestamptz(6)
 
-  // 鍚堝悓
-  contractType      String? // 鍚堝悓绫诲瀷瀛楀吀鍊?
+  // 合同
+  contractType      String? // 合同类型字典值
   contractStartDate DateTime? @db.Timestamptz(6)
   contractEndDate   DateTime? @db.Timestamptz(6)
 
-  // 澶村儚锛?:1 寮曠敤 Attachment锛涜蛋 avatarAttachment 鍙嶅悜 relation锛?
+  // 头像（1:1 引用 Attachment；走 avatarAttachment 反向 relation）
   avatarAttachmentId String?     @unique
   avatarAttachment   Attachment? @relation("EmployeeProfileAvatar", fields: [avatarAttachmentId], references: [id], onDelete: SetNull)
 
-  // 鏁忔劅淇℃伅锛堜粎 ADMIN 鍙锛?
+  // 敏感信息（仅 ADMIN 可见）
   salary                Decimal? @db.Decimal(14, 2)
-  bankAccount           String? // 閾惰鍗″彿锛堟晱鎰燂紝鍔犲瘑瀛樺偍锛?
+  bankAccount           String? // 银行卡号（敏感，加密存储）
   bankName              String?
-  socialSecurityAccount String? // 绀句繚璐﹀彿锛堟晱鎰燂紝鍔犲瘑瀛樺偍锛?
-  providentFundAccount  String? // 鍏Н閲戣处鍙凤紙鏁忔劅锛屽姞瀵嗗瓨鍌級
+  socialSecurityAccount String? // 社保账号（敏感，加密存储）
+  providentFundAccount  String? // 公积金账号（敏感，加密存储）
 
-  // 灞ュ巻/澶囨敞锛坵orkExperience / educationHistory / certificates 闀挎枃鏈凡杩佸埌瀛愯〃锛?
+  // 履历/备注（workExperience / educationHistory / certificates 长文本已迁到子表）
   remark String? @db.VarChar(5000)
 
   createdAt DateTime  @default(now()) @db.Timestamptz(6)
   updatedAt DateTime  @updatedAt @db.Timestamptz(6)
   deletedAt DateTime? @db.Timestamptz(6)
 
-  // 5 寮犲瓙琛?
+  // 5 张子表
   educations        EmployeeEducation[]
   workExperiences   EmployeeWorkExperience[]
   certificates      EmployeeCertificate[]
   skills            EmployeeSkill[]
   emergencyContacts EmployeeEmergencyContact[]
 
-  // 閫氱敤闄勪欢 (韬唤璇佺収 / 璇佷功闄勪欢 / 鍏朵粬) 鈥?澶氬澶氭寕鍦?Attachment.employeeProfileId
+  // 通用附件 (身份证照 / 证书附件 / 其他) — 多对多挂在 Attachment.employeeProfileId
   attachments Attachment[] @relation("EmployeeProfileAttachments")
 
   @@index([userId])
 }
 
 // =====================================================
-// 鍛樺伐妗ｆ 5 寮犲瓙琛?(PR1 of employee-profile-redesign)
-// - 鍏ㄩ儴 onDelete: Cascade 鍒?EmployeeProfile
-// - 鍏ㄩ儴甯?deletedAt 鏀寔杞垹 (涓庣幇鏈?EmployeeProfile 妯″紡涓€鑷?
-// - certificate.attachmentId 鏄?0..1 寮曠敤,鍏佽鏃犻檮浠剁殑璇佷功
-// - 璇︽儏椤?/ 鍒楄〃 / 鎺掑簭: createdAt asc / 鍚勭鏃ユ湡 desc
+// 员工档案 5 张子表 (PR1 of employee-profile-redesign)
+// - 全部 onDelete: Cascade 到 EmployeeProfile
+// - 全部带 deletedAt 支持软删 (与现有 EmployeeProfile 模式一致)
+// - certificate.attachmentId 是 0..1 引用,允许无附件的证书
+// - 详情页 / 列表 / 排序: createdAt asc / 各种日期 desc
 // =====================================================
 model EmployeeEducation {
   id         String          @id @default(cuid())
@@ -160,7 +161,7 @@ model EmployeeEducation {
   profile    EmployeeProfile @relation(fields: [profileId], references: [id], onDelete: Cascade)
   school     String
   major      String?
-  // 瀛﹀巻瀛楀吀鍊?(EDUCATION_LEVEL: HIGH_SCHOOL / JUNIOR_COLLEGE / BACHELOR / MASTER / DOCTORATE / OTHER)
+  // 学历字典值 (EDUCATION_LEVEL: HIGH_SCHOOL / JUNIOR_COLLEGE / BACHELOR / MASTER / DOCTORATE / OTHER)
   degree     String?
   startDate  DateTime        @db.Timestamptz(6)
   endDate    DateTime?       @db.Timestamptz(6)
@@ -199,7 +200,7 @@ model EmployeeCertificate {
   number       String?
   issuer       String?
   issueDate    DateTime?       @db.Timestamptz(6)
-  // expiryDate 绱㈠紩缁欒瘉涔﹀埌鏈?cron 鐢?(server/jobs/certificate-expiry-check)
+  // expiryDate 索引给证书到期 cron 用 (server/jobs/certificate-expiry-check)
   expiryDate   DateTime?       @db.Timestamptz(6)
   attachmentId String?
   attachment   Attachment?     @relation("CertificateAttachment", fields: [attachmentId], references: [id], onDelete: SetNull)
@@ -228,8 +229,8 @@ model EmployeeSkill {
   @@index([profileId])
 }
 
-// PR9:璇佷功鍒版湡鎻愰啋鐨勫幓閲嶈〃(鏇夸唬 Redis 缂撳瓨)
-// 姣忔潯璁板綍琛ㄧず"鏌愯瘉涔︽煇闃堝€煎凡鍙戣繃涓€娆￠€氱煡",@@unique 闃查噸澶?
+// PR9:证书到期提醒的去重表(替代 Redis 缓存)
+// 每条记录表示"某证书某阈值已发过一次通知",@@unique 防重复
 model CertificateExpiryNotice {
   id            String   @id @default(cuid())
   certificateId String
@@ -246,7 +247,7 @@ model EmployeeEmergencyContact {
   profileId    String
   profile      EmployeeProfile @relation(fields: [profileId], references: [id], onDelete: Cascade)
   name         String
-  // 鍏崇郴: 鐖舵瘝/閰嶅伓/鍏勫紵濮愬/瀛愬コ/鍏朵粬
+  // 关系: 父母/配偶/兄弟姐妹/子女/其他
   relationship String
   phone        String
   remark       String?         @db.VarChar(500)
@@ -275,7 +276,7 @@ model Customer {
   address                 String?
   town                    String?
 
-  // 涓昏仈绯讳汉淇℃伅(濮撳悕 / 鑱屽姟 / 鐢佃瘽);搴熼櫎鍘?creditLimitAmount / paymentTermDays / contactEmail
+  // 主联系人信息(姓名 / 职务 / 电话);废除原 creditLimitAmount / paymentTermDays / contactEmail
   contactName   String?
   contactTitle  String?
   contactPhone  String
@@ -313,10 +314,10 @@ model ContactPerson {
   @@index([customerId])
 }
 
-// @deprecated 2026-06: 瀹㈡埛璺熻繘 (FollowUp) 鍔熻兘宸蹭笅绾? API 鍏ㄩ儴杩斿洖 410, UI 宸查殣钘?
-// 鐘舵€佹満寤鸿淇″彿鏀圭敤 lastActivityAt (鍚堝悓/鍥炴/瀹㈡埛鏇存柊鏃堕棿) 鈥?瑙?server/jobs/customer-status-suggest.ts.
-// 琛ㄧ粨鏋勪繚鐣欐槸涓轰簡鍘嗗彶鏁版嵁鍙煡; 鍚庣画娓呯悊鏁版嵁鍙蛋 scripts/shared/cleanup-business-data.ts.
-// 鏂板姛鑳戒笉瑕佸啀璇诲啓姝よ〃.
+// @deprecated 2026-06: 客户跟进 (FollowUp) 功能已下线, API 全部返回 410, UI 已隐藏.
+// 状态机建议信号改用 lastActivityAt (合同/回款/客户更新时间) — 见 server/jobs/customer-status-suggest.ts.
+// 表结构保留是为了历史数据可查; 后续清理数据可走 scripts/shared/cleanup-business-data.ts.
+// 新功能不要再读写此表.
 model FollowUp {
   id           String    @id @default(cuid())
   customerId   String
@@ -342,10 +343,10 @@ model FollowUp {
 model Contract {
   id                     String    @id @default(cuid())
   contractNo             String
-  // contractNo 鍞竴鎬? 杞垹鍚堝悓涓嶉樆濉炲悓鍙锋柊寤? 绱㈠紩鍦?
-  // prisma/migrations/20260621_contract_no_partial_unique/migration.sql 缁存姢
-  // (CREATE UNIQUE INDEX ... WHERE "deletedAt" IS NULL). Prisma schema 涓嶇洿鎺?
-  // 琛ㄨ揪閮ㄥ垎鍞竴绱㈠紩, 鏀?schema 鏃朵笉瑕佸姞鍥?@unique.
+  // contractNo 唯一性: 软删合同不阻塞同号新建. 索引在
+  // prisma/migrations/20260621_contract_no_partial_unique/migration.sql 维护
+  // (CREATE UNIQUE INDEX ... WHERE "deletedAt" IS NULL). Prisma schema 不直接
+  // 表达部分唯一索引, 改 schema 时不要加回 @unique.
   customerId             String
   customer               Customer  @relation(fields: [customerId], references: [id])
   customerName           String
@@ -360,20 +361,20 @@ model Contract {
   amountExcludingTax     Decimal   @db.Decimal(18, 2)
   paymentMethod          String // LUMP_SUM | BY_PHASE | BY_MONTH | BY_QUARTER
   installmentPlan        Json?
-  // 鍚堝悓浜や粯鐗╀笉鍐嶄互缁撴瀯鍖?JSON 瀛? 瀹為檯浜や粯鏂囦欢璧?Attachment.isDeliverable=true
-  // (admin / 绛捐浜?/ 璐熻矗浜?涓夎€呬箣涓€ 鎵嶈兘涓婁紶; 璇﹁ server/storage/presign.ts assertCanManageDeliverables)
+  // 合同交付物不再以结构化 JSON 存; 实际交付文件走 Attachment.isDeliverable=true
+  // (admin / 签订人 / 负责人 三者之一 才能上传; 详见 server/storage/presign.ts assertCanManageDeliverables)
   status                 String    @default("DRAFT") // DRAFT | ACTIVE | CLOSED
   ownerUserId            String
   signerId               String
   reviewerId             String?
   reviewAt               DateTime? @db.Timestamptz(6)
   reviewComment          String?
-  // 鍚堝悓澶囨敞: 鑷敱鏂囨湰, 璺?reviewComment (瀹℃壒鎰忚) 鍖哄垎; 涓嶅弬涓庣姸鎬佹満/瀹℃壒娴?
+  // 合同备注: 自由文本, 跟 reviewComment (审批意见) 区分; 不参与状态机/审批流
   remark                 String?
   attachments            Json
   completionInvoiceRatio Decimal   @default(0.95) @db.Decimal(4, 2)
-  // legacy-fineui.mjs 杩佺Щ鏃舵妸 ContractAmount<=0 鐨勫悎鍚?totalAmount 鍐欐垚 0.01 鍗犱綅鍊?
-  // 杩欓噷鏍?true 璁╃粺璁?鍒楄〃榛樿鎺掗櫎(鍙粡 includeLegacyZeroAmount=true 鏄惧紡鍖呭惈). 璇﹁ migration 20260705.
+  // legacy-fineui.mjs 迁移时把 ContractAmount<=0 的合同 totalAmount 写成 0.01 占位值,
+  // 这里标 true 让统计/列表默认排除(可经 includeLegacyZeroAmount=true 显式包含). 详见 migration 20260705.
   isLegacyZeroAmount    Boolean   @default(false)
   createdAt              DateTime  @default(now()) @db.Timestamptz(6)
   updatedAt              DateTime  @updatedAt @db.Timestamptz(6)
@@ -427,7 +428,7 @@ model Invoice {
   applyDate          DateTime  @db.Timestamptz(6)
   expectedIssueDate  DateTime? @db.Timestamptz(6)
   actualIssueDate    DateTime? @db.Timestamptz(6)
-  // 鍚堝悓绾﹀畾浠樻鏃?璐﹂緞 basis=due 鐢?;涓?null 鏃跺洖閫€鍒?actualIssueDate 璁￠緞
+  // 合同约定付款日(账龄 basis=due 用);为 null 时回退到 actualIssueDate 计龄
   dueDate            DateTime? @db.Timestamptz(6)
   titleType          String // COMPANY | PERSONAL
   titleName          String
@@ -492,7 +493,7 @@ model Payment {
   amount          Decimal   @db.Decimal(18, 2)
   receivedAt      DateTime  @db.Timestamptz(6)
   method          String // BANK_TRANSFER | CHECK | CASH | WECHAT | ALIPAY | OTHER
-  bankRefNo       String? // 鍘?@unique锛汣ONFIRMED 鍞竴鐢?service 鏍￠獙锛圥LANNED 鍏佽閲嶅锛?
+  bankRefNo       String? // 去 @unique；CONFIRMED 唯一由 service 校验（PLANNED 允许重复）
   bankName        String?
   remark          String?
   status          String    @default("PLANNED") // PLANNED | CONFIRMED | RECONCILED | REFUNDED | CANCELLED
@@ -527,8 +528,8 @@ model Message {
   createdAt      DateTime    @default(now()) @db.Timestamptz(6)
 
   @@index([receiverUserId, readAt])
-  // 鍘婚噸鏌ヨ:`type + receiverUserId + createdAt + JSON link.id`
-  // 杩欎釜澶嶅悎绱㈠紩鎶婃壂鎻忔敹鏁涘埌"浠婂ぉ + 璇ョ敤鎴?+ 璇ョ被鍨?鐨勫皬绐楀彛,JSON 璺緞鍐嶄簩娆¤繃婊?
+  // 去重查询:`type + receiverUserId + createdAt + JSON link.id`
+  // 这个复合索引把扫描收敛到"今天 + 该用户 + 该类型"的小窗口,JSON 路径再二次过滤
   @@index([type, receiverUserId, createdAt])
 }
 
@@ -561,8 +562,8 @@ model OperationLog {
   action       String
   diff         Json?
   ip           String?
-  // 瀹¤鎵╁睍瀛楁:UA / 璇锋眰 ID / HTTP method/path / 鐘舵€?/ 澶辫触鍘熷洜
-  // 瀛楁瀹氫箟涓庤縼绉?prisma/migrations/20260622_operation_log_audit_fields 鍚屾
+  // 审计扩展字段:UA / 请求 ID / HTTP method/path / 状态 / 失败原因
+  // 字段定义与迁移 prisma/migrations/20260622_operation_log_audit_fields 同步
   userAgent    String?
   requestId    String?
   method       String?
@@ -583,9 +584,9 @@ model Dictionary {
   category   String
   code       String
   label      String
-  // 鑷紩鐢?鏀寔鏍戝舰瀛楀吀 (濡?REGION: 鐪?甯?鍖?琛楅亾)
-  // 鍚?category 鍐?parentCode 寮曠敤涓婄骇 code,椤剁骇涓?null
-  // 涓?@@unique([category, code]) 鑱斿悎淇濊瘉 (category, parentCode, code) 鍦ㄥ悓涓€瀛楀吀鍐呭敮涓€
+  // 自引用:支持树形字典 (如 REGION: 省/市/区/街道)
+  // 同 category 内 parentCode 引用上级 code,顶级为 null
+  // 与 @@unique([category, code]) 联合保证 (category, parentCode, code) 在同一字典内唯一
   parentCode String?
   sort       Int      @default(0)
   isActive   Boolean  @default(true)
@@ -598,12 +599,12 @@ model Dictionary {
   @@index([category, parentCode])
 }
 
-// 閮ㄩ棬绠＄悊锛堟爲褰㈣嚜寮曠敤锛?
-// 1b: 骞抽摵 / 鏍戝舰閫?鏍戝舰
-// - parentId 鑷垜寮曠敤褰㈡垚浠绘剰灞傜骇
-// - code 涓氬姟鍞竴,濡?涓氬姟閮?/ 涓氬姟涓€閮?/ 涓氬姟浜岄儴
-// - isActive=false 涓哄仠鐢?涓氬姟鏌ヨ鑷姩杩囨护
-// - members 鐢?User.departmentId 鍙嶅悜鍏宠仈璁℃暟
+// 部门管理（树形自引用）
+// 1b: 平铺 / 树形选 树形
+// - parentId 自我引用形成任意层级
+// - code 业务唯一,如 业务部 / 业务一部 / 业务二部
+// - isActive=false 为停用,业务查询自动过滤
+// - members 由 User.departmentId 反向关联计数
 model Department {
   id        String       @id @default(cuid())
   code      String       @unique
@@ -631,9 +632,9 @@ model Sequence {
 }
 
 // =====================================================
-// Attachments (MinIO 瀵硅薄瀛樺偍绱㈠紩)
-// - objectKey 鍞竴,鐪熷疄浜岃繘鍒跺瓨 MinIO
-// - soft delete: deletedAt 涓嶄负 null 瑙嗕负宸插垹,MinIO 瀵硅薄淇濈暀
+// Attachments (MinIO 对象存储索引)
+// - objectKey 唯一,真实二进制存 MinIO
+// - soft delete: deletedAt 不为 null 视为已删,MinIO 对象保留
 // =====================================================
 model Attachment {
   id                     String                @id @default(cuid())
@@ -650,16 +651,16 @@ model Attachment {
   invoice                Invoice?              @relation("InvoiceAttachments", fields: [invoiceId], references: [id], onDelete: SetNull)
   employeeProfileId      String?
   employeeProfile        EmployeeProfile?      @relation("EmployeeProfileAttachments", fields: [employeeProfileId], references: [id], onDelete: SetNull)
-  // 鍙嶅悜锛氬憳宸ュご鍍?(1:1)
+  // 反向：员工头像 (1:1)
   avatarOfProfile        EmployeeProfile?      @relation("EmployeeProfileAvatar")
-  // 鍙嶅悜锛氳瘉涔﹂檮浠?(1:N)
+  // 反向：证书附件 (1:N)
   certificateAttachments EmployeeCertificate[] @relation("CertificateAttachment")
-  // 鍚堝悓浜や粯鐗╅檮浠舵爣璁? true 琛ㄧず璇ラ檮浠舵槸鍚堝悓璇︽儏"浜や粯鐗?tab 涓婁紶鐨勪氦浠樻枃浠?(鎶ュ憡/璇佷功/鍩硅鏉愭枡 绛?,
-  //   鍐欐潈闄愪粎 admin / 绛捐浜?/ 璐熻矗浜?(assertCanManageDeliverables);
-  // false 琛ㄧず鍚堝悓閫氱敤闄勪欢 (璧?闄勪欢"tab, 娌跨敤 admin / 涓婁紶鑰?鍒犻櫎瑙勫垯)
+  // 合同交付物附件标记: true 表示该附件是合同详情"交付物"tab 上传的交付文件 (报告/证书/培训材料 等),
+  //   写权限仅 admin / 签订人 / 负责人 (assertCanManageDeliverables);
+  // false 表示合同通用附件 (走"附件"tab, 沿用 admin / 上传者 删除规则)
   isDeliverable          Boolean               @default(false)
-  // 闄勪欢鍒嗙被: GENERAL(榛樿閫氱敤) / AVATAR(澶村儚) / ID_CARD_FRONT/BACK(韬唤璇佹鍙嶉潰) / CERTIFICATE(璇佷功鎵弿浠?
-  // 鍐欏叆鐢?/api/files/presign-upload 鐨?body.category 鍐冲畾;璇诲彇鎸?category 杩囨护
+  // 附件分类: GENERAL(默认通用) / AVATAR(头像) / ID_CARD_FRONT/BACK(身份证正反面) / CERTIFICATE(证书扫描件)
+  // 写入由 /api/files/presign-upload 的 body.category 决定;读取按 category 过滤
   category               String                @default("GENERAL")
   uploadedAt             DateTime              @default(now()) @db.Timestamptz(6)
   deletedAt              DateTime?             @db.Timestamptz(6)
@@ -673,12 +674,12 @@ model Attachment {
 }
 
 // =====================================================
-// 鍌敹璁板綍
-//   - 涓?Invoice 1:N (cascade delete, 鍙戠エ鍒犻櫎鍒欏偓鏀惰褰曚竴璧峰垹)
-//   - 涓?User N:1 (actor 璁板綍璋佸垱寤? restrict 闃叉 actor 璇垹瀵艰嚧鍘嗗彶澶变富)
-//   - status: CONTACTED(宸茶仈绯? | PROMISED(瀹㈡埛鎵胯) | DISPUTED(浜夎) | LEGAL(娉曞姟浠嬪叆)
-//   - promisedDate: 瀹㈡埛鎵胯浠樻鏃?鍙┖,鍙湁 PROMISED 鏃跺～)
-//   - lastContactAt: 鏈€杩戜竴娆¤仈绯绘椂闂?鐢ㄤ簬"璺濅笂娆¤窡杩?N 澶?鎻愰啋)
+// 催收记录
+//   - 与 Invoice 1:N (cascade delete, 发票删除则催收记录一起删)
+//   - 与 User N:1 (actor 记录谁创建, restrict 防止 actor 误删导致历史失主)
+//   - status: CONTACTED(已联系) | PROMISED(客户承诺) | DISPUTED(争议) | LEGAL(法务介入)
+//   - promisedDate: 客户承诺付款日(可空,只有 PROMISED 时填)
+//   - lastContactAt: 最近一次联系时间(用于"距上次跟进 N 天"提醒)
 //   - channel: PHONE | WECHAT | EMAIL | VISIT
 // =====================================================
 model DunningNote {
@@ -701,28 +702,28 @@ model DunningNote {
 }
 
 // =====================================================
-// AppRelease (搴旂敤鏇存柊璁板綍 / 鍙戝竷鏃ュ織)
-//   - 椤圭洰姣忔鍙戠増鍚?绠＄悊鍛樺湪姝よ褰?鏈鏇存柊鍐呭/淇/浼樺寲"銆?
-//   - 鐢ㄦ埛鐧诲綍鍚?鑻ュ瓨鍦?publishedAt 鏅氫簬璇ョ敤鎴蜂笂娆″凡璇绘椂闂寸殑 release,
-//     鍦?DashboardShell 寮瑰嚭鏇存柊璇存槑(瑙?components/release-popup.tsx)銆?
-//   - AppReleaseRead: per-user 宸茶鏃堕棿;鍚屼竴 release + user 鍞竴,閬垮厤閲嶅璁℃暟銆?
-//   - 涓?Announcement 鐨勫尯鍒?
-//       * Announcement 鏄竴娆℃€у叕鍛?(鏈夌敓鏁堟湡 / 鐩爣瑙掕壊 / 缃《)
-//       * AppRelease 鏄竴鏉″彂鐗堟棩蹇?(鎸?publishedAt 鍊掑簭灞曠ず,鍏ㄥ憳鍙)
-//   - 涓嶆寕 RLS: 鎵€鏈夌櫥褰曠敤鎴烽兘搴旇鐪嬪埌鍏ㄩ儴 release(鎸?publishedAt + 宸茶鐘舵€?
-//     鍐冲畾 popup 鏄惁寮瑰嚭,涓嶉渶瑕佽绾ч殧绂?銆?
+// AppRelease (应用更新记录 / 发布日志)
+//   - 项目每次发版后,管理员在此记录"本次更新内容/修复/优化"。
+//   - 用户登录后,若存在 publishedAt 晚于该用户上次已读时间的 release,
+//     在 DashboardShell 弹出更新说明(见 components/release-popup.tsx)。
+//   - AppReleaseRead: per-user 已读时间;同一 release + user 唯一,避免重复计数。
+//   - 与 Announcement 的区别:
+//       * Announcement 是一次性公告 (有生效期 / 目标角色 / 置顶)
+//       * AppRelease 是一条发版日志 (按 publishedAt 倒序展示,全员可见)
+//   - 不挂 RLS: 所有登录用户都应该看到全部 release(按 publishedAt + 已读状态
+//     决定 popup 是否弹出,不需要行级隔离)。
 // =====================================================
 model AppRelease {
   id            String    @id @default(cuid())
-  // 鐗堟湰鍙?濡?"v0.7.0";鍏佽鑷敱濉啓,浣嗘湰椤圭洰榛樿鎸?package.json 鍚屾銆?
+  // 版本号,如 "v0.7.0";允许自由填写,但本项目默认按 package.json 同步。
   version       String    @db.VarChar(50)
   title         String    @db.VarChar(200)
-  // 姒傝:鍗＄墖/鍒楄〃鐨?1-2 琛岀畝浠?<=500 瀛楃)
+  // 概要:卡片/列表的 1-2 行简介(<=500 字符)
   summary       String    @db.VarChar(500)
-  // 璇︽儏:鏀寔鎹㈣鐨?Markdown 鏂囨湰(<=10000),鍦ㄥ脊绐?璇︽儏椤电敤鐧藉悕鍗曟覆鏌撱€?
+  // 详情:支持换行的 Markdown 文本(<=10000),在弹窗/详情页用白名单渲染。
   content       String    @db.VarChar(10000)
-  // 鏄惁"閲嶈"鏇存柊:important=true 鏃?鍗充娇宸茶,椤堕儴浠嶅睍绀虹孩鐐规彁绀虹敤鎴峰洖椤?
-  // (popup 鐨勮瑙夋潈閲嶄笉鍚? important 鈫?澶у脊绐? normal 鈫?灏忔彁绀?
+  // 是否"重要"更新:important=true 时,即使已读,顶部仍展示红点提示用户回顾
+  // (popup 的视觉权重不同: important → 大弹窗, normal → 小提示)
   important     Boolean   @default(false)
   publishedAt   DateTime  @default(now()) @db.Timestamptz(6)
   publishedById String
@@ -732,10 +733,10 @@ model AppRelease {
   deletedAt     DateTime? @db.Timestamptz(6)
   reads         AppReleaseRead[]
 
-  // 鏉ユ簮:MANUAL 绠＄悊鍛樻墜鏁?GIT_COMMITS 浠?git log 鑷姩鐢熸垚 (scripts/release/generate.ts)
-  // - MANUAL 涓烘棫鏁版嵁 / 绱ф€ヨˉ涓佺殑鍏煎鍊?鏂扮増鏈簲浼樺厛鐢?GIT_COMMITS
-  // - gitFrom/gitTo 璁板綍璇?release 瑕嗙洊鐨?commit 鍖洪棿(鍙┖:鎵嬫暡鐨?release 娌℃簮)
-  // - gitCommitCount 鐢ㄤ簬鍒楄〃灞曠ず"鍩轰簬 N 涓?commit",杈呭姪瀹¤
+  // 来源:MANUAL 管理员手敲;GIT_COMMITS 从 git log 自动生成 (scripts/release/generate.ts)
+  // - MANUAL 为旧数据 / 紧急补丁的兼容值,新版本应优先用 GIT_COMMITS
+  // - gitFrom/gitTo 记录该 release 覆盖的 commit 区间(可空:手敲的 release 没源)
+  // - gitCommitCount 用于列表展示"基于 N 个 commit",辅助审计
   source          String    @default("MANUAL")
   gitFrom         String?   @db.VarChar(40)
   gitTo           String?   @db.VarChar(40)
@@ -747,9 +748,9 @@ model AppRelease {
   @@index([source])
 }
 
-// 鐢ㄦ埛瀵逛竴鏉?release 鐨?宸茶"璁板綍銆?
-// - unique(userId, releaseId) 闃查噸澶?
-// - 涓嶆寕 deletedAt: 鐢ㄦ埛鎾ら攢宸茶 = 鍒犺;鏃犻渶杞垹(瀹¤鎰忎箟涓嶅ぇ)銆?
+// 用户对一条 release 的"已读"记录。
+// - unique(userId, releaseId) 防重复;
+// - 不挂 deletedAt: 用户撤销已读 = 删行;无需软删(审计意义不大)。
 model AppReleaseRead {
   id        String     @id @default(cuid())
   userId    String
@@ -761,4 +762,63 @@ model AppReleaseRead {
   @@unique([userId, releaseId])
   @@index([userId, readAt])
   @@index([releaseId])
+}
+
+// =====================================================
+// 报表中心 (Report Center)
+// =====================================================
+model ReportDefinition {
+  id            String   @id @default(cuid())
+  code          String   @unique
+  name          String
+  description   String?
+  // FINANCIAL | BUSINESS | PERFORMANCE | CUSTOM
+  type          String
+  // MONTH | QUARTER | YEAR | CUSTOM
+  periodType    String
+  // 默认指标列表，JSON 数组
+  defaultMetrics Json
+  // 可选维度列表，JSON 数组
+  dimensions    Json     @default("[]")
+  isActive      Boolean  @default(true)
+  sortOrder     Int      @default(0)
+  createdAt     DateTime @default(now()) @db.Timestamptz(6)
+  updatedAt     DateTime @updatedAt @db.Timestamptz(6)
+  deletedAt     DateTime? @db.Timestamptz(6)
+
+  snapshots ReportSnapshot[]
+
+  @@index([type])
+  @@index([isActive, sortOrder])
+}
+
+model ReportSnapshot {
+  id            String   @id @default(cuid())
+  definitionId  String
+  definition    ReportDefinition @relation(fields: [definitionId], references: [id], onDelete: Cascade)
+  // MONTH | QUARTER | YEAR | CUSTOM
+  periodType    String
+  // 展示用周期标签，如"2026年6月"
+  periodLabel   String
+  // 实际日期范围
+  from          DateTime @db.Timestamptz(6)
+  to            DateTime @db.Timestamptz(6)
+  // 当前实现同步生成并直接写 READY；PENDING/FAILED/STALE 为保留字段，供后续异步生成或 staleness 标记使用
+  status        String   @default("READY")
+  // 快照结果
+  payload       Json
+  // 源数据版本摘要，用于判断是否需要重算
+  hash          String?
+  generatedById String
+  generatedBy   User     @relation(fields: [generatedById], references: [id], onDelete: Restrict)
+  generatedAt   DateTime @default(now()) @db.Timestamptz(6)
+  expiresAt     DateTime? @db.Timestamptz(6)
+  createdAt     DateTime @default(now()) @db.Timestamptz(6)
+  updatedAt     DateTime @updatedAt @db.Timestamptz(6)
+  deletedAt     DateTime? @db.Timestamptz(6)
+
+  @@unique([definitionId, periodType, periodLabel])
+  @@index([definitionId, status])
+  @@index([generatedAt])
+  @@index([deletedAt])
 }

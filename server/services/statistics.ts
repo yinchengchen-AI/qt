@@ -169,7 +169,7 @@ export type AgingQuery = {
   page?: number;
   pageSize?: number;
   sort?: "daysOverdue:desc" | "amount:desc" | "customerName:asc";
-  // 统计 / 报表:按发票开具/到期日期范围过滤
+  // 报表中心:按发票开具/到期日期范围过滤
   from?: Date;
   to?: Date;
 };
@@ -263,7 +263,7 @@ export async function getInvoiceAging(
     const existing = (baseWhere.contract ?? {}) as Prisma.ContractWhereInput;
     baseWhere.contract = { ...existing, ownerUserId: query.ownerUserId } as Prisma.InvoiceWhereInput['contract'];
   }
-  // 统计 / 报表:按日期范围过滤发票开具/到期日
+  // 报表中心:按日期范围过滤发票开具/到期日
   if (query.from || query.to) {
     const dateFilter: Prisma.DateTimeFilter = {};
     if (query.from) dateFilter.gte = query.from;
@@ -927,7 +927,7 @@ export async function getEmployeePerformance(user: SessionUser, targetUserId?: s
 
 
 // 5.1 签约明细（按签约人汇总的合同级明细）
-// 用途:员工业绩报表详情页 / 报表 PERFORMANCE 报告的"签约明细"小节。
+// 用途:员工业绩报表详情页 / 报表中心 PERFORMANCE 报告的"签约明细"小节。
 // 字段对应 2026年5月业务明细.pdf 模板:
 //   所属区域 | 企业名称 | 服务项目 | 签约人 | 合同金额
 // - 按签约人 (signerId) 分组,组内按 signDate 升序排序
