@@ -373,6 +373,9 @@ model Contract {
   remark                 String?
   attachments            Json
   completionInvoiceRatio Decimal   @default(0.95) @db.Decimal(4, 2)
+  // legacy-fineui.mjs 迁移时把 ContractAmount<=0 的合同 totalAmount 写成 0.01 占位值,
+  // 这里标 true 让统计/列表默认排除(可经 includeLegacyZeroAmount=true 显式包含). 详见 migration 20260705.
+  isLegacyZeroAmount    Boolean   @default(false)
   createdAt              DateTime  @default(now()) @db.Timestamptz(6)
   updatedAt              DateTime  @updatedAt @db.Timestamptz(6)
   createdById            String
@@ -391,6 +394,7 @@ model Contract {
   @@index([ownerUserId])
   @@index([signDate])
   @@index([signerId])
+  @@index([isLegacyZeroAmount])
 }
 
 model ContractReviewLog {

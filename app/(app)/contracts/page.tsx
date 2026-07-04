@@ -85,13 +85,27 @@ export default function ContractsPage() {
           searchRef.current = {
             keyword: params.keyword,
             status: params.status,
-            customerId: params.customerId
+            customerId: params.customerId,
+            includeLegacyZeroAmount: params.includeLegacyZeroAmount
           };
           return makeListRequest<Row>("/api/contracts")(params);
         }}
         columns={[
           // 搜索专属列:仅在 ProTable 搜索表单里出现,数据来自 params.keyword
           { title: "关键词", dataIndex: "keyword", hideInTable: true, fieldProps: { placeholder: "合同号 / 标题 / 客户名" } },
+          {
+            title: "含历史占位合同",
+            dataIndex: "includeLegacyZeroAmount",
+            hideInTable: true,
+            valueType: "switch",
+            initialValue: false,
+            fieldProps: {
+              // antd Switch 的 checked 会被 ProTable 转成 true / undefined, 后端 schema 接 zod string
+              // 兼容 true / 1 即可; 默认 false 列表不显示 legacy 0.01 占位合同
+              checkedChildren: "显示",
+              unCheckedChildren: "隐藏"
+            }
+          },
           {
             title: "合同号",
             dataIndex: "contractNo",

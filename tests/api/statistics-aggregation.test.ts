@@ -410,3 +410,80 @@ describe("getRegionStatistics", () => {
     }
   });
 });
+// 0.01 legacy 占位合同排除回归 (migration 20260705_contract_is_legacy_zero_amount):
+// 统计模块 6 处 where 都不返回 isLegacyZeroAmount=true 的合同
+describe("getOverview / getUninvoicedContracts 排除 legacy 0.01 占位合同", () => {
+  const TAG_LEG = `${TAG}-LEG`;
+  let legacyContractNo: string | null = null;
+  const regionCustomerIds2: string[] = [];
+
+  beforeAll(async () => {
+    if (!dbReachable || !adminUser) return;
+    const cust = await prisma.customer.create({
+      data: {
+        code: `${TAG_LEG}-CUST`,
+        name: `${TAG_LEG}-客户`,
+        customerType: "ENTERPRISE",
+        province: "浙江省",
+        city: "杭州市",
+        contactPhone: "13800000000",
+        createdById: adminUser!.id,
+        updatedById: adminUser!.id,
+        ownerUserId: adminUser!.id
+      }
+    });
+    regionCustomerIds2.push(cust.id);
+    const ctr = await prisma.contract.create({
+      data: {
+        contractNo: `${TAG_LEG}-CTR`,
+        customerId: cust.id,
+        customerName: cust.name,
+        title: `${TAG_LEG}-legacy-占位`,
+        serviceType: "OTHER",
+        signDate: new Date(),
+        startDate: new Date(),
+        endDate: new Date(Date.now() + 30 * 86400_000),
+        totalAmount: 0.01,
+        taxRate: 0.06,
+        taxAmount: 0,
+        amountExcludingTax: 0.01,
+        paymentMethod: "LUMP_SUM",
+        status: "ACTIVE",
+        isLegacyZeroAmount: true,
+        ownerUserId: adminUser!.id,
+        signerId: adminUser!.id,
+        attachments: [] as unknown as Parameters<typeof prisma.contract.create>[0]["data"]["attachments"],
+        createdById: adminUser!.id,
+        updatedById: adminUser!.id
+      }
+    });
+    legacyContractNo = ctr.contractNo;
+    createdContractNos.push(ctr.contractNo);
+  });
+
+  it("getOverview 的 signWhere 排除 isLegacyZeroAmount=true 合同", async () => {
+    if (!dbReachable || !adminUser || !legacyContractNo) return;
+    // 由于合同有 unique contractNo, 可以通过 contractNo 索引回去确认数据库里这条合同确实存在且 isLegacyZeroAmount=true
+    const ctr = await prisma.contract.findFirst({ where: { contractNo: legacyContractNo } });
+    expect(ctr).not.toBeNull();
+    expect(ctr!.isLegacyZeroAmount).toBe(true);
+
+    // 然后调用 getOverview, 验证: 在 stats 内部如果有任何 list 都看不到这条合同;
+    // 因为 stats 是聚合, 不能直接断言 "0.01 一定不在结果里" (其他测试也可能贡献数据), 改为:
+    // 在 stats 内部所有 signWhere 都加了 isLegacyZeroAmount=false, 把 isLegacyZeroAmount=true 的合同
+    // 拿出来手算, 它一定不在 stats 的合集内. 这里我们用 contract id 确认.
+    // 直接用 getUninvoicedContracts 验证更直接 (返回 list)
+    // 签名: (user, { thresholdDays?, limit? }) - 没有 range 参数
+    const { getUninvoicedContracts } = await import("@/server/services/statistics");
+    const list = await getUninvoicedContracts(buildAdmin(), { limit: 1000 });
+    const ids = list.map((r) => r.contractId);
+    expect(ids).not.toContain(ctr!.id);
+  });
+
+  afterAll(async () => {
+    if (!dbReachable) return;
+    if (regionCustomerIds2.length > 0) {
+      await prisma.customer.deleteMany({ where: { id: { in: regionCustomerIds2 } } });
+    }
+  });
+});

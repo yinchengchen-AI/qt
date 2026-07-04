@@ -99,4 +99,6 @@ export const contractListQuerySchema = z.object({
   keyword: z.string().optional(),
   status: z.string().optional(),
   customerId: z.string().optional(),
+  // 含历史占位合同: 默认 false, 列表隐藏 legacy-fineui.mjs 写的 0.01 占位合同; 审计/对账时手动打开
+  includeLegacyZeroAmount: z.string().optional(),
 });

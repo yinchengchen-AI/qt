@@ -26,12 +26,23 @@ function assertDateOrder(start?: string | Date | null, end?: string | Date | nul
 
 export async function listContracts(
   user: SessionUser,
-  params: { page: number; pageSize: number; keyword?: string; status?: string; customerId?: string }
+  params: {
+    page: number;
+    pageSize: number;
+    keyword?: string;
+    status?: string;
+    customerId?: string;
+    // 含历史占位合同: 1/true 显示 legacy 0.01; 默认隐藏. 跟 statistics 保持一致始终排除
+    includeLegacyZeroAmount?: boolean | string;
+  }
 ) {
   requirePermission(user.roleCode, RESOURCE.CONTRACT, ACTION.READ);
-  const { page, pageSize, keyword, status, customerId } = params;
+  const { page, pageSize, keyword, status, customerId, includeLegacyZeroAmount } = params;
+  const includeLegacy = includeLegacyZeroAmount === true || includeLegacyZeroAmount === "true" || includeLegacyZeroAmount === "1";
   const statusList = parseStatusList(status);
   const where: Prisma.ContractWhereInput = {
+    // 默认排除 legacy 0.01 占位合同; 显式 includeLegacyZeroAmount=true 时全量
+    ...(includeLegacy ? {} : { isLegacyZeroAmount: false }),
     ...ownerEq(user),
     deletedAt: null,
     ...(statusList ? { status: { in: statusList } } : {}),

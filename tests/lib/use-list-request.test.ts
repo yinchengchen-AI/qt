@@ -25,6 +25,8 @@ describe("use-list-request KNOWN_KEYS 白名单", () => {
       "customerId",
       "contractId",
       "invoiceId",
+      // migration 20260705: 合同列表 opt-in 显式包含 legacy 0.01 占位合同; 默认隐藏
+      "includeLegacyZeroAmount",
     ];
     for (const k of expected) {
       expect(KNOWN_KEYS.has(k), `KNOWN_KEYS 应包含 ${k}`).toBe(true);

@@ -409,6 +409,9 @@ async function main() {
 
       // 金额
       let totalAmount = Number(s.ContractAmount) || 0;
+      // legacy-fineui 占位合同标记: totalAmount<=0 时把合同额改成 0.01 绕开 schema 校验, 同时打上
+      // isLegacyZeroAmount=true 让业务列表/统计默认排除 (新 migration 20260705_contract_is_legacy_zero_amount 加字段).
+      const isLegacyZeroAmount = totalAmount <= 0;
       if (totalAmount <= 0) {
         totalAmount = 0.01;
         amountZeroFixed++;
@@ -440,9 +443,11 @@ async function main() {
       const baseRemark = remarkParts.join("\n");
 
       if (!DRY_RUN) {
+        // update 块补 isLegacyZeroAmount: 重跑迁移时把已经入库但 totalAmount=0.01 的合同打上 true
+        // (注意: 业务真实 0.01 合同不会被 legacy-fineui 处理, 不会被这条分支扫到)
         const contract = await pg.contract.upsert({
           where: { contractNo },
-          update: {},
+          update: { isLegacyZeroAmount },
           create: {
             contractNo,
             customerId,
@@ -461,6 +466,7 @@ async function main() {
             ownerUserId: importer.id,
             attachments,
             installmentPlan: baseRemark ? { legacyRemark: baseRemark } : undefined,
+            isLegacyZeroAmount,
             createdById: importer.id,
             updatedById: importer.id
           }

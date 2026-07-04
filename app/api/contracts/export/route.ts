@@ -19,6 +19,7 @@ const query = z.object({
   keyword: z.string().optional(),
   status: z.string().optional(),
   customerId: z.string().optional(),
+  includeLegacyZeroAmount: z.string().optional(),
 });
 
 export async function GET(req: Request) {

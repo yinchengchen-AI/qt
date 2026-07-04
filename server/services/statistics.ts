@@ -28,7 +28,7 @@ function daysBetween(later: Date, earlier: Date): number {
 export async function getOverview(user: SessionUser, range: DateRange) {
   requirePermission(user.roleCode, RESOURCE.STATISTICS, ACTION.READ);
   const where = { deletedAt: null, ...ownerEq(user) };
-  const signWhere = { ...where, status: { in: ["ACTIVE", "CLOSED"] }, signDate: dateWhere(range) };
+  const signWhere = { ...where, status: { in: ["ACTIVE", "CLOSED"] }, isLegacyZeroAmount: false, signDate: dateWhere(range) };
   const [contractAgg, invoiceAgg, paymentAgg] = await Promise.all([
     prisma.contract.aggregate({ where: signWhere, _sum: { totalAmount: true }, _count: { _all: true } }),
     prisma.invoice.aggregate({
@@ -83,6 +83,7 @@ export async function getTimeSeries(user: SessionUser, range: DateRange) {
       where: {
         deletedAt: null,
         status: { in: ["ACTIVE", "CLOSED"] },
+        isLegacyZeroAmount: false,
         signDate: { gte: from, lte: to },
         ...ownerEq(user)
       },
@@ -606,6 +607,7 @@ export async function getUninvoicedContracts(
     where: {
       deletedAt: null,
       status: "ACTIVE",
+      isLegacyZeroAmount: false,
       ...(ownerEq(user) as Prisma.ContractWhereInput)
     },
     select: {
@@ -750,7 +752,7 @@ async function getInvoiceAgingForDate(
 // range 可选:不传则全量,传则按 signDate / actualIssueDate / receivedAt 同时过滤。
 export async function getTopCustomers(user: SessionUser, metric: "contract" | "payment" = "contract", limit = 10, range?: DateRange) {
   requirePermission(user.roleCode, RESOURCE.STATISTICS, ACTION.READ);
-  const signWhere = { deletedAt: null, status: { in: ["ACTIVE", "CLOSED"] }, ...(range ? { signDate: dateWhere(range) } : {}), ...ownerEq(user) };
+  const signWhere = { deletedAt: null, status: { in: ["ACTIVE", "CLOSED"] }, isLegacyZeroAmount: false, ...(range ? { signDate: dateWhere(range) } : {}), ...ownerEq(user) };
   const invoiceWhere = { deletedAt: null, status: "ISSUED", ...(range ? { actualIssueDate: dateWhere(range, "actualIssueDate") } : {}), ...(ownerViaContract(user) as Prisma.InvoiceWhereInput) };
   const paymentWhere = { deletedAt: null, status: { in: ["CONFIRMED", "RECONCILED"] }, ...(range ? { receivedAt: dateWhere(range, "receivedAt") } : {}), ...(ownerViaContract(user) as Prisma.PaymentWhereInput) };
   const [customers, contractRows, invoiceRows, paymentRows] = await Promise.all([
@@ -819,6 +821,7 @@ async function aggregatePerformance(owners: { id: string; name: string; employee
   const signWhere = {
     deletedAt: null,
     status: { in: ["ACTIVE", "CLOSED"] },
+    isLegacyZeroAmount: false,
     ...(range ? { signDate: dateWhere(range) } : {})
   };
   const invoiceWhere = {
@@ -1200,6 +1203,7 @@ export async function getRegionStatistics(user: SessionUser, range?: DateRange):
   const signWhere = {
     deletedAt: null,
     status: { in: ["ACTIVE", "CLOSED"] },
+    isLegacyZeroAmount: false,
     ...(range ? { signDate: dateWhere(range) } : {}),
     ...ownerEq(user)
   } as Prisma.ContractWhereInput;
