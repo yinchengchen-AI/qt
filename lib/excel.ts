@@ -43,7 +43,7 @@ export async function exportToXlsx<T extends Record<string, unknown>>(
 }
 
 /**
- * 多 sheet 导出: 报表中心用, 一个报表可能含多个独立的数据段
+ * 多 sheet 导出: 一个函数可包含多个独立的数据段
  * (例如 PERFORMANCE: 员工业绩汇总 + 签约明细)。
  * - 每个 section 独立 sheet, 表头加粗
  * - 单 sheet 内不强制列宽 (用各 column 的 width); 多个 sheet 不做跨表合计

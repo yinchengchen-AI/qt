@@ -31,7 +31,6 @@ import {
   AppstoreOutlined,
   AccountBookOutlined,
   IdcardOutlined,
-  FileTextOutlined,
 } from "@ant-design/icons";
 import type { RoleCode } from "@/types/enums";
 import { ACTION, RESOURCE, type Action, type Resource } from "@/lib/permissions";
@@ -98,19 +97,6 @@ const MENU: MenuItem[] = [
     children: [
       { path: "/invoices", name: "开票管理", permission: { resource: RESOURCE.INVOICE, action: ACTION.READ } },
       { path: "/payments", name: "回款管理", permission: { resource: RESOURCE.PAYMENT, action: ACTION.READ } }
-    ]
-  },
-  {
-    path: "/reports",
-    name: "报表中心",
-    icon: <FileTextOutlined />,
-    permission: { resource: RESOURCE.REPORT_CENTER, action: ACTION.READ },
-    children: [
-      { path: "/reports", name: "报表首页", permission: { resource: RESOURCE.REPORT_CENTER, action: ACTION.READ } },
-      { path: "/reports/FINANCIAL", name: "财务经营", permission: { resource: RESOURCE.REPORT_CENTER, action: ACTION.READ } },
-      { path: "/reports/BUSINESS", name: "业务经营", permission: { resource: RESOURCE.REPORT_CENTER, action: ACTION.READ } },
-      { path: "/reports/PERFORMANCE", name: "员工业绩", permission: { resource: RESOURCE.REPORT_CENTER, action: ACTION.READ } },
-      { path: "/reports/CUSTOM", name: "自定义报表", permission: { resource: RESOURCE.REPORT_CENTER, action: ACTION.READ } },
     ]
   },
   {
@@ -828,10 +814,6 @@ const CRUMB_LABEL: Record<string, string> = {
   "admin/trash": "回收站",
   invoices: "开票管理",
   payments: "回款管理",
-  reports: "报表中心",
-  FINANCIAL: "财务经营",
-  BUSINESS: "业务经营",
-  CUSTOM: "自定义报表",
   statistics: "统计分析",
   overview: "总览",
   aging: "账龄分析",
