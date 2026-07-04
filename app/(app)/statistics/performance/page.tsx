@@ -57,7 +57,8 @@ export default function PerformancePage() {
       const { from, to } = toDateRangeQuery(range);
       if (from) qs.set("from", from);
       if (to) qs.set("to", to);
-      const r = await fetch(`/api/statistics/employee-performance?${qs}`, { credentials: "include" });
+      // 改用签约人维度 (与 PDF 合计、抽屉明细同口径), xlsx 导出仍走原 owner 维度端点不受影响
+      const r = await fetch(`/api/statistics/employee-performance/by-signer?${qs}`, { credentials: "include" });
       const j = await r.json();
       if (j.code !== 0) throw new Error(j.message);
       setRows(j.data);
