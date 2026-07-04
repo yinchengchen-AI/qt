@@ -17,6 +17,8 @@ jobs:
           key: ${{ secrets.SERVER_SSH_KEY }}
           port: ${{ secrets.SERVER_PORT || 22 }}
           script: |
+            # 先停止旧实例释放内存，避免 build 阶段 OOM
+            sudo systemctl stop qt-app || true
             cd /opt/qt
             sudo -E ./scripts/prod/deploy.sh
           timeout: 600s
