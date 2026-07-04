@@ -2,8 +2,8 @@
 import { ProCard } from "@ant-design/pro-components";
 import { Column } from "@ant-design/charts";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Button, Col, DatePicker, Row, Space, App as AntdApp, Typography, Tag } from "antd";
-import { DownloadOutlined } from "@ant-design/icons";
+import { Button, Col, DatePicker, Row, Space, App as AntdApp, Typography, Tag, Drawer, Spin, Descriptions } from "antd";
+import { DownloadOutlined, FilePdfOutlined } from "@ant-design/icons";
 import dayjs from "dayjs";
 import { Page } from "@/components/page";
 import { PageHeader } from "@/components/page-header";
@@ -13,6 +13,7 @@ import { formatCompact, formatCurrency } from "@/lib/format";
 import { downloadExcel } from "@/lib/excel-client";
 import { useResponsive } from "@/lib/use-breakpoint";
 import { toDateRangeQuery } from "@/lib/date-range";
+import { openPrintWindow } from "@/lib/print-client";
 
 const { Text } = Typography;
 
@@ -67,6 +68,56 @@ export default function PerformancePage() {
 
   useEffect(() => { load(); }, [load]);
 
+  // 业绩明细抽屉：点击行时按 userId 拉明细
+  const [drawerUserId, setDrawerUserId] = useState<string | null>(null);
+  const [drawerLoading, setDrawerLoading] = useState(false);
+  const [drawerData, setDrawerData] = useState<{
+    signer: { id: string; name: string; employeeNo: string } | null;
+    rows: Array<{
+      contractId: string; contractNo: string; region: string;
+      customerName: string; serviceTypeLabel: string; signDate: string;
+      totalAmount: number;
+    }>;
+    totals: { contractCount: number; contractAmount: number; subtotalWan: number };
+  } | null>(null);
+
+  const openDrawer = useCallback(async (userId: string) => {
+    setDrawerUserId(userId);
+    setDrawerLoading(true);
+    try {
+      const qs = new URLSearchParams({ userId });
+      const { from, to } = toDateRangeQuery(range);
+      if (from) qs.set("from", from);
+      if (to) qs.set("to", to);
+      const r = await fetch(`/api/statistics/employee-performance/detail?${qs}`, { credentials: "include" });
+      const j = await r.json();
+      if (j.code !== 0) throw new Error(j.message);
+      setDrawerData(j.data);
+    } catch (e) {
+      message.error((e as Error).message);
+      setDrawerData(null);
+    } finally {
+      setDrawerLoading(false);
+    }
+  }, [range, message]);
+
+  const closeDrawer = () => {
+    setDrawerUserId(null);
+    setDrawerData(null);
+  };
+
+  const downloadPdf = () => {
+    const qs = new URLSearchParams();
+    const { from, to } = toDateRangeQuery(range);
+    if (from) qs.set("from", from);
+    if (to) qs.set("to", to);
+    try {
+      openPrintWindow(`/api/statistics/employee-performance/pdf?${qs}`);
+    } catch (e) {
+      message.error((e as Error).message);
+    }
+  };
+
   const download = async () => {
     const qs = new URLSearchParams({ type: "employee-performance" });
     const { from, to } = toDateRangeQuery(range);
@@ -111,6 +162,7 @@ export default function PerformancePage() {
               onChange={(v) => setRange(v as [dayjs.Dayjs, dayjs.Dayjs] | null)}
               allowClear
             />
+            <Button icon={<FilePdfOutlined />} onClick={downloadPdf}>导出 PDF</Button>
             <Button icon={<DownloadOutlined />} onClick={download}>导出 xlsx</Button>
           </Space>
         }
@@ -189,12 +241,14 @@ export default function PerformancePage() {
                       const invRate = r.contractAmount > 0 ? (r.invoiceAmount / r.contractAmount * 100) : 0;
                       const payRate = r.invoiceAmount > 0 ? (r.paymentAmount / r.invoiceAmount * 100) : 0;
                       return (
-                        <tr key={r.userId} style={{ borderBottom: "1px solid #f0f0f0" }}>
+                        <tr key={r.userId} style={{ borderBottom: "1px solid #f0f0f0", cursor: "pointer" }} onClick={() => openDrawer(r.userId)}>
                           <td style={{ padding: "10px 8px" }}>
                             {rankEmoji(i) || <Text type="secondary">{i + 1}</Text>}
                           </td>
                           <td style={{ padding: "10px 8px" }}>
-                            <Text strong>{r.name}</Text>
+                            <a onClick={(e) => { e.stopPropagation(); openDrawer(r.userId); }} style={{ color: "var(--ant-color-link, #1677ff)" }}>
+                              <Text strong>{r.name}</Text>
+                            </a>
                             <br />
                             <Text type="secondary" style={{ fontSize: 12 }}>{r.employeeNo}</Text>
                           </td>
@@ -223,6 +277,58 @@ export default function PerformancePage() {
           </div>
         </>
       )}
+
+      <Drawer
+        title={drawerData?.signer
+          ? `${drawerData.signer.name}（${drawerData.signer.employeeNo}）· 业绩明细`
+          : "业绩明细"}
+        open={drawerUserId !== null}
+        onClose={closeDrawer}
+        width={isMobile ? "100%" : 720}
+        destroyOnClose
+      >
+        {drawerLoading ? (
+          <div style={{ textAlign: "center", padding: 40 }}><Spin /></div>
+        ) : drawerData?.signer ? (
+          <>
+            <Descriptions size="small" column={isMobile ? 1 : 3} bordered style={{ marginBottom: 16 }}>
+              <Descriptions.Item label="合同份数">{drawerData.totals.contractCount}</Descriptions.Item>
+              <Descriptions.Item label="合同总额">{formatCurrency(drawerData.totals.contractAmount)}</Descriptions.Item>
+              <Descriptions.Item label="合计（万元）">{drawerData.totals.subtotalWan.toFixed(2)}</Descriptions.Item>
+            </Descriptions>
+            {drawerData.rows.length === 0 ? (
+              <EmptyState empty title="暂无合同明细" description="当前时间范围内该员工作为签约人没有合同" />
+            ) : (
+              <div style={{ overflowX: "auto" }}>
+                <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
+                  <thead>
+                    <tr style={{ borderBottom: "2px solid #f0f0f0", textAlign: "left" }}>
+                      <th style={{ padding: "8px" }}>所属区域</th>
+                      <th style={{ padding: "8px" }}>企业名称</th>
+                      <th style={{ padding: "8px" }}>服务项目</th>
+                      <th style={{ padding: "8px", textAlign: "right" }}>合同金额</th>
+                      <th style={{ padding: "8px", textAlign: "right" }}>签约日期</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {drawerData.rows.map((r) => (
+                      <tr key={r.contractId} style={{ borderBottom: "1px solid #f0f0f0" }}>
+                        <td style={{ padding: "8px" }}>{r.region}</td>
+                        <td style={{ padding: "8px" }}>{r.customerName}</td>
+                        <td style={{ padding: "8px" }}>{r.serviceTypeLabel}</td>
+                        <td style={{ padding: "8px", textAlign: "right" }}>{formatCurrency(r.totalAmount)}</td>
+                        <td style={{ padding: "8px", textAlign: "right" }}>{dayjs(r.signDate).format("YYYY-MM-DD")}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </>
+        ) : (
+          <EmptyState empty title="暂无数据" />
+        )}
+      </Drawer>
     </Page>
   );
 }
