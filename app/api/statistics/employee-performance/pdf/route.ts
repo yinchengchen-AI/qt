@@ -2,7 +2,7 @@
 // 模板与 2026年5月业务明细.pdf 1:1 对齐:
 //   - 6 列: 所属区域 | 企业名称 | 服务项目 | 签约人 | 合同金额 | (小计)
 //   - 同一签约人连续多行, 小计值写在「最后一笔合同行」第 6 列 (与原 PDF 视觉一致)
-//   - 末行无「全公司合计」加粗行, 全公司合计写在 note 区
+//   - 末行追加「全公司合计」加粗行, 金额列填合计 (元) + 第 6 列填合计 (万元)
 //   - 合同金额: 整数元 (原 PDF 无 .00 无 ¥); 小计/合计: 2 位小数万元
 //   - 跨页: 续表无表头 (与原 PDF 第 2 页结构一致)
 import { z } from "zod";
@@ -86,11 +86,20 @@ export async function GET(req: Request) {
           });
         }
       }
+      // 末行: 全公司合计 (深灰底加粗, 与原 PDF 末行 34.88 风格一致)
+      detailRows.push({
+        "所属区域": "",
+        "企业名称": `全公司合计 (${signerTotal.contractCount} 份合同)`,
+        "服务项目": `${summary.length} 名签约人`,
+        "签约人": "",
+        "合同金额": signerTotal.contractAmount,
+        "": fmtWan(signerTotal.contractAmount / 10_000)
+      });
 
       const signerRemaining = Math.max(signerTotal.contractAmount - signerTotal.paymentAmount, 0);
 
       const doc: PrintDoc = {
-        title: "员工业绩汇总",
+        title: "员工业绩汇总报表",
         subtitle: `按签约人分组 · 共 ${summary.length} 人`,
         periodLabel,
         mainRows: [
@@ -118,9 +127,8 @@ export async function GET(req: Request) {
               }
             ]
           : [],
-        // 全公司合计放在 note 区域, 模拟原 PDF 末行 34.88 风格
-        // 口径与明细表小计完全一致 (签约人维度), 数学自洽: Σ 各签约人小计 = 全公司合计
-        note: `全公司合计：${fmtWan(signerTotal.contractAmount / 10_000)} 万元`,
+        // 合计已嵌入明细表末行, 此处只做维度说明
+        note: `口径说明: 明细表按签约人 (signerId) 维度分组, 各小计 (万元) 与末行「全公司合计」同口径, 数学自洽 (Σ 各签约人小计 = 全公司合计)。`,
         signature: true
       };
       return new Response(renderPrintHtml(doc), {
