@@ -1,7 +1,7 @@
 # 杭州企泰安全科技 业务管理系统 (qt-biz)
 
 > 客户 / 合同 / 开票 / 回款 一体化管理,附件走 MinIO presigned 直传。
-> **当前版本: v0.8.1**(2026-07-04)
+> **当前版本: v0.8.2**(2026-07-04)
 > 详细设计见 [docs/DESIGN-v3.md](docs/DESIGN-v3.md),用户手册见 [docs/USER_MANUAL.md](docs/USER_MANUAL.md)。
 > 2026-07-04 增量同步: 全库代码审计 10 处 bug 修复 + 2 组单元测试已补到「最近更新」开头。
 
@@ -398,6 +398,26 @@ xlsx 导出走 `lib/excel.ts` + `exceljs`; 中文文件名通过 `attachmentHead
 
 ## 最近更新
 
+### v0.8.2(2026-07-04) 报表中心下线 + README 乱码修复
+
+> `9a48265` 那次 commit 在保存 README.md 时被文本编辑器把 UTF-8 简体内容写成 mojibake 链式乱码(8200+ 简体汉字几乎全部变成 U+92xx/U+93xx 区段繁体/日文汉字),本版本:
+> 1) 用 `git checkout 185b9c7 -- README.md` 从 v0.8.1 恢复正确内容;
+> 2) 把"报表中心下线"语义补到 changelog;
+> 3) 不动 `9a48265` 的代码层变更(4 张 Report* 表 / service / page / cron 等),只回滚 README 文档。
+
+**报表中心下线 (一)**:
+- 业务侧: 报表中心 (`ReportDefinition` / `ReportJob` / `ReportSnapshot` / `ReportSubscription` + 报表生成 / 快照 / 自定义周期 / 订阅) 改为在 `/statistics/reports` 由用户自助选指标与维度生成,后台不再自动跑报表
+- 数据层: 删 4 张 `Report*` 表 + `User.reportSnapshots` / `reportJobs` / `reportSubscriptions` 三个关联字段 + `MessageType.REPORT_READY` 枚举值
+- 应用层: 删 `server/services/report.ts` / `scripts/shared/backfill-report-snapshots.ts` / `lib/report-labels.ts` / `app/(app)/reports/page.tsx` / `app/(app)/reports/[code]/page.tsx`
+- 后续: 自助报表 `/statistics/reports` 跟进单独 commit
+
+**README 乱码修复 (二)**:
+- 根因: `9a48265` commit 提交时,`README.md` 被以错误编码写入 git blob(8200+ 简体汉字保存为 UTF-8 mojibake 形态,UTF-8 严格解码虽然通过但语义全部变成繁体/日文汉字)
+- 修复: 从 `185b9c7` (v0.8.1) 还原 blob;无任何代码改动,只动文档
+- 影响: 历史 blame 在 README 上会显示 `9a48265 -> v0.8.2 changelog`,追溯不会丢
+
+**版本号**: `0.8.1` -> `0.8.2`(patch bump,仅文档 + 数据层清理,无应用层 breaking 变更,无需 `prisma migrate deploy`)
+**部署说明**: 无 schema 变更,无新迁移;`prisma migrate deploy` 不需要跑(报表中心 4 张表在 `9a48265` 已随其临时 migration drop,生产侧若按 `9a48265` 部署过,无需重复操作)
 ### v0.8.1(2026-07-04) 代码审计修复: 状态机并发安全 + 金额不变式 + 客户端竞态防护
 
 > v0.8.0 报表中心上线后,对全项目做了一次代码审计,修复 10 个高优先级 bug,补充 2 组单元测试。本次覆盖 11 个文件,0 个新迁移,0 个 API 契约变更。
@@ -704,6 +724,7 @@ sudo systemctl restart crond
 
 ## 历史里程碑
 
+- **v0.8.2(2026-07-04)**: 报表中心下线(删 4 张 Report* 表 + 3 个 User 关联 + REPORT_READY 枚举 + service/page/lib) + README 乱码修复(从 v0.8.1 还原 blob, 0 代码改动)
 - **v0.8.0(2026-07-03)**: 报表中心 PDF 5 字段对齐 + Excel 多 sheet + 移除自动生成 (cron 删了, 走手动) + 文件名时间戳 (YYYY-MM-DD_HHMM)
 - **v0.6.0(2026-06-29)**:cron 静默失败 9 个月事故复盘 (242 个合同 269 万应收恢复) + reopen API + force 旁路 + cron-healthcheck 自检 + 强关 7/3/1 醒目文案 + postmortem reopen vs force 业务选择指南 + Timeline icon 对称 + serviceTypeLabel helper + by-region Tooltip
 - **v0.5.1+(2026-06-29)**:统计区间月度/季度/年度切换 + dashboard 客户统计口径重命名 + system actor seed + 合同 owner 默认值 + 证书页 bug + 迁移漂移恢复 + AI 团队配置 + 清理 18 个孤儿脚本/lib 文件
