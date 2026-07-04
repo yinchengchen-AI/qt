@@ -18,7 +18,6 @@ export const RESOURCE = {
   DEPARTMENT: "DEPARTMENT",
   DUNNING: "DUNNING",
   APP_RELEASE: "APP_RELEASE",
-  REPORT_CENTER: "REPORT_CENTER",
 } as const;
 export type Resource = (typeof RESOURCE)[keyof typeof RESOURCE];
 
@@ -44,8 +43,7 @@ const R_EXPORT: Action[] = ["READ", "EXPORT"];
 export const ROLE_PERMISSIONS: Record<RoleCode, Permission[]> = {
   ADMIN: Object.values(RESOURCE).map((resource) =>
     resource === RESOURCE.STATISTICS || resource === RESOURCE.CUSTOMER || resource === RESOURCE.CONTRACT ||
-    resource === RESOURCE.INVOICE || resource === RESOURCE.PAYMENT || resource === RESOURCE.DUNNING ||
-    resource === RESOURCE.REPORT_CENTER
+    resource === RESOURCE.INVOICE || resource === RESOURCE.PAYMENT || resource === RESOURCE.DUNNING
       ? { resource, actions: [...CRUD, ACTION.EXPORT] }
       : { resource, actions: CRUD }
   ),
@@ -59,7 +57,6 @@ export const ROLE_PERMISSIONS: Record<RoleCode, Permission[]> = {
     { resource: RESOURCE.PAYMENT, actions: [...CR, ACTION.EXPORT] },
     { resource: RESOURCE.STATISTICS, actions: R },
     { resource: RESOURCE.DUNNING, actions: CRUD },
-    { resource: RESOURCE.REPORT_CENTER, actions: R },
     { resource: RESOURCE.MESSAGE, actions: CRUD },
     { resource: RESOURCE.ANNOUNCEMENT, actions: R },
     { resource: RESOURCE.APP_RELEASE, actions: R },
@@ -74,7 +71,6 @@ export const ROLE_PERMISSIONS: Record<RoleCode, Permission[]> = {
     { resource: RESOURCE.PAYMENT, actions: [...CRUD, ACTION.EXPORT] },
     { resource: RESOURCE.STATISTICS, actions: R_EXPORT },
     { resource: RESOURCE.DUNNING, actions: CRU },
-    { resource: RESOURCE.REPORT_CENTER, actions: [...R_EXPORT, ACTION.UPDATE, ACTION.DELETE] },
     { resource: RESOURCE.MESSAGE, actions: CRUD },
     { resource: RESOURCE.ANNOUNCEMENT, actions: R },
     { resource: RESOURCE.APP_RELEASE, actions: R },
@@ -90,7 +86,6 @@ export const ROLE_PERMISSIONS: Record<RoleCode, Permission[]> = {
     { resource: RESOURCE.PAYMENT, actions: [...R, ACTION.EXPORT] },
     { resource: RESOURCE.STATISTICS, actions: R },
     { resource: RESOURCE.DUNNING, actions: R },
-    { resource: RESOURCE.REPORT_CENTER, actions: R },
     { resource: RESOURCE.MESSAGE, actions: CRUD },
     { resource: RESOURCE.ANNOUNCEMENT, actions: CRUD },
     { resource: RESOURCE.APP_RELEASE, actions: R },
@@ -106,7 +101,6 @@ export const ROLE_PERMISSIONS: Record<RoleCode, Permission[]> = {
     { resource: RESOURCE.PAYMENT, actions: [...CR, ACTION.EXPORT] },
     { resource: RESOURCE.STATISTICS, actions: R },
     { resource: RESOURCE.DUNNING, actions: CRUD },
-    { resource: RESOURCE.REPORT_CENTER, actions: R },
     { resource: RESOURCE.MESSAGE, actions: CRUD },
     { resource: RESOURCE.ANNOUNCEMENT, actions: R },
     { resource: RESOURCE.APP_RELEASE, actions: R },

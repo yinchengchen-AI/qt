@@ -31,7 +31,6 @@ import {
   AppstoreOutlined,
   AccountBookOutlined,
   IdcardOutlined,
-  FileTextOutlined,
 } from "@ant-design/icons";
 import type { RoleCode } from "@/types/enums";
 import { ACTION, RESOURCE, type Action, type Resource } from "@/lib/permissions";
@@ -98,19 +97,6 @@ const MENU: MenuItem[] = [
     children: [
       { path: "/invoices", name: "开票管理", permission: { resource: RESOURCE.INVOICE, action: ACTION.READ } },
       { path: "/payments", name: "回款管理", permission: { resource: RESOURCE.PAYMENT, action: ACTION.READ } }
-    ]
-  },
-  {
-    path: "/reports",
-    name: "报表中心",
-    icon: <FileTextOutlined />,
-    permission: { resource: RESOURCE.REPORT_CENTER, action: ACTION.READ },
-    children: [
-      { path: "/reports", name: "报表首页", permission: { resource: RESOURCE.REPORT_CENTER, action: ACTION.READ } },
-      { path: "/reports/FINANCIAL", name: "财务经营", permission: { resource: RESOURCE.REPORT_CENTER, action: ACTION.READ } },
-      { path: "/reports/BUSINESS", name: "业务经营", permission: { resource: RESOURCE.REPORT_CENTER, action: ACTION.READ } },
-      { path: "/reports/PERFORMANCE", name: "员工业绩", permission: { resource: RESOURCE.REPORT_CENTER, action: ACTION.READ } },
-      { path: "/reports/CUSTOM", name: "自定义报表", permission: { resource: RESOURCE.REPORT_CENTER, action: ACTION.READ } },
     ]
   },
   {

@@ -79,7 +79,6 @@ model User {
   dunningNotes           DunningNote[]
   publishedReleases      AppRelease[]       @relation("AppReleasePublishUser")
   releaseReads           AppReleaseRead[]
-  reportSnapshots        ReportSnapshot[]
   profile                EmployeeProfile?
 
   @@index([roleId])
@@ -765,60 +764,5 @@ model AppReleaseRead {
 }
 
 // =====================================================
-// 报表中心 (Report Center)
+// End
 // =====================================================
-model ReportDefinition {
-  id            String   @id @default(cuid())
-  code          String   @unique
-  name          String
-  description   String?
-  // FINANCIAL | BUSINESS | PERFORMANCE | CUSTOM
-  type          String
-  // MONTH | QUARTER | YEAR | CUSTOM
-  periodType    String
-  // 默认指标列表，JSON 数组
-  defaultMetrics Json
-  // 可选维度列表，JSON 数组
-  dimensions    Json     @default("[]")
-  isActive      Boolean  @default(true)
-  sortOrder     Int      @default(0)
-  createdAt     DateTime @default(now()) @db.Timestamptz(6)
-  updatedAt     DateTime @updatedAt @db.Timestamptz(6)
-  deletedAt     DateTime? @db.Timestamptz(6)
-
-  snapshots ReportSnapshot[]
-
-  @@index([type])
-  @@index([isActive, sortOrder])
-}
-
-model ReportSnapshot {
-  id            String   @id @default(cuid())
-  definitionId  String
-  definition    ReportDefinition @relation(fields: [definitionId], references: [id], onDelete: Cascade)
-  // MONTH | QUARTER | YEAR | CUSTOM
-  periodType    String
-  // 展示用周期标签，如"2026年6月"
-  periodLabel   String
-  // 实际日期范围
-  from          DateTime @db.Timestamptz(6)
-  to            DateTime @db.Timestamptz(6)
-  // 当前实现同步生成并直接写 READY；PENDING/FAILED/STALE 为保留字段，供后续异步生成或 staleness 标记使用
-  status        String   @default("READY")
-  // 快照结果
-  payload       Json
-  // 源数据版本摘要，用于判断是否需要重算
-  hash          String?
-  generatedById String
-  generatedBy   User     @relation(fields: [generatedById], references: [id], onDelete: Restrict)
-  generatedAt   DateTime @default(now()) @db.Timestamptz(6)
-  expiresAt     DateTime? @db.Timestamptz(6)
-  createdAt     DateTime @default(now()) @db.Timestamptz(6)
-  updatedAt     DateTime @updatedAt @db.Timestamptz(6)
-  deletedAt     DateTime? @db.Timestamptz(6)
-
-  @@unique([definitionId, periodType, periodLabel])
-  @@index([definitionId, status])
-  @@index([generatedAt])
-  @@index([deletedAt])
-}

@@ -43,47 +43,6 @@ export async function exportToXlsx<T extends Record<string, unknown>>(
 }
 
 /**
- * 多 sheet 导出: 报表中心用, 一个报表可能含多个独立的数据段
- * (例如 PERFORMANCE: 员工业绩汇总 + 签约明细)。
- * - 每个 section 独立 sheet, 表头加粗
- * - 单 sheet 内不强制列宽 (用各 column 的 width); 多个 sheet 不做跨表合计
- *   (跨表合计在 web 端用 Table.Summary 渲染, 导出场景单独 sheet 已经清晰)
- */
-export type ExcelSheet<T = Record<string, unknown>> = {
-  name: string;
-  rows: T[];
-  columns: ExcelColumn<T>[];
-};
-
-export async function exportToMultiSheetXlsx(
-  sheets: ExcelSheet[]
-): Promise<Buffer> {
-  const wb = new ExcelJS.Workbook();
-  for (const sheet of sheets) {
-    const safeName = sheet.name.replace(/[\\/?*\[\]:]/g, "_").slice(0, 31) || "Sheet";
-    const ws = wb.addWorksheet(safeName);
-    ws.columns = sheet.columns.map((c) => ({
-      header: c.header,
-      key: c.key as string,
-      width: c.width ?? 18,
-    }));
-    ws.getRow(1).font = { bold: true };
-    ws.getRow(1).alignment = { vertical: "middle", horizontal: "left" };
-    for (const r of sheet.rows) {
-      const row: Record<string, unknown> = {};
-      for (const c of sheet.columns) {
-        const raw = (r as Record<string, unknown>)[c.key as string];
-        row[c.key as string] = c.formatter ? c.formatter(raw, r) : (raw ?? "");
-      }
-      ws.addRow(row);
-    }
-  }
-  const buf = await wb.xlsx.writeBuffer();
-  return Buffer.from(buf);
-}
-
-
-/**
  * 构造带中文文件名的 Content-Disposition 值 (RFC 5987)。
  *
  * 背景:HTTP 头只能放 ASCII;若把 "区域统计_2026-06-28.xlsx" 直接塞进
