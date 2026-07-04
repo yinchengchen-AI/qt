@@ -96,7 +96,7 @@ const buildOps = (): SessionUser => {
   return { id: opsUser.id, employeeNo: opsUser.employeeNo, name: opsUser.name, email: opsUser.email, roleCode: "OPS", permissions: [] };
 };
 
-async function mkContract(totalAmount: string, suffix: string) {
+async function mkContract(totalAmount: string, suffix: string, ownerUserId?: string) {
   if (!adminUser || !testCustomerId) throw new Error("setup not ready");
   const no = `${TAG}-${suffix}`;
   createdContractNos.push(no);
@@ -116,8 +116,8 @@ async function mkContract(totalAmount: string, suffix: string) {
       amountExcludingTax: "0",
       paymentMethod: "LUMP_SUM",
       status: "ACTIVE",
-      ownerUserId: adminUser.id,
-      signerId: adminUser.id,
+      ownerUserId: ownerUserId ?? adminUser!.id,
+      signerId: ownerUserId ?? adminUser!.id,
       attachments: [] as unknown as Parameters<typeof prisma.contract.create>[0]["data"]["attachments"],
       createdById: adminUser.id,
       updatedById: adminUser.id
@@ -145,7 +145,7 @@ async function mkDraft(contractId: string, suffix: string, amount = 100) {
 
 describe("SALES 编辑 DRAFT 发票 (P1-2)", () => {
   it("SALES 改 amount + titleName 写入成功", guard(async () => {
-    const c = await mkContract("10000.00", "SALES-OK");
+    const c = await mkContract("10000.00", "SALES-OK", salesUser!.id);
     const inv = await mkDraft(c.id, "SALES-OK", 100);
     const updated = await updateInvoice(buildSales(), inv.id, {
       amount: 200,
@@ -169,7 +169,7 @@ describe("OPS 无权编辑发票 (P1-2)", () => {
 
 describe("非 admin 撞非 DRAFT (P1-3 客户侧)", () => {
   it("SALES 改 PENDING_FINANCE 发票 → ENTITY_IMMUTABLE", guard(async () => {
-    const c = await mkContract("10000.00", "SALES-LOCKED");
+    const c = await mkContract("10000.00", "SALES-LOCKED", salesUser!.id);
     const inv = await mkDraft(c.id, "SALES-LOCKED", 100);
     // 手动推到 PENDING_FINANCE
     await prisma.invoice.update({ where: { id: inv.id }, data: { status: "PENDING_FINANCE" } });

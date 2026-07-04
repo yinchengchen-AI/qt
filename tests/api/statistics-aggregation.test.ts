@@ -482,6 +482,9 @@ describe("getOverview / getUninvoicedContracts 排除 legacy 0.01 占位合同",
 
   afterAll(async () => {
     if (!dbReachable) return;
+    if (legacyContractNo) {
+      await prisma.contract.deleteMany({ where: { contractNo: legacyContractNo } });
+    }
     if (regionCustomerIds2.length > 0) {
       await prisma.customer.deleteMany({ where: { id: { in: regionCustomerIds2 } } });
     }
