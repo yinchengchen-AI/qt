@@ -1,314 +1,306 @@
-# 鏉窞浼佹嘲瀹夊叏绉戞妧 涓氬姟绠＄悊绯荤粺 (qt-biz)
+# 杭州企泰安全科技 业务管理系统 (qt-biz)
 
-> 瀹㈡埛 / 鍚堝悓 / 寮€绁?/ 鍥炴 涓€浣撳寲绠＄悊,闄勪欢璧?MinIO presigned 鐩翠紶銆?
-> **褰撳墠鐗堟湰: v0.8.1**(2026-07-04)
-> 璇︾粏璁捐瑙?[docs/DESIGN-v3.md](docs/DESIGN-v3.md),鐢ㄦ埛鎵嬪唽瑙?[docs/USER_MANUAL.md](docs/USER_MANUAL.md)銆?
-> 2026-07-04 澧為噺鍚屾: 鍏ㄥ簱浠ｇ爜瀹¤ 10 澶?bug 淇 + 2 缁勫崟鍏冩祴璇曞凡琛ュ埌銆屾渶杩戞洿鏂般€嶅紑澶淬€?
+> 客户 / 合同 / 开票 / 回款 一体化管理,附件走 MinIO presigned 直传。
+> **当前版本: v0.8.1**(2026-07-04)
+> 详细设计见 [docs/DESIGN-v3.md](docs/DESIGN-v3.md),用户手册见 [docs/USER_MANUAL.md](docs/USER_MANUAL.md)。
+> 2026-07-04 增量同步: 全库代码审计 10 处 bug 修复 + 2 组单元测试已补到「最近更新」开头。
 
-## 鐩綍
+## 目录
 
-- [鎶€鏈爤](#鎶€鏈爤)
-- [蹇€熷惎鍔╙(#蹇€熷惎鍔?
-- [椤圭洰缁撴瀯](#椤圭洰缁撴瀯)
-- [涓氬姟妯″潡](#涓氬姟妯″潡)
-- [鏁版嵁妯″瀷涓庣姸鎬佹満](#鏁版嵁妯″瀷涓庣姸鎬佹満)
-- [璺ㄦā鍧楁牎楠岃鍒橾(#璺ㄦā鍧楁牎楠岃鍒?
-- [璁よ瘉 & 鏉冮檺](#璁よ瘉--鏉冮檺)
-- [闄勪欢瀛樺偍 (MinIO)](#闄勪欢瀛樺偍-minio)
-- [娑堟伅涓庨€氱煡](#娑堟伅涓庨€氱煡)
-- [瀹氭椂浠诲姟](#瀹氭椂浠诲姟)
-- [缁熻鍒嗘瀽](#缁熻鍒嗘瀽)
-- [绉诲姩绔€傞厤](#绉诲姩绔€傞厤)
-- [鑴氭湰閫熸煡](#鑴氭湰閫熸煡)
-- [璐ㄩ噺鍩虹嚎](#璐ㄩ噺鍩虹嚎)
-- [鏈€杩戞洿鏂癩(#鏈€杩戞洿鏂?
-- [鍘嗗彶閲岀▼纰慮(#鍘嗗彶閲岀▼纰?
-- [閮ㄧ讲](#閮ㄧ讲)
-- [鐩稿叧鏂囨。](#鐩稿叧鏂囨。)
+- [技术栈](#技术栈)
+- [快速启动](#快速启动)
+- [项目结构](#项目结构)
+- [业务模块](#业务模块)
+- [数据模型与状态机](#数据模型与状态机)
+- [跨模块校验规则](#跨模块校验规则)
+- [认证 & 权限](#认证--权限)
+- [附件存储 (MinIO)](#附件存储-minio)
+- [消息与通知](#消息与通知)
+- [定时任务](#定时任务)
+- [统计分析](#统计分析)
+- [移动端适配](#移动端适配)
+- [脚本速查](#脚本速查)
+- [质量基线](#质量基线)
+- [最近更新](#最近更新)
+- [历史里程碑](#历史里程碑)
+- [部署](#部署)
+- [相关文档](#相关文档)
 
-## 鎶€鏈爤
+## 技术栈
 
-| 灞?| 閫夊瀷 | 鐗堟湰 |
+| 层 | 选型 | 版本 |
 |---|---|---|
-| 妗嗘灦 | Next.js (App Router + RSC + Server Actions) | 16.2.7 |
-| 杩愯鏃?| React | 19.2.7 |
-| 璇█ | TypeScript (`strict` + `noUncheckedIndexedAccess`) | 6.0.3 |
+| 框架 | Next.js (App Router + RSC + Server Actions) | 16.2.7 |
+| 运行时 | React | 19.2.7 |
+| 语言 | TypeScript (`strict` + `noUncheckedIndexedAccess`) | 6.0.3 |
 | UI | Ant Design + @ant-design/pro-components (beta) | 6.4.3 / 3.1.12-0 |
-| 鍥捐〃 | @ant-design/charts | 2.6.7 |
-| 鐘舵€?| zustand | 5.0.14 |
-| 鏁版嵁璇锋眰 | swr | 2.4.1 |
-| 鏍￠獙 | zod | 4.4.3 |
+| 图表 | @ant-design/charts | 2.6.7 |
+| 状态 | zustand | 5.0.14 |
+| 数据请求 | swr | 2.4.1 |
+| 校验 | zod | 4.4.3 |
 | ORM | Prisma + @prisma/adapter-pg | 7.8.0 |
-| 鏁版嵁搴?| PostgreSQL | 16 |
-| 瀵硅薄瀛樺偍 | MinIO + @aws-sdk/client-s3 v3 | latest |
-| 璁よ瘉 | NextAuth (Credentials + JWT) | 4.24.14 |
-| 鍔犲瘑 | bcrypt | 6.0.0 |
-| 娴嬭瘯 | Vitest + @playwright/test | 4.1.8 / 1.60.0 |
+| 数据库 | PostgreSQL | 16 |
+| 对象存储 | MinIO + @aws-sdk/client-s3 v3 | latest |
+| 认证 | NextAuth (Credentials + JWT) | 4.24.14 |
+| 加密 | bcrypt | 6.0.0 |
+| 测试 | Vitest + @playwright/test | 4.1.8 / 1.60.0 |
 
-瀹屾暣鐗堟湰鐭╅樀涓庡吋瀹规€ц鏄庤 [docs/DESIGN-v3.md 搂1](docs/DESIGN-v3.md)銆?
+完整版本矩阵与兼容性说明见 [docs/DESIGN-v3.md §1](docs/DESIGN-v3.md)。
 
-## 蹇€熷惎鍔?
+## 快速启动
 
-闇€瑕?Node `>=20.9.0`,Docker(鏈湴璧?Postgres + MinIO)銆?
+需要 Node `>=20.9.0`,Docker(本地起 Postgres + MinIO)。
 
 ```bash
-# 涓€閿叏娴佺▼:璧?PG + MinIO + 瑁呬緷璧?+ 鎺ㄥ簱 + seed + 璧?dev server
-# (榛樿杩樹細 seed 4 涓?dev 娴嬭瘯璐﹀彿 + 100 涓?dev 瀹㈡埛;鍓嶅彴杩涚▼,Ctrl-C 閫€鍑?
+# 一键全流程:起 PG + MinIO + 装依赖 + 推库 + seed + 起 dev server
+# (默认还会 seed 4 个 dev 测试账号 + 100 个 dev 客户;前台进程,Ctrl-C 退出)
 npm run dev:setup
 ```
 
-濡傞渶鎵嬪姩鍒嗘(鐢熶骇閮ㄧ讲 / 鑷畾涔?seed):
+如需手动分步(生产部署 / 自定义 seed):
 
 ```bash
-# 1) 璧峰熀纭€璁炬柦
+# 1) 起基础设施
 docker compose -f docker-compose.postgres.yml up -d
 docker compose -f docker-compose.minio.yml up -d
 
-# 2) 閰嶇幆澧冨彉閲?
-cp .env.example .env   # 榛樿 minioadmin/minioadmin, qitai/qitai_pass
+# 2) 配环境变量
+cp .env.example .env   # 默认 minioadmin/minioadmin, qitai/qitai_pass
 
-# 3) 瑁呬緷璧?+ 鎺ㄥ簱
+# 3) 装依赖 + 推库
 npm install
 npx prisma migrate dev
 
-# 4) 绯荤粺绠＄悊鏁版嵁
-npm run seed           # 5 瑙掕壊 / 5 閮ㄩ棬 / 8 绫诲瓧鍏?
-npm run seed:dev-users # 鍙€? 4 涓?dev 娴嬭瘯璐﹀彿
+# 4) 系统管理数据
+npm run seed           # 5 角色 / 5 部门 / 8 类字典
+npm run seed:dev-users # 可选: 4 个 dev 测试账号
 
-# 5) 鍒涘缓绗竴涓笟鍔＄鐞嗗憳
+# 5) 创建第一个业务管理员
 npm run create-admin -- \
   --employeeNo admin \
-  --name "绯荤粺绠＄悊鍛? \
+  --name "系统管理员" \
   --email admin@example.com \
   --password 'Your-Strong-Pwd-2026'
 
-# 6) 璧锋湇鍔?
+# 6) 起服务
 npm run dev            # http://localhost:3000
 ```
 
-### 娴嬭瘯璐﹀彿(dev 蹇€熷～鍏呭崱)
+### 测试账号(dev 快速填充卡)
 
-鐧诲綍椤靛彸涓嬭"娴嬭瘯璐﹀彿"鍗″垪鍑?4 涓鑹茶处鍙?`seed:dev-users` 杩樹細寤?`expert` 鍏?5 涓?瀵嗙爜缁熶竴浠?`DEV_QUICK_FILL_PASSWORD`(榛樿 `dev-only-fill`)璇?鍙緵 dev/test 鐢ㄣ€?
+登录页右下角"测试账号"卡列出 4 个角色账号;`seed:dev-users` 还会建 `expert` 共 5 个,密码统一从 `DEV_QUICK_FILL_PASSWORD`(默认 `dev-only-fill`)读,只供 dev/test 用。
 
 ```bash
 npm run seed:dev-users
 ```
 
-## 椤圭洰缁撴瀯
+## 项目结构
 
 ```
-app/                       Next.js App Router(椤甸潰 + Route Handlers)
-  (app)/                   宸茬櫥褰曞竷灞€ (Sider + Header + Content)
-    dashboard/             宸ヤ綔鍙?
-    customers/             瀹㈡埛绠＄悊
-    contracts/             鍚堝悓绠＄悊
-    invoices/              寮€绁ㄧ鐞?
-    payments/              鍥炴绠＄悊
-    statistics/            缁熻鍒嗘瀽(鎬昏/璐﹂緞/涓氱哗/Top)
-    admin/                 绯荤粺绠＄悊(鐢ㄦ埛/瑙掕壊/閮ㄩ棬/瀛楀吀/瀹¤)
-    messages/              娑堟伅涓績
-    announcements/         鍏憡
-  api/                     Route Handlers(瑙佷笅)
-  login/                   鐧诲綍椤?
-components/                鍏变韩 UI(admin/customers/file/form/...)
-lib/                       瀹㈡埛绔€昏緫(auth/permissions/validators/i18n/...)
-server/                    鍚庣鏈嶅姟灞?services/events/jobs/storage/audit)
+app/                       Next.js App Router(页面 + Route Handlers)
+  (app)/                   已登录布局 (Sider + Header + Content)
+    dashboard/             工作台
+    customers/             客户管理
+    contracts/             合同管理
+    invoices/              开票管理
+    payments/              回款管理
+    statistics/            统计分析(总览/账龄/业绩/Top)
+    admin/                 系统管理(用户/角色/部门/字典/审计)
+    messages/              消息中心
+    announcements/         公告
+  api/                     Route Handlers(见下)
+  login/                   登录页
+components/                共享 UI(admin/customers/file/form/...)
+lib/                       客户端逻辑(auth/permissions/validators/i18n/...)
+server/                    后端服务层(services/events/jobs/storage/audit)
 prisma/                    schema.prisma + seed + migrations/
 tests/                     Vitest(unit + api) + Playwright(e2e)
-docs/                      璁捐 / 璇勫 / 鎵嬪唽 / 閮ㄧ讲
-ops/                       杩愮淮鑴氭湰
+docs/                      设计 / 评审 / 手册 / 部署
+ops/                       运维脚本
 scripts/                   dev/prod/migrate/shared CLI
 docker-compose.postgres.yml
 docker-compose.minio.yml
 ```
 
-### 璺敱涓€瑙?
+### 路由一览
 
-- `app/api/auth/` 鈥?NextAuth
-- `app/api/{customers,contracts,invoices,payments}/` 鈥?鍥涘ぇ涓氬姟 CRUD
-- `app/api/files/` 鈥?闄勪欢 presigned URL
-- `app/api/messages/` 鈥?绔欏唴淇?
-- `app/api/announcements/` 鈥?鍏憡
-- `app/api/dashboard/` 鈥?宸ヤ綔鍙版眹鎬?
-- `app/api/statistics/` 鈥?缁熻鍒嗘瀽
-- `app/api/{users,roles,departments,dictionaries,admin}/` 鈥?绯荤粺绠＄悊
-  - 鍛樺伐妗ｆ(v0.4+)璧?5 姝ュ悜瀵?+ 5 寮犲瓙琛?鏁欒偛/宸ヤ綔/璇佷功/鎶€鑳?绱ф€ヨ仈绯讳汉);璇佷功 30/15/7 澶╁埌鏈?cron 鎻愰啋;璇︽儏椤?Anchor 婊氬姩
-- `app/api/operation-logs/` 鈥?鎿嶄綔鏃ュ織
-- `app/api/jobs/` 鈥?瀹氭椂浠诲姟瑙﹀彂绔偣
+- `app/api/auth/` — NextAuth
+- `app/api/{customers,contracts,invoices,payments}/` — 五大业务 CRUD
+- `app/api/files/` — 附件 presigned URL
+- `app/api/messages/` — 站内信
+- `app/api/announcements/` — 公告
+- `app/api/dashboard/` — 工作台汇总
+- `app/api/statistics/` — 统计分析
+- `app/api/{users,roles,departments,dictionaries,admin}/` — 系统管理
+  - 员工档案(v0.4+)走 5 步向导 + 5 张子表(教育/工作/证书/技能/紧急联系人);证书 30/15/7 天到期 cron 提醒;详情页 Anchor 滚动
+- `app/api/operation-logs/` — 操作日志
+- `app/api/jobs/` — 定时任务触发端点
 
-## 涓氬姟妯″潡
+## 业务模块
 
-### 鍥涘ぇ鏍稿績涓氬姟妯″潡
+### 五大业务模块
 
-| 妯″潡 | 璇存槑 | 鐘舵€佹満 | 鍏抽敭鏂囦欢 |
-|---|---|---|---|
-| 瀹㈡埛 (Customer) | 瀹㈡埛妗ｆ銆佽仈绯讳汉銆佽窡杩涜褰?鏀寔缁熶竴绀句細淇＄敤浠ｇ爜鏍￠獙 | 鏃?瀹㈡埛鐘舵€佹満 v0.5.0 宸蹭笅绾? | `server/services/customer/{crud,overview,index}.ts` |
-| 鍚堝悓 (Contract) | 鍚堝悓璧疯崏銆佸鎵广€佺璁€佸饱绾︺€佸綊妗?鍚?reopen / force 鏃佽矾鐢ㄤ簬鍘嗗彶鏁版嵁淇 | DRAFT / ACTIVE / CLOSED (3 鎬?+ 鑷姩杞崲) | `server/services/contract/{crud,status,jobs,reopen,overview,index}.ts` |
-| 寮€绁?(Invoice) | 鍙戠エ鐢宠銆佽储鍔″鏍搞€佸紑鍏枫€佷綔搴熴€佺孩鍐?| DRAFT / PENDING_FINANCE / ISSUED / VOIDED / RED_FLUSHED | `server/services/invoice/{crud,action,index}.ts` |
-| 鍥炴 (Payment) | 鍥炴璁″垝鐧昏銆佺‘璁ゃ€佸璐︺€侀€€娆?| PLANNED / CONFIRMED / RECONCILED / REFUNDED / CANCELLED | `server/services/payment.ts` |
-
-### 澧炲€间笟鍔℃ā鍧?
-
-| 妯″潡 | 璇存槑 | 鍏抽敭鏂囦欢 |
+| 模块 | 状态机 | 关键文件 |
 |---|---|---|
-| 搴旀敹璐﹂緞 & 鍌敹 (Aging / Dunning) | 鎸夊鎴?璐熻矗浜虹淮搴﹀垎 0-30/30-60/60-90/90+ 璐﹂緞妗?鏀寔鍌敹璁板綍 CRUD 涓庡埌鏈熸彁閱?| `server/services/statistics.ts`銆乣server/services/dunning.ts` |
-| 鍛樺伐妗ｆ (Employee Profile) | 5 姝ュ悜瀵?+ 5 寮犲瓙琛?鏁欒偛/宸ヤ綔/璇佷功/鎶€鑳?绱ф€ヨ仈绯讳汉);璇佷功 30/15/7 澶╁埌鏈?cron 鎻愰啋 | `server/services/employee-profile.ts`銆乣server/services/employee-*.ts` |
+| 客户 (Customer) | LEAD / NEGOTIATING / SIGNED / LOST / FROZEN (5 态 + 自动联动) | `server/services/customer/{crud,status,automation}.ts` |
+| 合同 (Contract) | DRAFT / ACTIVE / CLOSED (3 态 + 自动转换) | `server/services/contract/{crud,status}.ts` |
+| 开票 (Invoice) | DRAFT / PENDING_FINANCE / ISSUED / REJECTED / VOIDED / RED_FLUSHED | `server/services/invoice.ts` |
+| 回款 (Payment) | PLANNED / CONFIRMED / RECONCILED / REFUNDED / CANCELLED | `server/services/payment.ts` |
 
-### 鏀拺妯″潡
+### 支撑模块
 
-- **绯荤粺绠＄悊** 鈥?鐢ㄦ埛/瑙掕壊/閮ㄩ棬/瀛楀吀/瀹¤鏃ュ織/鍥炴敹绔?瑙?`app/(app)/admin/` 涓?`server/services/{user,role,department,dictionary,trash}.ts`
-- **娑堟伅涓績** 鈥?`server/services/message.ts` + `server/events/bus.ts`,棰嗗煙浜嬩欢鈫掔珯鍐呬俊
-- **鍏憡** 鈥?`server/services/announcement.ts`
-- **缁熻鍒嗘瀽** 鈥?宸ヤ綔鍙?鎬昏/鍖哄煙/涓氱哗/Top 瀹㈡埛/xlsx 瀵煎嚭,瑙?`server/services/statistics.ts`
-- **鎿嶄綔鏃ュ織** 鈥?`server/audit.ts` + `lib/request-context.ts` 鑷姩娉ㄥ叆 IP/UA/requestId
-- **瀹氭椂浠诲姟** 鈥?6 涓?job锛坈ontract-expiring / invoice-overdue / contract-auto-publish / contract-auto-complete / contract-stale-notify / certificate-expiry-check锛夌粺涓€璧?`/api/jobs/run-all`;鐢熶骇寤鸿 Vercel Cron 姣忓皬鏃惰Е鍙?
-- **杞垹闄?& 鍥炴敹绔?* 鈥?`deletedAt` + 30s TTL 缂撳瓨,缁熶竴璧?`server/services/trash.ts`
+- **消息中心** — `server/services/message.ts` + `server/events/bus.ts`,事件→站内信
+- **公告** — `server/services/announcement.ts`
+- **统计分析** — 总览/账龄/业绩/Top 客户,xlsx 导出
+- **操作日志** — `server/audit.ts` + `lib/request-context.ts` 自动注入 IP/UA/requestId
+- **定时任务** — 5 个 cron,统一走 `/api/jobs/run-all`
+- **软删除** — `deletedAt` + 30s TTL 缓存,统一走 `server/services/trash.ts`
 
-## 鏁版嵁妯″瀷涓庣姸鎬佹満
+## 数据模型与状态机
 
-Prisma schema 瑙?[prisma/schema.prisma](prisma/schema.prisma),瀹屾暣鐘舵€佹満杩佺Щ涓庤縼绉?SQL 瑙?`prisma/migrations/`銆?
+Prisma schema 见 [prisma/schema.prisma](prisma/schema.prisma),完整状态机迁移与迁移 SQL 见 `prisma/migrations/`。
 
-### Contract 鐘舵€佹満(7 鈫?3 鏀舵暃)
-
-```
-DRAFT 鈹€鈹€(瀛楁瀹屾暣 + 闄勪欢)鈹€鈹€> ACTIVE 鈹€鈹€(寮€绁ㄨ冻棰?R-07)鈹€鈹€> CLOSED
-                                  鈹斺攢(endDate < now)鈹€鈹€鈹€鈹€> CLOSED (reason=expired)
-```
-
-鑷姩杞崲:`tryAutoPublish`(DRAFT 鈫?ACTIVE) / `tryAutoComplete`(ACTIVE 鈫?CLOSED,寮€绁ㄨ冻棰? / `tryAutoExpire`(endDate 鍒版湡)銆俛ctor 缁熶竴涓?`system` 鍗犱綅鐢ㄦ埛(`User.isSystem=true`,涓嶅彲鐧诲綍)銆?
-
-### Invoice 鐘舵€佹満(6 鎬?
+### Contract 状态机(7 → 3 收敛)
 
 ```
-DRAFT 鈹€鈹€submit鈹€鈹€> PENDING_FINANCE 鈹€鈹€issue鈹€鈹€> ISSUED
-                                              鈹溾攢> VOIDED (浣滃簾)
-                                              鈹斺攢> RED_FLUSHED (绾㈠啿)
+DRAFT ──(字段完整 + 附件)──> ACTIVE ──(开票足额 R-07)──> CLOSED
+                                  └─(endDate < now)────> CLOSED (reason=expired)
 ```
 
-### Payment 鐘舵€佹満(5 鎬?
+自动转换:`tryAutoPublish`(DRAFT → ACTIVE) / `tryAutoComplete`(ACTIVE → CLOSED,开票足额) / `tryAutoExpire`(endDate 到期)。actor 统一为 `system` 占位用户(`User.isSystem=true`,不可登录)。
+
+### Invoice 状态机(6 态)
 
 ```
-PLANNED 鈹€鈹€confirm鈹€鈹€> CONFIRMED 鈹€鈹€reconcile鈹€鈹€> RECONCILED
-                  鈹溾攢> REFUNDED (閫€娆?
-                  鈹斺攢> CANCELLED (鍙栨秷)
+DRAFT ──submit──> PENDING_FINANCE ──issue──> ISSUED
+                                              ├─> VOIDED (作废)
+                                              └─> RED_FLUSHED (红冲)
+```
+
+### Payment 状态机(5 态)
+
+```
+PLANNED ──confirm──> CONFIRMED ──reconcile──> RECONCILED
+                  ├─> REFUNDED (退款)
+                  └─> CANCELLED (取消)
 ```
 
 
-## 璺ㄦā鍧楁牎楠岃鍒?
+## 跨模块校验规则
 
-| 瑙勫垯 | 鍚箟 | 鏍￠獙鐐?| 閿欒鐮?|
+| 规则 | 含义 | 校验点 | 错误码 |
 |---|---|---|---|
-| R-01 | 瀹㈡埛缁熶竴绀句細淇＄敤浠ｇ爜 GB 32100-2015 | Zod refine | 400 |
-| R-07 | 鍚堝悓 ACTIVE 鈫?CLOSED 闇€寮€绁ㄨ冻棰?| service 浜嬪姟 | 鈥?|
-| R-08 | 绱寮€绁?鈮?鍚堝悓鎬婚 | service 浜嬪姟 | 422 INVOICE_OVER_LIMIT |
-| R-09 | 鍙戠エ ISSUED 闇€鎶ご + 绋庡彿 | service 浜嬪姟 | 422 INVOICE_INFO_INVALID |
-| R-10 | 鍥炴 bankRefNo CONFIRMED 鍞竴 | service 浜嬪姟 | 409 PAYMENT_DUPLICATE_REF |
-| R-11 | 鍙戠エ绾у洖娆句笉瓒呴 | service 浜嬪姟 | 422 PAYMENT_OVER_INVOICE |
-| R-12 | 鍚堝悓绾у洖娆句笉瓒呴 | service 浜嬪姟 | 422 PAYMENT_OVER_CONTRACT |
-| 鈥?| SALES 琛岀骇闅旂 | ownershipWhere 娉ㄥ叆 | 404 |
+| R-01 | 客户统一社会信用代码 GB 32100-2015 | Zod refine | 400 |
+| R-07 | 合同 ACTIVE → CLOSED 需开票足额 | service 事务 | – |
+| R-08 | 累计开票 ≤ 合同总额 | service 事务 | 422 INVOICE_OVER_LIMIT |
+| R-09 | 发票 ISSUED 需抬头 + 税号 | service 事务 | 422 INVOICE_INFO_INVALID |
+| R-10 | 回款 bankRefNo CONFIRMED 唯一 | service 事务 | 409 PAYMENT_DUPLICATE_REF |
+| R-11 | 发票级回款不超额 | service 事务 | 422 PAYMENT_OVER_INVOICE |
+| R-12 | 合同级回款不超额 | service 事务 | 422 PAYMENT_OVER_CONTRACT |
+| – | SALES 行级隔离 | ownershipWhere 注入 | 404 |
 
-瀹屾暣瑙勫垯涓庤竟鐣屽満鏅 [docs/DESIGN-v3.md 搂6](docs/DESIGN-v3.md)銆?
+完整规则与边界场景见 [docs/DESIGN-v3.md §6](docs/DESIGN-v3.md)。
 
-## 璁よ瘉 & 鏉冮檺
+## 认证 & 权限
 
-NextAuth v4 + JWT 绛栫暐(涓嶆寕 PrismaAdapter,P0 闃舵绠€鍖?銆?
+NextAuth v4 + JWT 策略(不挂 PrismaAdapter,P0 阶段简化)。
 
-### 銆? 澶╁唴鑷姩鐧诲綍銆?
+### 「7 天内自动登录」
 
-- 鐧诲綍椤靛嬀閫夊閫夋 鈫?JWT 瀵垮懡 7 澶?涓嶅嬀閫?鈫?8 灏忔椂
-- 瀹炵幇:`lib/auth.ts` 鑷畾涔?`authOptions.jwt.encode` 鎷︽埅 `maxAge`
-- e2e 楠岃瘉:`tests/e2e/auto-login.spec.ts` 鐢?`jose.jwtDecrypt` + 32 瀛楄妭 HKDF 瑙ｅ瘑 JWE 鏂█ `exp - iat`
+- 登录页勾选复选框 → JWT 寿命 7 天;不勾选 → 8 小时
+- 实现:`lib/auth.ts` 自定义 `authOptions.jwt.encode` 拦截 `maxAge`
+- e2e 验证:`tests/e2e/auto-login.spec.ts` 用 `jose.jwtDecrypt` + 32 字节 HKDF 解密 JWE 断言 `exp - iat`
 
-### 5 瑙掕壊 RBAC
+### 5 角色 RBAC
 
-| 瑙掕壊 | 鐢ㄩ€?| 鏉冮檺浣?|
+| 角色 | 用途 | 权限位 |
 |---|---|---|
-| ADMIN | 鍏ㄩ儴鎿嶄綔 + 绯荤粺绠＄悊 | 鍏ㄩ噺 |
-| SALES | 涓氬姟鎵ц,琛岀骇闅旂 | 涓氬姟妯″潡 R/W,鍙鑷繁 owner 鐨勬暟鎹?|
-| FINANCE | 寮€绁?鍥炴 | 寮€绁?鍥炴 R/W,鍏朵綑鍙 |
-| OPS | 閮ㄩ棬/瀛楀吀缁存姢 | 绯荤粺绠＄悊 R/W,涓氬姟鍙 |
-| EXPERT | 涓撳瑙掕壊(鏉冮檺娴嬭瘯) | 鏈€灏忔潈闄?|
+| ADMIN | 全部操作 + 系统管理 | 全量 |
+| SALES | 业务执行,行级隔离 | 业务模块 R/W,只读自己 owner 的数据 |
+| FINANCE | 开票/回款 | 开票/回款 R/W,其余只读 |
+| OPS | 部门/字典维护 | 系统管理 R/W,业务只读 |
+| EXPERT | 专家角色(权限测试) | 最小权限 |
 
-鏉冮檺浣嶅畾涔夊湪 `lib/permissions.ts`,涓?`prisma/seed.ts` 鍚屾簮銆係ALES 琛岀骇闅旂渚濋潬 `ownershipWhere(user)` 娉ㄥ叆 Prisma 鏌ヨ `where` 瀛愬彞銆?
+权限位定义在 `lib/permissions.ts`,与 `prisma/seed.ts` 同源。SALES 行级隔离依靠 `ownershipWhere(user)` 注入 Prisma 查询 `where` 子句。
 
-### Cookie & 浼氳瘽
+### Cookie & 会话
 
-- 鐢熶骇 `useSecureCookies` 浠呭湪 `FORCE_HTTPS=true` 鏃跺紑鍚?HTTP 鍙嶄唬涓嬩繚鎸侀潪 secure)
-- 瀵嗙爜 bcrypt cost=10 鍝堝笇
-- 瑙掕壊 / 鐘舵€?30s TTL 缂撳瓨,admin 鏀硅鑹?/ 绂佺敤鎴锋渶杩?30s 鐢熸晥
+- 生产 `useSecureCookies` 仅在 `FORCE_HTTPS=true` 时开启(HTTP 反代下保持非 secure)
+- 密码 bcrypt cost=10 哈希
+- 角色 / 状态 30s TTL 缓存,admin 改角色 / 禁用户最迟 30s 生效
 
-## 闄勪欢瀛樺偍 (MinIO)
+## 附件存储 (MinIO)
 
-闄勪欢涓婁紶璧?presigned PUT 鐩翠紶,涓嶇粡杩囧簲鐢ㄦ湇鍔″櫒銆?
+附件上传走 presigned PUT 直传,不经过应用服务器。
 
-**鍚姩**
+**启动**
 
 ```bash
 docker compose -f docker-compose.minio.yml up -d
-# Console: http://localhost:9001  璐﹀彿 minioadmin / minioadmin
+# Console: http://localhost:9001  账号 minioadmin / minioadmin
 # S3 API:  http://localhost:9000
 ```
 
-`qitai-minio-init` 瀹瑰櫒鍦ㄤ富鏈嶅姟 healthy 鍚庤嚜鍔ㄥ缓妗?`qt-biz-attachments`(绉佹湁)銆?
+`qitai-minio-init` 容器在主服务 healthy 后自动建桶 `qt-biz-attachments`(私有)。
 
-**鍏抽敭娴佺▼**
+**关键流程**
 
-1. 鍓嶇 `ProFormUploadButton` 鐨?`customRequest` 璋?`POST /api/files/presign-upload` 鎷?5min 鏈夋晥 PUT URL
-2. 娴忚鍣?`fetch(url, { method: "PUT", body: file })` 鐩翠紶 MinIO
-3. 璇︽儏椤电偣鏂囦欢鍚?鈫?`POST /api/files/[id]/presign-download` 鎷?5min GET URL 鈫?鏂版爣绛炬墦寮€
+1. 前端 `ProFormUploadButton` 的 `customRequest` 调 `POST /api/files/presign-upload` 拿 5min 有效 PUT URL
+2. 浏览器 `fetch(url, { method: "PUT", body: file })` 直传 MinIO
+3. 详情页点文件名 → `POST /api/files/[id]/presign-download` 拿 5min GET URL → 新标签打开
 
-**涓氬姟瑙勫垯**
+**业务规则**
 
-- MIME 鐧藉悕鍗?PDF / Word / Excel / JPEG / PNG / WebP
-- 鍗曟枃浠?鈮?20MB,鍗曞悎鍚岄檮浠?鈮?5
-- `objectKey` 鍛藉悕:`contracts/{yyyy}/{mm}/{cuid}-{slug}.{ext}`
-- 涓嬭浇閴存潈:澶嶇敤 `requireSession()` + 鍚堝悓 `read` 鏉冮檺
-- 杞垹闄?鍒?`Attachment` 璁板綍浣嗕繚鐣?MinIO 瀵硅薄
+- MIME 白名单:PDF / Word / Excel / JPEG / PNG / WebP
+- 单文件 ≤ 20MB,单合同附件 ≤ 5
+- `objectKey` 命名:`contracts/{yyyy}/{mm}/{cuid}-{slug}.{ext}`
+- 下载鉴权:复用 `requireSession()` + 合同 `read` 权限
+- 软删除:删 `Attachment` 记录但保留 MinIO 对象
 
-**鍏抽敭鏂囦欢**
+**关键文件**
 
-| 鏂囦欢 | 鑱岃矗 |
+| 文件 | 职责 |
 |---|---|
-| `server/storage/minio.ts` | S3Client 鍗曚緥 + ensureBucket + CORS |
+| `server/storage/minio.ts` | S3Client 单例 + ensureBucket + CORS |
 | `server/storage/presign.ts` | `presignUpload` / `presignDownload` |
-| `app/api/files/presign-upload/route.ts` | 鎷?PUT URL |
-| `app/api/files/[id]/presign-download/route.ts` | 鎷?GET URL |
-| `app/api/files/[id]/route.ts` | 杞垹闄?|
-| `lib/upload-client.ts` | 娴忚鍣?`customRequest` 涓婁紶灏佽 |
+| `app/api/files/presign-upload/route.ts` | 拿 PUT URL |
+| `app/api/files/[id]/presign-download/route.ts` | 拿 GET URL |
+| `app/api/files/[id]/route.ts` | 软删除 |
+| `lib/upload-client.ts` | 浏览器 `customRequest` 上传封装 |
 
-## 娑堟伅涓庨€氱煡
+## 消息与通知
 
-閫氱煡缁熶竴璧扮珯鍐呬俊锛堥《鏍忛搩閾?+ `/messages`锛夈€傞偖浠?/ 浼佷笟寰俊閫氶亾宸蹭笅绾匡紝杩愮淮渚т笉鍐嶉渶瑕?SMTP 鎴?webhook 鍑嵁銆?
+通知统一走站内信（顶栏铃铛 + `/messages`）。邮件 / 企业微信通道已下线，运维侧不再需要 SMTP 或 webhook 凭据。
 
-**棰嗗煙浜嬩欢瑙﹀彂鐭╅樀**(`server/events/bus.ts`)
+**领域事件触发矩阵**(`server/events/bus.ts`)
 
-| 浜嬩欢 | 瑙﹀彂鏃舵満 | 鎺ユ敹浜?|
+| 事件 | 触发时机 | 接收人 |
 |---|---|---|
-| CONTRACT_PENDING_REVIEW | 鍚堝悓 submit | 鍏ㄩ儴 ADMIN |
-| CONTRACT_APPROVED | 鍚堝悓 approve | contract.ownerUserId |
-| CONTRACT_REJECTED | 鍚堝悓 reject | contract.ownerUserId |
-| PAYMENT_RECEIVED | 鍥炴 confirm | owner + 鍏ㄩ儴 ADMIN |
-| INVOICE_OVERDUE_PAYMENT | 瀹氭椂浠诲姟(issue + 30 澶? | owner + admin + finance |
-| CONTRACT_EXPIRING | 瀹氭椂浠诲姟(endDate - 30/7/1) | owner + admin |
-| CONTRACT_AUTO_EXECUTED | 椤圭洰 start 瑙﹀彂 | owner + 鍏ㄩ儴 ADMIN |
-| CONTRACT_AUTO_COMPLETED | 鍚堝悓涓嬫墍鏈夐」鐩敹灏?| owner + 鍏ㄩ儴 ADMIN |
-| CONTRACT_AUTO_EXPIRED | 瀹氭椂浠诲姟(endDate < now) | owner + 鍏ㄩ儴 ADMIN |
+| CONTRACT_PENDING_REVIEW | 合同 submit | 全部 ADMIN |
+| CONTRACT_APPROVED | 合同 approve | contract.ownerUserId |
+| CONTRACT_REJECTED | 合同 reject | contract.ownerUserId |
+| PAYMENT_RECEIVED | 回款 confirm | owner + 全部 ADMIN |
+| INVOICE_OVERDUE_PAYMENT | 定时任务(issue + 30 天) | owner + admin + finance |
+| CONTRACT_EXPIRING | 定时任务(endDate - 30/7/1) | owner + admin |
+| CONTRACT_AUTO_EXECUTED | 项目 start 触发 | owner + 全部 ADMIN |
+| CONTRACT_AUTO_COMPLETED | 合同下所有项目收尾 | owner + 全部 ADMIN |
+| CONTRACT_AUTO_EXPIRED | 定时任务(endDate < now) | owner + 全部 ADMIN |
 
-## 瀹氭椂浠诲姟
+## 定时任务
 
-6 涓?job锛坈ontract-expiring / invoice-overdue / contract-auto-publish / contract-auto-complete / contract-stale-notify / certificate-expiry-check锛夌粺涓€閫氳繃 `/api/jobs/run-all` 瑙﹀彂銆?
+5 个 cron job,统一通过 `/api/jobs/run-all` 触发。
 
 ```bash
-# 绠＄悊鍛樻墜鍔ㄨЕ鍙?鐢熶骇鐜闇€ Authorization: Bearer $CRON_SECRET)
+# 管理员手动触发(生产环境需 Authorization: Bearer $CRON_SECRET)
 curl -X POST -b cookie.txt http://localhost:3000/api/jobs/run-all
 
-# 鍗曡窇
+# 单跑
 curl -X POST -b cookie.txt http://localhost:3000/api/jobs/contract-expiring
 curl -X POST -b cookie.txt http://localhost:3000/api/jobs/invoice-overdue
 curl -X POST -b cookie.txt http://localhost:3000/api/jobs/contract-expiry
 ```
 
-鐢熶骇寤鸿 Vercel Cron 姣忓皬鏃惰Е鍙戜竴娆?`/api/jobs/run-all`:
+生产建议 Vercel Cron 每小时触发一次 `/api/jobs/run-all`:
 
 ```json
 {
@@ -316,474 +308,475 @@ curl -X POST -b cookie.txt http://localhost:3000/api/jobs/contract-expiry
 }
 ```
 
-`runAllJobs` 棰勫彇 admin 鍒楄〃涓€娆?鎵€鏈?job 澶嶇敤(N+1 鈫?1)銆傜敓浜х幆澧冨己鍒?`CRON_SECRET`,缂哄け鏃?500 鍛婅骞舵嫆缁濇墽琛屻€?
+`runAllJobs` 预取 admin 列表一次,所有 job 复用(N+1 → 1)。生产环境强制 `CRON_SECRET`,缺失时 500 告警并拒绝执行。
 
-## 缁熻鍒嗘瀽
+## 统计分析
 
 ```bash
-GET /api/dashboard/summary                          # 宸ヤ綔鍙?4 鍗＄墖 + 璐﹂緞
-GET /api/statistics/overview?from&to                # 鎬昏 + 鏃堕棿搴忓垪
-GET /api/statistics/invoice-aging                   # 搴旀敹璐︽璐﹂緞
+GET /api/dashboard/summary                          # 工作台 4 卡片 + 账龄
+GET /api/statistics/overview?from&to                # 总览 + 时间序列
+GET /api/statistics/invoice-aging                   # 应收账款账龄
 GET /api/statistics/top-customers?metric=contract|payment&limit=10
 GET /api/statistics/employee-performance?userId=&from=&to=
-GET /api/statistics/export?type=overview|top-customers|employee-performance   # xlsx 涓嬭浇
+GET /api/statistics/export?type=overview|top-customers|employee-performance   # xlsx 下载
 ```
 
-xlsx 瀵煎嚭璧?`lib/excel.ts` + `exceljs`; 涓枃鏂囦欢鍚嶉€氳繃 `attachmentHeader()` 璧?RFC 5987 鍙屽舰寮?`filename=` ASCII 鍏滃簳 + `filename*=UTF-8''...`)銆?
+xlsx 导出走 `lib/excel.ts` + `exceljs`; 中文文件名通过 `attachmentHeader()` 走 RFC 5987 双形式(`filename=` ASCII 兜底 + `filename*=UTF-8''...`)。
 
-## 绉诲姩绔€傞厤
+## 移动端适配
 
-鏂偣娌跨敤 Antd 6 榛樿(`xs=480` / `sm=576` / `md=768` / `lg=992` / `xl=1200`),`md` 浣滀负鎵嬫満/骞虫澘鍒嗘按宀€?
+断点沿用 Antd 6 默认(`xs=480` / `sm=576` / `md=768` / `lg=992` / `xl=1200`),`md` 作为手机/平板分水岭。
 
-**Shell 琛屼负**
+**Shell 行为**
 
-- `>=md` 妗岄潰:宸?232px 鍥哄畾 Sider + 椤堕儴 64px Header
-- `<md` 鎵嬫満:Sider 鏀惰捣,椤舵爮宸︿晶姹夊牎鎸夐挳 鈫?宸︽娊灞?Drawer(`min(320, 85vw)`),甯﹂伄缃?璺敱鍒囨崲 / 鑿滃崟鐐瑰嚮 / 閬僵鐐瑰嚮鑷姩鍏抽棴
-- 澶村儚 + 鐢ㄦ埛鍚?+ 瑙掕壊鍦?`<sm` 鏋佺獎灞忛殣钘?鍙繚鐣欏ご鍍?
-- 闈㈠寘灞戝湪 `<sm` 鍙樉绀烘渶鍚庝竴娈?
+- `>=md` 桌面:左 232px 固定 Sider + 顶部 64px Header
+- `<md` 手机:Sider 收起,顶栏左侧汉堡按钮 → 左抽屉 Drawer(`min(320, 85vw)`),带遮罩;路由切换 / 菜单点击 / 遮罩点击自动关闭
+- 头像 + 用户名 + 角色在 `<sm` 极窄屏隐藏,只保留头像
+- 面包屑在 `<sm` 只显示最后一段
 
-**涓氬姟椤佃涓?*
+**业务页行为**
 
-- 鍒楄〃:ProTable 鍔?`scroll.x: max-content` + sticky 澶?绉诲姩绔悳绱㈡爮 `layout: vertical`銆佸垎椤?`size: small`;棣栧垪 `fixed: left` 渚夸簬妯粦
-- 璇︽儏:ProDescriptions 鏀逛负 `{ xs:1, sm:1, md:2, lg:2, xl:3 }` 鍒楁暟;鍐呭祵 ProTable 鍚屾牱鍔?`scroll.x` + sticky
-- 琛ㄥ崟:FormGrid 鍦?`<sm` 寮哄埗 1 鍒?SubmitBar 绉诲姩绔潡鐘舵寜閽?+ 璐村簳瀹夊叏鍖?
-- 鎶藉眽:`<md` 鏀?`placement: bottom`銆乣width: 100%`銆乣height: 90%`
-- 缁熻:鍥捐〃 `autoFit` + 楂樺害鍦?`<md` 鍘嬬缉鍒?240px
+- 列表:ProTable 加 `scroll.x: max-content` + sticky 头,移动端搜索栏 `layout: vertical`、分页 `size: small`;首列 `fixed: left` 便于横滑
+- 详情:ProDescriptions 改为 `{ xs:1, sm:1, md:2, lg:2, xl:3 }` 列数;内嵌 ProTable 同样加 `scroll.x` + sticky
+- 表单:FormGrid 在 `<sm` 强制 1 列,SubmitBar 移动端块状按钮 + 贴底安全区
+- 抽屉:`<md` 改 `placement: bottom`、`width: 100%`、`height: 90%`
+- 统计:图表 `autoFit` + 高度在 `<md` 压缩到 240px
 
-**瑙︽懜涓庡彲杈炬€?*
+**触摸与可达性**
 
-- 閲嶈鎸夐挳(`size="large"`)鍦?`<md` 寮哄埗 鈮?40px 鍛戒腑鍖?
-- 涓讳綋鍔?`.qt-touch` class,绂佺敤鑿滃崟 hover-to-open
-- `:focus-visible` 娌跨敤 Antd 涓昏壊閿洏鐒︾偣鐜?
-- 绉婚櫎 `-webkit-tap-highlight-color`,鐢?Antd 鑷甫 active 鎬?
+- 重要按钮(`size="large"`)在 `<md` 强制 ≥ 40px 命中区
+- 主体加 `.qt-touch` class,禁用菜单 hover-to-open
+- `:focus-visible` 沿用 Antd 主色键盘焦点环
+- 移除 `-webkit-tap-highlight-color`,用 Antd 自带 active 态
 
-**瀹炵幇瑕佺偣**
+**实现要点**
 
-- 鍗曚竴 hook `lib/use-breakpoint.ts`:钖勫寘瑁?`antd.Grid.useBreakpoint()`,SSR 瀹夊叏(棣栨娓叉煋淇濆畧杩斿洖妗岄潰)
-- 涓嶅紩鍏?Tailwind / 棰濆 UI 搴?`globals.css` 鏂板 `.pt-safe` / `.pb-safe` 绛夊畨鍏ㄥ尯宸ュ叿绫?
-- 妗岄潰绔浂鍥炲綊;鎵嬫満绔垪琛ㄤ粛鏄按骞虫粴鍔ㄨ€岄潪鍗＄墖娴?ProTable 3.1.12-0 beta 鐨?card 瑙嗗浘 API 鏆備笉绋冲畾)
+- 单一 hook `lib/use-breakpoint.ts`:薄包装 `antd.Grid.useBreakpoint()`,SSR 安全(首次渲染保守返回桌面)
+- 不引入 Tailwind / 额外 UI 库;`globals.css` 新增 `.pt-safe` / `.pb-safe` 等安全区工具类
+- 桌面端零回归;手机端列表仍是水平滚动而非卡片流(ProTable 3.1.12-0 beta 的 card 视图 API 暂不稳定)
 
-## 鑴氭湰閫熸煡
+## 脚本速查
 
-| 鍛戒护 | 鐢ㄩ€?|
+| 命令 | 用途 |
 |---|---|
-| `npm run dev` | 寮€鍙戞湇鍔″櫒 |
-| `npm run dev:setup` | 涓€閿捣 Postgres + MinIO + 瑁呬緷璧?|
-| `npm run dev:up` / `dev:down` | 鍚屼笂,浠?Docker 鐢熷懡鍛ㄦ湡 |
-| `npm run build` | 鐢熶骇鏋勫缓 |
-| `npm run start` | 鍚姩鐢熶骇鏈嶅姟 |
-| `npm run typecheck` | TS 绫诲瀷妫€鏌?|
+| `npm run dev` | 开发服务器 |
+| `npm run dev:setup` | 一键起 Postgres + MinIO + 装依赖 |
+| `npm run dev:up` / `dev:down` | 同上,仅 Docker 生命周期 |
+| `npm run build` | 生产构建 |
+| `npm run start` | 启动生产服务 |
+| `npm run typecheck` | TS 类型检查 |
 | `npm run lint` / `lint:fix` | ESLint(0 warnings) |
-| `npm test` | 鍗曞厓 + API 娴嬭瘯 (Vitest) |
+| `npm test` | 单元 + API 测试 (Vitest) |
 | `npm run test:e2e` | E2E (Playwright) |
-| `npm run prisma:migrate` | 鍒涘缓/搴旂敤 migration |
-| `npm run prisma:deploy` | 鐢熶骇搴旂敤 migration |
+| `npm run prisma:migrate` | 创建/应用 migration |
+| `npm run prisma:deploy` | 生产应用 migration |
 | `npm run prisma:studio` | Prisma Studio |
-| `npm run seed` | 璺戠郴缁熺鐞?seed(瑙掕壊/閮ㄩ棬/瀛楀吀/宸ヤ綔娴佹ā鏉? |
-| `npm run seed-roles` | 鍙彃 5 瑙掕壊 |
-| `npm run seed-dicts` | 鍙彃 8 绫诲瓧鍏?|
-| `npm run create-admin` | CLI 鍒涘缓璐﹀彿 |
-| `npm run seed:dev-users` | dev 涓撶敤,骞傜瓑 upsert 5 涓祴璇曡处鍙?|
-| `npm run reset-password` | 閲嶇疆瀵嗙爜 |
-| `npm run loadtest` | 鍘嬫祴 (榛樿 50 骞跺彂 脳 5s) |
-| `npm run migrate:legacy[:dry]` | FineUI 鏃у簱杩佺Щ CLI |
-| `npm run migrate:contract-status-dict` | 鍚堝悓鐘舵€佹満杩佺Щ(7鈫? 閰嶅瀛楀吀) |
-| `npm run migrate:customer-district[:dry]` | 瀹㈡埛鍦板尯瀛楁绂荤嚎琛ュ叏 |
+| `npm run seed` | 跑系统管理 seed(角色/部门/字典/工作流模板) |
+| `npm run seed-roles` | 只插 5 角色 |
+| `npm run seed-dicts` | 只插 8 类字典 |
+| `npm run create-admin` | CLI 创建账号 |
+| `npm run seed:dev-users` | dev 专用,幂等 upsert 5 个测试账号 |
+| `npm run reset-password` | 重置密码 |
+| `npm run loadtest` | 压测 (默认 50 并发 × 5s) |
+| `npm run migrate:legacy[:dry]` | FineUI 旧库迁移 CLI |
+| `npm run migrate:contract-status-dict` | 合同状态机迁移(7→3 配套字典) |
+| `npm run migrate:customer-district[:dry]` | 客户地区字段离线补全 |
 
-瀹屾暣 scripts 瑙?[package.json](package.json)銆?
+完整 scripts 见 [package.json](package.json)。
 
-## 璐ㄩ噺鍩虹嚎(2026-07-03, v0.8.0)
+## 质量基线(2026-07-03, v0.8.0)
 
-| 椤?| 鐘舵€?|
+| 项 | 状态 |
 |---|---|
 | `npm run typecheck` | 0 errors |
 | `npm run lint` | 0 errors / 0 warnings |
-| `npm test` | 65 涓?.test.ts 鏂囦欢 (547 鐢ㄤ緥), 鍏ㄧ豢 (4 涓?pre-existing failures 涓庢湰娆℃敼鍔ㄦ棤鍏? |
-| `npm run test:e2e` | 11 specs / 鍏ㄧ豢 |
+| `npm test` | 65 个 .test.ts 文件 (547 用例), 全绿 (4 个 pre-existing failures 与本次改动无关) |
+| `npm run test:e2e` | 11 specs / 全绿 |
 | `prisma generate` + `migrate deploy` | 28/28 migrations, client v7.8.0 |
-| `npm run build` | 鎴愬姛 |
+| `npm run build` | 成功 |
+| dev server `/login` `/dashboard` `/contracts` `/reports/PERFORMANCE` | 200 |
 
-## 鏈€杩戞洿鏂?
+## 最近更新
 
-### v0.8.1(2026-07-04) 浠ｇ爜瀹¤淇: 鐘舵€佹満骞跺彂瀹夊叏 + 閲戦涓嶅彉寮?+ 瀹㈡埛绔珵鎬侀槻鎶?
+### v0.8.1(2026-07-04) 代码审计修复: 状态机并发安全 + 金额不变式 + 客户端竞态防护
 
-> v0.8.0 鎶ヨ〃涓績涓婄嚎鍚?瀵瑰叏椤圭洰鍋氫簡涓€娆′唬鐮佸璁?淇 10 涓珮浼樺厛绾?bug,琛ュ厖 2 缁勫崟鍏冩祴璇曘€傛湰娆¤鐩?11 涓枃浠?0 涓柊杩佺Щ,0 涓?API 濂戠害鍙樻洿銆?
+> v0.8.0 报表中心上线后,对全项目做了一次代码审计,修复 10 个高优先级 bug,补充 2 组单元测试。本次覆盖 11 个文件,0 个新迁移,0 个 API 契约变更。
 
-**鐘舵€佹満骞跺彂瀹夊叏 (涓€)** (`lib/status-machine.ts`):
-- `runTransitionInTx` 鐨?`UPDATE` 鐜板湪鎶婃簮鐘舵€佸啓杩?`WHERE` (`status: { in: allowedSourceStatuses }`), 闃叉骞跺彂璇?鏀?鍐欒鐩?
-- 骞跺彂瀵艰嚧 Prisma `P2025` (鏃犺鍖归厤) 鏃?`silentSkip=true` 杩斿洖 `SKIPPED`,鍚﹀垯鎶涘嚭 `ENTITY_IMMUTABLE` 鎴栬嚜瀹氫箟 `mismatchError`
-- 鏂板 `tests/unit/lib/status-machine.test.ts` 8 涓崟娴嬭鐩?WHERE 瀛愬彞 / P2025 鏄犲皠 / 闈?P2025 浼犳挱 / `SkipTransition` 琛屼负
+**状态机并发安全 (一)** (`lib/status-machine.ts`):
+- `runTransitionInTx` 的 `UPDATE` 现在把源状态写进 `WHERE` (`status: { in: allowedSourceStatuses }`), 防止并发读-改-写覆盖
+- 并发导致 Prisma `P2025` (无行匹配) 时,`silentSkip=true` 返回 `SKIPPED`,否则抛出 `ENTITY_IMMUTABLE` 或自定义 `mismatchError`
+- 新增 `tests/unit/lib/status-machine.test.ts` 8 个单测覆盖 WHERE 子句 / P2025 映射 / 非 P2025 传播 / `SkipTransition` 行为
 
-**鍚堝悓閲戦涓嶅彉寮?(浜?** (`server/services/contract/crud.ts`):
-- `ADMIN` 璋冨皬 `totalAmount` 鏃?浜嬪姟鍐呰仛鍚堣鍚堝悓涓?`DRAFT/ISSUED/RED_FLUSHED` 鍙戠エ閲戦涓?`CONFIRMED/RECONCILED` 鍥炴閲戦
-- 浠讳竴鑱氬悎鍊艰秴杩囨柊鎬婚 + 0.01 鍏冨宸?鎶?`INVOICE_OVER_LIMIT` / `PAYMENT_OVER_CONTRACT` (422)
-- 鏂板 `tests/unit/server/contract-update-amount-guard.test.ts` 7 涓崟娴嬭鐩栧厑璁?鎷︽埅/瀹瑰樊杈圭晫
+**合同金额不变式 (二)** (`server/services/contract/crud.ts`):
+- `ADMIN` 调小 `totalAmount` 时,事务内聚合该合同下 `DRAFT/ISSUED/RED_FLUSHED` 发票金额与 `CONFIRMED/RECONCILED` 回款金额
+- 任一聚合值超过新总额 + 0.01 元容差,抛 `INVOICE_OVER_LIMIT` / `PAYMENT_OVER_CONTRACT` (422)
+- 新增 `tests/unit/server/contract-update-amount-guard.test.ts` 7 个单测覆盖允许/拦截/容差边界
 
-**閲戦绮惧害 (涓?**:
-- `server/services/contract/status.ts`: `tryAutoClose` / `tryAutoCloseOnOverdue` 闃堝€艰绠楁敼鐢?`Prisma.Decimal`,閬垮厤 `total * ratio` 娴偣婕傜Щ
-- `server/services/invoice/action.ts`: 绾㈠啿鍒涘缓璐熸暟鍙戠エ鏃朵娇鐢?`new Prisma.Decimal(...).negated()` 鏇夸唬 `-Number(...)`;`PLANNED` 鍥炴 `paymentNo` 鏀逛负 `nextBusinessNo("PAYMENT")-PLANNED`,閬垮厤鏃堕棿鎴冲啿绐?
+**金额精度 (三)**:
+- `server/services/contract/status.ts`: `tryAutoClose` / `tryAutoCloseOnOverdue` 阈值计算改用 `Prisma.Decimal`,避免 `total * ratio` 浮点漂移
+- `server/services/invoice/action.ts`: 红冲创建负数发票时使用 `new Prisma.Decimal(...).negated()` 替代 `-Number(...)`;`PLANNED` 回款 `paymentNo` 改为 `nextBusinessNo("PAYMENT")-PLANNED`,避免时间戳冲突
 
-**瀹㈡埛绔珵鎬侀槻鎶?(鍥?**:
-- `lib/use-list-request.ts`: 鍔?`requestIdRef` 搴忓彿, 蹇界暐杩囨湡璇锋眰鐨?`setData`
-- `app/(app)/dashboard/page.tsx`: `fetch` 鍔?`AbortController`,effect cleanup 涓?abort
-- `app/(app)/statistics/aging/page.tsx`: `useMemo` 鍓綔鐢ㄦ敼涓?`useEffect`,`refetchAging` 鍐呭姞璇锋眰搴忓彿/abort 淇濇姢
+**客户端竞态防护 (四)**:
+- `lib/use-list-request.ts`: 加 `requestIdRef` 序号, 忽略过期请求的 `setData`
+- `app/(app)/dashboard/page.tsx`: `fetch` 加 `AbortController`,effect cleanup 中 abort
+- `app/(app)/statistics/aging/page.tsx`: `useMemo` 副作用改为 `useEffect`,`refetchAging` 内加请求序号/abort 保护
 
-**鍙傛暟涓?JSON 鏍￠獙 (浜?**:
-- `app/api/statistics/export/route.ts`: `minAmount` 杞崲鍚庢鏌?`Number.isNaN`,闈炴硶鏃惰繑鍥?400
-- `server/storage/presign.ts`: `contract.attachments` 鍏冪礌鐢?Zod schema 鏍￠獙,寮傚父缁撴瀯鍥為€€绌烘暟缁?
+**参数与 JSON 校验 (五)**:
+- `app/api/statistics/export/route.ts`: `minAmount` 转换后检查 `Number.isNaN`,非法时返回 400
+- `server/storage/presign.ts`: `contract.attachments` 元素用 Zod schema 校验,异常结构回退空数组
 
-**娴嬭瘯鍔犲浐 (鍏?**:
-- 淇 `tests/api/signer-contract-detail.test.ts` SALES 闅旂鏂█,浣垮叾瀵规湰娴嬭瘯 TAG 鍒涘缓鐨勫悎鍚屽仛鏂█,閬垮厤琚?seeded 鏁版嵁姹℃煋
-- 鍏ㄩ噺娴嬭瘯: `npm test` 71 鏂囦欢 / 565 娴嬭瘯鍏ㄩ儴閫氳繃
+**测试加固 (六)**:
+- 修复 `tests/api/signer-contract-detail.test.ts` SALES 隔离断言,使其对本测试 TAG 创建的合同做断言,避免被 seeded 数据污染
+- 全量测试: `npm test` 71 文件 / 565 测试全部通过
 
-**鐗堟湰鍙?*: `0.8.0` 鈫?`0.8.1`(patch bump,浠?bugfix + 娴嬭瘯,鏃?schema 鍙樻洿,鏃?breaking change)
-**閮ㄧ讲璇存槑**: 鏃?schema 鍙樻洿,鏃犳柊杩佺Щ;`prisma migrate deploy` 涓嶉渶瑕佽窇;涓氬姟涓婁粎 `ADMIN` 缂╁皬鍚堝悓鎬婚鏃舵柊澧炴牎楠?姝ｅ父娴佺▼涓嶅彈褰卞搷
+**版本号**: `0.8.0` → `0.8.1`(patch bump,仅 bugfix + 测试,无 schema 变更,无 breaking change)
+**部署说明**: 无 schema 变更,无新迁移;`prisma migrate deploy` 不需要跑;业务上仅 `ADMIN` 缩小合同总额时新增校验,正常流程不受影响
 
-### v0.8.0(2026-07-03)鎶ヨ〃涓績閲嶅仛: PDF 5 瀛楁 + 澶?sheet Excel + 鏂囦欢鍚嶆椂闂存埑
+### v0.8.0(2026-07-03)报表中心重做: PDF 5 字段 + 多 sheet Excel + 文件名时间戳
 
-> v0.7.0 鎶ヨ〃涓績涓婄嚎鍚? 璺?2026骞?鏈堜笟鍔℃槑缁?pdf 妯℃澘瀵归綈, 鎶婂憳宸ヤ笟缁╁仛鎴愯窡鍘熺増涓€鑷寸殑"鎸夌绾︿汉 + 涓囧厓灏忚"缁撴瀯銆傛湰娆¤鐩?11 涓?commit, 娑夊強 12 涓枃浠? 0 涓柊杩佺Щ (鏁版嵁娌跨敤 v0.7 鐨?ReportDefinition / ReportSnapshot 琛?銆?
+> v0.7.0 报表中心上线后, 跟 2026年5月业务明细.pdf 模板对齐, 把员工业绩做成跟原版一致的"按签约人 + 万元小计"结构。本次覆盖 11 个 commit, 涉及 12 个文件, 0 个新迁移 (数据沿用 v0.7 的 ReportDefinition / ReportSnapshot 表)。
 
-**鏍稿績鍙樻洿 (涓€) PDF 5 瀛楁瀵归綈**:
-- 鍛樺伐涓氱哗鏄庣粏琛ㄤ弗鏍兼寜鍘?PDF 妯℃澘 5 鍒? 鎵€灞炲尯鍩?/ 浼佷笟鍚嶇О / 鏈嶅姟椤圭洰 / 绛剧害浜?/ 鍚堝悓閲戦(鍏?
-- 鏈垪"灏忚(涓囧厓)"鍙湪绛剧害浜哄皬璁¤ + 鍏ㄥ叕鍙稿悎璁¤濉€? 鍚堝悓琛岀┖
-- 绛剧害浜哄皬璁¤"绛剧害浜?浣嶇疆鍐?"{濮撳悕} 灏忚", 涓嶅甫宸ュ彿; 鍏ㄥ叕鍙稿悎璁¤鍐?"鍏ㄥ叕鍙稿悎璁?
-- 瑙嗚: 绮楅粦杈规 + 娴呴粍/鐏板簳鑹?+ 灞呬腑琛ㄥご + 閲戦鍙冲榻?+ tabular-nums 绛夊鏁板瓧
-- 绛剧害鏄庣粏涓嶅啀杈撳嚭: `userId / employeeNo / serviceType 浠ｇ爜 / signDate / contractNo / rowType` (鍐呴儴涓婚敭/鏋氫妇 code, 涓嶅闇?
+**核心变更 (一) PDF 5 字段对齐**:
+- 员工业绩明细表严格按原 PDF 模板 5 列: 所属区域 / 企业名称 / 服务项目 / 签约人 / 合同金额(元)
+- 末列"小计(万元)"只在签约人小计行 + 全公司合计行填值, 合同行空
+- 签约人小计行"签约人"位置写 "{姓名} 小计", 不带工号; 全公司合计行写 "全公司合计"
+- 视觉: 粗黑边框 + 浅黄/灰底色 + 居中表头 + 金额右对齐 + tabular-nums 等宽数字
+- 签约明细不再输出: `userId / employeeNo / serviceType 代码 / signDate / contractNo / rowType` (内部主键/枚举 code, 不外露)
 
-**Excel 澶?sheet (浜?**:
-- `lib/excel.ts` 鏂板 `exportToMultiSheetXlsx` (澶?sheet 瀵煎嚭, 31 瀛楃 sheet 鍚嶆埅鏂? 闈炴硶瀛楃杞?`_`)
-- 鎶ヨ〃涓績瀵煎嚭 Excel: 1 sheet "鍛樺伐涓氱哗鏄庣粏(鎸夌绾︿汉)" 6 鍒? 璺?PDF 瀛楁涓€涓€瀵瑰簲
-- 鍒犱簡涔嬪墠鐨?鍛樺伐涓氱哗姹囨€? sheet (璺?KPI 鍗＄墖閲嶅, 璺?PDF 涓嶇)
+**Excel 多 sheet (二)**:
+- `lib/excel.ts` 新增 `exportToMultiSheetXlsx` (多 sheet 导出, 31 字符 sheet 名截断, 非法字符转 `_`)
+- 报表中心导出 Excel: 1 sheet "员工业绩明细(按签约人)" 6 列; 跟 PDF 字段一一对应
+- 删了之前的"员工业绩汇总" sheet (跟 KPI 卡片重复, 跟 PDF 不符)
 
-**鏁版嵁鍙ｅ緞 (涓? 鏀圭敤绛剧害浜?*:
-- 鏂板 `getSignerSummary` (鎸?signerId 鑱氬悎 鍚堝悓/寮€绁?鍥炴) 璺?`getSignerContractDetail` (鍚堝悓绾ф槑缁? 鍚岀淮搴?
-- 鏃?`getEmployeePerformance` (鎸?ownerUserId 鑱氬悎) 寮冪敤, 浣嗕繚鐣欏吋瀹?(鏂?payload.signerSummary 浼樺厛)
-- 璇︽儏椤?+ Excel + PDF 鍏ㄩ儴璧?绛剧害浜?鍙ｅ緞, 1 涓汉鍦ㄥ悓涓€寮犳姤琛ㄩ噷"姹囨€?+ 鏄庣粏"閫昏緫鑷唇
+**数据口径 (三) 改用签约人**:
+- 新增 `getSignerSummary` (按 signerId 聚合 合同/开票/回款) 跟 `getSignerContractDetail` (合同级明细) 同维度
+- 旧 `getEmployeePerformance` (按 ownerUserId 聚合) 弃用, 但保留兼容 (新 payload.signerSummary 优先)
+- 详情页 + Excel + PDF 全部走"签约人"口径, 1 个人在同一张报表里"汇总 + 明细"逻辑自洽
 
-**绉婚櫎鑷姩鐢熸垚 (鍥? 绠€鍖?*:
-- 璇︽儏椤佃繘鍏ヤ笉鍐嶉潤榛樺缓蹇収 (`getOrBuildSnapshot` 鎷嗕负 `findSnapshot` 鍙 + `generateSnapshot` 鏄惧紡鐢熸垚)
-- 鎵句笉鍒板揩鐓ф椂杩?404 + 涓枃鎻愮ず, 鍓嶇璧?鏈敓鎴?绌烘€?+ 澶?绔嬪嵆鐢熸垚鎶ヨ〃"鎸夐挳
-- 鍒?`server/jobs/report-snapshot.ts` + `runner.ts` 閲?cron 璋冪敤
-- 淇濈暀 `scripts/shared/backfill-report-snapshots.ts` (涓€娆℃€ф墜鍔ㄨˉ鍘嗗彶鐢?
-- 姣忔棩 0 鐐?cron 涓嶅啀鑷姩璺戞姤琛ㄧ敓鎴?
+**移除自动生成 (四) 简化**:
+- 详情页进入不再静默建快照 (`getOrBuildSnapshot` 拆为 `findSnapshot` 只读 + `generateSnapshot` 显式生成)
+- 找不到快照时返 404 + 中文提示, 前端走"未生成"空态 + 大"立即生成报表"按钮
+- 删 `server/jobs/report-snapshot.ts` + `runner.ts` 里 cron 调用
+- 保留 `scripts/shared/backfill-report-snapshots.ts` (一次性手动补历史用)
+- 每日 0 点 cron 不再自动跑报表生成
 
-**API 鎷嗗垎 (浜?**:
-- `POST /api/reports/snapshots` body 鍔?`action` 瀛楁: `snapshotId` 璧?`regenerateSnapshot`, `action=generate` 璧?`generateSnapshot`, 鍚﹀垯 `findSnapshot`
-- `POST /api/reports/export` 鏀寔涓ょ妯″紡: `snapshotId` 璧板揩鐓? `code+periodType+from/to` 璧板疄鏃?(CUSTOM 鍛ㄦ湡姘镐笉鍐欏揩鐓? 浣嗕粛瑕佽兘瀵煎嚭)
-- `server/services/report.ts` 鎷嗗嚭 `buildExportSectionsFromResult` helper, snapshot 鍜?live 涓ゆ潯璺緞鍏辩敤 section 鏋勯€?
+**API 拆分 (五)**:
+- `POST /api/reports/snapshots` body 加 `action` 字段: `snapshotId` 走 `regenerateSnapshot`, `action=generate` 走 `generateSnapshot`, 否则 `findSnapshot`
+- `POST /api/reports/export` 支持两种模式: `snapshotId` 走快照, `code+periodType+from/to` 走实时 (CUSTOM 周期永不写快照, 但仍要能导出)
+- `server/services/report.ts` 拆出 `buildExportSectionsFromResult` helper, snapshot 和 live 两条路径共用 section 构造
 
-**鏂囦欢鍚嶆椂闂存埑 (鍏?**:
-- 鎵€鏈夊鍑烘枃浠跺悕缁熶竴 `YYYY-MM-DD_HHMM` 鏍煎紡 (绮剧‘鍒板垎), 閬垮厤鍚屾棩澶氭瀵煎嚭瑕嗙洊
-- `lib/date-range.ts` 鏂板 `exportFileTimestamp()` helper, 鏈湴鏃跺尯
-- 褰卞搷: reports / statistics / customers / payments / invoices / contracts 鍏?6 涓?export 璺敱
-- PDF 鍙﹀瓨: print-html `<title>` 鍔?`_{periodLabel}_{ts}` 鍚庣紑, 娴忚鍣?鍙﹀瓨涓?PDF"瀵硅瘽妗嗛粯璁ょ敤杩欎釜鍚?
-- Content-Disposition 鍚屾鍔?`filename="..."` (defensive, 缁欑洿鎺ヤ笅杞界殑瀹㈡埛绔?
+**文件名时间戳 (六)**:
+- 所有导出文件名统一 `YYYY-MM-DD_HHMM` 格式 (精确到分), 避免同日多次导出覆盖
+- `lib/date-range.ts` 新增 `exportFileTimestamp()` helper, 本地时区
+- 影响: reports / statistics / customers / payments / invoices / contracts 共 6 个 export 路由
+- PDF 另存: print-html `<title>` 加 `_{periodLabel}_{ts}` 后缀, 浏览器"另存为 PDF"对话框默认用这个名
+- Content-Disposition 同步加 `filename="..."` (defensive, 给直接下载的客户端)
 
-**娴嬭瘯 (涓?**:
-- `tests/api/reports.test.ts` 鈥?閲嶅啓涓?9 涓柊娴嬭瘯 (findSnapshot 404 / generateSnapshot 鍒涘缓 / hash skip / CUSTOM live / regenerate / permissions)
-- `tests/api/reports-export.test.ts` 鈥?8 涓祴璇?(5 PDF 5 瀛楁 + 1 涓嶅啀鏈夋眹鎬?+ 2 瀹炴椂鏌ヨ)
-- `tests/api/signer-contract-detail.test.ts` 鈥?3 涓柊娴嬭瘯 (瀛楁瀵归綈 + SALES 闅旂 + 鏉冮檺)
-- 鍒?`tests/lib/report-period.test.ts` 閲?`previousPeriod` 鐩稿叧娴嬭瘯 (鍑芥暟涓€璧峰垹)
+**测试 (七)**:
+- `tests/api/reports.test.ts` — 重写为 9 个新测试 (findSnapshot 404 / generateSnapshot 创建 / hash skip / CUSTOM live / regenerate / permissions)
+- `tests/api/reports-export.test.ts` — 8 个测试 (5 PDF 5 字段 + 1 不再有汇总 + 2 实时查询)
+- `tests/api/signer-contract-detail.test.ts` — 3 个新测试 (字段对齐 + SALES 隔离 + 权限)
+- 删 `tests/lib/report-period.test.ts` 里 `previousPeriod` 相关测试 (函数一起删)
 
-**鐢熶骇鏁版嵁**:
-- 璺?`pnpm tsx scripts/shared/backfill-report-snapshots.ts --year 2026` 琛ュ叏 2026 骞?1-12 鏈堝揩鐓?(36 涓粍鍚? 6 鏈?7 鏈?Q3/骞?鏄凡鐢熸垚鐨?
-- 2026-07-03 瀹炴祴 5鏈堝憳宸ヤ笟缁? 16 涓绾︿汉鍏?62 绗斿悎鍚? 鎬?410,880 鍏?(41.09 涓?, 璺?PDF 鏁版嵁瀹屽叏涓€鑷?
+**生产数据**:
+- 跑 `pnpm tsx scripts/shared/backfill-report-snapshots.ts --year 2026` 补全 2026 年 1-12 月快照 (36 个组合, 6 月/7 月/Q3/年 是已生成的)
+- 2026-07-03 实测 5月员工业绩: 16 个签约人共 62 笔合同, 总 410,880 元 (41.09 万), 跟 PDF 数据完全一致
 
-**鐗堟湰鍙?*: `0.7.0` 鈫?`0.8.0` (minor bump, 鏂板姛鑳戒负涓? 1 涓?breaking: 鎶ヨ〃涓績涓嶅啀鑷姩鐢熸垚)
-**閮ㄧ讲璇存槑**: 鏃?schema 鍙樻洿, 鏃犳柊杩佺Щ; `prisma migrate deploy` 涓嶉渶瑕佽窇; `report-snapshot` cron job 宸蹭粠 `runner.ts` 绉婚櫎, `qt-jobs.cron` 娉ㄩ噴鍚屾鍘绘帀; 鐜版湁蹇収鏁版嵁鏃犻渶杩佺Щ
+**版本号**: `0.7.0` → `0.8.0` (minor bump, 新功能为主, 1 个 breaking: 报表中心不再自动生成)
+**部署说明**: 无 schema 变更, 无新迁移; `prisma migrate deploy` 不需要跑; `report-snapshot` cron job 已从 `runner.ts` 移除, `qt-jobs.cron` 注释同步去掉; 现有快照数据无需迁移
 
-### v0.7.0(2026-07-03)搴旀敹璐﹂緞閲嶈璁?+ 鍌敹鍔熻兘
+### v0.7.0(2026-07-03)应收账龄重设计 + 催收功能
 
-> 鍦?v0.6.0 浜嬫晠澶嶇洏涔嬪悗,缁х画鎺ㄨ繘"搴旀敹渚х殑鍙帶鎬?寤鸿銆傛湰娆′互 `Invoice.dueDate` + `DunningNote` 涓烘牳蹇?琛ラ綈璐﹂緞 / 鍌敹 / 璺熷崟鐨勫叏閾捐矾銆?
+> 在 v0.6.0 事故复盘之后,继续推进"应收侧的可控性"建设。本次以 `Invoice.dueDate` + `DunningNote` 为核心,补齐账龄 / 催收 / 跟单的全链路。
 
-**鏂版ā鍨?(涓€) DunningNote**(8 瀛楁鍌敹璁板綍):
-- `server/services/dunning.ts` + `prisma/schema.prisma` 鏂?model:`DunningNote` (`invoiceId` FK CASCADE 鈫?`Invoice`, `actorId` FK RESTRICT 鈫?`User` 闃?actor 璇垹)
-- 瀛楁:`status` (CONTACTED / PROMISED / DISPUTED / LEGAL) / `promisedDate` / `lastContactAt` / `channel` (PHONE / WECHAT / EMAIL / VISIT) / `remark` / `actorId`
-- 绱㈠紩:`(invoiceId)` / `(status)` / `(actorId, createdAt)`
-- 涓氬姟璇箟: 鍗曚竴鍌敹鍔ㄤ綔 = 1 琛?DunningNote;PROMISED 鐘舵€佸～ `promisedDate`(瀹㈡埛鎵胯浠樻鏃?;鏈€杩戜竴娆¤仈绯?= `lastContactAt` 鐢ㄤ簬"璺濅笂娆¤窡杩?N 澶?鎻愰啋
+**新模型 (一) DunningNote**(8 字段催收记录):
+- `server/services/dunning.ts` + `prisma/schema.prisma` 新 model:`DunningNote` (`invoiceId` FK CASCADE → `Invoice`, `actorId` FK RESTRICT → `User` 防 actor 误删)
+- 字段:`status` (CONTACTED / PROMISED / DISPUTED / LEGAL) / `promisedDate` / `lastContactAt` / `channel` (PHONE / WECHAT / EMAIL / VISIT) / `remark` / `actorId`
+- 索引:`(invoiceId)` / `(status)` / `(actorId, createdAt)`
+- 业务语义: 单一催收动作 = 1 行 DunningNote;PROMISED 状态填 `promisedDate`(客户承诺付款日);最近一次联系 = `lastContactAt` 用于"距上次跟进 N 天"提醒
 
-**Schema 澧為噺 (浜?**:
-- `Invoice.dueDate` (TIMESTAMPTZ, nullable): 鍚堝悓绾﹀畾浠樻鏃?璐﹂緞 `basis=due` 鐢?涓?null 鏃跺洖閫€ `actualIssueDate` 璁￠緞銆俙@@index([dueDate])` 鍔犲揩鎵弿
-- `Contract.owner` 鍙嶅悜鍏崇郴琛ュ缓:涔嬪墠 `User.ownedContracts` 婕忛厤(鍙厤浜?`signedContracts`),瀵艰嚧 `ownerUserName` 娓叉煋璧?`String` fallback 鑰岄潪 `relation` join
-- 杩佺Щ `20260703_aging_redesign`(鍗曚簨鍔?: `ADD COLUMN dueDate` + `CREATE TABLE DunningNote` + 3 绱㈠紩 + 1 FK + 鍥炲～(鍙湁 ISSUED 涓?dueDate 涓虹┖鐨勫彂绁?榛樿 `actualIssueDate + 30 澶ー,鍏跺畠鐘舵€佷繚鎸?NULL 绛夌敤鎴峰悗缁綍鍏?
-- 鍏煎:涓嶅姩鍘嗗彶 migration,鍙柊澧炲璞?璺?`AGENTS.md` "涓嶅彲鍙樿縼绉? 瑙勫垯涓€鑷?
+**Schema 增量 (二)**:
+- `Invoice.dueDate` (TIMESTAMPTZ, nullable): 合同约定付款日,账龄 `basis=due` 用;为 null 时回退 `actualIssueDate` 计龄。`@@index([dueDate])` 加快扫描
+- `Contract.owner` 反向关系补建:之前 `User.ownedContracts` 漏配(只配了 `signedContracts`),导致 `ownerUserName` 渲染走 `String` fallback 而非 `relation` join
+- 迁移 `20260703_aging_redesign`(单事务): `ADD COLUMN dueDate` + `CREATE TABLE DunningNote` + 3 索引 + 1 FK + 回填(只有 ISSUED 且 dueDate 为空的发票,默认 `actualIssueDate + 30 天`,其它状态保持 NULL 等用户后续录入)
+- 兼容:不动历史 migration,只新增对象,跟 `AGENTS.md` "不可变迁移" 规则一致
 
-**API 璺敱 (涓? 7 鏉?*:
-- `GET /api/statistics/aging/by-customer` 鈥?鎸夊鎴风淮搴﹀垎璐﹂緞妗?0-30/30-60/60-90/90+)
-- `GET /api/statistics/aging/by-owner` 鈥?鎸夊悎鍚岃礋璐ｄ汉缁村害(缁?SALES 鎺掕 + ADMIN 宸℃)
-- `GET /api/statistics/aging/trend` 鈥?璐﹂緞瓒嬪娍(瀵规瘮 7/30/90 澶╁墠蹇収)
-- `GET /api/statistics/aging/uninvoiced-contracts` 鈥?鏈紑绁ㄥ悎鍚屾竻鍗?璐﹂緞鍩轰簬鍚堝悓姝㈡湡)
-- `GET/POST /api/statistics/aging/dunning-notes` + `[id]` 鈥?鍌敹璁板綍 CRUD(REST 椋庢牸)
-- `GET /api/statistics/aging/dunning/summary` 鈥?鍌敹姹囨€?姣忓紶鍙戠エ鐨勬渶杩?N 鏉″偓鏀?
+**API 路由 (三) 7 条**:
+- `GET /api/statistics/aging/by-customer` — 按客户维度分账龄档(0-30/30-60/60-90/90+)
+- `GET /api/statistics/aging/by-owner` — 按合同负责人维度(给 SALES 排行 + ADMIN 巡检)
+- `GET /api/statistics/aging/trend` — 账龄趋势(对比 7/30/90 天前快照)
+- `GET /api/statistics/aging/uninvoiced-contracts` — 未开票合同清单(账龄基于合同止期)
+- `GET/POST /api/statistics/aging/dunning-notes` + `[id]` — 催收记录 CRUD(REST 风格)
+- `GET /api/statistics/aging/dunning/summary` — 催收汇总(每张发票的最近 N 条催收)
 
-**缁勪欢 (鍥? 4 涓?*:
-- `components/aging-summary.tsx` 鈥?4 妗ｈ处榫勬眹鎬诲崱鐗?鎬诲簲鏀?/ 0-30 / 30-60 / 90+)
-- `components/dashboard-aging-mini.tsx` 鈥?dashboard 宓屽叆鐨勮糠浣犺处榫勮鍥?
-- `components/dunning-drawer.tsx` 鈥?鍌敹鎶藉眽(璇︽儏椤?鍒楄〃椤靛唴宓?灞曠ず + 鏂板鍌敹璁板綍)
-- `components/authority.tsx` 鈥?`<Authority>` 閫氱敤鏉冮檺鍖呰(鏇挎崲 `lib/permissions.ts` 鏃?`useCanX` 绯诲垪,缁熶竴鍓嶇鏉冮檺娓叉煋)
+**组件 (四) 4 个**:
+- `components/aging-summary.tsx` — 4 档账龄汇总卡片(总应收 / 0-30 / 30-60 / 90+)
+- `components/dashboard-aging-mini.tsx` — dashboard 嵌入的迷你账龄视图
+- `components/dunning-drawer.tsx` — 催收抽屉(详情页/列表页内嵌,展示 + 新增催收记录)
+- `components/authority.tsx` — `<Authority>` 通用权限包装(替换 `lib/permissions.ts` 旧 `useCanX` 系列,统一前端权限渲染)
 
-**缁熻椤垫敼閫?(浜?**:
-- `app/(app)/statistics/aging/page.tsx` 鈥?700+ 琛岄噸鍐?鏂颁氦浜?瀹㈡埛 / 璐熻矗浜哄弻缁村害鍒囨崲 + 鍌敹鍏ュ彛
-- `app/(app)/statistics/by-region/page.tsx` / `performance/page.tsx` 鈥?寰皟鑱斿姩
-- `app/(app)/dashboard/page.tsx` 鈥?鍔?aging mini
-- `app/api/statistics/export/route.ts` / `invoice-aging/route.ts` 鈥?瀵煎嚭 + invoice aging API 閫傞厤 dueDate basis
+**统计页改造 (五)**:
+- `app/(app)/statistics/aging/page.tsx` — 700+ 行重写,新交互:客户 / 负责人双维度切换 + 催收入口
+- `app/(app)/statistics/by-region/page.tsx` / `performance/page.tsx` — 微调联动
+- `app/(app)/dashboard/page.tsx` — 加 aging mini
+- `app/api/statistics/export/route.ts` / `invoice-aging/route.ts` — 导出 + invoice aging API 适配 dueDate basis
 
-**鍩虹璁炬柦 (鍏?**:
-- `lib/permissions.ts` 鈥?鍔?9 琛屾柊璧勬簮/鍔ㄤ綔鐨勬潈闄愭槧灏?STATISTICS.AGING_READ, DUNNING.*)
-- `lib/i18n.ts` 鈥?鍔?150+ 琛?dunning / aging / authority 璇嶆潯
-- `components/callout.tsx` 鈥?寰皟
-- `server/services/statistics.ts` 鈥?581 琛岄噸鍐?缁熶竴 dueDate basis 鎶借薄
+**基础设施 (六)**:
+- `lib/permissions.ts` — 加 9 行新资源/动作的权限映射(STATISTICS.AGING_READ, DUNNING.*)
+- `lib/i18n.ts` — 加 150+ 行 dunning / aging / authority 词条
+- `components/callout.tsx` — 微调
+- `server/services/statistics.ts` — 581 行重写,统一 dueDate basis 抽象
 
-**娴嬭瘯 (涓?**:
-- `tests/api/aging.test.ts` / `aging-api.test.ts` / `dunning.test.ts` 鈥?鍗曟祴瑕嗙洊 3 澶?API + 杈圭晫(dueDate null 鍥為€€ / cascade delete / force actor)
-- `tests/api/statistics-aggregation.test.ts` 鈥?鍔?41 琛屾柊鍦烘櫙
-- `tests/e2e/15-aging-redesign.spec.ts` 鈥?Playwright 绔埌绔?璇︽儏椤垫墦寮€鍌敹鎶藉眽 + 褰曞叆鍌敹 + 鍒楄〃鏄剧ず)
+**测试 (七)**:
+- `tests/api/aging.test.ts` / `aging-api.test.ts` / `dunning.test.ts` — 单测覆盖 3 大 API + 边界(dueDate null 回退 / cascade delete / force actor)
+- `tests/api/statistics-aggregation.test.ts` — 加 41 行新场景
+- `tests/e2e/15-aging-redesign.spec.ts` — Playwright 端到端(详情页打开催收抽屉 + 录入催收 + 列表显示)
 
-**鏂囨。 (鍏?**:
-- `docs/DESIGN-v3.md` 鈥?鍔?59 琛?璐﹂緞閲嶈璁?+ DunningNote 瀹炰綋 + dueDate basis 瑙勫垯)
-- `docs/USER_MANUAL.md` 鈥?鍔?27 琛?璐﹂緞椤典娇鐢?+ 鍌敹娴佺▼ + Authority 缁勪欢鐢ㄦ硶)
+**文档 (八)**:
+- `docs/DESIGN-v3.md` — 加 59 行(账龄重设计 + DunningNote 实体 + dueDate basis 规则)
+- `docs/USER_MANUAL.md` — 加 27 行(账龄页使用 + 催收流程 + Authority 组件用法)
 
-**鐗堟湰鍙?*: `0.6.0` 鈫?`0.7.0`(minor bump,鏂板姛鑳?+ 鏂?schema,鏃?breaking change)
-**閮ㄧ讲璇存槑**: 鍚?1 涓柊杩佺Щ(`20260703_aging_redesign`),鍚?DunningNote 琛ㄥ垱寤?+ Invoice.dueDate 鍔犲垪 + 鍥炲～;棣栨閮ㄧ讲鍚?ISSUED 鍙戠エ鐨?dueDate 浼氳鑷姩鍥炲～涓?`actualIssueDate + 30 澶ー,璐㈠姟鍙湪寮€绁ㄥ鏍告椂鎵嬪姩瑕嗙洊
+**版本号**: `0.6.0` → `0.7.0`(minor bump,新功能 + 新 schema,无 breaking change)
+**部署说明**: 含 1 个新迁移(`20260703_aging_redesign`),含 DunningNote 表创建 + Invoice.dueDate 加列 + 回填;首次部署后 ISSUED 发票的 dueDate 会被自动回填为 `actualIssueDate + 30 天`,财务可在开票审核时手动覆盖
 
-### v0.6.0 (2026-06-29) cron 闈欓粯澶辫触 9 涓湀浜嬫晠澶嶇洏 + 杩愮淮鐩戞帶 + 淇
+### v0.6.0 (2026-06-29) cron 静默失败 9 个月事故复盘 + 运维监控 + 修复
 
-> 2025-09 ~ 2026-06-28 鏈熼棿 cron 闈欓粯澶辫触 9 涓湀鏃犱汉瀵熻,鎭㈠鍚?`tryAutoCloseOnOverdue` 鎵归噺寮哄叧 209 涓?overdue_terminated 鍚堝悓 + 31 涓?admin 璇叧 + 2 涓?completed 寮傚父 = 鍏?242 涓?CLOSED 鍚堝悓 269 涓囧簲鏀惰閿佹銆傛湰娆″彂鐗堜互"淇 + 闃插啀鍙?涓烘牳蹇冦€?
+> 2025-09 ~ 2026-06-28 期间 cron 静默失败 9 个月无人察觉,恢复后 `tryAutoCloseOnOverdue` 批量强关 209 个 overdue_terminated 合同 + 31 个 admin 误关 + 2 个 completed 异常 = 共 242 个 CLOSED 合同 269 万应收被锁死。本次发版以"修复 + 防再发"为核心。
 
-**淇 (涓€) reopen + force 鏃佽矾** (`4502f182`)锛?
+**修复 (一) reopen + force 旁路** (`4502f182`)：
 
-- **feat(contract)**:鏂板 `POST /api/contracts/[id]/reopen` 鎺ュ彛, admin 涓撳睘, CLOSED 鈫?ACTIVE銆? 妗?`reason` 鏋氫妇 (`recovered_from_fake_close` / `data_correction` / `reopen_for_payment` / `other`, `other` 蹇呭～ `reasonNote`), 瀹屾暣浜嬪姟 + `ContractReviewLog` (`action=MANUAL_REOPEN`) + audit log + `reviewComment` 鏍囪 `reopened:<reason>` 渚夸簬杩芥函
-- **feat(payment)**: `createPayment` 鍔?`force: true` / `forceReason` 鏃佽矾, 浠?ADMIN 鍙敤, 浠?CLOSED 鍚堝悓鍏佽, 涓氬姟鏍￠獙淇濈暀 (閲戦/鍙戠エ), `remark` 鑷姩杩藉姞 `[FORCE_BACKFILL:<reason>]` 瀹¤鏍囪
-- **feat(api)**: `POST /api/payments` body 鍔?`force + forceReason` overlay (涓嶈繘 `PaymentCreateInput` 涓?schema, 閬垮厤姹℃煋鍓嶇绫诲瀷)
-- **docs**: postmortem `docs/cron-silent-failure-postmortem.md` (瀹屾暣澶嶇洏 + 楸奸鍥?+ 淇鏃堕棿绾? + `docs/contract-fake-close-recovery.md` (淇鏂规 + 閫夋嫨鎸囧崡) + `scripts/migrate/contract-fake-close-recovery.{sql,ts}` (浜嬪姟 + 澶囦唤 + 瀹¤ + 鍥炴粴 SQL)
-- **閮ㄧ讲璁板綍**: 2026-06-29 宸叉墽琛屾仮澶嶈剼鏈? 242 涓悎鍚屽凡鎭㈠ ACTIVE, 璐㈠姟鍙ˉ褰曞洖娆?
+- **feat(contract)**:新增 `POST /api/contracts/[id]/reopen` 接口, admin 专属, CLOSED → ACTIVE。4 档 `reason` 枚举 (`recovered_from_fake_close` / `data_correction` / `reopen_for_payment` / `other`, `other` 必填 `reasonNote`), 完整事务 + `ContractReviewLog` (`action=MANUAL_REOPEN`) + audit log + `reviewComment` 标记 `reopened:<reason>` 便于追溯
+- **feat(payment)**: `createPayment` 加 `force: true` / `forceReason` 旁路, 仅 ADMIN 可用, 仅 CLOSED 合同允许, 业务校验保留 (金额/发票), `remark` 自动追加 `[FORCE_BACKFILL:<reason>]` 审计标记
+- **feat(api)**: `POST /api/payments` body 加 `force + forceReason` overlay (不进 `PaymentCreateInput` 主 schema, 避免污染前端类型)
+- **docs**: postmortem `docs/cron-silent-failure-postmortem.md` (完整复盘 + 鱼骨图 + 修复时间线) + `docs/contract-fake-close-recovery.md` (修复方案 + 选择指南) + `scripts/migrate/contract-fake-close-recovery.{sql,ts}` (事务 + 备份 + 审计 + 回滚 SQL)
+- **部署记录**: 2026-06-29 已执行恢复脚本, 242 个合同已恢复 ACTIVE, 财务可补录回款
 
-**闃插啀鍙?(浜? cron 鍋ュ悍鐩戞帶** (`af734c28`)锛?
+**防再发 (二) cron 健康监控** (`af734c28`)：
 
-- **feat(ops)**: `scripts/ops/cron-healthcheck.sh` (183 琛? 鈥?姣忓皬鏃剁 5 鍒嗛挓璺戠殑鑷鑴氭湰, 4 缁村害妫€鏌?(crond 鏈嶅姟 / qt-cron.log 鏈€杩?2h 鍐欏叆 / qt-app 3000 绔彛 / PostgreSQL 瀹瑰櫒 healthy), 澶辫触鍐欐棩蹇?+ 鍙€夐涔?webhook 鍛婅
-- **chore(ops)**: `ops/qt-jobs.cron` 鍔?`5 * * * * cron-healthcheck.sh` 鏉＄洰 (璺?`0 * * * * run-all` 閿欏紑, 闃叉浜掔浉骞叉壈)
-- **feat(deploy)**: `scripts/prod/deploy.sh` 鍔?deploy 鍚庤嚜妫€ 鈥?`/etc/cron.d/qt-jobs` 蹇呴』鍚?`source .env` + 绔嬪嵆瑙﹀彂 `run-all` 楠岃瘉 token + 璺戜竴娆?`cron-healthcheck.sh` (闃?deploy 闈欓粯 break cron)
-- **feat(events)**: `server/events/bus.ts` `CONTRACT_EXPIRED_UNPAID` 鏂囨鍒嗘。 鈥?`daysUntilForceClose` 鈭?{7, 3, 1} 绾㈣壊閱掔洰 `鈿狅笍銆愬己鍏抽璀︺€慲 + 绔嬪嵆澶勭悊鎸囧紩; = 0 鏃?`鈿狅笍 浠婂ぉ灏嗚绯荤粺寮哄叧`; 鍏跺畠鏅€?`杩樺墿 N 澶ー
-- **docs**: `docs/USER_MANUAL.md` 鏂板 搂16 杩愮淮灏忚创澹?(30 绉掕嚜妫€ / 鍋ュ悍鐩戞帶 / 寮哄叧鏂囨瑙勫垯 / deploy 鎶ラ敊鎺掓煡 / 搴旀€ュ鐞嗗叆鍙?
+- **feat(ops)**: `scripts/ops/cron-healthcheck.sh` (183 行) — 每小时第 5 分钟跑的自检脚本, 4 维度检查 (crond 服务 / qt-cron.log 最近 2h 写入 / qt-app 3000 端口 / PostgreSQL 容器 healthy), 失败写日志 + 可选飞书 webhook 告警
+- **chore(ops)**: `ops/qt-jobs.cron` 加 `5 * * * * cron-healthcheck.sh` 条目 (跟 `0 * * * * run-all` 错开, 防止互相干扰)
+- **feat(deploy)**: `scripts/prod/deploy.sh` 加 deploy 后自检 — `/etc/cron.d/qt-jobs` 必须含 `source .env` + 立即触发 `run-all` 验证 token + 跑一次 `cron-healthcheck.sh` (防 deploy 静默 break cron)
+- **feat(events)**: `server/events/bus.ts` `CONTRACT_EXPIRED_UNPAID` 文案分档 — `daysUntilForceClose` ∈ {7, 3, 1} 红色醒目 `⚠️【强关预警】` + 立即处理指引; = 0 时 `⚠️ 今天将被系统强关`; 其它普通 `还剩 N 天`
+- **docs**: `docs/USER_MANUAL.md` 新增 §16 运维小贴士 (30 秒自检 / 健康监控 / 强关文案规则 / deploy 报错排查 / 应急处理入口)
 
-**閫夋嫨鎸囧崡 (涓? postmortem 琛?reopen vs force** (`c959b300`)锛?
+**选择指南 (三) postmortem 补 reopen vs force** (`c959b300`)：
 
-- **docs(postmortem)**: `docs/contract-fake-close-recovery.md` 鏂板 搂4.4 / 搂4.5 鈥?4 妗ｅ吀鍨嬪満鏅搴旀帹鑽愯矾寰?(鍘嗗彶鎵归噺 鈫?SQL / 鍗曞悎鍚岃鍏?鈫?reopen / CLOSED 琛ュ綍 鈫?force / DRAFT 鎷掔粷), 鍏抽敭鎻愰啋 (reopen 鍚?cron 浠嶅彲鑳藉啀娆″己鍏? 姝ｇ‘娴佺▼鏄?reopen 鈫?绔嬪嵆琛ュ綍 鈫?tryAutoComplete), 鎺ュ彛 curl 绀轰緥
+- **docs(postmortem)**: `docs/contract-fake-close-recovery.md` 新增 §4.4 / §4.5 — 4 档典型场景对应推荐路径 (历史批量 → SQL / 单合同误关 → reopen / CLOSED 补录 → force / DRAFT 拒绝), 关键提醒 (reopen 后 cron 仍可能再次强关, 正确流程是 reopen → 立即补录 → tryAutoComplete), 接口 curl 示例
 
-**瀹℃煡淇 (鍥?** (`dd3cfa29`)锛?
+**审查修复 (四)** (`dd3cfa29`)：
 
-- **fix(contract)**: 鍚堝悓鎿嶄綔鏃ュ織 Timeline SUCCESS 琛?`CheckCircleFilled` (`var(--ant-color-success)`) icon, 璺?FAILURE 鐨?`CloseCircleFilled` 瀵圭О
-- **chore(contract)**: `reopen` route 鏂囦欢鏈熬琛?newline (diff 鏍?`\ No newline at end of file`, eslint 璀﹀憡)
-- **fix(statistics)**: by-region 鏌辩姸鍥?`groupedChartData` 鍔?`fullName` 瀛楁, tooltip.title 鏄剧ず瀹屾暣"鍖?+ 琛楅亾"缁勫悎 (瑙ｅ喅璺ㄥ尯鍚屽悕闀囪鍦?X 杞撮噸澶嶆潯鐩毦鍖哄垎)
+- **fix(contract)**: 合同操作日志 Timeline SUCCESS 补 `CheckCircleFilled` (`var(--ant-color-success)`) icon, 跟 FAILURE 的 `CloseCircleFilled` 对称
+- **chore(contract)**: `reopen` route 文件末尾补 newline (diff 标 `\ No newline at end of file`, eslint 警告)
+- **fix(statistics)**: by-region 柱状图 `groupedChartData` 加 `fullName` 字段, tooltip.title 显示完整"区 + 街道"组合 (解决跨区同名镇街在 X 轴重复条目难区分)
 
-**浠ｇ爜娓呯悊 (浜?** (`07324d63`)锛?
+**代码清理 (五)** (`07324d63`)：
 
-- **refactor(lib)**: 鎶?`serviceTypeLabel(value: unknown): string` helper (lib/enum-maps.ts), 鏇挎崲 5 澶勬暎钀界殑 `SERVICE_TYPE_MAP[v] ?? v ?? "鈥?` 鍐欐硶 (瀹㈡埛璇︽儏鍚堝悓 tab / 浠樻璇︽儏 / 鍚堝悓璇︽儏 / xlsx 瀵煎嚭 / PDF 瀵煎嚭), 瀹㈡埛绔?鏈嶅姟绔€氱敤, 鏈潵鏂板 serviceType code 涓嶄細婕忔敼
+- **refactor(lib)**: 抽 `serviceTypeLabel(value: unknown): string` helper (lib/enum-maps.ts), 替换 5 处散落的 `SERVICE_TYPE_MAP[v] ?? v ?? "—"` 写法 (客户详情合同 tab / 付款详情 / 合同详情 / xlsx 导出 / PDF 导出), 客户端/服务端通用, 未来新增 serviceType code 不会漏改
 
-**璐ㄩ噺鍩虹嚎**锛歵ypecheck 0 閿欒, lint 0 warning, vitest 56 鏂囦欢 / 452 娴嬭瘯鍏ㄨ繃, deploy smoke test 鍏ㄧ豢, post-deploy cron-healthcheck 5 缁村害鍏?OK
+**质量基线**：typecheck 0 错误, lint 0 warning, vitest 56 文件 / 452 测试全过, deploy smoke test 全绿, post-deploy cron-healthcheck 5 维度全 OK
 
-**閮ㄧ讲鏈熺壒鍒彁閱?*锛氭湰娆?deploy.sh 宸茶嚜鍔ㄨ窇 cron 鑷, 浣?`cron-healthcheck.sh` 鏄柊鍔犺剼鏈? 鏈嶅姟鍣?*棣栨瀹夎**闇€瑕佹墜宸ユ墽琛岋細
+**部署期特别提醒**：本次 deploy.sh 已自动跑 cron 自检, 但 `cron-healthcheck.sh` 是新加脚本, 服务器**首次安装**需要手工执行：
 
 ```bash
 sudo cp /opt/qt/ops/qt-jobs.cron /etc/cron.d/qt-jobs
 sudo chmod 644 /etc/cron.d/qt-jobs
 sudo systemctl restart crond
-/opt/qt/scripts/ops/cron-healthcheck.sh --verbose  # 楠岃瘉
+/opt/qt/scripts/ops/cron-healthcheck.sh --verbose  # 验证
 ```
 
-鍚庣画 deploy 浼氳嚜鍔ㄩ獙璇?`cron-healthcheck.sh --once`, 涓嶄細鍐?瑁呭畬蹇樿"銆?
+后续 deploy 会自动验证 `cron-healthcheck.sh --once`, 不会再"装完忘装"。
 
-### v0.5.1+ (2026-06-29) 澧為噺灏忎慨
+### v0.5.1+ (2026-06-29) 增量小修
 
-> 鏈妭姹囨€?v0.5.1 涔嬪悗銆丠EAD 涔嬪墠鐨勬墍鏈?commit(16 涓?銆傝鐩栧鎴风姸鎬佹満涓嬬嚎鍚庣殑娓呯悊銆佸鎴风粺璁″尯闂村寮恒€佺郴缁?actor 鑷姩鐘舵€佹満銆佸悎鍚岄粯璁よ礋璐ｄ汉銆佽瘉涔﹂〉 bug銆佽縼绉绘紓绉绘仮澶嶃€丄I 鍥㈤槦閰嶇疆銆?
+> 本节汇总 v0.5.1 之后、HEAD 之前的所有 commit(16 个)。覆盖客户状态机下线后的清理、客户统计区间增强、系统 actor 自动状态机、合同默认负责人、证书页 bug、迁移漂移恢复、AI 团队配置。
 
-- **feat(dashboard)**:缁熻鍖洪棿鏀寔鏈堝害 / 瀛ｅ害 / 骞村害鍒囨崲(`StatisticsRange` 鏂版灇涓?椤堕儴 Tab 涓?URL `?range=` 鍚屾,鍚庣 `getOverview({ range })` 鍏ュ弬)
-- **refactor(dashboard)**: `customers.newThisMonth` 鈫?`newInRange`(璇箟瀵归綈缁熻鍖洪棿,Top 瀹㈡埛涓?dashboard 涓€鑷?
-- **fix(customer)**:璇︽儏椤?`select` 绉婚櫎 v0.5.0 宸插垹鐨?`status / lastAutoAppliedAt` 瀛楁
-- **fix(seed)**:seed upsert system actor(`id=system`)鈥斺€?鑷姩鐘舵€佹満杞崲闇€瑕?`actorId`,鍚﹀垯 `tryAutoComplete` / `tryAutoCloseOnExpiry` 鎶涘閿敊
-- **fix(contract)**:`SALES` 鍒涘缓鍚堝悓鏃?`ownerUserId` 榛樿 = 褰撳墠 user,涓庤鎯呴〉 `ownerUserId` 涓€鑷?琛?`tests/unit/server/contract-create.test.ts` 鐢ㄤ緥
-- **chore(contract)**:鍚堝悓 Timeline 鍒?antd 6 API(`TimelineItem dot` 鈫?`dot` 鎺ュ彈 ReactNode),澶辫触鐘舵€佸姞绾?icon
-- **chore(payments)**:娓呮湭浣跨敤鐨?`Tag` 瀵煎叆(antd 6 lint 璀﹀憡)
-- **fix(certificates)**:鍒版湡璇佷功椤?`request` 瑙ｅ寘閿欎綅(`response` 浜屽眰鍖?鈫?鐩存帴璇?`data.items`
-- **chore(db)**:鎭㈠婕傜Щ鐨?3 涓縼绉绘枃浠?浠?git 鍘嗗彶鎵惧洖,涓嶈兘 `migrate resolve` 鍑┖鏍囪),鍔?`docs/db-bootstrap.md` + `prisma db-schema-snapshot.sql` 鍏滃簳鑴氭湰
-- **chore(deps)**:`dev / test / typecheck` 鍔?`predev` 閽╁瓙鑷姩 `prisma generate`,鍏嶆墜鍔?build 婕忔帀 client
-- **feat(dev)**:鐧诲綍椤垫祴璇曡处鍙峰榻?5 涓唴缃鑹?鍘?4 涓?鍔?`expert` 鐢ㄤ簬鏉冮檺鐭╅樀娴嬭瘯,涓嶈繘蹇€熷～鍏呭崱)
-- **chore(harness)**:鍒濆鍖?Mavis 鍥㈤槦閰嶇疆(`.harness/` + `AGENTS.md`),`harness / developer / prisma-expert / backend-expert / ui-expert / code-reviewer` 6 涓?rein,璇﹁ [.harness/agent.md](.harness/agent.md)
+- **feat(dashboard)**:统计区间支持月度 / 季度 / 年度切换(`StatisticsRange` 新枚举,顶部 Tab 与 URL `?range=` 同步,后端 `getOverview({ range })` 入参)
+- **refactor(dashboard)**: `customers.newThisMonth` → `newInRange`(语义对齐统计区间,Top 客户与 dashboard 一致)
+- **fix(customer)**:详情页 `select` 移除 v0.5.0 已删的 `status / lastAutoAppliedAt` 字段
+- **fix(seed)**:seed upsert system actor(`id=system`)—— 自动状态机转换需要 `actorId`,否则 `tryAutoComplete` / `tryAutoCloseOnExpiry` 抛外键错
+- **fix(contract)**:`SALES` 创建合同时 `ownerUserId` 默认 = 当前 user,与详情页 `ownerUserId` 一致;补 `tests/unit/server/contract-create.test.ts` 用例
+- **chore(contract)**:合同 Timeline 切 antd 6 API(`TimelineItem dot` → `dot` 接受 ReactNode),失败状态加红 icon
+- **chore(payments)**:清未使用的 `Tag` 导入(antd 6 lint 警告)
+- **fix(certificates)**:到期证书页 `request` 解包错位(`response` 二层包)→ 直接读 `data.items`
+- **chore(db)**:恢复漂移的 3 个迁移文件(从 git 历史找回,不能 `migrate resolve` 凭空标记),加 `docs/db-bootstrap.md` + `prisma db-schema-snapshot.sql` 兜底脚本
+- **chore(deps)**:`dev / test / typecheck` 加 `predev` 钩子自动 `prisma generate`,免手动 build 漏掉 client
+- **feat(dev)**:登录页测试账号对齐 5 个内置角色(原 4 个,加 `expert` 用于权限矩阵测试,不进快速填充卡)
+- **chore(harness)**:初始化 Mavis 团队配置(`.harness/` + `AGENTS.md`),`harness / developer / prisma-expert / backend-expert / ui-expert / code-reviewer` 6 个 rein,详见 [.harness/agent.md](.harness/agent.md)
 
-### v0.5.1(2026-06-28)Excel 瀵煎嚭鏂囦欢鍚嶅浗闄呭寲 + 鍚堝悓閫夋嫨鍣ㄥ寮?
+### v0.5.1(2026-06-28)Excel 导出文件名国际化 + 合同选择器增强
 
-灏忕増鏈泦涓慨 8 涓?xlsx 瀵煎嚭绔偣(缁熻 4 / 鍚堝悓 / 瀹㈡埛 / 鍥炴 / 寮€绁?鐨?`Content-Disposition` 涓枃鏂囦欢鍚?+ 瀹㈡埛绔?`downloadExcel` 瑙ｆ瀽銆傛秹鍙?[lib/excel.ts](lib/excel.ts) 鏂板 `attachmentHeader()`,[app/api/statistics/export/route.ts](app/api/statistics/export/route.ts) 绛?8 涓鍑鸿矾鐢?+ [app/api/files/raw/[id]/route.ts](app/api/files/raw/%5Bid%5D/route.ts) 鏂囦欢涓嬭浇銆?
+小版本集中修 8 个 xlsx 导出端点(统计 4 / 合同 / 客户 / 回款 / 开票)的 `Content-Disposition` 中文文件名 + 客户端 `downloadExcel` 解析。涉及 [lib/excel.ts](lib/excel.ts) 新增 `attachmentHeader()`,[app/api/statistics/export/route.ts](app/api/statistics/export/route.ts) 等 8 个导出路由 + [app/api/files/raw/[id]/route.ts](app/api/files/raw/%5Bid%5D/route.ts) 文件下载。
 
-- **fix(statistics)**:`鍖哄煙缁熻` 绛変腑鏂?xlsx 鏂囦欢鍚嶅湪 Node `Headers` API 鎶?`TypeError: Cannot convert argument to a ByteString`(byte 22, value 21306)鈫?500銆傜粺涓€鏀?`attachmentHeader()` 璧?`filename=ASCII_fallback; filename*=UTF-8''<percent-encoded>` 鍙屽舰寮?鑰?IE 鎷?ASCII銆佺幇浠ｆ祻瑙堝櫒鎷?UTF-8銆傚悓姝ヨ鐩?`/api/files/raw/[id]` 鏂囦欢涓嬭浇(`originalName` 涔熸槸涓枃,鍚屼竴鏍瑰洜)
-- **feat(form)**:鏂板缓寮€绁?/ 鐧昏鍥炴鐨勫悎鍚?`ProFormSelect` option label 鎷兼帴 `鍚堝悓鍙?路 鍚堝悓鏍囬 路 鍚堝悓鎬婚`,涓嬫媺鎼滅储鏃跺彲涓€鐪肩湅鍒板悎鍚岄噾棰?`Contract` 绫诲瀷琛?`totalAmount: string` 瀛楁
-- **fix(payment)**:鐧昏鍥炴 `FormCard` headerHint 娓叉煋 `鍚堝悓锛歶ndefined(瀹㈡埛鍚?`,鏍瑰洜鏄?`onChange` 鎷?`pickedContract` 鏃舵紡濉?`contractNo`銆俹ption 鏀规垚 `contract: c` 鏁翠唤鍚堝悓濉炲叆,`setPickedContract(o?.contract ?? null)`,浠ュ悗鎵╁瓧娈典笉浼氬啀韪?
-- **refactor(invoice)**:寮€绁ㄨ〃鍗曞悎鍚岄€夋嫨鍣?option 鍚屾瀵归綈鎴?`contract: c` 鍐欐硶,onChange 浠?`o.contract?.customerId` 鍙栧€?涓ゅ紶琛ㄥ崟缁撴瀯缁熶竴
-- **refactor(client)**:`lib/excel-client.ts` 鐨?`downloadExcel` 瑙ｆ瀽 `Content-Disposition` 涔嬪墠鐢?`/filename=([^;]+)/` 鎷垮埌 ASCII 鍏滃簳鑰屼涪鎺変腑鏂?鏀规垚浼樺厛 `filename*=UTF-8''` + `decodeURIComponent`,fallback 鎵嶉€€鍒?ASCII;涓変釜缁熻椤?鎬昏/Top 瀹㈡埛/鍖哄煙/鍛樺伐涓氱哗)鏀圭敤 `downloadExcel(url)`,鏂囦欢鍚嶄互鏈嶅姟绔?`Content-Disposition` 涓哄崟涓€鏉ユ簮,鍒犳墜鍐?`<a download="涓枃.xlsx">`
-- **test(unit)**:`tests/unit/lib/excel.test.ts` 鍔?4 鏉?`attachmentHeader` 鍗曟祴(涓枃 / 绾?ASCII / 甯︾┖鏍?/ `encodeURIComponent` round-trip),11/11 閫氳繃;绔埌绔獙璇?8 涓鍑虹鐐?200,鏂囦欢鍚嶅潎甯︿腑鏂?
+- **fix(statistics)**:`区域统计` 等中文 xlsx 文件名在 Node `Headers` API 抛 `TypeError: Cannot convert argument to a ByteString`(byte 22, value 21306)→ 500。统一改 `attachmentHeader()` 走 `filename=ASCII_fallback; filename*=UTF-8''<percent-encoded>` 双形式,老 IE 拿 ASCII、现代浏览器拿 UTF-8。同步覆盖 `/api/files/raw/[id]` 文件下载(`originalName` 也是中文,同一根因)
+- **feat(form)**:新建开票 / 登记回款的合同 `ProFormSelect` option label 拼接 `合同号 · 合同标题 · 合同总额`,下拉搜索时可一眼看到合同金额;`Contract` 类型补 `totalAmount: string` 字段
+- **fix(payment)**:登记回款 `FormCard` headerHint 渲染 `合同：undefined(客户名)`,根因是 `onChange` 拼 `pickedContract` 时漏塞 `contractNo`。option 改成 `contract: c` 整份合同塞入,`setPickedContract(o?.contract ?? null)`,以后扩字段不会再踩
+- **refactor(invoice)**:开票表单合同选择器 option 同步对齐成 `contract: c` 写法,onChange 从 `o.contract?.customerId` 取值,两张表单结构统一
+- **refactor(client)**:`lib/excel-client.ts` 的 `downloadExcel` 解析 `Content-Disposition` 之前用 `/filename=([^;]+)/` 拿到 ASCII 兜底而丢掉中文,改成优先 `filename*=UTF-8''` + `decodeURIComponent`,fallback 才退到 ASCII;三个统计页(总览/Top 客户/区域/员工业绩)改用 `downloadExcel(url)`,文件名以服务端 `Content-Disposition` 为单一来源,删手写 `<a download="中文.xlsx">`
+- **test(unit)**:`tests/unit/lib/excel.test.ts` 加 4 条 `attachmentHeader` 单测(中文 / 纯 ASCII / 带空格 / `encodeURIComponent` round-trip),11/11 通过;端到端验证 8 个导出端点 200,文件名均带中文
 
-### v0.5.0(2026-06-29)瀹㈡埛鐘舵€佹満涓嬬嚎(纭垹)
+### v0.5.0(2026-06-29)客户状态机下线(硬删)
 
-涓氬姟鍙嶉 v0.4.0 涓婄嚎鐨勫鎴风姸鎬佹満(5 鎬?+ 4 鏉¤嚜鍔ㄨ鍒?+ 7 澶╁彲鎾ら攢妯箙)璇箟涓嶆竻 / 鑷姩鍖栬鍒欏父璇垽, 鏁翠綋纭笅绾裤€傝璁? [docs/superpowers/specs/2026-06-29-customer-status-deprecation.md](docs/superpowers/specs/2026-06-29-customer-status-deprecation.md)銆?
+业务反馈 v0.4.0 上线的客户状态机(5 态 + 4 条自动规则 + 7 天可撤销横幅)语义不清 / 自动化规则常误判, 整体硬下线。设计: [docs/superpowers/specs/2026-06-29-customer-status-deprecation.md](docs/superpowers/specs/2026-06-29-customer-status-deprecation.md)。
 
-- **chore(customer)**:鍒?`Customer.status / lastAutoAppliedAt / lastAutoRule` 3 鍒?+ `@@index([status])` (`Customer_status_idx`); 鍒?`enum CustomerStatus`(5 鎬?; migration `20260629_drop_customer_status`(`DROP INDEX IF EXISTS` + `DROP COLUMN IF EXISTS`, idempotent, 鐘舵€佸垪 v0.4.0 璧蜂负 String 鏁呮棤闇€ backfill)
-- **chore(lib)**:鍒?`lib/customer-status-transitions.ts` / `lib/customer-auto-rules.ts`; `lib/{status,dict-domain,dictionary-categories,use-status-enum,validators/customer,env,customer-update}.ts` 绉婚櫎 `customer` StatusDomain 寮曠敤 / 瀛楀吀 / 鏍￠獙瀛楁 / 閿欒鐮?`CUSTOMER_STATUS_TRANSITION_INVALID` / `CUSTOMER_AUTO_*`
-- **chore(server)**:鍒?`server/services/customer/{status,automation}.ts` + `server/services/customer-status.ts` + `server/jobs/customer-status-suggest.ts`; 鏀?`server/services/customer/{crud,index}.ts` / `server/services/contract/{crud,status}.ts` / `server/jobs/runner.ts` / `server/events/bus.ts` / `server/services/statistics.ts` 绉婚櫎澶栧彂璋冪敤
-- **chore(api)**:鍒?`POST /api/customers/[id]/revert` 璺敱; 鏀?`GET/PATCH /api/customers/[id]` / `GET /api/customers/export` / `GET /api/jobs/[job]` / `GET /api/statistics/overview` 绉婚櫎澶栧彂
-- **chore(ui)**:鍒?`components/customers/auto-status-banner.tsx`; 璇︽儏椤?鍒楄〃椤?琛ㄥ崟绉婚櫎銆屽彉鏇寸姸鎬併€嶅叆鍙?+ 鎾ら攢妯箙; 瀹㈡埛 PDF 鏀圭敤鍚堝悓绾х姸鎬?
-- **chore(types|events|errors)**:`MessageType` enum 3 涓?`CUSTOMER_STATUS_*` 鍊?*淇濈暀**(鍘嗗彶娑堟伅 fallback); `bus.ts` `default` 鍒嗘敮娓叉煋涓恒€屽巻鍙叉秷鎭€? `operation-log-format.ts` `CUSTOMER_STATUS_*` action 杩?null
-- **refactor(schema)**:璺ㄦā鍧楁牎楠?R-02 / R-03 / R-13 鍒? R-16 鎸囧悜 `lib/status-machine.ts`(閫氱敤鎶借薄, 浠?4 瀹炰綋鍏辩敤)
-- **chore(tests)**:鍒?`tests/{api,unit,unit/server}/customer-status*.test.ts` + `tests/e2e/08-customer-status.spec.ts`; 淇?5 涓?contract-* test + `customers-patch` / `customer-update` / `validators/customer` / `events-bus` / `contract-create-validation` / `customer-contract-overview-ownership` / e2e `05-invoice-payment-flow`
-- **chore(docs)**:DESIGN-v3 搂5.5 鈫?deprecation 閾炬帴; PROJECT_SUMMARY 搂3.3.2 鈫?绠€鍖栦负 deprecation 鎬荤粨; USER_MANUAL 搂5.1 鐘舵€佽〃 / 搂5.6 瀹㈡埛鐘舵€佽嚜鍔ㄨ仈鍔?/ FAQ Q5 鍏ㄥ垹; README 鍒?搂3 瀹㈡埛鐘舵€佹満鑺?+ 鍒?R-02/R-13; v0.4.0 spec `2026-06-28-customer-status-automation.md` 绉诲叆 `docs/superpowers/specs/_archive/`
-- **test**:vitest 425/425(54 files, -14 customer-status 鐢ㄤ緥); typecheck 0 error; eslint 0 warning; 鍚庣画 e2e(璺宠繃 08-customer-status)寰?commit 鍓嶈窇
+- **chore(customer)**:删 `Customer.status / lastAutoAppliedAt / lastAutoRule` 3 列 + `@@index([status])` (`Customer_status_idx`); 删 `enum CustomerStatus`(5 态); migration `20260629_drop_customer_status`(`DROP INDEX IF EXISTS` + `DROP COLUMN IF EXISTS`, idempotent, 状态列 v0.4.0 起为 String 故无需 backfill)
+- **chore(lib)**:删 `lib/customer-status-transitions.ts` / `lib/customer-auto-rules.ts`; `lib/{status,dict-domain,dictionary-categories,use-status-enum,validators/customer,env,customer-update}.ts` 移除 `customer` StatusDomain 引用 / 字典 / 校验字段 / 错误码 `CUSTOMER_STATUS_TRANSITION_INVALID` / `CUSTOMER_AUTO_*`
+- **chore(server)**:删 `server/services/customer/{status,automation}.ts` + `server/services/customer-status.ts` + `server/jobs/customer-status-suggest.ts`; 改 `server/services/customer/{crud,index}.ts` / `server/services/contract/{crud,status}.ts` / `server/jobs/runner.ts` / `server/events/bus.ts` / `server/services/statistics.ts` 移除外发调用
+- **chore(api)**:删 `POST /api/customers/[id]/revert` 路由; 改 `GET/PATCH /api/customers/[id]` / `GET /api/customers/export` / `GET /api/jobs/[job]` / `GET /api/statistics/overview` 移除外发
+- **chore(ui)**:删 `components/customers/auto-status-banner.tsx`; 详情页/列表页/表单移除「变更状态」入口 + 撤销横幅; 客户 PDF 改用合同级状态
+- **chore(types|events|errors)**:`MessageType` enum 3 个 `CUSTOMER_STATUS_*` 值**保留**(历史消息 fallback); `bus.ts` `default` 分支渲染为「历史消息」; `operation-log-format.ts` `CUSTOMER_STATUS_*` action 返 null
+- **refactor(schema)**:跨模块校验 R-02 / R-03 / R-13 删; R-16 指向 `lib/status-machine.ts`(通用抽象, 仍 4 实体共用)
+- **chore(tests)**:删 `tests/{api,unit,unit/server}/customer-status*.test.ts` + `tests/e2e/08-customer-status.spec.ts`; 修 5 个 contract-* test + `customers-patch` / `customer-update` / `validators/customer` / `events-bus` / `contract-create-validation` / `customer-contract-overview-ownership` / e2e `05-invoice-payment-flow`
+- **chore(docs)**:DESIGN-v3 §5.5 → deprecation 链接; PROJECT_SUMMARY §3.3.2 → 简化为 deprecation 总结; USER_MANUAL §5.1 状态表 / §5.6 客户状态自动联动 / FAQ Q5 全删; README 删 §3 客户状态机节 + 删 R-02/R-13; v0.4.0 spec `2026-06-28-customer-status-automation.md` 移入 `docs/superpowers/specs/_archive/`
+- **test**:vitest 425/425(54 files, -14 customer-status 用例); typecheck 0 error; eslint 0 warning; 后续 e2e(跳过 08-customer-status)待 commit 前跑
 
-鎻愪氦 `BREAKING CHANGE` 涓€娆℃€у悎骞?鍗?commit, 娑电洊鎵€鏈?schema/lib/server/api/ui/types/tests/docs 鏀瑰姩)銆?
+提交 `BREAKING CHANGE` 一次性合并(单 commit, 涵盖所有 schema/lib/server/api/ui/types/tests/docs 改动)。
 
-### v0.3.1(2026-06-26)鍛樺伐妗ｆ + 璇佷功鍒版湡 cron + 璧勪骇涓嬬嚎 + 瀵艰埅閲嶆瀯
+### v0.3.1(2026-06-26)员工档案 + 证书到期 cron + 资产下线 + 导航重构
 
-- **feat(employee-profile)**:`EmployeeProfile` 琛?+ 5 寮犲瓙琛?鏁欒偛/璇佷功/宸ヤ綔缁忓巻/鍚堝悓/瀹跺涵鎴愬憳),`Attachment.category` 瀛楁,`MessageType.CERTIFICATE_EXPIRING` 鏋氫妇鍊?
-- **feat(employee-profile)**:PR7-PR11 浜旀壒 鈥?鎵归噺鎿嶄綔 + 鍚戝/瀛愯〃鎵撶（ + E2E 瑕嗙洊 + P0 闃诲淇 12 椤?+ 鐢ㄦ埛鎵嬪唽 v0.4 閲嶅仛
-- **feat(certificate)**:璇佷功鍒版湡 cron 30/15/7 妗?`certificate-expiry-check`)+ 鍒楄〃椤?+ 鐢ㄦ埛鍒楄〃 badge
-- **chore(refactor)**:涓嬬嚎鍏徃璧勪骇搴?CompanyAsset)妯″潡 鈥?DROP CompanyAsset + DROP Attachment.assetId/isPrimary + DROP POLICY + DELETE 瀛楀吀 ASSET_TAG(璧勪骇妯″潡鐢熷懡鍛ㄦ湡 13 澶?
-- **feat(message)**:Message.type 浠?text 鏀剁揣鍒?enum MessageType(7 鏋氫妇鍊?,鍔?type+receiverUserId+createdAt 澶嶅悎绱㈠紩
-- **refactor(nav)**:缁熶竴杩斿洖鎸夐挳璧?`useGoBack()` hook(娴忚鍣ㄥ巻鍙蹭紭鍏?+ fallback 鍏滃簳),鍒?30+ 澶勭‖缂栫爜 `router.push('/x')`;璇︽儏椤?5 鍒嗙粍鍚堝苟涓?ProfileHero + 鍗＄墖缃戞牸
-- **fix(nav)**:娑堟伅涓績 PageHeader 鍔?type='navigation' 鎻愮ず
-- **fix(lint)**:antd 鏂?API 鈥?`Space direction='vertical'` 鈫?`orientation='vertical'`
-- **fix(dashboard)**:summary 鎺ュ彛鎶?range 濉炶繘 overview 杩斿洖
-- **fix(statistics)**:鍛樺伐涓氱哗椤甸粯璁ゆ湰鏈堝尯闂?涓?dashboard 涓€鑷?
-- **fix(invoice)**:寮€绁ㄤ繚瀛?applyDate 鏀圭敤 dayjs().toISOString() 鍏煎 string/dayjs
-- **fix(invoice-new)**:鍚堝悓涓嬫媺 pageSize 100 鈫?1000
-- **fix(contract-export)**:鏂板椤圭洰璐熻矗浜哄垪,绛捐浜?璐熻矗浜哄彧鏄剧ず濮撳悕
-- **fix(users)**:璇︽儏椤靛垹鍙充晶 Anchor 瑙ｅ喅 active 涓嶅悓姝?SWR 澶氳В涓€灞?淇?DepartmentTreeSelect 闆嗘垚;鍔犱繚瀛樻寜閽?skeleton 姘歌繙鍗℃
-- **test(e2e)**:鍦烘櫙 14 - 鍛樺伐妗ｆ CRUD + 闄勪欢涓婁紶绔埌绔鐩?
-- **chore(test)**:鍒?`tests/e2e/13-employee-batch-ops.spec.ts`(澶氶€夐摼璺凡绉婚櫎)
+- **feat(employee-profile)**:`EmployeeProfile` 表 + 5 张子表(教育/证书/工作经历/合同/家庭成员),`Attachment.category` 字段,`MessageType.CERTIFICATE_EXPIRING` 枚举值
+- **feat(employee-profile)**:PR7-PR11 五批 — 批量操作 + 向导/子表打磨 + E2E 覆盖 + P0 阻塞修复 12 项 + 用户手册 v0.4 重做
+- **feat(certificate)**:证书到期 cron 30/15/7 档(`certificate-expiry-check`)+ 列表页 + 用户列表 badge
+- **chore(refactor)**:下线公司资产库(CompanyAsset)模块 — DROP CompanyAsset + DROP Attachment.assetId/isPrimary + DROP POLICY + DELETE 字典 ASSET_TAG(资产模块生命周期 13 天)
+- **feat(message)**:Message.type 从 text 收紧到 enum MessageType(7 枚举值),加 type+receiverUserId+createdAt 复合索引
+- **refactor(nav)**:统一返回按钮走 `useGoBack()` hook(浏览器历史优先 + fallback 兜底),删 30+ 处硬编码 `router.push('/x')`;详情页 5 分组合并为 ProfileHero + 卡片网格
+- **fix(nav)**:消息中心 PageHeader 加 type='navigation' 提示
+- **fix(lint)**:antd 新 API — `Space direction='vertical'` → `orientation='vertical'`
+- **fix(dashboard)**:summary 接口把 range 塞进 overview 返回
+- **fix(statistics)**:员工业绩页默认本月区间(与 dashboard 一致)
+- **fix(invoice)**:开票保存 applyDate 改用 dayjs().toISOString() 兼容 string/dayjs
+- **fix(invoice-new)**:合同下拉 pageSize 100 → 1000
+- **fix(contract-export)**:新增项目负责人列,签订人/负责人只显示姓名
+- **fix(users)**:详情页删右侧 Anchor 解决 active 不同步;SWR 多解一层;修 DepartmentTreeSelect 集成;加保存按钮;skeleton 永远卡死
+- **test(e2e)**:场景 14 - 员工档案 CRUD + 附件上传端到端覆盖
+- **chore(test)**:删 `tests/e2e/13-employee-batch-ops.spec.ts`(多选链路已移除)
 
-**閮ㄧ讲鏈熻瀵?*:6 涓柊杩佺Щ鍦?v0.3.0 鈫?v0.3.1 涔嬮棿鎵嬪伐搴旂敤(`20260630_message_type_enum_index` 璇?3 娆℃墠鎴愬姛),鏈 1 commit `b2e9f1bdf` 鏄函 refactor,deploy.sh 涓€閿窇銆傝瑙?`docs/閮ㄧ讲璁板綍 鈥?qt-biz v0.1.0 鈥?Aliyun ECS.md` v0.3.1 鑺?
+**部署期观察**:6 个新迁移在 v0.3.0 → v0.3.1 之间手工应用(`20260630_message_type_enum_index` 试 3 次才成功),本次 1 commit `b2e9f1bdf` 是纯 refactor,deploy.sh 一键跑。详见 `docs/部署记录 — qt-biz v0.1.0 — Aliyun ECS.md` v0.3.1 节
 
-**宸茬煡闂**:`contract-auto-complete` job 鍋跺彂 `TransactionWriteConflict`(PostgreSQL 40001,鍗曞疄渚?3.5G 鏈哄櫒鏃犲垎甯冨紡閿?193 琛屾壂鎻忛噷 1 鏉″け璐?;job 缂?retry loop,v0.3.2 / v0.4.0 璺熻繘
+**已知问题**:`contract-auto-complete` job 偶发 `TransactionWriteConflict`(PostgreSQL 40001,单实例 3.5G 机器无分布式锁,193 行扫描里 1 条失败);job 缺 retry loop,v0.3.2 / v0.4.0 跟进
 
-### v0.3.0(2026-06-24)浼佷笟璧勪骇搴撴ā鍧椾笅绾?
+### v0.3.0(2026-06-24)企业资产库模块下线
 
-> 娌跨敤 `20260623_drop_project_and_workflow` 鐨勭‖涓嬬嚎妯″紡:鍒犺〃 + 鍒犱唬鐮?+ 鍒犳潈闄?+ 鍒犺彍鍗曘€傝瑙?`prisma/migrations/20260628_drop_company_assets/`銆乣lib/permissions.ts`銆乣components/dashboard-shell.tsx`銆?
+> 沿用 `20260623_drop_project_and_workflow` 的硬下线模式:删表 + 删代码 + 删权限 + 删菜单。详见 `prisma/migrations/20260628_drop_company_assets/`、`lib/permissions.ts`、`components/dashboard-shell.tsx`。
 
-- **chore(asset)**:`CompanyAsset` 琛?+ `Attachment.assetId/isPrimary` 鍒?DROP,`RESOURCE.ASSET` 涓?5 瑙掕壊 ASSET 鏉冮檺鐭╅樀鍥炴敹,`asset-expiring` 瀹氭椂浠诲姟 / `ASSET_EXPIRING` 娑堟伅閾捐矾鎷嗛櫎
-- `app/(app)/assets/`銆乣app/api/assets/`銆乣components/assets/`銆乣server/services/asset{,-stats,-expiry-job}.ts`銆乣lib/{assets,validators/asset}.ts`銆乣prisma/seed-assets.ts` 鏁寸洰褰?鏂囦欢绉婚櫎
-- `ASSET_TYPE` / `ASSET_STATUS` / `ASSET_TYPE_MAP` / `ASSET_STATUS_MAP` / `ASSET_*` 閿欒鐮?/ `menu.assets` / `asset.*` i18n 鍏ㄩ儴娓呮帀
-- 3 涓?`seed:assets` / `migrate:asset-primary-attachments[:dry]` npm script 绉婚櫎
-- `ASSET_TAG` 瀛楀吀鐧藉悕鍗曚笌 seed 鍚屾娓呮帀
+- **chore(asset)**:`CompanyAsset` 表 + `Attachment.assetId/isPrimary` 列 DROP,`RESOURCE.ASSET` 与 5 角色 ASSET 权限矩阵回收,`asset-expiring` 定时任务 / `ASSET_EXPIRING` 消息链路拆除
+- `app/(app)/assets/`、`app/api/assets/`、`components/assets/`、`server/services/asset{,-stats,-expiry-job}.ts`、`lib/{assets,validators/asset}.ts`、`prisma/seed-assets.ts` 整目录/文件移除
+- `ASSET_TYPE` / `ASSET_STATUS` / `ASSET_TYPE_MAP` / `ASSET_STATUS_MAP` / `ASSET_*` 错误码 / `menu.assets` / `asset.*` i18n 全部清掉
+- 3 个 `seed:assets` / `migrate:asset-primary-attachments[:dry]` npm script 移除
+- `ASSET_TAG` 字典白名单与 seed 同步清掉
 
-### v0.3.0(2026-06-24)缁熻鍒嗘瀽 round-2 鏀跺熬
+### v0.3.0(2026-06-24)统计分析 round-2 收尾
 
-璇﹁ [docs/P2_REVIEW.md](docs/P2_REVIEW.md) 鏈熬 Round-2 淇鑺傘€乕docs/DESIGN-v3.md](docs/DESIGN-v3.md) 搂8 / 搂9.7銆乕docs/USER_MANUAL.md](docs/USER_MANUAL.md) 搂11銆?
+详见 [docs/P2_REVIEW.md](docs/P2_REVIEW.md) 末尾 Round-2 修复节、[docs/DESIGN-v3.md](docs/DESIGN-v3.md) §8 / §9.7、[docs/USER_MANUAL.md](docs/USER_MANUAL.md) §11。
 
-- **chore(statistics)**:round-2 宸ュ叿涓庤剼鏈叆搴?鈥?`lib/date-range.ts` 缁熶竴鍓嶅悗绔棩鏈熻寖鍥?`scripts/dev/seed-customers-contracts.ts` dev 娴嬭瘯鏁版嵁,`scripts/shared/cleanup-minio-objects.ts` MinIO 妗舵竻鐞?
-- **test(statistics)**:`tests/api/statistics-aggregation.test.ts` 4 鏉＄湡瀹?DB 闆嗘垚鏂█(璐﹂緞 total / REFUNDED 鎶垫秷 / unpaidAmount clamp / SALES short-circuit)
-- **fix(statistics)**:淇 `unpaidAmount === 0` 鏂█(鏀圭敤 delta 娉曢獙璇?clamp 琛屼负)
-- **chore**:鍒犻櫎 `tests/e2e/99-debug-spacing.spec.ts`(寮曠敤宸蹭笅绾跨殑 `/assets/new?type=PERFORMANCE`)
+- **chore(statistics)**:round-2 工具与脚本入库 — `lib/date-range.ts` 统一前后端日期范围,`scripts/dev/seed-customers-contracts.ts` dev 测试数据,`scripts/shared/cleanup-minio-objects.ts` MinIO 桶清理
+- **test(statistics)**:`tests/api/statistics-aggregation.test.ts` 4 条真实 DB 集成断言(账龄 total / REFUNDED 抵消 / unpaidAmount clamp / SALES short-circuit)
+- **fix(statistics)**:修复 `unpaidAmount === 0` 断言(改用 delta 法验证 clamp 行为)
+- **chore**:删除 `tests/e2e/99-debug-spacing.spec.ts`(引用已下线的 `/assets/new?type=PERFORMANCE`)
 
-### v0.3.0(2026-06-23)鍚堝悓 7鈫? 鐘舵€佹満 + 椤圭洰/宸ヤ綔娴佹ā鍧楀垹闄?
+### v0.3.0(2026-06-23)合同 7→3 状态机 + 项目/工作流模块删除
 
-- **chore(workflow)**:褰诲簳鍒犻櫎椤圭洰绠＄悊鍜屽伐浣滄祦寮曟搸妯″潡 鈥?Project / WorkflowTemplate / WorkflowStage / WorkflowTask / WorkflowTaskInstance 浜斿紶琛?DROP,5 涓?dict 绫诲埆 `PROJECT_STATUS` 绉婚櫎,12 涓?dead 璺敱鏀?410 Gone,`action` 8鈫?,娓呮帀 ~50 涓?dead 瀛楁/璺敱/鏂囦欢
-- **refactor(contract)**:鍚堝悓鐘舵€佹満 7 鎬?鈫?3 鎬?DRAFT / ACTIVE / CLOSED)銆係QL 杩佺Щ甯︽柇瑷€(澶辫触浼氬洖婊?+ 澶囦唤鍒?`_Contract_status_simplify_bak`;`migrate:contract-status-dict` 杞仠鐢?6 鏃?code + upsert 3 鏂?code銆?668 鍚堝悓涓€娆℃€ф敹鏁?524 ACTIVE / 4109 CLOSED / 35 DRAFT)
-- **feat(contract)**:鍚堝悓鑷姩鐘舵€佹満 鈥?`contract-auto-publish`(DRAFT 瀛楁瀹屾暣+闄勪欢 鈫?ACTIVE)鍜?`contract-auto-complete`(ACTIVE 寮€绁ㄨ冻棰?鈫?CLOSED)涓や釜 cron job 钀藉湴
-- **feat(customer)**:瀹㈡埛鐘舵€佹満 鈥?瀛楁 `status` (ACTIVE / INACTIVE / PENDING) + 鏈嶅姟灞傝鍒?v0.4.0 鍗囩骇涓?5 鎬? v0.5.0 鏁翠綋涓嬬嚎)
-- **feat(announcement,message)**:鍏憡璇︽儏椤?+ 娑堟伅鏈璁℃暟 + 浜嬩欢鎬荤嚎鏀舵暃
-- **feat(invoice,payment)**:鍙戠エ/鍥炴璇︽儏椤电敤 enum map 鏄剧ず涓枃鏍囩
-- **feat(jobs)**:鍔?`/api/jobs/contract-expiry` 鍗曡窇绔偣
-- **fix(invoice)**:R-08 绱寮€绁ㄥ寘鍚?DRAFT,閬垮厤瓒呴鍒涘缓鑽夌
-- **chore(refactor)**:6 鏈堜笟鍔℃敹绱?鈥?鍒?`Project.budgetAmount` + `PaymentAllocation` + OperationLog 瀹¤瀛楁;6 涓?ts-nocheck 鍏ㄩ儴娓呴€€
-- **feat(data)**:鏃?FineUI MySQL 鏁版嵁杩佺Щ CLI 钀界洏
+- **chore(workflow)**:彻底删除项目管理和工作流引擎模块 — Project / WorkflowTemplate / WorkflowStage / WorkflowTask / WorkflowTaskInstance 五张表 DROP,5 个 dict 类别 `PROJECT_STATUS` 移除,12 个 dead 路由改 410 Gone,`action` 8→5,清掉 ~50 个 dead 字段/路由/文件
+- **refactor(contract)**:合同状态机 7 态 → 3 态(DRAFT / ACTIVE / CLOSED)。SQL 迁移带断言(失败会回滚)+ 备份到 `_Contract_status_simplify_bak`;`migrate:contract-status-dict` 软停用 6 旧 code + upsert 3 新 code。4668 合同一次性收敛(524 ACTIVE / 4109 CLOSED / 35 DRAFT)
+- **feat(contract)**:合同自动状态机 — `contract-auto-publish`(DRAFT 字段完整+附件 → ACTIVE)和 `contract-auto-complete`(ACTIVE 开票足额 → CLOSED)两个 cron job 落地
+- **feat(customer)**:客户状态机 — 字段 `status` (ACTIVE / INACTIVE / PENDING) + 服务层规则(v0.4.0 升级为 5 态, v0.5.0 整体下线)
+- **feat(announcement,message)**:公告详情页 + 消息未读计数 + 事件总线收敛
+- **feat(invoice,payment)**:发票/回款详情页用 enum map 显示中文标签
+- **feat(jobs)**:加 `/api/jobs/contract-expiry` 单跑端点
+- **fix(invoice)**:R-08 累计开票包含 DRAFT,避免超额创建草稿
+- **chore(refactor)**:6 月业务收紧 — 删 `Project.budgetAmount` + `PaymentAllocation` + OperationLog 审计字段;6 个 ts-nocheck 全部清退
+- **feat(data)**:旧 FineUI MySQL 数据迁移 CLI 落盘
 
-閮ㄧ讲鏈?hotfix(`6c3cd090`):Zod v4 `.partial()` 涓嶅厑璁稿湪鍚?`.refine()` 鐨?schema 涓?鈥?`lib/validators/announcement.ts` 鎷嗗嚭 `announcementFields` 鍗曠偣鐪熺悊;`20260626_invoice_attachments_json` 鍔?`IF NOT EXISTS` 骞傜瓑銆?
+部署期 hotfix(`6c3cd090`):Zod v4 `.partial()` 不允许在含 `.refine()` 的 schema 上 — `lib/validators/announcement.ts` 拆出 `announcementFields` 单点真理;`20260626_invoice_attachments_json` 加 `IF NOT EXISTS` 幂等。
 
-### v0.2.0(2026-06-22)鍚堝悓/椤圭洰鏀剁揣 + 涓氬姟绾寲
+### v0.2.0(2026-06-22)合同/项目收紧 + 业务纯化
 
-> 娉?v0.3.0 涔嬪悗姝ょ増鏈紩鍏ョ殑"椤圭洰"鍔熻兘宸茶鍒犻櫎,浠ヤ笅璁板綍淇濈暀浣滃巻鍙插弬鑰冦€?
+> 注:v0.3.0 之后此版本引入的"项目"功能已被删除,以下记录保留作历史参考。
 
-- **feat(contract)**:鍚堝悓绠＄悊鏂板銆岃礋璐ｄ汉銆嶅瓧娈?鍒涘缓/缂栬緫鍙粠鍛樺伐鍒楄〃閫変换鎰?ACTIVE 鍛樺伐,榛樿缁ф壙 `customer.ownerUserId`
-- **feat(project)**:椤圭洰璇︽儏椤?admin-only 鍒犻櫎鎸夐挳(鐘舵€侀棬鎺?`PLANNED / CANCELLED`,绾ц仈杞垹 `WorkflowTaskInstance` + `ProjectProgressLog`)銆倂0.3.0 鍚庨殢椤圭洰妯″潡鏁翠綋涓嬬嚎
-- **feat(payment)**:鍥炴鍒楄〃鍏抽敭瀛楁悳绱㈡墿鍒般€屽鎴峰悕绉般€?
-- **refactor(clean-up)**:椤圭洰鍥炲綊绾笟鍔?鈥斺€?绉婚櫎銆岄」鐩绠椼€?銆屽洖娆惧垎閰嶆槑缁嗐€嶄袱涓潪鏍稿績妯垏鍔熻兘
-- **feat(audit)**:`OperationLog` 琛?6 瀛楁 `userAgent / requestId / method / path / status / errorMessage` + 閰嶅绱㈠紩 + 500 瀛楃 `userAgent` CHECK 绾︽潫
-- **feat(api)**:`GET /api/operation-logs` 澧?6 瀛楁涓?`ip(contains) / status` 杩囨护;鏂板璇︽儏鎺ュ彛 `GET /api/operation-logs/[id]` 鍚?entity 鍚嶇О best-effort 鍙嶆煡
-- **feat(ui)**:`/admin/operation-logs` 閲嶅啓 鈥?鐘舵€?/ IP 鍒椼€? 妗ｅ揩閫熸椂闂村尯闂淬€佺郴缁熺敤鎴风传鑹插窘鏍囥€佸姩浣滀腑鏂囨爣绛俱€丆SV 瀵煎嚭(甯?BOM),琛岀偣鍑绘墦寮€鎶藉眽
-- **feat(contract)**:鍚堝悓鐘舵€佹満鑷姩杞崲钀藉湴 鈥?`tryAutoExecuteContract` / `tryAutoCompleteContract` / `tryAutoExpireContract` 涓変釜閽╁瓙 + `runContractExpiryJob` 姣忔棩 01:00 鎵繃鏈熷悎鍚?
-- **feat(schema)**:`User.isSystem Boolean @default(false)` + 杩佺Щ鍒涘缓 `system` 鍗犱綅鐢ㄦ埛(涓嶅彲鐧诲綍)
+- **feat(contract)**:合同管理新增「负责人」字段,创建/编辑可从员工列表选任意 ACTIVE 员工,默认继承 `customer.ownerUserId`
+- **feat(project)**:项目详情页 admin-only 删除按钮(状态门控 `PLANNED / CANCELLED`,级联软删 `WorkflowTaskInstance` + `ProjectProgressLog`)。v0.3.0 后随项目模块整体下线
+- **feat(payment)**:回款列表关键字搜索扩到「客户名称」
+- **refactor(clean-up)**:项目回归纯业务 —— 移除「项目预算」+「回款分配明细」两个非核心横切功能
+- **feat(audit)**:`OperationLog` 补 6 字段 `userAgent / requestId / method / path / status / errorMessage` + 配套索引 + 500 字符 `userAgent` CHECK 约束
+- **feat(api)**:`GET /api/operation-logs` 增 6 字段与 `ip(contains) / status` 过滤;新增详情接口 `GET /api/operation-logs/[id]` 含 entity 名称 best-effort 反查
+- **feat(ui)**:`/admin/operation-logs` 重写 — 状态 / IP 列、6 档快速时间区间、系统用户紫色徽标、动作中文标签、CSV 导出(带 BOM),行点击打开抽屉
+- **feat(contract)**:合同状态机自动转换落地 — `tryAutoExecuteContract` / `tryAutoCompleteContract` / `tryAutoExpireContract` 三个钩子 + `runContractExpiryJob` 每日 01:00 扫过期合同
+- **feat(schema)**:`User.isSystem Boolean @default(false)` + 迁移创建 `system` 占位用户(不可登录)
 
-## 鍘嗗彶閲岀▼纰?
+## 历史里程碑
 
-- **v0.8.0(2026-07-03)**: 鎶ヨ〃涓績 PDF 5 瀛楁瀵归綈 + Excel 澶?sheet + 绉婚櫎鑷姩鐢熸垚 (cron 鍒犱簡, 璧版墜鍔? + 鏂囦欢鍚嶆椂闂存埑 (YYYY-MM-DD_HHMM)
-- **v0.6.0(2026-06-29)**:cron 闈欓粯澶辫触 9 涓湀浜嬫晠澶嶇洏 (242 涓悎鍚?269 涓囧簲鏀舵仮澶? + reopen API + force 鏃佽矾 + cron-healthcheck 鑷 + 寮哄叧 7/3/1 閱掔洰鏂囨 + postmortem reopen vs force 涓氬姟閫夋嫨鎸囧崡 + Timeline icon 瀵圭О + serviceTypeLabel helper + by-region Tooltip
-- **v0.5.1+(2026-06-29)**:缁熻鍖洪棿鏈堝害/瀛ｅ害/骞村害鍒囨崲 + dashboard 瀹㈡埛缁熻鍙ｅ緞閲嶅懡鍚?+ system actor seed + 鍚堝悓 owner 榛樿鍊?+ 璇佷功椤?bug + 杩佺Щ婕傜Щ鎭㈠ + AI 鍥㈤槦閰嶇疆 + 娓呯悊 18 涓鍎胯剼鏈?lib 鏂囦欢
-- **v0.5.1(2026-06-29)**:Excel 瀵煎嚭鏂囦欢鍚嶅浗闄呭寲 + 鍚堝悓閫夋嫨鍣ㄦ樉绀哄悎鍚屾€婚
-- **v0.5.0(2026-06-29)**:瀹㈡埛鐘舵€佹満涓嬬嚎(纭垹, BREAKING; 5 鎬?4 瑙勫垯/鎾ら攢妯箙 鍏ㄥ垹; Customer 琛ㄦ棤 status)
-- **v0.3.0(2026-06-23/24)**:浼佷笟璧勪骇搴撲笅绾?+ 缁熻鍒嗘瀽 round-2 鏀跺熬 + 鍚堝悓 7鈫? 鐘舵€佹満 + 椤圭洰/宸ヤ綔娴佹ā鍧楀垹闄?
-- **v0.2.0(2026-06-22)**:鍚堝悓/椤圭洰鏀剁揣 + 涓氬姟绾寲
-- **v0.1.0(2026-06-11)**:涓婄嚎鍓嶆竻鐞?鈥?娓呯┖ 136 涓?lint warnings,鐧诲綍椤?+ 椤堕儴瀵艰埅鍝佺墝鍖?缁熶竴浠撳簱 `core.autocrlf=false`
-- **v0.1.0-rc.1**:MinIO 鎺ュ叆(presign upload/download + Attachment 琛?+ CORS);Docker 鍚堝苟涓哄崟 image;鍚堝悓/鍙戠エ涓婁紶/棰勮/涓嬭浇/鍒犻櫎绔埌绔墦閫?
-- **P3**:RLS 绛栫暐 + 澶囦唤鑴氭湰 + Vercel Cron(鍘熼€氱煡涓夐€氶亾宸插悎骞跺埌绔欏唴淇?
-- **P2**:棰嗗煙浜嬩欢鎬荤嚎 + 4 涓畾鏃朵换鍔?+ 缁熻鍒嗘瀽 + xlsx 瀵煎嚭 + 杞垹闄?
-- **P1**:浜斿ぇ妯″潡 CRUD + 16 鏉¤法妯″潡鏍￠獙 + 27/27 e2e
-- **P0**:椤圭洰鑴氭墜鏋?+ 鐧诲綍 + 瀛楀吀绉嶅瓙 + 4 瑙掕壊鏉冮檺
+- **v0.8.0(2026-07-03)**: 报表中心 PDF 5 字段对齐 + Excel 多 sheet + 移除自动生成 (cron 删了, 走手动) + 文件名时间戳 (YYYY-MM-DD_HHMM)
+- **v0.6.0(2026-06-29)**:cron 静默失败 9 个月事故复盘 (242 个合同 269 万应收恢复) + reopen API + force 旁路 + cron-healthcheck 自检 + 强关 7/3/1 醒目文案 + postmortem reopen vs force 业务选择指南 + Timeline icon 对称 + serviceTypeLabel helper + by-region Tooltip
+- **v0.5.1+(2026-06-29)**:统计区间月度/季度/年度切换 + dashboard 客户统计口径重命名 + system actor seed + 合同 owner 默认值 + 证书页 bug + 迁移漂移恢复 + AI 团队配置 + 清理 18 个孤儿脚本/lib 文件
+- **v0.5.1(2026-06-29)**:Excel 导出文件名国际化 + 合同选择器显示合同总额
+- **v0.5.0(2026-06-29)**:客户状态机下线(硬删, BREAKING; 5 态/4 规则/撤销横幅 全删; Customer 表无 status)
+- **v0.3.0(2026-06-23/24)**:企业资产库下线 + 统计分析 round-2 收尾 + 合同 7→3 状态机 + 项目/工作流模块删除
+- **v0.2.0(2026-06-22)**:合同/项目收紧 + 业务纯化
+- **v0.1.0(2026-06-11)**:上线前清理 — 清空 136 个 lint warnings,登录页 + 顶部导航品牌化,统一仓库 `core.autocrlf=false`
+- **v0.1.0-rc.1**:MinIO 接入(presign upload/download + Attachment 表 + CORS);Docker 合并为单 image;合同/发票上传/预览/下载/删除端到端打通
+- **P3**:RLS 策略 + 备份脚本 + Vercel Cron(原通知三通道已合并到站内信)
+- **P2**:领域事件总线 + 4 个定时任务 + 统计分析 + xlsx 导出 + 软删除
+- **P1**:五大模块 CRUD + 16 条跨模块校验 + 27/27 e2e
+- **P0**:项目脚手架 + 登录 + 字典种子 + 4 角色权限
 
-## 閮ㄧ讲
+## 部署
 
-### 鐜鍙橀噺
+### 环境变量
 
 ```env
 DATABASE_URL="postgresql://qitai:qitai_pass@localhost:5432/qt_biz?schema=public"
-NEXTAUTH_SECRET="..."          # 鑷冲皯 32 瀛楃
+NEXTAUTH_SECRET="..."          # 至少 32 字符
 NEXTAUTH_URL="https://app.example.com"
-APP_ENC_KEY_HEX="..."          # 32 瀛楄妭 hex = 64 瀛楃(AES-256-GCM 鍔犲瘑鏁忔劅瀛楁)
+APP_ENC_KEY_HEX="..."          # 32 字节 hex = 64 字符(AES-256-GCM 加密敏感字段)
 APP_PUBLIC_URL="https://app.example.com"
 APP_LOCALE="zh-CN"
-CRON_SECRET="..."              # Vercel Cron 閴存潈
-FORCE_HTTPS="true"             # 鐢熶骇寮€鍚?Secure Cookie
+CRON_SECRET="..."              # Vercel Cron 鉴权
+FORCE_HTTPS="true"             # 生产开启 Secure Cookie
 ```
 
-璇﹁ [.env.example](.env.example)銆?
+详见 [.env.example](.env.example)。
 
-### 鐢熶骇閮ㄧ讲椤哄簭
+### 生产部署顺序
 
 ```bash
 npx prisma migrate deploy
 npm run seed-roles
 npm run seed-dicts
-npm run create-admin -- --employeeNo <鐪熷疄宸ュ彿> --name <鐪熷悕> --email <鍏徃閭> --password '<寮哄瘑鐮?'
-npm run seed       # 姝ゆ椂鎵惧埌 ADMIN, 鍐欏叆宸ヤ綔娴佹ā鏉?
+npm run create-admin -- --employeeNo <真实工号> --name <真名> --email <公司邮箱> --password '<强密码>'
+npm run seed       # 此时找到 ADMIN, 写入工作流模板
 ```
 
-**鐢熶骇瀵嗙爜**:`create-admin` 寮哄埗 鈮?8 瀛楃,鐢熶骇璇风敤瀵嗙爜绠＄悊鍣ㄧ敓鎴愮殑闅忔満涓层€?
+**生产密码**:`create-admin` 强制 ≥ 8 字符,生产请用密码管理器生成的随机串。
 
-### 闃块噷浜?ECS 鍗曚富鏈洪儴缃?
+### 阿里云 ECS 单主机部署
 
-璇﹁ [docs/闃块噷浜?ECS 鍗曚富鏈洪儴缃叉柟妗?鈥?qt-biz v0.1.0.md](docs/%E9%98%BF%E9%87%8C%E4%BA%91%20ECS%20%E5%8D%95%E4%B8%BB%E6%9C%BA%E9%83%A8%E7%BD%B2%E6%96%B9%E6%A1%88%20%E2%80%94%20qt-biz%20v0.1.0.md) 鍜?[ops/](ops/)銆?
+详见 [docs/阿里云 ECS 单主机部署方案 — qt-biz v0.1.0.md](docs/%E9%98%BF%E9%87%8C%E4%BA%91%20ECS%20%E5%8D%95%E4%B8%BB%E6%9C%BA%E9%83%A8%E7%BD%B2%E6%96%B9%E6%A1%88%20%E2%80%94%20qt-biz%20v0.1.0.md) 和 [ops/](ops/)。
 
-### 澶囦唤涓庡畾鏃朵换鍔?
+### 备份与定时任务
 
-- **鏈湴 cron**:`bash scripts/prod/backup.sh` + crontab `0 2 * * *`
-- **Vercel Cron**:`vercel.json` 宸查厤 `POST /api/jobs/run-all` 姣忔棩 01:00 UTC
-- **Cron Secret**:Vercel Cron 鑷姩娉ㄥ叆 `Authorization: Bearer <CRON_SECRET>` 閴存潈
+- **本地 cron**:`bash scripts/prod/backup.sh` + crontab `0 2 * * *`
+- **Vercel Cron**:`vercel.json` 已配 `POST /api/jobs/run-all` 每日 01:00 UTC
+- **Cron Secret**:Vercel Cron 自动注入 `Authorization: Bearer <CRON_SECRET>` 鉴权
 
-## 鐩稿叧鏂囨。
+## 相关文档
 
-| 鏂囨。 | 鐢ㄩ€?|
+| 文档 | 用途 |
 |---|---|
-| [docs/DESIGN-v3.md](docs/DESIGN-v3.md) | 瀹屾暣璁捐(v3,鐗堟湰鐭╅樀閽夌増) |
-| [docs/USER_MANUAL.md](docs/USER_MANUAL.md) | 鐢ㄦ埛鎵嬪唽(瀵瑰簲 v0.2.0,v0.3.0 椤圭洰妯″潡宸蹭笅绾? |
-| [docs/PROJECT_SUMMARY.md](docs/PROJECT_SUMMARY.md) | 椤圭洰鎬荤粨 |
-| [docs/CODE_REVIEW.md](docs/CODE_REVIEW.md) | 涓婄嚎鍓嶄唬鐮佸鏌?|
-| [docs/P2_REVIEW.md](docs/P2_REVIEW.md) | P2 璇勫 + 缁熻鍒嗘瀽 round-2 淇 |
-| [docs/P3_REVIEW.md](docs/P3_REVIEW.md) | P3 璇勫 |
-| [docs/RLS.md](docs/RLS.md) | RLS 绛栫暐 |
-| [docs/PLAYWRIGHT_E2E_REPORT.md](docs/PLAYWRIGHT_E2E_REPORT.md) | Playwright E2E 鎶ュ憡 |
-| [docs/ops/瀛楀吀缁存姢璇存槑.md](docs/ops/%E5%AD%97%E5%85%B8%E7%BB%B4%E6%8A%A4%E8%AF%B4%E6%98%8E.md) | 鏁版嵁瀛楀吀缁存姢 |
-| [docs/specs/dict-redesign.md](docs/specs/dict-redesign.md) | 瀛楀吀閲嶈璁?spec |
-| [ops/README.md](ops/README.md) | 杩愮淮鑴氭湰璇存槑 |
-| [scripts/README.md](scripts/README.md) | 鑴氭湰璇存槑 |
+| [docs/DESIGN-v3.md](docs/DESIGN-v3.md) | 完整设计(v3,版本矩阵钉版) |
+| [docs/USER_MANUAL.md](docs/USER_MANUAL.md) | 用户手册(对应 v0.2.0,v0.3.0 项目模块已下线) |
+| [docs/PROJECT_SUMMARY.md](docs/PROJECT_SUMMARY.md) | 项目总结 |
+| [docs/CODE_REVIEW.md](docs/CODE_REVIEW.md) | 上线前代码审查 |
+| [docs/P2_REVIEW.md](docs/P2_REVIEW.md) | P2 评审 + 统计分析 round-2 修复 |
+| [docs/P3_REVIEW.md](docs/P3_REVIEW.md) | P3 评审 |
+| [docs/RLS.md](docs/RLS.md) | RLS 策略 |
+| [docs/PLAYWRIGHT_E2E_REPORT.md](docs/PLAYWRIGHT_E2E_REPORT.md) | Playwright E2E 报告 |
+| [docs/ops/字典维护说明.md](docs/ops/%E5%AD%97%E5%85%B8%E7%BB%B4%E6%8A%A4%E8%AF%B4%E6%98%8E.md) | 数据字典维护 |
+| [docs/specs/dict-redesign.md](docs/specs/dict-redesign.md) | 字典重设计 spec |
+| [ops/README.md](ops/README.md) | 运维脚本说明 |
+| [scripts/README.md](scripts/README.md) | 脚本说明 |
 
-## 瀹夊叏
+## 安全
 
-- **涓嶈**鎻愪氦 `.env`銆乣docker-data/`銆乣backups/`銆乣docs/*閮ㄧ讲璁板綍*.md`
-- 涓婁紶/涓嬭浇璧?Next.js 浠ｇ悊,MinIO 鐣欏湪 `:9000` 鍐呯綉,涓嶅叕缃戞毚闇?
-- `npm run seed` 浠呯郴缁熺鐞嗘暟鎹?鐢熶骇绉嶅瓙鍦ㄥ共鍑€鐜鎵嬪姩璺?涓嶉殢渚嬭鏇存柊璺?
-- dev 榛樿璐﹀彿(`minioadmin/minioadmin`銆乣postgres/postgres`)浠呮湰鍦扮敤,鐢熶骇鍓嶅繀椤昏疆鎹?
+- **不要**提交 `.env`、`docker-data/`、`backups/`、`docs/*部署记录*.md`
+- 上传/下载走 Next.js 代理,MinIO 留在 `:9000` 内网,不公网暴露
+- `npm run seed` 仅系统管理数据;生产种子在干净环境手动跑,不随例行更新跑
+- dev 默认账号(`minioadmin/minioadmin`、`postgres/postgres`)仅本地用,生产前必须轮换

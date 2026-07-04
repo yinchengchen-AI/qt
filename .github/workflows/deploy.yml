@@ -20,5 +20,7 @@ jobs:
             # 先停止旧实例释放内存，避免 build 阶段 OOM
             sudo systemctl stop qt-app || true
             cd /opt/qt
+            # 3.5GB 内存机器，降低 Node 堆上限避免系统 OOM
+            export NODE_MAX_OLD_SPACE=1536
             sudo -E ./scripts/prod/deploy.sh
           timeout: 600s
