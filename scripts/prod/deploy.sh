@@ -14,7 +14,49 @@ echo "==> source .env (for DATABASE_URL / MIGRATION_DATABASE_URL)"
 set -a; . ./.env; set +a
 echo "==> prisma migrate deploy (用 MIGRATION_DATABASE_URL 走降权账号,只 apply 不改 schema)"
 
-DATABASE_URL="$MIGRATION_DATABASE_URL" npm run prisma:deploy
+# 已知问题兜底: 20260630_message_type_enum_index 想 CREATE TYPE MessageType,
+# 但 20260627_message_type_enum_bootstrap 已经预创建了 (含全部 12 个值),
+# 在 fresh DB 上按时间序 deploy 会撞 "type already exists".
+# 跟 ci.yml 的 fallback 同步: 检测到该 migration 失败时, 手工修 schema +
+# resolve --applied 跳过, 然后再 deploy 一次.
+set +e
+DATABASE_URL="$MIGRATION_DATABASE_URL" npm run prisma:deploy 2>&1 | tee /tmp/migrate.log
+EXIT1=${PIPESTATUS[0]}
+set -e
+if [ $EXIT1 -eq 0 ]; then
+  echo "==> prisma deploy 一次过, 无需 fallback"
+elif grep -q "20260630_message_type_enum_index" /tmp/migrate.log; then
+  echo "::warning::20260630_message_type_enum_index 撞 MessageType already exists, 走 enum fallback"
+  # 用生产 DB 的 admin 账号 (MIGRATION_DATABASE_URL 是降权账号, 不能 ALTER TYPE)
+  # 借用 .env 里的 DATABASE_URL (qt_app, BYPASSRLS) 是 admin 角色
+  ADMIN_URL="${DATABASE_URL:-}"
+  if [ -z "$ADMIN_URL" ]; then
+    echo "[ERR] 20260630 enum fallback 需要 DATABASE_URL (admin 角色), 但 .env 里没设"
+    echo "      手动跑: psql \$DATABASE_URL -c 'ALTER TABLE \"Message\" ALTER COLUMN \"type\" TYPE \"MessageType\" USING \"type\"::\"MessageType\";' -c 'CREATE INDEX \"Message_type_receiverUserId_createdAt_idx\" ON \"Message\"(\"type\", \"receiverUserId\", \"createdAt\");' && npx prisma migrate resolve --applied 20260630_message_type_enum_index && npx prisma migrate deploy"
+    exit 1
+  fi
+  # .env 里的 DATABASE_URL 含 ?schema=public, psql 不认, 去掉
+  PGURL=$(echo "$ADMIN_URL" | sed 's/?schema=public//')
+  PGPASSWORD="${ADMIN_PGPASSWORD:-}" psql "$PGURL" -v ON_ERROR_STOP=1 \
+    -c 'ALTER TABLE "Message" ALTER COLUMN "type" TYPE "MessageType" USING "type"::"MessageType";' \
+    -c 'DROP INDEX IF EXISTS "Message_type_idx";' \
+    -c 'CREATE INDEX "Message_type_receiverUserId_createdAt_idx" ON "Message"("type", "receiverUserId", "createdAt");'
+  # resolve --applied 跳过 20260630
+  set +e
+  DATABASE_URL="$MIGRATION_DATABASE_URL" npx prisma migrate resolve --applied 20260630_message_type_enum_index
+  RESOLVE_EXIT=$?
+  set -e
+  if [ $RESOLVE_EXIT -ne 0 ]; then
+    echo "::warning::prisma resolve --applied 返回 $RESOLVE_EXIT (可能 migration 不在 failed 状态, 继续)"
+  fi
+  # 再 deploy 一次
+  DATABASE_URL="$MIGRATION_DATABASE_URL" npm run prisma:deploy
+  echo "==> fallback 成功"
+else
+  echo "[ERR] prisma deploy 失败但不是已知 20260630 enum 冲突, 不走 fallback"
+  tail -30 /tmp/migrate.log
+  exit $EXIT1
+fi
 
 echo "==> prisma generate (sync client to current schema; postinstall only runs patch-package)"
 npx --no-install prisma generate

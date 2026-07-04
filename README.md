@@ -398,26 +398,37 @@ xlsx 导出走 `lib/excel.ts` + `exceljs`; 中文文件名通过 `attachmentHead
 
 ## 最近更新
 
-### v0.8.2(2026-07-04) 报表中心下线 + README 乱码修复
+### v0.8.2(2026-07-04) 回滚 9a48265 + README 乱码修复 + 删 CI/Deploy 自动化
 
-> `9a48265` 那次 commit 在保存 README.md 时被文本编辑器把 UTF-8 简体内容写成 mojibake 链式乱码(8200+ 简体汉字几乎全部变成 U+92xx/U+93xx 区段繁体/日文汉字),本版本:
-> 1) 用 `git checkout 185b9c7 -- README.md` 从 v0.8.1 恢复正确内容;
-> 2) 把"报表中心下线"语义补到 changelog;
-> 3) 不动 `9a48265` 的代码层变更(4 张 Report* 表 / service / page / cron 等),只回滚 README 文档。
+> `9a48265` 那次 commit 引入 3 个 prisma migration 试图下线报表中心,但在 fresh DB 上按时间序 apply 时与历史 migration `20260707_report_center` 冲突(同一 `ReportDefinition` 表被两次 CREATE 字段结构不同的版本),CI 在 `prisma drift` 和 `vitest` 两个 job 的 `prisma migrate deploy` 步骤上失败。本版本决定回滚该 commit 的代码 + migration 改动,保留 v0.8.1 状态;同时彻底删除 CI 和 GitHub 自动部署(workflow 文件 + 依赖),改回「本地开发 + 运维手动部署」模式。
 
-**报表中心下线 (一)**:
-- 业务侧: 报表中心 (`ReportDefinition` / `ReportJob` / `ReportSnapshot` / `ReportSubscription` + 报表生成 / 快照 / 自定义周期 / 订阅) 改为在 `/statistics/reports` 由用户自助选指标与维度生成,后台不再自动跑报表
-- 数据层: 删 4 张 `Report*` 表 + `User.reportSnapshots` / `reportJobs` / `reportSubscriptions` 三个关联字段 + `MessageType.REPORT_READY` 枚举值
-- 应用层: 删 `server/services/report.ts` / `scripts/shared/backfill-report-snapshots.ts` / `lib/report-labels.ts` / `app/(app)/reports/page.tsx` / `app/(app)/reports/[code]/page.tsx`
-- 后续: 自助报表 `/statistics/reports` 跟进单独 commit
+**回滚 9a48265 (一)**:
+- 原因: `9a48265` 的 3 条 migration(`20260704_report_center_redesign` / `20260704_report_ready_message_type` / `20260709_drop_report_center`)在 fresh DB 上跑会撞上历史 `20260707_report_center` (e543c41) 已经创建的 `ReportDefinition` / `ReportSnapshot` 表,CI 红
+- 范围: 19 个代码/lib/test/seed 文件 + 3 个 migration 目录全部回退到 `ced7665` (9a48265 父) 状态
+- 保留: `app/(app)/reports/*` 页面、`server/services/report.ts` 报表 service、`lib/report-labels.ts` 标签字典等全部复活
+- 后续: 报表中心下线需用单一 migration(不带中间临时状态)重做,跟 `20260707_report_center` 复用同一组表结构,**不能再独立 CREATE TABLE ReportDefinition**
 
 **README 乱码修复 (二)**:
 - 根因: `9a48265` commit 提交时,`README.md` 被以错误编码写入 git blob(8200+ 简体汉字保存为 UTF-8 mojibake 形态,UTF-8 严格解码虽然通过但语义全部变成繁体/日文汉字)
-- 修复: 从 `185b9c7` (v0.8.1) 还原 blob;无任何代码改动,只动文档
-- 影响: 历史 blame 在 README 上会显示 `9a48265 -> v0.8.2 changelog`,追溯不会丢
+- 修复: 从 `185b9c7` (v0.8.1) 还原 blob 后,**追加** v0.8.2 changelog 段(本节)
+- 影响: `185b9c7` 之后的 README 历史 blame 在 v0.8.2 这条 commit 处归位,后续 commit 仍能正常追溯
 
-**版本号**: `0.8.1` -> `0.8.2`(patch bump,仅文档 + 数据层清理,无应用层 breaking 变更,无需 `prisma migrate deploy`)
-**部署说明**: 无 schema 变更,无新迁移;`prisma migrate deploy` 不需要跑(报表中心 4 张表在 `9a48265` 已随其临时 migration drop,生产侧若按 `9a48265` 部署过,无需重复操作)
+**删 CI / GitHub 自动部署 (三)**:
+- 移除: `.github/workflows/ci.yml` (-193 行) + `.github/workflows/deploy.yml` (-26 行),共 -219 行
+- 根因: CI 流程的 `prisma deploy` fallback 自身有 bug(在 9a48265 之前/之后都失败),叠加 v0.8.2 schema migration 冲突,导致 CI 持续红灯 + 自动部署反复挂掉,生产环境被推到不一致状态
+- 替代方案: 改回**本地开发 + 运维手动部署**模式,`scripts/prod/deploy.sh` 仍保留(加入 enum fallback 兜底,跟原 CI fallback 行为一致),生产部署由运维 SSH 上去手动 `sudo -E ./scripts/prod/deploy.sh`
+- 后续: `next.config.mjs#computeAppVersion()` 仍能在 dev 上正常派生版本号 chip(依赖本地 `.git`),登录页右上角显示不变
+
+**保留: `scripts/prod/deploy.sh` 加 enum fallback**:
+- 修了 `20260630_message_type_enum_index` vs `20260627_message_type_enum_bootstrap` 的 enum 冲突,逻辑跟原 CI fallback 一致
+- 走 fallback 时用 admin `DATABASE_URL` (qt_app, BYPASSRLS) 跑 `ALTER TYPE`,因为 `MIGRATION_DATABASE_URL` 是降权账号
+
+**版本号**: `0.8.1` -> `0.8.2`(patch bump,仅文档 + 回滚 + 删 CI,无新增功能,无 schema 变更,无应用层 breaking 变更)
+**部署说明**:
+- 无 schema 变更、无新 migration
+- `prisma migrate deploy` 不需要跑(生产 DB 仍在 v0.8.1 之前的 38 条 migration 状态)
+- 如果生产已经按 `9a48265` 部署过(可能有 3 条新 migration 记录),需要手动 `migrate resolve --rolled-back` 这 3 条记录(DB 不会有真实 schema 污染,因为 v0.7 报表中心表早已存在,9a48265 的下线 migration 是 `DROP IF EXISTS` 兜底,不影响生产)
+- 删 CI 后,**生产部署改回运维手动 SSH + `sudo -E ./scripts/prod/deploy.sh`**;deploy.sh 内的 enum fallback 会自动处理已知冲突
 ### v0.8.1(2026-07-04) 代码审计修复: 状态机并发安全 + 金额不变式 + 客户端竞态防护
 
 > v0.8.0 报表中心上线后,对全项目做了一次代码审计,修复 10 个高优先级 bug,补充 2 组单元测试。本次覆盖 11 个文件,0 个新迁移,0 个 API 契约变更。
@@ -724,7 +735,7 @@ sudo systemctl restart crond
 
 ## 历史里程碑
 
-- **v0.8.2(2026-07-04)**: 回滚 9a48265 (CI 暴露 schema migration 冲突, 19 个代码/lib 文件 + 3 migration 目录回退到 ced7665) + README 乱码修复(从 v0.8.1 还原 blob + 追加修复叙事段)
+- **v0.8.2(2026-07-04)**: 回滚 9a48265 (CI 暴露 schema migration 冲突, 19 个代码/lib 文件 + 3 migration 目录回退到 ced7665) + README 乱码修复(从 v0.8.1 还原 blob + 追加修复叙事段) + 删 CI/GitHub 自动部署 (改回本地开发 + 运维手动部署)
 - **v0.8.0(2026-07-03)**: 报表中心 PDF 5 字段对齐 + Excel 多 sheet + 移除自动生成 (cron 删了, 走手动) + 文件名时间戳 (YYYY-MM-DD_HHMM)
 - **v0.6.0(2026-06-29)**:cron 静默失败 9 个月事故复盘 (242 个合同 269 万应收恢复) + reopen API + force 旁路 + cron-healthcheck 自检 + 强关 7/3/1 醒目文案 + postmortem reopen vs force 业务选择指南 + Timeline icon 对称 + serviceTypeLabel helper + by-region Tooltip
 - **v0.5.1+(2026-06-29)**:统计区间月度/季度/年度切换 + dashboard 客户统计口径重命名 + system actor seed + 合同 owner 默认值 + 证书页 bug + 迁移漂移恢复 + AI 团队配置 + 清理 18 个孤儿脚本/lib 文件
