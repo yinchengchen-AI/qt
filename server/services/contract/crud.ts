@@ -9,6 +9,7 @@ import {ownerEq, parseStatusList} from "@/lib/ownership";
 import { getBillingStatus } from "@/lib/contract-billing";
 import { Prisma } from "@prisma/client";
 import { calcTaxBreakdown } from "@/lib/money";
+import { MONEY_TOLERANCE } from "@/lib/money-tolerance";
 import { resolveAttachmentSnapshots } from "@/lib/attachment-snapshot";
 import { softDelete } from "@/lib/soft-delete";
 import { tryAutoPublish } from "./status";
@@ -296,6 +297,32 @@ export async function updateContract(user: SessionUser, id: string, input: Contr
     const attachments = input.attachments
       ? await resolveAttachmentSnapshots(input.attachments, "Contract", id, tx)
       : undefined;
+
+    // 总额调小时, 校验已有发票/回款不超出新的合同总额 (0.01 元容差)
+    if (input.totalAmount !== undefined) {
+      const newTotal = new Prisma.Decimal(input.totalAmount.toString());
+      const existingTotal = new Prisma.Decimal(existing.totalAmount.toString());
+      if (newTotal.lessThan(existingTotal)) {
+        const TOL = MONEY_TOLERANCE;
+        const invoiced = await tx.invoice.aggregate({
+          where: { contractId: id, status: { in: ["DRAFT", "ISSUED", "RED_FLUSHED"] }, deletedAt: null },
+          _sum: { amount: true },
+        });
+        const invoicedSum = new Prisma.Decimal(invoiced._sum.amount?.toString() ?? "0");
+        if (invoicedSum.greaterThan(newTotal.plus(TOL))) {
+          throw new ApiError(ERROR_CODES.INVOICE_OVER_LIMIT, "已开票/草稿金额超过新的合同总额", 422);
+        }
+        const paid = await tx.payment.aggregate({
+          where: { contractId: id, status: { in: ["CONFIRMED", "RECONCILED"] }, deletedAt: null },
+          _sum: { amount: true },
+        });
+        const paidSum = new Prisma.Decimal(paid._sum.amount?.toString() ?? "0");
+        if (paidSum.greaterThan(newTotal.plus(TOL))) {
+          throw new ApiError(ERROR_CODES.PAYMENT_OVER_CONTRACT, "已回款金额超过新的合同总额", 422);
+        }
+      }
+    }
+
     try {
       const updated = await tx.contract.update({
       where: { id },

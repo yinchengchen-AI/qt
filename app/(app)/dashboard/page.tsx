@@ -45,13 +45,23 @@ export default function DashboardPage() {
   const { token } = useToken();
 
   useEffect(() => {
+    const ab = new AbortController();
     setLoading(true);
-    fetch(`/api/dashboard/summary?range=${range}`, { credentials: "include" })
+    fetch(`/api/dashboard/summary?range=${range}`, { credentials: "include", signal: ab.signal })
       .then((r) => r.json())
       .then((j) => {
+        if (ab.signal.aborted) return;
         if (j.code === 0) setData(j.data);
       })
-      .finally(() => setLoading(false));
+      .catch((e) => {
+        if (ab.signal.aborted) return;
+        // dashboard 主数据失败时保持现有数据,避免白屏
+        console.error("dashboard summary failed", e);
+      })
+      .finally(() => {
+        if (!ab.signal.aborted) setLoading(false);
+      });
+    return () => ab.abort();
   }, [range]);
 
   // 催收汇总 — 拉失败时整段隐藏,不阻塞 dashboard 主数据

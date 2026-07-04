@@ -6,6 +6,7 @@ import { requirePermission, RESOURCE, ACTION } from "@/lib/permissions";
 
 import {ownerEq} from "@/lib/ownership";
 import { Prisma } from "@prisma/client";
+import { MONEY_TOLERANCE } from "@/lib/money-tolerance";
 import { audit } from "@/server/audit";
 import { listAdminUserIds } from "@/server/events/bus";
 import { runTransition, runTransitionInTx, SkipTransition } from "@/lib/status-machine";
@@ -217,22 +218,25 @@ export async function tryAutoClose(contractId: string, now: Date): Promise<"CLOS
       // 条件 1: endDate < now (合同已过自然到期日)
       if (new Date(c.endDate as unknown as Date) >= now) throw new SkipTransition();
 
-      const total = Number(c.totalAmount);
-      const threshold = total * ratio;
+      const total = new Prisma.Decimal(c.totalAmount.toString());
+      const threshold = total.mul(ratio);
+      const effectiveThreshold = threshold.minus(MONEY_TOLERANCE);
 
       // 条件 2: 开票足额
       const invoiced = await tx.invoice.aggregate({
         where: { contractId, status: "ISSUED", deletedAt: null },
         _sum: { amount: true },
       });
-      if (Number(invoiced._sum.amount ?? 0) < threshold) throw new SkipTransition();
+      const invoicedSum = new Prisma.Decimal(invoiced._sum.amount?.toString() ?? "0");
+      if (invoicedSum.lessThan(effectiveThreshold)) throw new SkipTransition();
 
       // 条件 3: 回款足额 (CONFIRMED + RECONCILED 都算入账;PLANNED 不算)
       const paid = await tx.payment.aggregate({
         where: { contractId, status: { in: ["CONFIRMED", "RECONCILED"] }, deletedAt: null },
         _sum: { amount: true },
       });
-      if (Number(paid._sum.amount ?? 0) < threshold) throw new SkipTransition();
+      const paidSum = new Prisma.Decimal(paid._sum.amount?.toString() ?? "0");
+      if (paidSum.lessThan(effectiveThreshold)) throw new SkipTransition();
     },
     extraData: () => ({ reviewComment: "completed" as ContractCloseReason }),
     audit: () => ({
@@ -293,15 +297,17 @@ export async function tryAutoCloseOnOverdue(contractId: string, now: Date): Prom
       const graceCutoff = new Date(new Date(c.endDate as unknown as Date).getTime() + graceMs);
       if (graceCutoff >= now) throw new SkipTransition();
 
-      const total = Number(c.totalAmount);
-      const threshold = total * ratio;
+      const total = new Prisma.Decimal(c.totalAmount.toString());
+      const threshold = total.mul(ratio);
+      const effectiveThreshold = threshold.minus(MONEY_TOLERANCE);
 
       // 条件 2: 必须未结清 (paid < threshold); 双足额的情况由 tryAutoClose 处理
       const paid = await tx.payment.aggregate({
         where: { contractId, status: { in: ["CONFIRMED", "RECONCILED"] }, deletedAt: null },
         _sum: { amount: true },
       });
-      if (Number(paid._sum.amount ?? 0) >= threshold) throw new SkipTransition();
+      const paidSum = new Prisma.Decimal(paid._sum.amount?.toString() ?? "0");
+      if (paidSum.greaterThanOrEqualTo(effectiveThreshold)) throw new SkipTransition();
     },
     extraData: () => ({ reviewComment: "overdue_terminated" as ContractCloseReason }),
     audit: () => ({

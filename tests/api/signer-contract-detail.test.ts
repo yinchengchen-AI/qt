@@ -141,20 +141,24 @@ describe("getSignerContractDetail", () => {
     expect(ours!.subtotalWan).toBeGreaterThanOrEqual(Math.round((expectSubtotal / 10_000) * 100) / 100);
   });
 
-  it("SALES role: 只看到自己作为签约人的合同", async () => {
+  it("SALES role: 只能看到与自己相关(owner/signer)的合同, 看不到 admin 独占合同", async () => {
     if (!dbReachable || !salesUser || !adminUser) return;
-    // 上面 admin 用例已经造了 2 笔 sales 签的; 再造 1 笔 admin 签的,确认 SALES 看不到
+    // 上面 admin 用例已经造了 2 笔 sales 签的; 再造 1 笔 admin 签且 admin 拥有的,确认 SALES 看不到
     await makeContract({ signerId: adminUser.id, ownerId: adminUser.id, total: 1000, suffix: "03-admin-signer" });
     const groups = await getSignerContractDetail(buildSales());
-    // SALES 只看到自己签的 — 全部 group 的 signerId 都应该是自己
-    for (const g of groups) {
-      expect(g.signerId).toBe(salesUser.id);
+
+    // 只断言本测试 TAG 创建的合同, 避免被其它 seeded/并行测试数据污染
+    const tagRows = groups.flatMap((g) => g.rows).filter((r) => r.contractNo.startsWith(TAG));
+
+    // SALES 看到的本测试合同必须都是 salesUser 作为签约人的
+    for (const r of tagRows) {
+      expect(r.signerId).toBe(salesUser.id);
     }
-    // 业务上 SALES 角色只该有 1 个 group (自己)
-    expect(groups.length).toBe(1);
-    // 看不到 admin 签的合同
-    const allRows = groups.flatMap((g) => g.rows);
-    expect(allRows.some((r) => r.contractNo === `${TAG}-CTR-03-admin-signer`)).toBe(false);
+    // 看不到 admin 独占(admin 签 + admin 拥有)的合同
+    expect(tagRows.some((r) => r.contractNo === `${TAG}-CTR-03-admin-signer`)).toBe(false);
+    // 本测试创建的 sales 签的合同确实能看到
+    expect(tagRows.some((r) => r.contractNo === `${TAG}-CTR-01`)).toBe(true);
+    expect(tagRows.some((r) => r.contractNo === `${TAG}-CTR-02`)).toBe(true);
   });
 
   it("权限: 没有 STATISTICS:READ 抛错", async () => {

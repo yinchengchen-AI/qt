@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { runWithRequestContext } from "@/lib/request-context";
-import { err } from "@/lib/api";
+import { err, ApiError } from "@/lib/api";
+import { ERROR_CODES } from "@/types/errors";
 import { requireSession } from "@/lib/session";
 import { requirePermission, RESOURCE, ACTION } from "@/lib/permissions";
 import {
@@ -120,6 +121,10 @@ export async function GET(req: Request) {
       }
       if (parsed.type === "aging") {
         // 导出账龄明细(走 getInvoiceAging, 应用与页面同口径的过滤)
+        const minAmount = parsed.minAmount ? Number(parsed.minAmount) : undefined;
+        if (minAmount !== undefined && Number.isNaN(minAmount)) {
+          throw new ApiError(ERROR_CODES.VALIDATION_FAILED, "minAmount 必须是有效数字", 400);
+        }
         const agingResult = await getInvoiceAging(user, {
           basis: parsed.basis as "issue" | "due" | undefined,
           customerId: parsed.customerId,
@@ -128,7 +133,7 @@ export async function GET(req: Request) {
           buckets: parsed.buckets
             ? parsed.buckets.split(",").map((s) => s.trim()).filter(Boolean)
             : undefined,
-          minAmount: parsed.minAmount ? Number(parsed.minAmount) : undefined,
+          minAmount,
           pageSize: MAX_ROWS
         });
         const basisTag = agingResult.basisUsed;

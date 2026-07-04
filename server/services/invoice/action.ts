@@ -6,6 +6,7 @@ import { requirePermission, RESOURCE, ACTION } from "@/lib/permissions";
 import type {InvoiceActionInput} from "@/lib/validators/invoice";
 import { Prisma } from "@prisma/client";
 import { audit } from "@/server/audit";
+import { nextBusinessNo } from "@/lib/sequence";
 
 import {ownerViaContract} from "@/lib/ownership";
 import { runTransitionInTx } from "@/lib/status-machine";
@@ -67,7 +68,7 @@ export async function invoiceAction(user: SessionUser, id: string, input: Invoic
         // 预创建 PLANNED Payment
         await tx.payment.create({
           data: {
-            paymentNo: `PLANNED-${Date.now()}-${id.slice(-4)}`,
+            paymentNo: `${await nextBusinessNo("PAYMENT")}-PLANNED`,
             customerId: inv.customerId,
             contractId: inv.contractId,
             invoiceId: inv.id,
@@ -159,10 +160,10 @@ export async function invoiceAction(user: SessionUser, id: string, input: Invoic
           customerId: inv.customerId,
           customerName: inv.customerName,
           invoiceType: inv.invoiceType,
-          amount: -Number(inv.amount),
+          amount: new Prisma.Decimal(inv.amount).negated(),
           taxRate: inv.taxRate,
-          taxAmount: -Number(inv.taxAmount),
-          amountExcludingTax: -Number(inv.amountExcludingTax),
+          taxAmount: new Prisma.Decimal(inv.taxAmount).negated(),
+          amountExcludingTax: new Prisma.Decimal(inv.amountExcludingTax).negated(),
           applyDate: new Date(),
           actualIssueDate: new Date(),
           titleType: inv.titleType,

@@ -1,5 +1,5 @@
 "use client";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { customerListQuerySchema } from "@/lib/validators/customer";
 import { contractListQuerySchema } from "@/lib/validators/contract";
 import { invoiceListQuerySchema } from "@/lib/validators/invoice";
@@ -90,22 +90,28 @@ export function useListRequest<T = unknown>(
 
   const page = options.page ?? 1;
   const pageSize = options.pageSize ?? 20;
+  const requestIdRef = useRef(0);
 
   const load = useCallback(
     async (p: number, ps: number) => {
+      const id = ++requestIdRef.current;
       setLoading(true);
       setError(null);
       try {
         const qs = buildQuery({ current: p, pageSize: ps }, options.extra);
         const res = await fetch(`${endpoint}?${qs}`, { credentials: "include" });
         const j = await res.json();
+        if (id !== requestIdRef.current) return;
         if (j.code !== 0) throw new Error(j.message);
         setData((j.data?.list ?? []) as T[]);
         setTotal(j.data?.total ?? 0);
       } catch (e) {
+        if (id !== requestIdRef.current) return;
         setError((e as Error).message);
       } finally {
-        setLoading(false);
+        if (id === requestIdRef.current) {
+          setLoading(false);
+        }
       }
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps

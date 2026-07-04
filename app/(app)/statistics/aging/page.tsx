@@ -11,7 +11,7 @@ import { Button, Segmented, Space, Tabs, Tag, Typography, theme } from "antd";
 import { Column, Line } from "@ant-design/charts";
 import { DownloadOutlined, ReloadOutlined } from "@ant-design/icons";
 import useSWR from "swr";
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { Page } from "@/components/page";
 import { PageHeader } from "@/components/page-header";
@@ -104,8 +104,8 @@ type FilterValues = {
 const DEFAULT_FILTER: FilterValues = { basis: "due" };
 
 // ── 通用 fetcher: { code, data, message } 格式 ──
-async function swrFetcher<T>(url: string): Promise<T> {
-  const r = await fetch(url, { credentials: "include" });
+async function swrFetcher<T>(url: string, options?: { signal?: AbortSignal }): Promise<T> {
+  const r = await fetch(url, { credentials: "include", signal: options?.signal });
   const j = await r.json();
   if (j.code !== 0) throw new Error(j.message);
   return j.data as T;
@@ -122,6 +122,7 @@ export default function AgingPage() {
   const [agingLoading, setAgingLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<string>("detail");
+  const abortControllerRef = useRef<AbortController | null>(null);
 
   // dunning drawer
   const [dunningInvoiceId, setDunningInvoiceId] = useState<string | null>(null);
@@ -163,6 +164,9 @@ export default function AgingPage() {
 
   // 拉 aging 主数据 — filter 变化时重拉
   const refetchAging = useCallback(async () => {
+    abortControllerRef.current?.abort();
+    const ab = new AbortController();
+    abortControllerRef.current = ab;
     setAgingLoading(true);
     setError(null);
     try {
@@ -178,18 +182,24 @@ export default function AgingPage() {
         qs.set("minAmount", String(filter.minAmount));
       }
       qs.set("pageSize", "20");
-      const data = await swrFetcher<AgingResult>(`/api/statistics/invoice-aging?${qs}`);
+      const data = await swrFetcher<AgingResult>(`/api/statistics/invoice-aging?${qs}`, { signal: ab.signal });
       setAgingData(data);
     } catch (e) {
+      if (ab.signal.aborted) return;
       setError((e as Error).message);
     } finally {
-      setAgingLoading(false);
+      if (!ab.signal.aborted) {
+        setAgingLoading(false);
+      }
     }
   }, [filter]);
 
   // 首次 + filter 变化时拉
-  useMemo(() => {
-    refetchAging();
+  useEffect(() => {
+    void refetchAging();
+    return () => {
+      abortControllerRef.current?.abort();
+    };
   }, [refetchAging]);
 
   // dunningMap 派生(不缓存, 避免内存泄漏 + 始终 fresh)

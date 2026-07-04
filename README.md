@@ -1,9 +1,9 @@
 # 杭州企泰安全科技 业务管理系统 (qt-biz)
 
 > 客户 / 合同 / 开票 / 回款 一体化管理,附件走 MinIO presigned 直传。
-> **当前版本: v0.7.0**(2026-07-03)
+> **当前版本: v0.8.1**(2026-07-04)
 > 详细设计见 [docs/DESIGN-v3.md](docs/DESIGN-v3.md),用户手册见 [docs/USER_MANUAL.md](docs/USER_MANUAL.md)。
-> 2026-06-29 16:40 增量同步: 下午事故复盘 + 运维监控 + 修复 6 个 commit 已补到「最近更新」开头。
+> 2026-07-04 增量同步: 全库代码审计 10 处 bug 修复 + 2 组单元测试已补到「最近更新」开头。
 
 ## 目录
 
@@ -397,6 +397,40 @@ xlsx 导出走 `lib/excel.ts` + `exceljs`; 中文文件名通过 `attachmentHead
 | dev server `/login` `/dashboard` `/contracts` `/reports/PERFORMANCE` | 200 |
 
 ## 最近更新
+
+### v0.8.1(2026-07-04) 代码审计修复: 状态机并发安全 + 金额不变式 + 客户端竞态防护
+
+> v0.8.0 报表中心上线后,对全项目做了一次代码审计,修复 10 个高优先级 bug,补充 2 组单元测试。本次覆盖 11 个文件,0 个新迁移,0 个 API 契约变更。
+
+**状态机并发安全 (一)** (`lib/status-machine.ts`):
+- `runTransitionInTx` 的 `UPDATE` 现在把源状态写进 `WHERE` (`status: { in: allowedSourceStatuses }`), 防止并发读-改-写覆盖
+- 并发导致 Prisma `P2025` (无行匹配) 时,`silentSkip=true` 返回 `SKIPPED`,否则抛出 `ENTITY_IMMUTABLE` 或自定义 `mismatchError`
+- 新增 `tests/unit/lib/status-machine.test.ts` 8 个单测覆盖 WHERE 子句 / P2025 映射 / 非 P2025 传播 / `SkipTransition` 行为
+
+**合同金额不变式 (二)** (`server/services/contract/crud.ts`):
+- `ADMIN` 调小 `totalAmount` 时,事务内聚合该合同下 `DRAFT/ISSUED/RED_FLUSHED` 发票金额与 `CONFIRMED/RECONCILED` 回款金额
+- 任一聚合值超过新总额 + 0.01 元容差,抛 `INVOICE_OVER_LIMIT` / `PAYMENT_OVER_CONTRACT` (422)
+- 新增 `tests/unit/server/contract-update-amount-guard.test.ts` 7 个单测覆盖允许/拦截/容差边界
+
+**金额精度 (三)**:
+- `server/services/contract/status.ts`: `tryAutoClose` / `tryAutoCloseOnOverdue` 阈值计算改用 `Prisma.Decimal`,避免 `total * ratio` 浮点漂移
+- `server/services/invoice/action.ts`: 红冲创建负数发票时使用 `new Prisma.Decimal(...).negated()` 替代 `-Number(...)`;`PLANNED` 回款 `paymentNo` 改为 `nextBusinessNo("PAYMENT")-PLANNED`,避免时间戳冲突
+
+**客户端竞态防护 (四)**:
+- `lib/use-list-request.ts`: 加 `requestIdRef` 序号, 忽略过期请求的 `setData`
+- `app/(app)/dashboard/page.tsx`: `fetch` 加 `AbortController`,effect cleanup 中 abort
+- `app/(app)/statistics/aging/page.tsx`: `useMemo` 副作用改为 `useEffect`,`refetchAging` 内加请求序号/abort 保护
+
+**参数与 JSON 校验 (五)**:
+- `app/api/statistics/export/route.ts`: `minAmount` 转换后检查 `Number.isNaN`,非法时返回 400
+- `server/storage/presign.ts`: `contract.attachments` 元素用 Zod schema 校验,异常结构回退空数组
+
+**测试加固 (六)**:
+- 修复 `tests/api/signer-contract-detail.test.ts` SALES 隔离断言,使其对本测试 TAG 创建的合同做断言,避免被 seeded 数据污染
+- 全量测试: `npm test` 71 文件 / 565 测试全部通过
+
+**版本号**: `0.8.0` → `0.8.1`(patch bump,仅 bugfix + 测试,无 schema 变更,无 breaking change)
+**部署说明**: 无 schema 变更,无新迁移;`prisma migrate deploy` 不需要跑;业务上仅 `ADMIN` 缩小合同总额时新增校验,正常流程不受影响
 
 ### v0.8.0(2026-07-03)报表中心重做: PDF 5 字段 + 多 sheet Excel + 文件名时间戳
 

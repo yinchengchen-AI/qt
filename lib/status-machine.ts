@@ -83,7 +83,20 @@ export async function runTransitionInTx<C extends { id: string; status: string }
     throw e;
   }
   const data: Record<string, unknown> = { status: input.to, ...(input.extraData?.(current) ?? {}) };
-  await updateByEntity(tx, input.entity, current.id, data);
+  try {
+    await updateByEntity(tx, input.entity, current.id, data, input.from);
+  } catch (e) {
+    if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === "P2025") {
+      if (input.silentSkip) return { result: "SKIPPED" as const };
+      const me = input.mismatchError;
+      throw new ApiError(
+        me?.code ?? ERROR_CODES.ENTITY_IMMUTABLE,
+        me?.message ? me.message(current, input.to) : `当前状态 ${current.status} 不可迁移到 ${input.to}(须 ${input.from.join("/")})`,
+        me?.status ?? 403,
+      );
+    }
+    throw e;
+  }
   const a = input.audit(current);
   await audit(tx, {
     actorId: a.actorId,
@@ -133,19 +146,20 @@ async function updateByEntity(
   entity: Entity,
   id: string,
   data: Record<string, unknown>,
+  allowedSourceStatuses: readonly string[],
 ): Promise<void> {
   switch (entity) {
     case "Contract":
-      await tx.contract.update({ where: { id }, data: data as Prisma.ContractUpdateInput });
+      await tx.contract.update({ where: { id, status: { in: [...allowedSourceStatuses] } }, data: data as Prisma.ContractUpdateInput });
       return;
     case "Customer":
-      await tx.customer.update({ where: { id }, data: data as Prisma.CustomerUpdateInput });
+      await tx.customer.update({ where: { id, status: { in: [...allowedSourceStatuses] } }, data: data as Prisma.CustomerUpdateInput });
       return;
     case "Invoice":
-      await tx.invoice.update({ where: { id }, data: data as Prisma.InvoiceUpdateInput });
+      await tx.invoice.update({ where: { id, status: { in: [...allowedSourceStatuses] } }, data: data as Prisma.InvoiceUpdateInput });
       return;
     case "Payment":
-      await tx.payment.update({ where: { id }, data: data as Prisma.PaymentUpdateInput });
+      await tx.payment.update({ where: { id, status: { in: [...allowedSourceStatuses] } }, data: data as Prisma.PaymentUpdateInput });
       return;
   }
 }

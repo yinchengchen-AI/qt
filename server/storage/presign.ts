@@ -5,6 +5,7 @@
 // 而不是直接打 MinIO — 因为 MinIO 绑在 server-localhost:9000,公网到不了;
 // 代理让前端只走 3000,不需要在阿里云安全组开 9000
 import { HeadObjectCommand } from "@aws-sdk/client-s3";
+import { z } from "zod";
 import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { ApiError } from "@/lib/api";
@@ -318,9 +319,9 @@ async function removeAttachmentFromContractSnapshot(contractId: string, attachme
     select: { id: true, deletedAt: true, attachments: true }
   });
   if (!contract || contract.deletedAt) return;
-  const list = Array.isArray(contract.attachments)
-    ? (contract.attachments as Array<{ id?: string }>)
-    : [];
+  const attachmentSchema = z.array(z.object({ id: z.string().optional() }).passthrough());
+  const parsed = attachmentSchema.safeParse(contract.attachments);
+  const list = parsed.success ? parsed.data : [];
   const filtered = list.filter((a) => a.id !== attachmentId);
   if (filtered.length !== list.length) {
     await prisma.contract.update({
