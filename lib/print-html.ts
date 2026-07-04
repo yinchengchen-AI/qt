@@ -75,6 +75,8 @@ export type PrintDoc = {
   signature?: boolean;
   /** 系统名,显示在 header */
   systemName?: string;
+  /** 页面方向，默认纵向；landscape 用于列数较多的报表（如员工业绩） */
+  orientation?: "portrait" | "landscape";
 };
 
 function esc(v: unknown): string {
@@ -333,6 +335,27 @@ export function renderPrintHtml(doc: PrintDoc): string {
       color: var(--ink-3); font-style: italic; text-align: center; padding: 8px 0;
     }
 
+    /* 相邻的打印章节（如汇总表后的明细表）强制从新页开始 */
+    .print-section + .print-section { page-break-before: always; }
+
+    /* 金额/比率列默认右对齐 */
+    table.grid td.amount {
+      text-align: right;
+      font-variant-numeric: tabular-nums;
+    }
+
+    /* 小计行：浅灰底加粗 */
+    table.grid tr.subtotal {
+      background: #e5e7eb;
+      font-weight: 700;
+    }
+
+    /* 总计行：深灰底加粗 */
+    table.grid tr.total {
+      background: #d1d5db;
+      font-weight: 700;
+    }
+
     /* 富表(列表) */
     table.grid {
       width: 100%;
@@ -440,7 +463,7 @@ export function renderPrintHtml(doc: PrintDoc): string {
     }
 
     /* @page + 打印规则 */
-    @page { size: A4; margin: 0; }
+    @page { size: A4 ${doc.orientation ?? "portrait"}; margin: 0; }
     @media print {
       body { padding: 14mm 14mm 18mm; }
       .no-print-hint { display: none; }
