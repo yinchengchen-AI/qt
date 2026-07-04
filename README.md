@@ -429,6 +429,16 @@ xlsx 导出走 `lib/excel.ts` + `exceljs`; 中文文件名通过 `attachmentHead
 - `prisma migrate deploy` 不需要跑(生产 DB 仍在 v0.8.1 之前的 38 条 migration 状态)
 - 如果生产已经按 `9a48265` 部署过(可能有 3 条新 migration 记录),需要手动 `migrate resolve --rolled-back` 这 3 条记录(DB 不会有真实 schema 污染,因为 v0.7 报表中心表早已存在,9a48265 的下线 migration 是 `DROP IF EXISTS` 兜底,不影响生产)
 - 删 CI 后,**生产部署改回运维手动 SSH + `sudo -E ./scripts/prod/deploy.sh`**;deploy.sh 内的 enum fallback 会自动处理已知冲突
+## 502 Bad Gateway 友好页
+
+nginx 反代架构 (`nginx :80` → `next start :3000`) 下, 上游应用重启 / 崩溃 / 内部 5xx 时, 用户看到的不再是 nginx 默认英文 502 页面, 而是以下两层友好回退:
+
+- **`public/502.html` (静态, 3.3 KB)**: nginx `error_page 502 504 = @qt_biz_502_static` 直接 serve, **不依赖 next start**。当应用整体挂掉时仍能看到友好页。
+- **`app/502/page.tsx` (Next.js 路由, antd `Result` + `Page` 组件)**: nginx `error_page 500 501 503 = @qt_biz_502_next` 反代到这里, 用于「next start 活着但应用层抛 5xx」的场景 (例如 DB 暂时不可用)。支持 `?from=...` `?retryAfter=...` query 参数。
+- **`ops/nginx/qt-biz.conf`**: 完整 nginx server block, 含 upstream / 502/504 静态 fallback / 500/503 Next.js 反代 fallback / healthz 端点 / 静态资源缓存策略。运维 `cp` 到 `/etc/nginx/conf.d/` 后 `nginx -t && systemctl reload nginx` 即可。
+
+启用步骤见 `ops/nginx/qt-biz.conf` 顶部注释。
+
 ### v0.8.1(2026-07-04) 代码审计修复: 状态机并发安全 + 金额不变式 + 客户端竞态防护
 
 > v0.8.0 报表中心上线后,对全项目做了一次代码审计,修复 10 个高优先级 bug,补充 2 组单元测试。本次覆盖 11 个文件,0 个新迁移,0 个 API 契约变更。
