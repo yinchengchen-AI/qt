@@ -1,6 +1,6 @@
 // 员工业绩汇总 → 打印页 HTML（用户浏览器「另存为 PDF」）
 // 模板与 2026年5月业务明细.pdf 1:1 对齐:
-//   - 6 列: 所属区域 | 企业名称 | 服务项目 | 签约人 | 合同金额 | (小计)
+//   - 7 列: 所属区域 | 企业名称 | 服务项目 | 签约人 | 签约日期 | 合同金额 | (小计)
 //   - 同一签约人连续多行, 小计值写在「最后一笔合同行」第 6 列 (与原 PDF 视觉一致)
 //   - 末行追加「全公司合计」加粗行, 金额列填合计 (元) + 第 6 列填合计 (万元)
 //   - 合同金额: 整数元 (原 PDF 无 .00 无 ¥); 小计/合计: 2 位小数万元
@@ -69,7 +69,7 @@ export async function GET(req: Request) {
       // - 同一签约人多笔合同时, 小计值仅写在最后一笔合同行第 6 列
       // - 其它行第 6 列留空
       type DetailRow = Record<string, string | number>;
-      const detailColumns = ["所属区域", "企业名称", "服务项目", "签约人", "合同金额", ""];
+      const detailColumns = ["所属区域", "企业名称", "服务项目", "签约人", "签约日期", "合同金额", ""];
       const detailRows: DetailRow[] = [];
       for (const g of detail) {
         for (let i = 0; i < g.rows.length; i++) {
@@ -79,9 +79,10 @@ export async function GET(req: Request) {
             "所属区域": r.region,
             "企业名称": r.customerName,
             "服务项目": r.serviceTypeLabel,
-            "签约人": `${g.signerName}（${g.signerEmployeeNo}）`,
+            "签约人": g.signerName,                  // 只显姓名, 不带工号
+            "签约日期": fmtDate(r.signDate),          // YYYY-MM-DD (无时间)
             "合同金额": fmtAmountInt(r.totalAmount),
-            // 第 6 列: 仅末笔合同行写小计
+            // 第 7 列: 仅末笔合同行写小计
             "": isLast ? fmtWan(g.subtotalWan) : ""
           });
         }
@@ -92,6 +93,7 @@ export async function GET(req: Request) {
         "企业名称": `全公司合计 (${signerTotal.contractCount} 份合同)`,
         "服务项目": `${summary.length} 名签约人`,
         "签约人": "",
+        "签约日期": "",
         "合同金额": signerTotal.contractAmount,
         "": fmtWan(signerTotal.contractAmount / 10_000)
       });
@@ -120,7 +122,7 @@ export async function GET(req: Request) {
                 columns: detailColumns,
                 tableClass: "signer-detail",
                 cellClass: (column) => {
-                  if (column === "合同金额" || column === "") return "amount";
+                  if (column === "合同金额" || column === "签约日期" || column === "") return "amount";
                   return undefined;
                 },
                 rows: detailRows

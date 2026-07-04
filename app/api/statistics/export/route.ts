@@ -34,7 +34,6 @@ async function buildEmployeePerformanceXlsx(
   // ==== Sheet 1: 员工业绩汇总 ====
   const ws1 = wb.addWorksheet("员工业绩汇总");
   ws1.columns = [
-    { header: "工号", key: "employeeNo", width: 12 },
     { header: "姓名", key: "name", width: 14 },
     { header: "合同数", key: "contractCount", width: 10 },
     { header: "合同额", key: "contractAmount", width: 18 },
@@ -46,19 +45,18 @@ async function buildEmployeePerformanceXlsx(
   ];
   ws1.getRow(1).font = { bold: true };
   ws1.getRow(1).alignment = { vertical: "middle" };
+  ws1.getColumn(3).numFmt = "#,##0.00";
   ws1.getColumn(4).numFmt = "#,##0.00";
   ws1.getColumn(5).numFmt = "#,##0.00";
   ws1.getColumn(6).numFmt = "#,##0.00";
-  ws1.getColumn(7).numFmt = "#,##0.00";
+  ws1.getColumn(7).numFmt = "0.0";
   ws1.getColumn(8).numFmt = "0.0";
-  ws1.getColumn(9).numFmt = "0.0";
   let t1Count = 0, t1Amount = 0, t1Inv = 0, t1Pay = 0;
   for (const r of summary) {
     const unpaid = Math.max(r.contractAmount - r.paymentAmount, 0);
     const invRate = r.contractAmount > 0 ? (r.invoiceAmount / r.contractAmount) * 100 : 0;
     const payRate = r.invoiceAmount > 0 ? (r.paymentAmount / r.invoiceAmount) * 100 : 0;
     ws1.addRow({
-      employeeNo: r.employeeNo,
       name: r.name,
       contractCount: r.contractCount,
       contractAmount: r.contractAmount,
@@ -78,7 +76,6 @@ async function buildEmployeePerformanceXlsx(
   const t1InvRate = t1Amount > 0 ? (t1Inv / t1Amount) * 100 : 0;
   const t1PayRate = t1Inv > 0 ? (t1Pay / t1Inv) * 100 : 0;
   const totalRow1 = ws1.addRow({
-    employeeNo: "",
     name: `总计 (${summary.length} 人)`,
     contractCount: t1Count,
     contractAmount: t1Amount,
@@ -113,9 +110,9 @@ async function buildEmployeePerformanceXlsx(
         region: r.region,
         customerName: r.customerName,
         serviceTypeLabel: r.serviceTypeLabel,
-        signer: `${g.signerName}（${g.signerEmployeeNo}）`,
+        signer: g.signerName,                                // 只显姓名, 不带工号
         contractNo: r.contractNo,
-        signDate: r.signDate,
+        signDate: new Date(r.signDate),                     // 转 Date 对象让 numFmt "yyyy-mm-dd" 生效
         totalAmount: r.totalAmount
       });
       t2Count += 1;
