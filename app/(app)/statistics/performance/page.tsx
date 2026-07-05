@@ -161,12 +161,6 @@ export default function PerformancePage() {
     { label: "员工人数", value: rows.length, suffix: "人", description: `人均 ${formatCompact(totals.contract / Math.max(rows.length, 1))} 元` },
   ];
 
-  // 图表用 Top N 数据，每个员工绑定固定颜色
-  const contractChartData = visibleRows.map(r => ({ name: r.name, value: r.contractAmount, color: employeeColorMap.get(r.name) ?? EMPLOYEE_CATEGORICAL_COLORS[0] }));
-  const invoiceChartData = visibleRows.map(r => ({ name: r.name, value: r.invoiceAmount, color: employeeColorMap.get(r.name) ?? EMPLOYEE_CATEGORICAL_COLORS[0] }));
-  const paymentChartData = visibleRows.map(r => ({ name: r.name, value: r.paymentAmount, color: employeeColorMap.get(r.name) ?? EMPLOYEE_CATEGORICAL_COLORS[0] }));
-  const contractCountChartData = visibleRows.map(r => ({ name: r.name, value: r.contractCount, color: employeeColorMap.get(r.name) ?? EMPLOYEE_CATEGORICAL_COLORS[0] }));
-
   // 按员工名字母顺序分配稳定颜色，保证同一员工在四个桶柱图中颜色一致
   const employeeColorMap = useMemo(() => {
     const uniqueNames = Array.from(new Set(rows.map((r) => r.name))).sort((a, b) => a.localeCompare(b, "zh-CN"));
@@ -176,6 +170,12 @@ export default function PerformancePage() {
     });
     return map;
   }, [rows]);
+
+  // 图表用 Top N 数据，每个员工绑定固定颜色
+  const contractChartData = visibleRows.map(r => ({ name: r.name, value: r.contractAmount, color: employeeColorMap.get(r.name) ?? EMPLOYEE_CATEGORICAL_COLORS[0] }));
+  const invoiceChartData = visibleRows.map(r => ({ name: r.name, value: r.invoiceAmount, color: employeeColorMap.get(r.name) ?? EMPLOYEE_CATEGORICAL_COLORS[0] }));
+  const paymentChartData = visibleRows.map(r => ({ name: r.name, value: r.paymentAmount, color: employeeColorMap.get(r.name) ?? EMPLOYEE_CATEGORICAL_COLORS[0] }));
+  const contractCountChartData = visibleRows.map(r => ({ name: r.name, value: r.contractCount, color: employeeColorMap.get(r.name) ?? EMPLOYEE_CATEGORICAL_COLORS[0] }));
 
   return (
     <Page>
