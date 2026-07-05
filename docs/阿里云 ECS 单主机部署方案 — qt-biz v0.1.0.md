@@ -410,6 +410,25 @@ docker stats --no-stream                     # 观察 PG/MinIO 内存
 | `/etc/cron.d/qt-jobs`                                   | 新建                           | 阶段 L                                      |
 | 仓库内代码                                              | **不动**                       | 部署的是 `ff6ef4d` 这一版                   |
 
+### 钉钉扫码登录配置(可选,本期 v0.8.0 之后)
+
+钉钉登录为可选项,缺 \DINGTALK_APP_KEY\ / \DINGTALK_APP_SECRET\ 时登录页自动隐藏入口。
+
+1. 在 https://open-dev.dingtalk.com/ 创建企业内部应用
+2. 「应用信息」 → 复制 AppKey / AppSecret 填入 \/opt/qt/.env\:
+   \`\`\`
+   DINGTALK_APP_KEY="<your_app_key>"
+   DINGTALK_APP_SECRET="<your_app_secret>"
+   DINGTALK_LOGIN_SCOPE="snsapi_login"
+   \`\`\`
+3. 「安全设置」 → 勾选「扫码登录」并配置回调域为本服务的 \NEXTAUTH_URL\
+4. 确认 admin 在用户管理中给每个员工的 \User.phone\ 字段填入钉钉登记的手机号
+5. \systemctl restart qt-app\ 即可生效
+
+**回滚:** 删 \/opt/qt/.env\ 里的 \DINGTALK_*\ 三行 + \systemctl restart qt-app\ 即可,不删表/不删列。
+
+---
+
 ## 七、v0.1.0 假设与遗留
 
 **实施时默认采用,如不同意现在告诉我**:

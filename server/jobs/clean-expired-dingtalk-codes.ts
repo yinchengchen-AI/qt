@@ -1,7 +1,6 @@
 ﻿// 每天清 DingtalkLoginCode 中过期且未消费的临时码
 import { prisma } from "@/lib/prisma";
 
-const BATCH_LIMIT = 1000;
 const KEEP_DAYS = 1;
 
 export type CleanResult = { deleted: number };
