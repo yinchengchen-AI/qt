@@ -18,6 +18,7 @@ import { formatGender, formatEmploymentType, formatDate, formatCurrency, maskIdC
 import { EmptyState } from "@/components/empty-state";
 import type { FullEmployeeProfileDto } from "@/lib/types/employee-profile";
 import { useResponsive } from "@/lib/use-breakpoint";
+import { useScrollSpy } from "@/lib/use-scroll-spy";
 
 const { Text, Title } = Typography;
 
@@ -53,6 +54,20 @@ export default function UserDetailPage() {
   const { data: userResp, error: userError } = useSWR<User>(`/api/users/${id}`);
   const educationDict = useDict("EDUCATION_LEVEL");
   const contractTypeDict = useDict("CONTRACT_TYPE");
+
+  // 顶部锚点导航 section 列表(必须在所有 early-return 之前声明,供 useScrollSpy 使用)
+  // 各 section id 必须与下方 ProCard id 严格匹配,否则 ScrollSpy 无法定位元素
+  const sections: Section[] = [
+    { id: "overview", label: "概览", icon: <UserOutlined /> },
+    { id: "basic", label: "基础", icon: <IdcardOutlined /> },
+    { id: "position", label: "岗位与合同", icon: <ApartmentOutlined /> },
+    ...(isAdmin ? [{ id: "sensitive", label: "敏感信息", icon: <BankOutlined /> } as Section] : []),
+    { id: "history", label: "履历", icon: <BookOutlined /> },
+    { id: "certs", label: "证书与附件", icon: <FileProtectOutlined /> }
+  ];
+
+  // 当前可见 section(用于锚点导航高亮)。必须在所有 early-return 之前调用以满足 React Hooks 规则。
+  const activeSectionId = useScrollSpy(sections.map((s) => s.id));
   const { message: antdMessage } = AntdApp.useApp();
   const [resetting, setResetting] = useState<{ id: string; name: string } | null>(null);
   const [resetForm] = Form.useForm<{ password: string; confirm: string }>();
@@ -81,21 +96,14 @@ export default function UserDetailPage() {
 
   const user = userResp;
   const full = data.data;
-
-  // 顶部锚点导航:概览 / 基础 / 岗位 / 敏感 / 履历 / 证书
-  // 仅当档案存在 + 仅 admin 显示敏感
-  const sections: Section[] = [
-    { id: "overview", label: "概览", icon: <UserOutlined /> },
-    { id: "basic", label: "基础", icon: <IdcardOutlined /> },
-    { id: "position", label: "岗位与合同", icon: <ApartmentOutlined /> },
-    ...(isAdmin ? [{ id: "sensitive", label: "敏感信息", icon: <BankOutlined /> } as Section] : []),
-    { id: "history", label: "履历", icon: <BookOutlined /> },
-    { id: "certs", label: "证书与附件", icon: <FileProtectOutlined /> }
-  ];
-
   function scrollTo(id: string) {
     const el = document.getElementById(id);
     if (el) el.scrollIntoView({ behavior: "smooth", block: "start" });
+    // 同步 URL hash(replaceState,不污染历史栈)
+    if (typeof window !== "undefined") {
+      const url = window.location.pathname + "#" + id;
+      window.history.replaceState(null, "", url);
+    }
   }
 
   function onResetPassword() {
@@ -165,7 +173,7 @@ export default function UserDetailPage() {
         onResetPassword={onResetPassword}
       />
 
-      <AnchorNav sections={sections} onJump={scrollTo} compact={isMobile} />
+      <AnchorNav sections={sections} onJump={scrollTo} activeId={activeSectionId} compact={isMobile} />
 
       {/* 概览 */}
       <ProCard id="overview" style={{ marginBottom: 16 }} title="概览" headerBordered>
@@ -551,7 +559,7 @@ function SubListSection({
   );
 }
 
-function AnchorNav({ sections, onJump, compact }: { sections: Section[]; onJump: (id: string) => void; compact?: boolean }) {
+function AnchorNav({ sections, onJump, activeId, compact }: { sections: Section[]; onJump: (id: string) => void; activeId?: string | null; compact?: boolean }) {
   return (
     <div
       style={{
@@ -569,17 +577,21 @@ function AnchorNav({ sections, onJump, compact }: { sections: Section[]; onJump:
         boxShadow: "0 1px 2px rgba(0,0,0,0.02)"
       }}
     >
-      {sections.map((s) => (
-        <Button
-          key={s.id}
-          type="text"
-          size="small"
-          icon={s.icon}
-          onClick={() => onJump(s.id)}
-        >
-          {s.label}
-        </Button>
-      ))}
+      {sections.map((s) => {
+        const active = s.id === activeId;
+        return (
+          <Button
+            key={s.id}
+            type={active ? "primary" : "text"}
+            size="small"
+            icon={s.icon}
+            onClick={() => onJump(s.id)}
+            aria-current={active ? "true" : undefined}
+          >
+            {s.label}
+          </Button>
+        );
+      })}
     </div>
   );
 }
