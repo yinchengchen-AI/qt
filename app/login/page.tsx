@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { Suspense, useState } from "react";
 import { App as AntdApp, Button, Checkbox, Form, Input } from "antd";
@@ -6,6 +6,7 @@ import { LockOutlined, UserOutlined, FileTextOutlined, TeamOutlined, BarChartOut
 import { signIn } from "next-auth/react";
 import { useRouter, useSearchParams } from "next/navigation";
 import styles from "./login.module.css";
+import { DingtalkLoginPanel } from "./_dingtalk_panel";
 
 const ERROR_MAP: Record<string, string> = {
   CredentialsSignin: "工号或密码错误，请检查后重试",
@@ -327,6 +328,7 @@ export default function LoginPage() {
                 <LoginForm />
               </Suspense>
             </section>
+            <DingtalkLoginPanel />
 
             {/* 备案 / 链接放表单区下方 */}
             <footer className={styles.footer}>

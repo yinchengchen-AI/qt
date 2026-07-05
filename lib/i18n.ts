@@ -241,6 +241,19 @@ const messages: Record<Locale, Record<string, string>> = {
     "aging.emptyDesc": "当前所选口径下没有需要关注的应收",
     "aging.exportFilename": "账龄分析_{basis}_{date}.xlsx",
     "aging.trend.title": "账龄趋势(近 {days} 天)",
+    // 钉钉登录
+    "login.dingtalk.button": "使用钉钉扫码登录",
+    "login.dingtalk.qrHint": "请用钉钉 App 扫一扫",
+    "login.dingtalk.expired": "二维码已过期,请点击刷新",
+    "login.dingtalk.cancelled": "已在手机上取消登录",
+    "login.dingtalk.unbound": "该钉钉账号未关联系统用户,请联系管理员",
+    "login.dingtalk.unavailable": "钉钉登录暂不可用",
+    "login.dingtalk.bind": "首次登录将自动绑定您的钉钉账号",
+    "login.dingtalk.refresh": "刷新二维码",
+    "login.dingtalk.separator": "或",
+    "login.dingtalk.unavailableTip": "请联系管理员配置钉钉登录",
+    "login.dingtalk.loading": "正在加载二维码…",
+    "login.dingtalk.tab": "扫码登录"
   },
     "en-US": {
     "menu.dashboard": "Dashboard",
@@ -477,7 +490,20 @@ const messages: Record<Locale, Record<string, string>> = {
     "release.popup.publishedAt": "Published at",
     "release.popup.gotIt": "Got it",
     "release.popup.skip": "Maybe later",
-    "release.popup.viewHistory": "View full history"
+    "release.popup.viewHistory": "View full history",
+    // DingTalk login
+    "login.dingtalk.button": "Sign in with DingTalk",
+    "login.dingtalk.qrHint": "Scan with DingTalk",
+    "login.dingtalk.expired": "QR code expired, please refresh",
+    "login.dingtalk.cancelled": "Login cancelled on phone",
+    "login.dingtalk.unbound": "This DingTalk account is not linked. Please contact your administrator.",
+    "login.dingtalk.unavailable": "DingTalk login is currently unavailable",
+    "login.dingtalk.bind": "First sign-in will automatically link your DingTalk account",
+    "login.dingtalk.refresh": "Refresh QR code",
+    "login.dingtalk.separator": "or",
+    "login.dingtalk.unavailableTip": "Please ask your administrator to configure DingTalk sign-in",
+    "login.dingtalk.loading": "Loading QR code…",
+    "login.dingtalk.tab": "QR Login"
   }
 };
 

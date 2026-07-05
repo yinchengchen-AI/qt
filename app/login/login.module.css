@@ -1,7 +1,7 @@
-/* =============================================================
-   企泰安全 · 登录页 (Apple 风格)
-   主题:浅灰径向渐变 + 大轻字重标题 + 实心静谧蓝按钮 + 细腻圆角
-   配色:#FFFFFF / #F5F5F7 / #1D1D1F / #0071E3 (Apple Blue)
+﻿/* =============================================================
+   浼佹嘲瀹夊叏 路 鐧诲綍椤?(Apple 椋庢牸)
+   涓婚:娴呯伆寰勫悜娓愬彉 + 澶ц交瀛楅噸鏍囬 + 瀹炲績闈欒哀钃濇寜閽?+ 缁嗚吇鍦嗚
+   閰嶈壊:#FFFFFF / #F5F5F7 / #1D1D1F / #0071E3 (Apple Blue)
    ============================================================= */
 
 .page {
@@ -13,7 +13,7 @@
   color: #1D1D1F;
   isolation: isolate;
   overflow-x: hidden;
-  /* 系统字体模拟 SF Pro */
+  /* 绯荤粺瀛椾綋妯℃嫙 SF Pro */
   font-family:
     -apple-system, BlinkMacSystemFont,
     "SF Pro Display", "SF Pro SC",
@@ -24,7 +24,7 @@
   text-rendering: optimizeLegibility;
 }
 
-/* 浅灰径向,中心微白,边缘极浅灰 */
+/* 娴呯伆寰勫悜,涓績寰櫧,杈圭紭鏋佹祬鐏?*/
 .bgLayer {
   position: fixed;
   inset: 0;
@@ -45,7 +45,7 @@
 }
 
 /* =============================================================
-   顶栏(磨砂半透明)
+   椤舵爮(纾ㄧ爞鍗婇€忔槑)
    ============================================================= */
 .topBar {
   position: sticky;
@@ -103,7 +103,7 @@
 
 .topBarLink:hover { color: #0071E3; }
 
-/* 版本号 chip(Apple 风轻量徽标,等宽数字) */
+/* 鐗堟湰鍙?chip(Apple 椋庤交閲忓窘鏍?绛夊鏁板瓧) */
 .versionChip {
   display: inline-flex;
   align-items: center;
@@ -128,7 +128,7 @@
 }
 
 /* =============================================================
-   主区:桌面端左右分栏,移动端单列
+   涓诲尯:妗岄潰绔乏鍙冲垎鏍?绉诲姩绔崟鍒?
    ============================================================= */
 .main {
   position: relative;
@@ -149,9 +149,9 @@
   margin: 0 auto;
 }
 
-/* 左侧叙事 */
+/* 宸︿晶鍙欎簨 */
 .narrative {
-  display: none; /* 默认隐藏,桌面端才显示 */
+  display: none; /* 榛樿闅愯棌,妗岄潰绔墠鏄剧ず */
   flex-direction: column;
   justify-content: center;
   gap: 28px;
@@ -237,7 +237,7 @@
   letter-spacing: -0.003em;
 }
 
-/* 右:表单区 */
+/* 鍙?琛ㄥ崟鍖?*/
 .formShell {
   width: 100%;
   max-width: 420px;
@@ -247,7 +247,7 @@
   gap: 28px;
 }
 
-/* 表单卡 — 细腻圆角 + 多层轻柔阴影 */
+/* 琛ㄥ崟鍗?鈥?缁嗚吇鍦嗚 + 澶氬眰杞绘煍闃村奖 */
 .formCard {
   position: relative;
   width: 100%;
@@ -265,7 +265,7 @@
 }
 
 /* =============================================================
-   头部:大标题 + 副标题(Apple 风标志性轻字重)
+   澶撮儴:澶ф爣棰?+ 鍓爣棰?Apple 椋庢爣蹇楁€ц交瀛楅噸)
    ============================================================= */
 .formHead {
   margin-bottom: 32px;
@@ -279,7 +279,7 @@
   line-height: 1.15;
   letter-spacing: -0.022em;
   color: #1D1D1F;
-  /* Apple 的标题常用字重 */
+  /* Apple 鐨勬爣棰樺父鐢ㄥ瓧閲?*/
 }
 
 .formSubtitle {
@@ -291,7 +291,7 @@
   color: #6E6E73;
 }
 
-/* 错误条 */
+/* 閿欒鏉?*/
 .error {
   margin-bottom: 18px;
   padding: 12px 14px;
@@ -307,7 +307,7 @@
 }
 
 /* =============================================================
-   表单字段(覆盖 antd 默认)
+   琛ㄥ崟瀛楁(瑕嗙洊 antd 榛樿)
    ============================================================= */
 .formCard :global(.ant-form-item) { margin-bottom: 14px; }
 
@@ -402,7 +402,7 @@
 
 .forgot:hover { opacity: 0.7; }
 
-/* 登录按钮(Apple 实心蓝) */
+/* 鐧诲綍鎸夐挳(Apple 瀹炲績钃? */
 .submit {
   height: 48px;
   border-radius: 12px !important;
@@ -434,7 +434,7 @@
   cursor: not-allowed;
 }
 
-/* 测试卡(浅色) */
+/* 娴嬭瘯鍗?娴呰壊) */
 .testCard {
   margin-top: 22px;
   background: #F5F5F7;
@@ -492,7 +492,7 @@
 }
 
 /* =============================================================
-   页脚
+   椤佃剼
    ============================================================= */
 .footer {
   position: relative;
@@ -521,10 +521,10 @@
 }
 
 /* =============================================================
-   响应式
+   鍝嶅簲寮?
    ============================================================= */
 
-/* 桌面端 ≥960px:左右双栏 */
+/* 妗岄潰绔?鈮?60px:宸﹀彸鍙屾爮 */
 @media (min-width: 960px) {
   .main {
     align-items: stretch;
@@ -546,7 +546,7 @@
   }
 }
 
-/* 更大屏 ≥1280px:宽松比例 */
+/* 鏇村ぇ灞?鈮?280px:瀹芥澗姣斾緥 */
 @media (min-width: 1280px) {
   .layout {
     max-width: 1180px;
@@ -568,4 +568,62 @@
 
 @media (max-width: 380px) {
   .testGrid { grid-template-columns: 1fr; }
+}
+
+/* 钉钉扫码面板 */
+.dingtalkPanel {
+  margin-top: 22px;
+}
+
+.dingtalkSep {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 14px 0 18px;
+  font-size: 12px;
+  color: #86868B;
+  letter-spacing: 0.02em;
+}
+
+.dingtalkSep::before,
+.dingtalkSep::after {
+  content: "";
+  flex: 1;
+  height: 1px;
+  background: rgba(0, 0, 0, 0.08);
+}
+
+.dingtalkQrWrap {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  margin-top: 18px;
+  padding: 16px;
+  background: #FAFAFB;
+  border: 1px solid rgba(0, 0, 0, 0.06);
+  border-radius: 10px;
+}
+
+.dingtalkQrWrap canvas {
+  display: block;
+}
+
+.dingtalkHint,
+.dingtalkBind {
+  margin: 0;
+  font-size: 12px;
+  color: #6E6E73;
+  text-align: center;
+}
+
+.dingtalkBind {
+  color: #1677FF;
+}
+
+.dingtalkError {
+  margin: 12px 0 0;
+  font-size: 13px;
+  color: #D9363E;
+  text-align: center;
 }
