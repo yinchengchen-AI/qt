@@ -51,8 +51,7 @@ export function SubtableEditor({ name, label, fields, initialValue, hint, itemLa
         position: "bottom",
         style: { width: "100%" }
       }}
-      itemRender={({ listDom, action }, { index, record }) => {
-        const a = action as { remove?: (key: unknown) => void };
+      itemRender={({ listDom, action: _actionDom }, { index, record, field, operation }) => {
         return (
           <Card
             size="small"
@@ -79,7 +78,7 @@ export function SubtableEditor({ name, label, fields, initialValue, hint, itemLa
                 size="small"
                 danger
                 icon={<DeleteOutlined />}
-                onClick={() => a.remove?.(record.key)}
+                onClick={() => operation?.remove?.(field.name)}
                 aria-label={`删除${label}`}
               >
                 删除
