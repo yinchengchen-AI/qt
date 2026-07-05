@@ -5,6 +5,7 @@ import { emit } from "@/server/events/bus";
 
 import { tickPublishableDraffts, tickCompletionCandidates } from "@/server/jobs/contract-automation";
 import { runCertificateExpiryCheck } from "@/server/jobs/certificate-expiry-check";
+import { runCleanExpiredDingtalkCodes } from "@/server/jobs/clean-expired-dingtalk-codes";
 import { tickStaleContracts } from "@/server/jobs/stale-contract";
 
 /**
@@ -63,6 +64,13 @@ export async function runAllJobs(now = new Date()): Promise<JobResult[]> {
           scanned: r.scanned,
           durationMs: 0
         };
+      }
+    },
+    {
+      name: "clean-expired-dingtalk-codes",
+      run: async () => {
+        const r = await runCleanExpiredDingtalkCodes();
+        return { job: "clean-expired-dingtalk-codes", created: 0, scanned: 0, updated: r.deleted, durationMs: 0 };
       }
     }
   ] as const;
