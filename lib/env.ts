@@ -1,4 +1,4 @@
-import { createEnv } from "@t3-oss/env-nextjs";
+﻿import { createEnv } from "@t3-oss/env-nextjs";
 import { z } from "zod";
 
 export const env = createEnv({
@@ -34,6 +34,10 @@ export const env = createEnv({
     // 由 tryAutoCloseOnOverdue 自动关闭 (reason=overdue_terminated).
     // 默认 60 天,允许 0 表示"立即强关"(不推荐,会留下大量财务缺口).
     CONTRACT_OVERDUE_GRACE_DAYS: z.coerce.number().int().min(0).max(3650).default(60),
+    // 钉钉企业内自建应用扫码登录(可选;缺则登录页隐藏入口)
+    DINGTALK_APP_KEY: z.string().min(1).optional(),
+    DINGTALK_APP_SECRET: z.string().min(1).optional(),
+    DINGTALK_LOGIN_SCOPE: z.string().min(1).default("snsapi_login"),
   },
   client: {},
   runtimeEnv: {
@@ -53,6 +57,9 @@ export const env = createEnv({
     MINIO_PUBLIC_BASE_URL: process.env.MINIO_PUBLIC_BASE_URL,
     CONTRACT_COMPLETION_INVOICE_RATIO: process.env.CONTRACT_COMPLETION_INVOICE_RATIO,
     CONTRACT_OVERDUE_GRACE_DAYS: process.env.CONTRACT_OVERDUE_GRACE_DAYS,
+    DINGTALK_APP_KEY: process.env.DINGTALK_APP_KEY,
+    DINGTALK_APP_SECRET: process.env.DINGTALK_APP_SECRET,
+    DINGTALK_LOGIN_SCOPE: process.env.DINGTALK_LOGIN_SCOPE,
   },
   emptyStringAsUndefined: true
 });
@@ -106,4 +113,11 @@ export function isMinioEnabled(): boolean {
       env.MINIO_SECRET_KEY &&
       env.MINIO_BUCKET
   );
+}
+
+// 钉钉登录是否启用(APP_KEY + APP_SECRET 都存在);缺则登录页隐藏入口
+// 注意:@t3-oss/env-nextjs 的 createEnv 在模块加载时冻结 env,这里直接读 process.env
+// 才能在测试和 dev 重启之外的场景(如 SSR 单次请求)反映当前环境
+export function isDingtalkEnabled(): boolean {
+  return Boolean(process.env.DINGTALK_APP_KEY && process.env.DINGTALK_APP_SECRET);
 }
