@@ -67,6 +67,8 @@ model User {
   isSystem     Boolean     @default(false)
   lastLoginAt  DateTime?   @db.Timestamptz(6)
   wechatWorkId String?
+  // 钉钉扫码登录绑定时间(冗余审计字段;登录判定只看 UserIdentity)
+  dingtalkBoundAt DateTime? @db.Timestamptz(6)
   createdAt    DateTime    @default(now()) @db.Timestamptz(6)
   updatedAt    DateTime    @updatedAt @db.Timestamptz(6)
   deletedAt    DateTime?   @db.Timestamptz(6)
@@ -80,6 +82,7 @@ model User {
   publishedReleases      AppRelease[]       @relation("AppReleasePublishUser")
   releaseReads           AppReleaseRead[]
   profile                EmployeeProfile?
+  identities             UserIdentity[]
 
   @@index([roleId])
   @@index([status])
@@ -763,6 +766,61 @@ model AppReleaseRead {
   @@index([releaseId])
 }
 
+// =====================================================
+// UserIdentity (多 Provider 登录绑定)
+// - 一对多反向: User 1 → N UserIdentity(每行一个 provider 绑定)
+// - 钉钉登录存 (provider=DINGTALK, providerUserId=unionid)
+// - 后续可扩展 WECHAT_WORK / FEISHU 等
+// - 唯一约束:同一 provider + providerUserId 全局唯一,防止重复绑定
+// =====================================================
+model UserIdentity {
+  id              String   @id @default(cuid())
+  userId          String
+  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  // 登录提供方: DINGTALK | (预留 WECHAT_WORK / FEISHU)
+  provider        String
+  // 提供方用户 ID(钉钉 unionid)
+  providerUserId  String
+  // 绑定时的快照(冗余,真实 mobile/email 仍以 User 表为准)
+  mobileSnapshot  String?
+  unionidSnapshot String?
+  boundAt         DateTime @default(now()) @db.Timestamptz(6)
+  // 绑定方式: SELF(扫码自助) | ADMIN(后台) | MIGRATION(数据迁移)
+  boundBy         String
+
+  @@unique([provider, providerUserId])
+  @@index([userId])
+  @@map("user_identities")
+}
+
+// =====================================================
+// DingtalkLoginCode (钉钉扫码登录临时码)
+// - 状态机: PENDING → CONFIRMED → READY → CONSUMED
+//                       ↘ CANCELLED / EXPIRED
+// - state 是服务端生成的 32 字节 base64url,与前端轮询 + finish 对账
+// - 180s TTL + 一次性消费(乐观锁)
+// - 存 tmpCode 而非 qrcodeUrl,便于轮询调钉钉接口
+// =====================================================
+model DingtalkLoginCode {
+  id             String    @id @default(cuid())
+  state          String    @unique
+  tmpCode        String
+  status         String    @default("PENDING") // PENDING | CONFIRMED | READY | CONSUMED | EXPIRED | CANCELLED
+  unionid        String?
+  mobile         String?
+  nick           String?
+  employeeNoHint String?
+  ip             String?
+  userAgent      String?
+  expiresAt      DateTime  @db.Timestamptz(6)
+  consumedAt     DateTime? @db.Timestamptz(6)
+  consumedById   String?
+  createdAt      DateTime  @default(now()) @db.Timestamptz(6)
+
+  @@index([status, expiresAt])
+  @@index([createdAt])
+  @@map("dingtalk_login_codes")
+}
 // =====================================================
 // End
 // =====================================================
