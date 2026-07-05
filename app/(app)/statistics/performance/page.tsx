@@ -161,11 +161,11 @@ export default function PerformancePage() {
     { label: "员工人数", value: rows.length, suffix: "人", description: `人均 ${formatCompact(totals.contract / Math.max(rows.length, 1))} 元` },
   ];
 
-  // 图表用 Top N 数据
-  const contractChartData = visibleRows.map(r => ({ name: r.name, value: r.contractAmount, type: "合同额" }));
-  const invoiceChartData = visibleRows.map(r => ({ name: r.name, value: r.invoiceAmount, type: "已开票" }));
-  const paymentChartData = visibleRows.map(r => ({ name: r.name, value: r.paymentAmount, type: "已回款" }));
-  const contractCountChartData = visibleRows.map(r => ({ name: r.name, value: r.contractCount }));
+  // 图表用 Top N 数据，每个员工绑定固定颜色
+  const contractChartData = visibleRows.map(r => ({ name: r.name, value: r.contractAmount, color: employeeColorMap.get(r.name) ?? EMPLOYEE_CATEGORICAL_COLORS[0] }));
+  const invoiceChartData = visibleRows.map(r => ({ name: r.name, value: r.invoiceAmount, color: employeeColorMap.get(r.name) ?? EMPLOYEE_CATEGORICAL_COLORS[0] }));
+  const paymentChartData = visibleRows.map(r => ({ name: r.name, value: r.paymentAmount, color: employeeColorMap.get(r.name) ?? EMPLOYEE_CATEGORICAL_COLORS[0] }));
+  const contractCountChartData = visibleRows.map(r => ({ name: r.name, value: r.contractCount, color: employeeColorMap.get(r.name) ?? EMPLOYEE_CATEGORICAL_COLORS[0] }));
 
   // 按员工名字母顺序分配稳定颜色，保证同一员工在四个桶柱图中颜色一致
   const employeeColorMap = useMemo(() => {
@@ -176,10 +176,6 @@ export default function PerformancePage() {
     });
     return map;
   }, [rows]);
-  const colorByEmployee = useCallback(
-    (d: { name?: string }) => employeeColorMap.get(d.name ?? "") ?? EMPLOYEE_CATEGORICAL_COLORS[0],
-    [employeeColorMap]
-  );
 
   return (
     <Page>
@@ -209,7 +205,7 @@ export default function PerformancePage() {
             <Col xs={24} lg={12}>
               <ProCard title="合同额排行">
                 {contractChartData.length > 0 ? (
-                  <Column data={contractChartData} xField="name" yField="value" height={chartHeight} color={colorByEmployee} autoFit
+                  <Column data={contractChartData} xField="name" yField="value" colorField="color" height={chartHeight} autoFit
                     label={{ text: (d: Record<string, unknown>) => formatCompact(d.value as number), style: { fontSize: 10 } }}
                   />
                 ) : <EmptyState empty title="暂无员工业绩" description="当前时间范围内尚无合同、开票或回款记录" height={chartHeight} />}
@@ -218,7 +214,7 @@ export default function PerformancePage() {
             <Col xs={24} lg={12}>
               <ProCard title="已开票排行">
                 {invoiceChartData.length > 0 ? (
-                  <Column data={invoiceChartData} xField="name" yField="value" height={chartHeight} color={colorByEmployee} autoFit
+                  <Column data={invoiceChartData} xField="name" yField="value" colorField="color" height={chartHeight} autoFit
                     label={{ text: (d: Record<string, unknown>) => formatCompact(d.value as number), style: { fontSize: 10 } }}
                   />
                 ) : <EmptyState empty title="暂无员工业绩" description="当前时间范围内尚无合同、开票或回款记录" height={chartHeight} />}
@@ -230,7 +226,7 @@ export default function PerformancePage() {
             <Col xs={24} lg={12}>
               <ProCard title="已回款排行">
                 {paymentChartData.length > 0 ? (
-                  <Column data={paymentChartData} xField="name" yField="value" height={chartHeight} color={colorByEmployee} autoFit
+                  <Column data={paymentChartData} xField="name" yField="value" colorField="color" height={chartHeight} autoFit
                     label={{ text: (d: Record<string, unknown>) => formatCompact(d.value as number), style: { fontSize: 10 } }}
                   />
                 ) : <EmptyState empty title="暂无员工业绩" description="当前时间范围内尚无合同、开票或回款记录" height={chartHeight} />}
@@ -239,7 +235,7 @@ export default function PerformancePage() {
             <Col xs={24} lg={12}>
               <ProCard title="合同数量排行">
                 {rows.length > 0 ? (
-                  <Column data={contractCountChartData} xField="name" yField="value" height={chartHeight} color={colorByEmployee} autoFit
+                  <Column data={contractCountChartData} xField="name" yField="value" colorField="color" height={chartHeight} autoFit
                     label={{ text: (d: Record<string, unknown>) => String(d.value), style: { fontSize: 10 } }}
                   />
                 ) : <EmptyState empty title="暂无员工业绩" description="当前时间范围内尚无合同、开票或回款记录" height={chartHeight} />}
