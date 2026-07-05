@@ -133,7 +133,8 @@
 .main {
   position: relative;
   z-index: 1;
-  flex: 1;
+  flex: 1 1 auto;
+  min-height: 100dvh;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -559,7 +560,7 @@
   .topBar { padding: 14px 20px; }
   .topBarLogoSub { display: none; }
   .topBarRight { gap: 12px; font-size: 13px; }
-  .main { padding: 32px 16px 40px; }
+  .main { padding: 24px 16px 32px; min-height: 100dvh; }
   .formCard { padding: 32px 24px 28px; border-radius: 16px; }
   .formTitle { font-size: 26px; }
   .formSubtitle { font-size: 14px; }

@@ -327,8 +327,8 @@ export default function LoginPage() {
               <Suspense fallback={null}>
                 <LoginForm />
               </Suspense>
+              <DingtalkLoginPanel />
             </section>
-            <DingtalkLoginPanel />
 
             {/* 备案 / 链接放表单区下方 */}
             <footer className={styles.footer}>
