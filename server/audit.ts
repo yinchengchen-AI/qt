@@ -12,7 +12,7 @@ import { Prisma as PrismaNS } from "@prisma/client";
 import { getRequestContext } from "@/lib/request-context";
 
 type AuditInput = {
-  actorId: string;
+  actorId: string | null;
   action: string;
   entity: string;
   entityId: string;
@@ -83,7 +83,7 @@ export async function audit(tx: Prisma.TransactionClient, input: AuditInput) {
 
   return tx.operationLog.create({
     data: {
-      actorId: input.actorId,
+      actorId: input.actorId ?? 'system',
       action: input.action,
       entity: input.entity,
       entityId: input.entityId,
@@ -102,7 +102,7 @@ export async function audit(tx: Prisma.TransactionClient, input: AuditInput) {
 export async function auditUpdate<T extends Record<string, unknown>>(
   tx: Prisma.TransactionClient,
   args: {
-    actorId: string;
+    actorId: string | null;
     action: string;
     entity: string;
     entityId: string;

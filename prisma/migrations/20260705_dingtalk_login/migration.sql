@@ -1,4 +1,4 @@
-﻿-- 钉钉扫码登录 (spec docs/superpowers/specs/2026-07-05-dingtalk-login-design.md)
+-- 钉钉扫码登录 (spec docs/superpowers/specs/2026-07-05-dingtalk-login-design.md)
 -- 1. User.dingtalkBoundAt 审计字段
 -- 2. user_identities 多 Provider 绑定表
 -- 3. dingtalk_login_codes 临时码表
