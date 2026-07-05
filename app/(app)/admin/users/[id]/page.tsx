@@ -1,8 +1,9 @@
 "use client";
-import { Avatar, Space, Tag, Button, Typography, Card, Row, Col, Divider, Empty } from "antd";
+import { App as AntdApp, Avatar, Space, Tag, Button, Typography, Card, Row, Col, Divider, Empty, Modal, Form, Input } from "antd";
 import { ProCard, ProDescriptions } from "@ant-design/pro-components";
 import { EditOutlined, KeyOutlined, StopOutlined, CheckCircleOutlined, IdcardOutlined, BankOutlined, BookOutlined, FileProtectOutlined, ApartmentOutlined, UserOutlined, PhoneOutlined, CalendarOutlined, EnvironmentOutlined } from "@ant-design/icons";
 import { useParams, useRouter } from "next/navigation";
+import { useState } from "react";
 import { useGoBack } from "@/lib/navigation";
 import { useSession } from "next-auth/react";
 import useSWR from "swr";
@@ -52,6 +53,11 @@ export default function UserDetailPage() {
   const { data: userResp, error: userError } = useSWR<User>(`/api/users/${id}`);
   const educationDict = useDict("EDUCATION_LEVEL");
   const contractTypeDict = useDict("CONTRACT_TYPE");
+  const { message: antdMessage } = AntdApp.useApp();
+  const [resetting, setResetting] = useState<{ id: string; name: string } | null>(null);
+  const [resetForm] = Form.useForm<{ password: string; confirm: string }>();
+  const [resetSubmitting, setResetSubmitting] = useState(false);
+
 
   if (error || userError) {
     const e = error || userError;
@@ -92,6 +98,10 @@ export default function UserDetailPage() {
     if (el) el.scrollIntoView({ behavior: "smooth", block: "start" });
   }
 
+  function onResetPassword() {
+    setResetting({ id, name: user.name });
+  }
+
   // 无档案: 展示引导 + 必要的账号元信息
   if (!full) {
     return (
@@ -101,6 +111,7 @@ export default function UserDetailPage() {
           isAdmin={isAdmin}
           id={id}
           onEditProfile={() => router.push(`/admin/users/${id}/edit-profile`)}
+          onResetPassword={onResetPassword}
         />
         <ProCard style={{ marginTop: 8 }}>
           <EmptyState
@@ -151,6 +162,7 @@ export default function UserDetailPage() {
         isAdmin={isAdmin}
         id={id}
         onEditProfile={() => router.push(`/admin/users/${id}/edit-profile`)}
+        onResetPassword={onResetPassword}
       />
 
       <AnchorNav sections={sections} onJump={scrollTo} compact={isMobile} />
@@ -405,6 +417,62 @@ export default function UserDetailPage() {
           </div>
         </div>
       </ProCard>
+
+      <Modal
+        open={!!resetting}
+        title={resetting ? `重置 ${resetting.name} 的登录密码` : "重置密码"}
+        okText="确认重置"
+        cancelText="取消"
+        okButtonProps={{ danger: true, loading: resetSubmitting }}
+        destroyOnClose
+        maskClosable={false}
+        onCancel={() => { if (resetSubmitting) return; setResetting(null); }}
+        onOk={async () => {
+          try {
+            const values = await resetForm.validateFields();
+            setResetSubmitting(true);
+            const r = await fetch(`/api/users/${id}/reset-password`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              credentials: "include",
+              body: JSON.stringify({ password: values.password })
+            });
+            const j = await r.json();
+            if (j.code !== 0) { antdMessage.error(j.message); return; }
+            antdMessage.success(`已重置 ${resetting!.name} 的登录密码`);
+            setResetting(null);
+          } catch (e) {
+            if (e && typeof e === "object" && "errorFields" in e) return;
+            antdMessage.error(e instanceof Error ? e.message : "重置失败");
+          } finally {
+            setResetSubmitting(false);
+          }
+        }}
+      >
+        <p style={{ marginBottom: 12, color: "var(--qt-text-muted)" }}>
+          请输入新的登录密码。设置后旧密码立即失效，已登录会话会要求重新登录。
+        </p>
+        <Form form={resetForm} layout="vertical" preserve={false} requiredMark={false}>
+          <Form.Item name="password" label="新密码" rules={[
+            { required: true, message: "请输入新密码（8 ~ 72 个字符）" },
+            { min: 8, message: "密码至少需要 8 个字符" },
+            { max: 72, message: "密码不能超过 72 个字符" }
+          ]}>
+            <Input.Password autoFocus placeholder="8 ~ 72 个字符，建议使用密码管理器生成" size="large" maxLength={72} />
+          </Form.Item>
+          <Form.Item name="confirm" label="确认新密码" dependencies={["password"]} rules={[
+            { required: true, message: "请再次输入新密码以确认" },
+            ({ getFieldValue }) => ({
+              validator(_, value) {
+                if (!value || getFieldValue("password") === value) return Promise.resolve();
+                return Promise.reject(new Error("两次输入的密码不一致"));
+              }
+            })
+          ]}>
+            <Input.Password placeholder="再次输入新密码" size="large" />
+          </Form.Item>
+        </Form>
+      </Modal>
     </Page>
   );
 }
@@ -520,12 +588,14 @@ function HeroHeader({
   user,
   isAdmin,
   id,
-  onEditProfile
+  onEditProfile,
+  onResetPassword
 }: {
   user: User;
   isAdmin: boolean;
   id: string;
   onEditProfile: () => void;
+  onResetPassword: () => void;
 }) {
   return (
     <ProCard
@@ -558,7 +628,7 @@ function HeroHeader({
           <Space wrap style={{ flexShrink: 0 }}>
             <Button
               icon={<KeyOutlined />}
-              onClick={() => {/* 与详情页 actions 保持一致,跳到重置页 */}}
+              onClick={onResetPassword}
             >
               重置密码
             </Button>
