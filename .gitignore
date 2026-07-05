@@ -108,3 +108,6 @@ tests/e2e/.auth/
 # Prisma schema 快照: 由 `npm run db:snapshot` 生成, 含时间戳
 # 需要时本地重跑, 不入仓避免频繁 diff
 docs/db-schema-snapshot.sql
+
+# 仓库根目录下的 0 字节 EOF 标记文件(误操作遗留,容易污染 git status)
+EOF
