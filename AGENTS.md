@@ -39,7 +39,13 @@ Node `>=20.9.0`. Use `npm`; `pnpm-lock.yaml` is kept in sync.
 - One logical change per commit; squash WIP locally before pushing.
 - PRs cover motivation, change summary, and validation (commands run, screenshots for UI). Link the issue or `docs/` runbook. Call out schema/migration, auth, and storage-affecting changes explicitly.
 - Never commit `.env`, `docker-data/`, `backups/`, or `docs/*部署记录*.md` (see `.gitignore`).
-- **发布版本**: 用 `npm version patch|minor|major`(自动 bump + commit + tag),不要手动改 `package.json:version` 之后忘记 tag。Commit message 风格 `chore(release): bump to vX.Y.Z`。当前 base 与 README 同步在 `0.8.0`;登录页右上 chip 由 `next.config.mjs#computeAppVersion()` 自动派生为 `<base>+<git short sha>.<MMDD>`,commit → dev/build 重启即可看到新版本号;CI 容器无 `.git` 时回落到 `NEXT_PUBLIC_APP_VERSION` env 或 `"v2.0"`。
+- **发布版本**: 用 `npm version patch|minor|major`(自动 bump + commit + tag),不要手动改 `package.json:version` 之后忘记 tag。Commit message 风格 `chore(release): bump to vX.Y.Z`。当前 base 与 README 同步在 `0.9.0`;下次推送前 bump 到下一个 minor(`0.10.0` 视实际改动大小,纯文档/重构用 patch)。
+- **每次 `git push` 前必须 bump 版本号 + 同步打 tag**:
+  1. `git status` 确认 working tree 干净(必要时先 commit 改动)
+  2. `npm version patch|minor|major`(semver: 新功能/不兼容 = minor 或 major,纯修复 = patch)
+  3. `git push` 同时 push 标签:`git push --follow-tags`
+  跳过此步会导致登录页版本号落后、生产实例和 git tag 不一致,排查时混淆。
+- 登录页右上 chip 由 `next.config.mjs#computeAppVersion()` 自动派生为 `<base>+<git short sha>.<MMDD>`,commit → dev/build 重启即可看到新版本号;CI 容器无 `.git` 时回落到 `NEXT_PUBLIC_APP_VERSION` env 或 `"v2.0"`。
 
 ## Security & Configuration Tips
 
