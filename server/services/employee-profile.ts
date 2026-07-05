@@ -77,21 +77,16 @@ export async function linkAttachmentsToProfile(
   });
 }
 
-// 临时安全网 (PR1 only): 用 Prisma 生成的字段枚举做白名单,
-// 防止旧前端提交已删字段 (workExperience / educationHistory / certificates /
-// emergencyContactName / emergencyContactPhone / address) 走到 Prisma 时报
-// "Unknown argument" 错误。PR3 清理 validator/DTO 后移除此 allowlist。
-const EMPLOYEE_PROFILE_WRITABLE_FIELDS = new Set<string>(
-  Object.values(Prisma.EmployeeProfileScalarFieldEnum).filter(
-    (f) => !["id", "userId", "createdAt", "updatedAt", "deletedAt"].includes(f)
-  )
-);
-
+/**
+ * 把 validated input 转换为 Prisma update payload。
+ * - 跳过 undefined(zod optional 不会写入,符合 Prisma 行为)
+ * - 加密字段走 encrypt
+ * zod schema 已经限定字段,这里不再做 allowlist 过滤(老 PR1 安全网已于 PR3 移除)。
+ */
 export function buildProfileUpdateData(input: EmployeeProfileUpdateInput): Record<string, unknown> {
   const data: Record<string, unknown> = {};
   for (const [key, value] of Object.entries(input)) {
     if (value === undefined) continue;
-    if (!EMPLOYEE_PROFILE_WRITABLE_FIELDS.has(key)) continue; // 临时 allowlist
     if (ENCRYPTED_FIELDS.includes(key as (typeof ENCRYPTED_FIELDS)[number]) && typeof value === "string" && value.length > 0) {
       data[key] = encrypt(value);
     } else {

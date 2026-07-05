@@ -1,13 +1,30 @@
 import { Tag } from "antd";
+import { getExpiryStatus } from "@/lib/employee-profile-expiry";
 
 type Props = { expiryDate: string | null };
 
+/**
+ * ֤�鵽�ڻ���,�� cron `runCertificateExpiryCheck` �� 30/15/7 ������ֵ����һ�¡�
+ * - �ѹ���:��ɫ
+ * - <= 7 ��:���
+ * - <= 15 ��:��
+ * - <= 30 ��:��
+ * - > 30 ��:����ʾ
+ */
+const LEVEL_COLOR: Record<"critical" | "high" | "medium", string> = {
+  critical: "volcano",
+  high: "orange",
+  medium: "gold"
+};
+
 export function ExpiryBadge({ expiryDate }: Props) {
-  if (!expiryDate) return null;
-  const exp = new Date(expiryDate);
-  const now = new Date();
-  const days = Math.floor((exp.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
-  if (days < 0) return <Tag color="red">已过期 {Math.abs(days)} 天</Tag>;
-  if (days <= 30) return <Tag color="orange">{days} 天后到期</Tag>;
-  return null;
+  const status = getExpiryStatus(expiryDate);
+  if (status.kind === "none") return null;
+  if (status.kind === "expired") {
+    return <Tag color="red">�ѹ��� {status.days} ��</Tag>;
+  }
+  return <Tag color={LEVEL_COLOR[status.level]}>{status.days} �����</Tag>;
 }
+
+export { getExpiryStatus } from "@/lib/employee-profile-expiry";
+export type { ExpiryStatus, ExpiryLevel } from "@/lib/employee-profile-expiry";
