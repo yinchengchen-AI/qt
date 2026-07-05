@@ -57,6 +57,7 @@
     "@aws-sdk/s3-request-presigner": "^3.1065.0",
     "@prisma/adapter-pg": "^7.8.0",
     "@prisma/client": "7.8.0",
+    "@react-pdf/renderer": "^4.5.1",
     "antd": "6.4.3",
     "antd-img-crop": "^4.30.0",
     "bcrypt": "6.0.0",

@@ -1,7 +1,7 @@
 "use client";
 import { App as AntdApp, Avatar, Space, Tag, Button, Typography, Card, Row, Col, Divider, Empty, Modal, Form, Input } from "antd";
 import { ProCard, ProDescriptions } from "@ant-design/pro-components";
-import { EditOutlined, KeyOutlined, StopOutlined, CheckCircleOutlined, IdcardOutlined, BankOutlined, BookOutlined, FileProtectOutlined, ApartmentOutlined, UserOutlined, PhoneOutlined, CalendarOutlined, EnvironmentOutlined } from "@ant-design/icons";
+import { EditOutlined, KeyOutlined, StopOutlined, CheckCircleOutlined, IdcardOutlined, BankOutlined, BookOutlined, FileProtectOutlined, FilePdfOutlined, ApartmentOutlined, UserOutlined, PhoneOutlined, CalendarOutlined, EnvironmentOutlined } from "@ant-design/icons";
 import { useParams, useRouter } from "next/navigation";
 import { useState } from "react";
 import { useGoBack } from "@/lib/navigation";
@@ -70,6 +70,7 @@ export default function UserDetailPage() {
   const activeSectionId = useScrollSpy(sections.map((s) => s.id));
   const { message: antdMessage } = AntdApp.useApp();
   const [resetting, setResetting] = useState<{ id: string; name: string } | null>(null);
+  const [exporting, setExporting] = useState(false);
   const [resetForm] = Form.useForm<{ password: string; confirm: string }>();
   const [resetSubmitting, setResetSubmitting] = useState(false);
 
@@ -110,6 +111,28 @@ export default function UserDetailPage() {
     setResetting({ id, name: user.name });
   }
 
+  // 导出 PDF(HR 入职材料包):fetch 拿 blob -> 新窗口打开(浏览器内嵌 PDF viewer)
+  async function onExportPdf() {
+    if (exporting) return;
+    setExporting(true);
+    const hide = antdMessage.loading("正在生成 PDF...", 0);
+    try {
+      const r = await fetch(`/api/users/${id}/profile-pdf`, { credentials: "include" });
+      if (!r.ok) throw new Error(`HTTP ${r.status}`);
+      const blob = await r.blob();
+      const url = URL.createObjectURL(blob);
+      window.open(url, "_blank", "noopener,noreferrer");
+      setTimeout(() => URL.revokeObjectURL(url), 60_000);
+      antdMessage.success("PDF 已生成,正在打开预览...");
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : "导出失败";
+      antdMessage.error(`PDF 导出失败: ${msg}`);
+    } finally {
+      hide();
+      setExporting(false);
+    }
+  }
+
   // 无档案: 展示引导 + 必要的账号元信息
   if (!full) {
     return (
@@ -120,6 +143,8 @@ export default function UserDetailPage() {
           id={id}
           onEditProfile={() => router.push(`/admin/users/${id}/edit-profile`)}
           onResetPassword={onResetPassword}
+          onExportPdf={onExportPdf}
+          exporting={exporting}
         />
         <ProCard style={{ marginTop: 8 }}>
           <EmptyState
@@ -171,6 +196,8 @@ export default function UserDetailPage() {
         id={id}
         onEditProfile={() => router.push(`/admin/users/${id}/edit-profile`)}
         onResetPassword={onResetPassword}
+        onExportPdf={onExportPdf}
+        exporting={exporting}
       />
 
       <AnchorNav sections={sections} onJump={scrollTo} activeId={activeSectionId} compact={isMobile} />
@@ -601,13 +628,17 @@ function HeroHeader({
   isAdmin,
   id,
   onEditProfile,
-  onResetPassword
+  onResetPassword,
+  onExportPdf,
+  exporting
 }: {
   user: User;
   isAdmin: boolean;
   id: string;
   onEditProfile: () => void;
   onResetPassword: () => void;
+  onExportPdf: () => void;
+  exporting: boolean;
 }) {
   return (
     <ProCard
@@ -643,6 +674,13 @@ function HeroHeader({
               onClick={onResetPassword}
             >
               重置密码
+            </Button>
+            <Button
+              icon={<FilePdfOutlined />}
+              onClick={onExportPdf}
+              loading={exporting}
+            >
+              导出 PDF
             </Button>
             <Button
               icon={user.status === "ACTIVE" ? <StopOutlined /> : <CheckCircleOutlined />}
