@@ -26,7 +26,7 @@ import { Page } from "@/components/page";
 import { PageHeader } from "@/components/page-header";
 import { useResponsive } from "@/lib/use-breakpoint";
 import { useT } from "@/lib/i18n";
-import { formatDateTime, formatDate } from "@/lib/format";
+import { formatDateTime } from "@/lib/format";
 
 const { Text, Paragraph } = Typography;
 

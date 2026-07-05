@@ -6,14 +6,14 @@
  * 用途:
  *   - dev 环境 UI / e2e 用真实数据
  *   - 给 dashboard / statistics / 列表 / 详情页提供靠谱的样本量, 避免空表导致截图惨白
- *   - 测试 SALES 行级隔离 (按 owner 轮转分配), 客户类型/状态/规模筛选用
+ *   - 测试 SALES 行级隔离 (按 owner 轮转分配), 客户类型/规模筛选用
  *
  * 行为:
  *   - 100 个 = 20 个 "tier" × 5 个, 每 tier 锁定 (district, town) 配对
  *   - 同一镇街可以出现多次 (代表该镇街下有多个客户群), 总数 100 不变
  *   - 幂等: 按 code 前缀 DEV-YHLP- + 序号去重 (e.g. DEV-YHLP-0001); 已存在则 skip
  *   - 5 个 dev 用户轮转当 owner (admin / sales / finance / ops / expert)
- *   - customerType / industry / scale / status / source 走字典表真实 code,
+ *   - customerType / industry / scale / source 走字典表真实 code,
  *     保证后续筛选项 / 翻译 / 统计全部能命中
  *   - createdAt / updatedAt 散在过去 6 个月内, 让统计图看着真实
  *   - 仅 dev 用, 不会动其他 customer; 跑错就再跑一次, 不会越写越多
@@ -216,14 +216,6 @@ const SCALE_DIST = (() => {
   for (let i = 0; i < 15; i++) arr.push("MICRO");
   return arr;
 })();
-const STATUS_DIST = (() => {
-  // 50% SIGNED / 30% NEGOTIATING / 20% LEAD; 都不放 LOST / FROZEN
-  const arr: string[] = [];
-  for (let i = 0; i < 50; i++) arr.push("SIGNED");
-  for (let i = 0; i < 30; i++) arr.push("NEGOTIATING");
-  for (let i = 0; i < 20; i++) arr.push("LEAD");
-  return arr;
-})();
 const SOURCE_DIST = [
   "EXHIBITION", "REFERRAL", "WEBSITE", "PHONE", "COLD_VISIT",
   "BIDDING", "PARTNER", "MEDIA", "SOCIAL_MEDIA",
@@ -253,7 +245,6 @@ async function main(): Promise<void> {
   const userIds = DEV_USERS.map((e) => userMap.get(e)!);
   const customerTypes = [...TYPE_DIST].sort(() => rand() - 0.5); // 洗牌
   const scales = [...SCALE_DIST].sort(() => rand() - 0.5);
-  const statuses = [...STATUS_DIST].sort(() => rand() - 0.5);
   const sources = [...SOURCE_DIST].sort(() => rand() - 0.5);
 
   let created = 0;
@@ -274,7 +265,6 @@ async function main(): Promise<void> {
     const customerType = customerTypes[i % customerTypes.length]!;
     const industry = pick(ENTERPRISE_INDUSTRY[customerType]);
     const scale = customerType === "ENTERPRISE" ? scales[i % scales.length] : null;
-    const status = statuses[i % statuses.length]!;
     const sourceChannel = sources[i % sources.length]!;
     const ownerUserId = userIds[i % userIds.length]!;
     const createdById = ownerUserId;
@@ -309,7 +299,7 @@ async function main(): Promise<void> {
     const updatedAt = randDateAgo(30);  // 过去一月
 
     if (dbg) {
-      console.log(`  [${code}] ${tierKey} -> ${name} (${customerType}/${status}/${industry})`);
+      console.log(`  [${code}] ${tierKey} -> ${name} (${customerType}/${scale ?? "-"}/${industry})`);
     }
 
     await prisma.customer.create({
@@ -331,7 +321,6 @@ async function main(): Promise<void> {
         contactPhone: phone,
         sourceChannel,
         ownerUserId,
-        status,
         createdById,
         updatedById,
         createdAt,

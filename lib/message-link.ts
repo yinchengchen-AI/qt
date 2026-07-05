@@ -5,7 +5,7 @@
 // buildLinkHref 同时做防御性归一化: link 为 null / id 缺失 / 未知 kind
 // 一律视为无跳转目标, 避免出现 `${undefined}/...` 这种坏 URL.
 //
-// 额外字段（如 CUSTOMER_STATUS_SUGGEST 的 suggest）会作为 query string 拼回，
+// 额外字段（如 kind=customer 时的 suggest）会作为 query string 拼回，
 // 保证通知跳转能携带业务上下文。
 
 export const MESSAGE_LINK_PATH: Record<string, string> = {

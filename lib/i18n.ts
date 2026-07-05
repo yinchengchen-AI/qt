@@ -46,7 +46,7 @@ const messages: Record<Locale, Record<string, string>> = {
 
     // 消息中心
     "messages.title": "消息中心",
-    "messages.subtitle": "业务事件通知（合同到期 / 开票超期 / 回款 / 客户状态建议 / 合同状态机自动迁移 等）",
+    "messages.subtitle": "业务事件通知（合同到期 / 开票超期 / 回款 / 合同状态机自动迁移 等）",
     "messages.markAllRead": "全部标记已读",
     "messages.empty": "暂无消息",
     "messages.column.status": "状态",
@@ -284,7 +284,7 @@ const messages: Record<Locale, Record<string, string>> = {
 
     // Messages
     "messages.title": "Messages",
-    "messages.subtitle": "Business notifications (contract expiry / invoice overdue / payments / customer status suggestions / contract auto-transitions, etc.)",
+    "messages.subtitle": "Business notifications (contract expiry / invoice overdue / payments / contract auto-transitions, etc.)",
     "messages.markAllRead": "Mark all as read",
     "messages.empty": "No messages",
     "messages.column.status": "Status",

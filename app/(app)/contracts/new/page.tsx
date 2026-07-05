@@ -10,7 +10,7 @@ import {
   ProFormDigit,
   ProFormDatePicker
 } from "@ant-design/pro-components";
-import { App as AntdApp, Space, Tag, Typography } from "antd";
+import { App as AntdApp, Space, Typography } from "antd";
 
 import { useRouter } from "next/navigation";
 import { useGoBack } from "@/lib/navigation";
@@ -89,9 +89,9 @@ export default function NewContractPage() {
       <PageHeader
         back={goBack}
         title="新建合同"
-        subtitle="为客户创建合同，保存即生成草稿，可继续编辑后提交审批"
+        subtitle="为客户创建合同，保存即生成草稿，字段完整且附件就位后自动发布为生效"
       />
-      <FormCard headerHint="服务止期必须晚于起期，否则无法提交">
+      <FormCard headerHint="服务止期必须晚于起期，否则无法保存">
         <ProForm
           formRef={formRef}
           layout="vertical"
@@ -120,7 +120,7 @@ export default function NewContractPage() {
               message.error(j.message);
               return false;
             }
-            message.success("合同已创建（草稿），可继续编辑后提交审批");
+            message.success("合同已创建（草稿），字段完整且附件就位后会自动发布为生效");
             router.push(`/contracts/${j.data.id}`);
             return true;
           }}
@@ -370,7 +370,7 @@ export default function NewContractPage() {
             </FormGrid>
           </FormSection>
 
-          <FormSection title="合同附件" description="至少上传 1 个盖章版的合同 PDF 后才能提交审批">
+          <FormSection title="合同附件" description="至少上传 1 个盖章版的合同 PDF，保存后满足条件即自动发布为生效">
             <UploadButton
               name="attachments"
               label="上传"
@@ -384,7 +384,7 @@ export default function NewContractPage() {
 
           <Space style={{ marginTop: 8 }}>
             <Text type="secondary" style={{ fontSize: 12 }}>
-              草稿状态可编辑;提交审批后 <Tag color="blue">草稿 → 待审批</Tag> 不可直接改,需撤回。
+              草稿状态可编辑;保存后若字段完整且附件就位,系统会自动将合同从草稿发布为生效状态。
             </Text>
           </Space>
           <SubmitBar

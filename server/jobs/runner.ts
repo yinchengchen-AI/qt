@@ -18,16 +18,6 @@ export type JobResult = {
   created: number;
   scanned: number;
   updated?: number;
-  /**
-   * 自动写成功的条数 (P 客户状态机自动化 §2.3 时间窗触发).
-   * 与 `created` 不重叠: created = SUGGEST 站内信条数, applied = autoChangeCustomerStatus DONE 次数.
-   */
-  applied?: number;
-  /**
-   * 自动写失败 / 规则关闭时, fallthrough 到原 SUGGEST 建议的条数.
-   * 一般 created === suggestionsKept + ... (具体由各 job 决定).
-   */
-  suggestionsKept?: number;
   durationMs: number;
   /** 失败时的错误信息；成功时不存在 */
   error?: string;

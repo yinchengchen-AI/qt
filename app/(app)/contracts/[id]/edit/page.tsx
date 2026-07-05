@@ -320,7 +320,7 @@ export default function EditContractPage() {
 
           <Space>
             <Text type="secondary" style={{ fontSize: 12 }}>
-              客户不可更换;草稿 / 待审批 / 已暂停 状态下可编辑合同编号及其它字段。
+              客户不可更换;草稿状态下可编辑合同编号及其它字段 (管理员可在任意状态下修改)。
             </Text>
           </Space>
           <SubmitBar

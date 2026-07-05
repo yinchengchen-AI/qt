@@ -70,7 +70,7 @@ export default function CustomersPage() {
     regionsFetcher,
     { revalidateOnFocus: false, dedupingInterval: 60_000 }
   );
-  // 用 ref 拿当前表格的查询参数(关键字/状态/等级),导出时一并带上
+  // 用 ref 拿当前表格的查询参数(关键字/规模/类型/行业/地区等),导出时一并带上
   const searchRef = useRef<Record<string, unknown>>({});
   const actionRef = useRef<ActionType>(undefined);
   // formRef 在需要时可以拿来手动 reset / submit, 当前列表是"点查询按钮或回车才查"的标准行为,

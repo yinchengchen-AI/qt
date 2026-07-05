@@ -147,7 +147,7 @@ async function main() {
     { category: "PERSONNEL_CERT_TYPE", code: "OTHER",                     label: "其他",             sort: 999 },
     // === 以下 8 类状态机字典, 以 prisma/schema.prisma 注释为权威 (schema 允许的 code) ===
     // === 同步 lib/enum-maps.ts 现有 label, 方便后续 useDict 取代 hardcode ===
-    // 客户状态机
+    // 客户状态机(v0.5.0 已下线, 保留字典供历史数据可读)
     { category: "CUSTOMER_STATUS", code: "LEAD",        label: "线索",     sort: 1 },
     { category: "CUSTOMER_STATUS", code: "NEGOTIATING", label: "洽谈中",   sort: 2 },
     { category: "CUSTOMER_STATUS", code: "SIGNED",      label: "已签约",   sort: 3 },

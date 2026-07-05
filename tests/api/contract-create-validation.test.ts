@@ -1,11 +1,11 @@
 // POST /api/contracts 路由/服务层校验回归
 //
 // 覆盖:
-//   1) 客户状态 LEAD → 创建合同失败 (CONTRACT_CUSTOMER_STATUS)
-//   2) 止期 <= 起期 → 400 VALIDATION_FAILED
-//   3) 签订人 / 负责人为 DISABLED → 400 VALIDATION_FAILED
-//   4) 合同编号重复 → 422 VALIDATION_FAILED
-//   5) 有附件时 DRAFT 自动升 ACTIVE (auto-publish)
+//   1) 止期 <= 起期 → 400 VALIDATION_FAILED
+//   2) 签订人 / 负责人为 DISABLED → 400 VALIDATION_FAILED
+//   3) 合同编号重复 → 422 VALIDATION_FAILED
+//   4) 有附件时 DRAFT 自动升 ACTIVE (auto-publish)
+//   5) 无附件时保持 DRAFT
 //
 // DB 不可达时整组 skip. 数据带唯一 TAG 前缀,跑完自清理.
 

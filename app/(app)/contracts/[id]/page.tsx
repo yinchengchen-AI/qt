@@ -180,7 +180,7 @@ export default function ContractDetailPage() {
   const { run } = useActionCall({ baseUrl: `/api/contracts/${id}`, reload: () => mutate() });
   const { message: msg, modal } = AntdApp.useApp();
 
-// admin 删除草稿/待审 合同（后端会再做 admin + 状态 + 子数据 校验）
+// admin 删除草稿合同（后端会再做 admin + 状态 + 子数据 校验）
 const handleDelete = () => {
   modal.confirm({
     title: "确认删除该合同？",

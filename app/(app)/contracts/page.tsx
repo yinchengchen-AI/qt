@@ -62,7 +62,7 @@ export default function ContractsPage() {
     <Page>
       <PageHeader
         title="合同管理"
-        subtitle="覆盖合同全生命周期：草稿、审批、生效、执行 / 终止；支持按客户、状态筛选"
+        subtitle="覆盖合同全生命周期：草稿、生效、已完结；支持按客户、状态筛选"
         actions={
           <>
             <Button key="export" icon={<DownloadOutlined />} onClick={handleExport}>
