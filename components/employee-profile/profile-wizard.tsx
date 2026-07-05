@@ -4,6 +4,7 @@ import { App as AntdApp, Form, Alert, Space, Tag, Typography } from "antd";
 import { UserOutlined, IdcardOutlined, BankOutlined, BookOutlined, FileProtectOutlined } from "@ant-design/icons";
 import { useRouter } from "next/navigation";
 import { useRef } from "react";
+import ImgCrop from "antd-img-crop";
 import { ProvinceCityDistrict } from "./province-city-district";
 import { SubtableEditor } from "./subtable-editor";
 import { useDict } from "@/lib/dict-client";
@@ -61,6 +62,18 @@ export function ProfileWizard({ userId, initial, isAdmin }: Props) {
   const formRef = useRef<unknown>(null);
   const educationDict = useDict("EDUCATION_LEVEL");
   const contractTypeDict = useDict("CONTRACT_TYPE");
+
+  function beforeAvatarCrop(file: File): boolean {
+    if (file.size > 5 * 1024 * 1024) {
+      message.error("头像文件不能超过 5MB");
+      return false;
+    }
+    if (!/^image\/(png|jpe?g|webp)$/.test(file.type)) {
+      message.error("仅支持 PNG / JPG / WebP");
+      return false;
+    }
+    return true;
+  }
 
   function handleAddressChange(v: { province?: string; city?: string; district?: string }) {
     // 通过 formRef 写入,避免 document.activeElement 黑魔法
@@ -225,19 +238,29 @@ export function ProfileWizard({ userId, initial, isAdmin }: Props) {
           >
             <div className="profile-wizard-hero" style={{ display: "grid", gridTemplateColumns: "minmax(160px, 200px) 1fr", gap: 24, alignItems: "flex-start" }}>
               <div>
-                <ProFormUploadButton
-                  name={["profile", "avatarUpload"]}
-                  label="头像"
-                  max={1}
-                  fieldProps={{
-                    name: "file",
-                    listType: "picture",
-                    customRequest: async (options) => {
-                      const att = await uploadFileToMinIO(options.file as File, { category: "AVATAR" });
-                      options.onSuccess?.(att, new XMLHttpRequest());
-                    }
-                  }}
-                />
+                <ImgCrop
+                  aspect={1}
+                  cropShape="round"
+                  quality={0.92}
+                  modalTitle="裁剪头像"
+                  modalOk="确认"
+                  modalCancel="取消"
+                  beforeCrop={(file) => beforeAvatarCrop(file as unknown as File)}
+                >
+                  <ProFormUploadButton
+                    name={["profile", "avatarUpload"]}
+                    label="头像"
+                    max={1}
+                    fieldProps={{
+                      name: "file",
+                      listType: "picture",
+                      customRequest: async (options) => {
+                        const att = await uploadFileToMinIO(options.file as File, { category: "AVATAR" });
+                        options.onSuccess?.(att, new XMLHttpRequest());
+                      }
+                    }}
+                  />
+                </ImgCrop>
                 <Text type="secondary" style={{ fontSize: 12 }}>
                   支持 JPG/PNG,建议 1:1,最大 5MB
                 </Text>
