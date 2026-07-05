@@ -100,7 +100,6 @@ export const MESSAGE_TYPE = [
   "CONTRACT_EXPIRING",
   "INVOICE_OVERDUE_PAYMENT",
   "PAYMENT_RECEIVED",
-  "CUSTOMER_STATUS_SUGGEST",
   "CONTRACT_AUTO_EXECUTED",
   "CONTRACT_AUTO_COMPLETED",
   "CONTRACT_AUTO_EXPIRED",
@@ -110,10 +109,6 @@ export const MESSAGE_TYPE = [
   "CONTRACT_EXPIRED_UNPAID",
   // 证书 N 天内到期提醒 (server/jobs/certificate-expiry-check 触发)
   "CERTIFICATE_EXPIRING",
-  // 客户状态机自动化: 系统自动写客户状态后, 给 owner 发的通知
-  "CUSTOMER_STATUS_AUTO_APPLIED",
-  // 客户状态机自动化: owner 在撤销窗口期内撤销了系统自动写, 给 owner 的反馈
-  "CUSTOMER_STATUS_AUTO_REVERTED"
 ] as const;
 
 // 5 个内置角色

@@ -1,6 +1,5 @@
 // 状态机迁移统一入口。吃掉 contract.ts 的 tryAutoPublish / tryAutoClose
-// 两个 ~50 行函数,以及 customer.ts:changeCustomerStatus /
-// invoice.ts:invoiceAction / payment.ts:paymentAction 的事务与重试样板。
+// 与 invoice.ts:invoiceAction / payment.ts:paymentAction 的事务与重试样板。
 //
 // 两种使用模式:
 //   - runTransitionInTx: 嵌在外层事务内 (createContract / updateContract / closeContract 等)
@@ -18,7 +17,7 @@ import { ERROR_CODES } from "@/types/errors";
 const SERIALIZABLE_RETRY = 3;
 const TX_TIMEOUT_MS = 10_000;
 
-type Entity = "Contract" | "Customer" | "Invoice" | "Payment";
+type Entity = "Contract" | "Invoice" | "Payment";
 
 // 让 precondition 抛 SkipTransition 触发 silentSkip 语义; silentSkip=false 时会
 // 透过抛 ENTITY_IMMUTABLE, silentSkip=true 时直接返回 SKIPPED。
@@ -51,7 +50,7 @@ export type TransitionInput<C extends { id: string; status: string }> = {
   ) => Promise<{ type: DomainEventType; payload: Record<string, unknown>; receivers: string[] } | undefined>;
   /** 状态不匹配时静默跳过(自动迁移)还是抛错(管理员手动迁移) */
   silentSkip?: boolean;
-  /** 状态不匹配时抛的错误; 默认 ENTITY_IMMUTABLE 403; customer.status 等业务用 CUSTOMER_STATUS_TRANSITION_INVALID 422 */
+  /** 状态不匹配时抛的错误; 默认 ENTITY_IMMUTABLE 403 */
   mismatchError?: { code: typeof ERROR_CODES[keyof typeof ERROR_CODES]; status?: number; message?: (current: C, to: string) => string };
 };
 
@@ -151,9 +150,6 @@ async function updateByEntity(
   switch (entity) {
     case "Contract":
       await tx.contract.update({ where: { id, status: { in: [...allowedSourceStatuses] } }, data: data as Prisma.ContractUpdateInput });
-      return;
-    case "Customer":
-      await tx.customer.update({ where: { id, status: { in: [...allowedSourceStatuses] } }, data: data as Prisma.CustomerUpdateInput });
       return;
     case "Invoice":
       await tx.invoice.update({ where: { id, status: { in: [...allowedSourceStatuses] } }, data: data as Prisma.InvoiceUpdateInput });

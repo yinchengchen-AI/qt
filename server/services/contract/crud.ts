@@ -415,24 +415,3 @@ export async function softDeleteContract(user: SessionUser, id: string) {
 }
 
 
-// =====================================================
-// 合同状态机自动转换 (Q4)
-// =====================================================
-//
-// 静默可重入: 状态不匹配 → no-op, 不抛错, 避免拖垮调用方主事务.
-// 失败时写 audit log 但仍然 throw(自动转换失败应当可见), 调用方决定是否吞掉.
-//
-// 写入者统一为 SYSTEM_USER_ID ("system"). 该用户在迁移 20260621_user_is_system 中创建,
-// passwordHash 是非法 bcrypt 永远登录不了; lib/auth.ts 登录路径 / bus.ts listAdminUserIds /
-// workflow 都已过滤 isSystem=true.
-//
-// 自动转换的 audit action 串:
-//   CONTRACT_AUTO_EXPIRE    - 定时任务扫到 endDate < now 时 → EXPIRED
-// ContractReviewLog.action 同步写, 详情页时间线可见.
-
-/**
- * 单笔合同过期检查: endDate < now 且 status = ACTIVE → CLOSED (reason=expired).
- * 内部用 Serializable 事务 + P2034 重试 3 次 (与 softDeleteContract 相同的并发模式).
- * 状态不匹配 → no-op (静默), 适用于"批量扫描 + 单笔隔离"模式.
- * 跑在 /api/jobs/run-all, 每天 1 次, 调用方传入 now.
- */

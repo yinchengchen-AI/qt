@@ -18,7 +18,6 @@ export async function listCustomers(
     page: number;
     pageSize: number;
     keyword?: string;
-    status?: string;
     scale?: string;
     customerType?: string;
     industry?: string;
@@ -34,7 +33,6 @@ export async function listCustomers(
 ) {
   requirePermission(user.roleCode, RESOURCE.CUSTOMER, ACTION.READ);
   const { page, pageSize, keyword } = params;
-  const statusList = parseStatusList(params.status);
   const scaleList = parseStatusList(params.scale);
   const customerTypeList = parseStatusList(params.customerType);
   const industryList = parseStatusList(params.industry);
@@ -52,7 +50,6 @@ export async function listCustomers(
   const where: Prisma.CustomerWhereInput = {
     ...ownerEq(user),
     deletedAt: null,
-    ...(statusList ? { status: { in: statusList } } : {}),
     ...(scaleList ? { scale: { in: scaleList } } : {}),
     ...(customerTypeList ? { customerType: { in: customerTypeList } } : {}),
     ...(industryList ? { industry: { in: industryList } } : {}),
@@ -165,16 +162,13 @@ export async function updateCustomer(user: SessionUser, id: string, input: Custo
   });
 }
 
-// 客户状态机迁移入口
-// 顺序: 行锁 + runTransitionInTx (loadInTx + from 检查 + precondition R-02/R-13 + update + audit)
-// 事务隔离级别: Serializable (R-16); 行锁: SELECT ... FOR UPDATE 防止并发 PATCH 丢更新
-// 状态不匹配时保留原 CUSTOMER_STATUS_TRANSITION_INVALID 错误码 (mismatchError 覆写抽象默认的 ENTITY_IMMUTABLE)
+// 客户软删入口。客户状态机 v0.5.0 已下线,这里只做软删 + 子数据校验。
 
 export async function softDeleteCustomer(user: SessionUser, id: string) {
   requirePermission(user.roleCode, RESOURCE.CUSTOMER, ACTION.DELETE);
   const existing = await prisma.customer.findFirst({
     where: { id, deletedAt: null, ...ownerEq(user) },
-    select: { id: true, status: true },
+    select: { id: true },
   });
   if (!existing) throw new ApiError(ERROR_CODES.NOT_FOUND, "客户不存在", 404);
   return softDelete(user, {
@@ -200,7 +194,7 @@ export async function softDeleteCustomer(user: SessionUser, id: string) {
     },
     audit: {
       actorId: user.id,
-      before: { status: existing.status },
+      before: { deletedAt: null },
     },
   });
 }

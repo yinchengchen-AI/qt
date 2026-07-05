@@ -54,24 +54,6 @@ describe("emit", () => {
     });
   });
 
-  it("CUSTOMER_STATUS_SUGGEST (deprecated) 走 default fallback 渲染为历史消息", async () => {
-    // v0.5.0 起客户状态机下线, CUSTOMER_STATUS_SUGGEST 不再 emit; 但 enum 仍保留值,
-    // 历史 row / 漏改代码会落到 bus default 分支, 渲染为占位提示
-    const ev = makeEvent("CUSTOMER_STATUS_SUGGEST", {
-      customerId: "c-1",
-      customerName: "客户 A",
-      suggestedStatus: "LOST",
-      suggestedStatusLabel: "已流失",
-      reason: "90 天无跟进"
-    }, ["u-1"]);
-    await emit(prisma, ev);
-    const data = mockState.createManyCalls[0]!.data;
-    expect(data[0]!).toMatchObject({
-      title: "历史消息 (CUSTOMER_STATUS_SUGGEST)",
-      content: "该消息类型已下线, 详情请联系管理员"
-    });
-  });
-
   it("CONTRACT_EXPIRING 消息包含 daysLeft", async () => {
     const ev = makeEvent("CONTRACT_EXPIRING", {
       contractId: "c-1",

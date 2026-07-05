@@ -3,7 +3,7 @@
 // 覆盖:
 //   - 常规 kind 翻路径
 //   - 防御性归一化:null / id 缺失 / 未知 kind / link 为空对象
-//   - 额外字段 (CUSTOMER_STATUS_SUGGEST 的 suggest) 拼回 query string (P3.12)
+//   - 额外字段（如 kind=customer 时的 suggest）会作为 query string 拼回
 import { describe, it, expect } from "vitest";
 import { buildMessageLinkHref } from "@/lib/message-link";
 
@@ -28,7 +28,7 @@ describe("buildMessageLinkHref", () => {
     expect(buildMessageLinkHref({ kind: "customer", id: "cu-1" })).toBe("/customers/cu-1");
   });
 
-  it("额外字段 suggest=LOST 拼成 query string (CUSTOMER_STATUS_SUGGEST 跳转)", () => {
+  it("额外字段 suggest=LOST 拼成 query string", () => {
     const href = buildMessageLinkHref({ kind: "customer", id: "cu-1", suggest: "LOST" });
     expect(href).toBe("/customers/cu-1?suggest=LOST");
   });

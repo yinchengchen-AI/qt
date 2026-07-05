@@ -5,11 +5,11 @@ import { type SessionUser } from "@/lib/session";
 import { requirePermission, RESOURCE, ACTION } from "@/lib/permissions";
 import type {InvoiceActionInput} from "@/lib/validators/invoice";
 import { Prisma } from "@prisma/client";
-import { audit } from "@/server/audit";
 import { nextBusinessNo } from "@/lib/sequence";
 
 import {ownerViaContract} from "@/lib/ownership";
 import { runTransitionInTx } from "@/lib/status-machine";
+import { refundPaymentInTx } from "@/server/services/payment";
 
 export async function invoiceAction(user: SessionUser, id: string, input: InvoiceActionInput) {
   requirePermission(user.roleCode, RESOURCE.INVOICE, ACTION.UPDATE);
@@ -129,17 +129,7 @@ export async function invoiceAction(user: SessionUser, id: string, input: Invoic
           where: { invoiceId: id, status: { in: ["CONFIRMED", "RECONCILED"] }, deletedAt: null },
         });
         for (const cp of confirmed) {
-          const cpBefore = { status: cp.status, amount: Number(cp.amount) };
-          const cpRemark = `发票作废触发退款:${reason}${cp.remark ? ` | 原备注:${cp.remark}` : ""}`;
-          await tx.payment.update({ where: { id: cp.id }, data: { status: "REFUNDED", remark: cpRemark, updatedById: user.id } });
-          await audit(tx, {
-            actorId: user.id,
-            action: "PAYMENT_REFUND",
-            entity: "Payment",
-            entityId: cp.id,
-            before: cpBefore,
-            after: { status: "REFUNDED", reason, triggeredBy: "INVOICE_VOID", invoiceId: id },
-          });
+          await refundPaymentInTx(tx, cp, user.id, reason, "发票作废触发退款");
         }
       }
       return result.updated;
@@ -199,17 +189,7 @@ export async function invoiceAction(user: SessionUser, id: string, input: Invoic
           where: { invoiceId: inv.id, status: { in: ["CONFIRMED", "RECONCILED"] }, deletedAt: null },
         });
         for (const cp of confirmed) {
-          const cpBefore = { status: cp.status, amount: Number(cp.amount) };
-          const cpRemark = `发票红冲触发退款:${reason}${cp.remark ? ` | 原备注:${cp.remark}` : ""}`;
-          await tx.payment.update({ where: { id: cp.id }, data: { status: "REFUNDED", remark: cpRemark, updatedById: user.id } });
-          await audit(tx, {
-            actorId: user.id,
-            action: "PAYMENT_REFUND",
-            entity: "Payment",
-            entityId: cp.id,
-            before: cpBefore,
-            after: { status: "REFUNDED", reason, triggeredBy: "INVOICE_RED_FLUSH", invoiceId: inv.id },
-          });
+          await refundPaymentInTx(tx, cp, user.id, reason, "发票红冲触发退款");
         }
         // 写 InvoiceAuditLog (设计文档要求的 red-flush 专用审计日志)
         await tx.invoiceAuditLog.create({ data: { invoiceId: inv.id, actorId: user.id, action: "RED_FLUSH", comment: `→ ${negative.id}` } });

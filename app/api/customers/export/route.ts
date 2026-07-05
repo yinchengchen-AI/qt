@@ -13,7 +13,7 @@ import { exportToXlsx, exportMaxRows, attachmentHeader } from "@/lib/excel";
 import { prisma } from "@/lib/prisma";
 import { ALLOWED_DICTIONARY_CATEGORIES } from "@/lib/dictionary-categories";
 
-// 把动态字典(category+code -> label)和客户状态静态 map 拍平成一个查找表
+// 把动态字典(category+code -> label)拍平成一个查找表
 async function loadDict(): Promise<Record<string, string>> {
   const items = await prisma.dictionary.findMany({
     where: {

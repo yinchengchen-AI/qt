@@ -204,13 +204,13 @@ export async function tryAutoPublish(tx: Prisma.TransactionClient, contractId: s
  *     简化为仅校验开票+回款; 验收环节由 admin 在前端操作中体现 (人工确认后手动调 closeContract).
  */
 export async function tryAutoClose(contractId: string, now: Date): Promise<"CLOSED" | "SKIPPED"> {
-  const ratio = env.CONTRACT_COMPLETION_INVOICE_RATIO;
+  const fallbackRatio = env.CONTRACT_COMPLETION_INVOICE_RATIO;
   const result = await runTransition({
     entity: "Contract",
     id: contractId,
     loadInTx: (tx) => tx.contract.findFirst({
       where: { id: contractId, deletedAt: null },
-      select: { id: true, status: true, contractNo: true, totalAmount: true, endDate: true, ownerUserId: true },
+      select: { id: true, status: true, contractNo: true, totalAmount: true, endDate: true, ownerUserId: true, completionInvoiceRatio: true },
     }),
     from: ["ACTIVE"],
     to: "CLOSED",
@@ -218,6 +218,7 @@ export async function tryAutoClose(contractId: string, now: Date): Promise<"CLOS
       // 条件 1: endDate < now (合同已过自然到期日)
       if (new Date(c.endDate as unknown as Date) >= now) throw new SkipTransition();
 
+      const ratio = Number(c.completionInvoiceRatio ?? fallbackRatio);
       const total = new Prisma.Decimal(c.totalAmount.toString());
       const threshold = total.mul(ratio);
       const effectiveThreshold = threshold.minus(MONEY_TOLERANCE);
@@ -245,7 +246,8 @@ export async function tryAutoClose(contractId: string, now: Date): Promise<"CLOS
       before: { status: "ACTIVE" },
       after: { status: "CLOSED", reason: "completed" },
     }),
-    reviewLog: () => {
+    reviewLog: (c) => {
+      const ratio = Number(c.completionInvoiceRatio ?? fallbackRatio);
       const pct = (ratio * 100).toFixed(0);
       return {
         reviewerId: SYSTEM_USER_ID,
@@ -281,14 +283,14 @@ export async function tryAutoClose(contractId: string, now: Date): Promise<"CLOS
  * 单笔失败不影响其它; 走完整事务+重试。
  */
 export async function tryAutoCloseOnOverdue(contractId: string, now: Date): Promise<"CLOSED" | "SKIPPED"> {
-  const ratio = env.CONTRACT_COMPLETION_INVOICE_RATIO;
+  const fallbackRatio = env.CONTRACT_COMPLETION_INVOICE_RATIO;
   const graceMs = env.CONTRACT_OVERDUE_GRACE_DAYS * 86_400_000;
   const result = await runTransition({
     entity: "Contract",
     id: contractId,
     loadInTx: (tx) => tx.contract.findFirst({
       where: { id: contractId, deletedAt: null },
-      select: { id: true, status: true, contractNo: true, totalAmount: true, endDate: true, ownerUserId: true },
+      select: { id: true, status: true, contractNo: true, totalAmount: true, endDate: true, ownerUserId: true, completionInvoiceRatio: true },
     }),
     from: ["ACTIVE"],
     to: "CLOSED",
@@ -297,6 +299,7 @@ export async function tryAutoCloseOnOverdue(contractId: string, now: Date): Prom
       const graceCutoff = new Date(new Date(c.endDate as unknown as Date).getTime() + graceMs);
       if (graceCutoff >= now) throw new SkipTransition();
 
+      const ratio = Number(c.completionInvoiceRatio ?? fallbackRatio);
       const total = new Prisma.Decimal(c.totalAmount.toString());
       const threshold = total.mul(ratio);
       const effectiveThreshold = threshold.minus(MONEY_TOLERANCE);

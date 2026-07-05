@@ -6,6 +6,7 @@ import { nextBusinessNo } from "@/lib/sequence";
 import { requirePermission, RESOURCE, ACTION } from "@/lib/permissions";
 import type { PaymentCreateInput, PaymentActionInput } from "@/lib/validators/payment";
 import { Prisma } from "@prisma/client";
+import type { Prisma as PrismaNS } from "@prisma/client";
 import { listAdminUserIds } from "@/server/events/bus";
 import { ownerEq, ownerViaContract, parseStatusList } from "@/lib/ownership";
 import { runTransitionInTx } from "@/lib/status-machine";
@@ -169,6 +170,40 @@ export async function createPayment(
       }
     });
   });
+}
+
+// 在事务内将一笔 Payment 从 CONFIRMED/RECONCILED 退到 REFUNDED,
+// 统一走 lib/status-machine.ts 状态机框架。
+// 供 paymentAction.refund 与 invoiceAction(void/red-flush) 复用。
+export async function refundPaymentInTx(
+  tx: PrismaNS.TransactionClient,
+  payment: { id: string; status: string; amount: Prisma.Decimal; remark: string | null },
+  userId: string,
+  reason: string,
+  remarkPrefix = "退款",
+): Promise<Record<string, unknown>> {
+  const result = await runTransitionInTx(tx, {
+    entity: "Payment",
+    loadInTx: (t) => t.payment.findFirst({
+      where: { id: payment.id, deletedAt: null },
+      select: { id: true, status: true, amount: true, remark: true, contractId: true, invoiceId: true, paymentNo: true, customerId: true },
+    }),
+    from: ["CONFIRMED", "RECONCILED"],
+    to: "REFUNDED",
+    extraData: (current) => ({
+      remark: `${remarkPrefix}:${reason}${current.remark ? ` | 原备注:${current.remark}` : ""}`,
+      updatedById: userId,
+    }),
+    audit: (current) => ({
+      actorId: userId,
+      action: "PAYMENT_REFUND",
+      before: { status: current.status, amount: Number(current.amount) },
+      after: { status: "REFUNDED", reason },
+    }),
+    mismatchError: { code: ERROR_CODES.ENTITY_IMMUTABLE, status: 403, message: (_c, to) => `当前状态不可退款(目标: ${to})` },
+  });
+  if (!result.updated) throw new ApiError(ERROR_CODES.ENTITY_IMMUTABLE, "退款状态迁移失败", 403);
+  return result.updated;
 }
 
 // 状态机：confirm / reconcile / refund / cancel

@@ -174,7 +174,7 @@ describe("markAllRead", () => {
       { id: "m-1", receiverUserId: "u-1", type: "PAYMENT_RECEIVED", title: "t1", content: "c1", readAt: null, createdAt: new Date() },
       { id: "m-2", receiverUserId: "u-1", type: "CONTRACT_EXPIRING", title: "t2", content: "c2", readAt: null, createdAt: new Date() },
       { id: "m-3", receiverUserId: "u-2", type: "PAYMENT_RECEIVED", title: "t3", content: "c3", readAt: null, createdAt: new Date() },
-      { id: "m-4", receiverUserId: "u-1", type: "CUSTOMER_STATUS_SUGGEST", title: "t4", content: "c4", readAt: new Date(), createdAt: new Date() }
+      { id: "m-4", receiverUserId: "u-1", type: "CONTRACT_EXPIRED_UNPAID", title: "t4", content: "c4", readAt: new Date(), createdAt: new Date() }
     ];
     const r = await markAllRead(makeUser("SALES", "u-1"));
     expect(r.updated).toBe(2);

@@ -5,7 +5,6 @@ export type StatusDomain =
   | "invoice"
   | "payment"
   | "message"
-  | "announcement"
   ;
 
 export type Tone = "default" | "info" | "processing" | "success" | "warning" | "danger";
@@ -45,17 +44,12 @@ const MESSAGE: Record<string, StatusMeta> = {
   CONTRACT_EXPIRING:         { label: "合同到期", tone: "warning" },
   INVOICE_OVERDUE_PAYMENT:   { label: "开票超期", tone: "danger" },
   PAYMENT_RECEIVED:          { label: "回款",     tone: "success" },
-  CUSTOMER_STATUS_SUGGEST:   { label: "状态建议", tone: "info" },
   CONTRACT_AUTO_EXECUTED:    { label: "自动执行", tone: "processing" },
   CONTRACT_AUTO_COMPLETED:   { label: "自动结清", tone: "success" },
   CONTRACT_AUTO_EXPIRED:     { label: "自动到期", tone: "default" },
-};
-
-const ANNOUNCEMENT: Record<string, StatusMeta> = {
-  PUBLISHED:  { label: "已发布",  tone: "success" },
-  SCHEDULED:  { label: "待发布",  tone: "processing" },
-  EXPIRED:    { label: "已过期",  tone: "default" },
-  DRAFT:      { label: "草稿",    tone: "default" }
+  CONTRACT_AUTO_OVERDUE_TERMINATED: { label: "超期强关", tone: "danger" },
+  CONTRACT_EXPIRED_UNPAID:   { label: "到期未结清", tone: "warning" },
+  CERTIFICATE_EXPIRING:      { label: "证书到期", tone: "warning" },
 };
 
 const DOMAIN_MAP: Record<StatusDomain, Record<string, StatusMeta>> = {
@@ -63,7 +57,6 @@ const DOMAIN_MAP: Record<StatusDomain, Record<string, StatusMeta>> = {
   invoice: INVOICE,
   payment: PAYMENT,
   message: MESSAGE,
-  announcement: ANNOUNCEMENT,
 };
 
 export function formatStatus(code: string | null | undefined, domain: StatusDomain): StatusMeta {

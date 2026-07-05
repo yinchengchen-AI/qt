@@ -870,7 +870,6 @@ const MESSAGE_TYPE_COLORS: Record<string, string> = {
   CONTRACT_EXPIRING: "orange",
   INVOICE_OVERDUE: "red",
   PAYMENT_RECEIVED: "green",
-  CUSTOMER_STATUS_SUGGEST: "blue",
   CONTRACT_TRANSITION: "purple",
   ANNOUNCEMENT: "cyan"
 };
