@@ -61,14 +61,31 @@ fi
 echo "==> prisma generate (sync client to current schema; postinstall only runs patch-package)"
 npx --no-install prisma generate
 
-# 3.5GB RAM 的小内存机器上, 默认 V8 堆 + 多 worker 构建会 OOM Killed.
-# 显式收紧堆大小并把 worker 数收敛到 1, 稳定可复现.
-# 大内存机器 (>=8GB) 可以用 BUILD_WORKERS=$(nproc) 走多 worker 加速构建.
+# V8 堆大小按机器总内存自适应分档, 也可用 NODE_MAX_OLD_SPACE 显式覆盖:
+#   <  4 GB RAM  → 1536 MB  (Next.js 16 Turbopack 静态分析在 3.5 GB 机器需要降堆)
+#   4–8 GB RAM  → 2048 MB  (默认档位)
+#   ≥  8 GB RAM  → 4096 MB  (大内存机器, 配合 BUILD_WORKERS=$(nproc) 多 worker 加速)
+#
+# 历史教训 (2026-07-08 部署 v0.9.7): 3.5 GB 机器 + Turbopack 静态分析阶段 RSS 涨过 2 GB,
+# NODE_MAX_OLD_SPACE=2048 仍被 OOM Killed (global_oom, 旧 v0.9.6 qt-app 同时在跑占 374 MB);
+# 降到 1536 + 先 systemctl stop qt-app 释放 374 MB 后通过 (总停机 ~3-4 分钟)。
+# 顺带: BUILD_WORKERS=1 也是收敛 RSS 的关键, 多 worker 在小内存机器上加剧争抢。
+#
 # 调度 telemetry: 关闭 Next.js 上报, 与构建内存无关, 借本脚本一并设上, 保持幂等.
+if [ -z "${NODE_MAX_OLD_SPACE:-}" ]; then
+  TOTAL_MEM_KB=$(awk '/^MemTotal:/ {print $2}' /proc/meminfo 2>/dev/null || echo 0)
+  TOTAL_MEM_GB=$((TOTAL_MEM_KB / 1024 / 1024))
+  if [ "$TOTAL_MEM_GB" -ge 8 ]; then
+    NODE_MAX_OLD_SPACE=4096
+  elif [ "$TOTAL_MEM_GB" -ge 4 ]; then
+    NODE_MAX_OLD_SPACE=2048
+  else
+    NODE_MAX_OLD_SPACE=1536
+  fi
+fi
 BUILD_WORKERS="${BUILD_WORKERS:-1}"
-NODE_MAX_OLD_SPACE="${NODE_MAX_OLD_SPACE:-2048}"
 
-echo "==> pnpm build (BUILD_WORKERS=$BUILD_WORKERS, NODE_MAX_OLD_SPACE=${NODE_MAX_OLD_SPACE}MB)"
+echo "==> pnpm build (BUILD_WORKERS=$BUILD_WORKERS, NODE_MAX_OLD_SPACE=${NODE_MAX_OLD_SPACE}MB, MEM_TOTAL=${TOTAL_MEM_GB}GB)"
 NODE_OPTIONS="--max-old-space-size=${NODE_MAX_OLD_SPACE}" \
   NEXT_TELEMETRY_DISABLED=1 \
   NEXT_BUILD_WORKERS="$BUILD_WORKERS" \
