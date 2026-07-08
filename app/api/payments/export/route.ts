@@ -1,3 +1,4 @@
+
 // 回款列表导出 XLSX
 import { z } from "zod";
 import { exportFileTimestamp } from "@/lib/date-range";
@@ -8,6 +9,7 @@ import { requirePermission, RESOURCE, ACTION } from "@/lib/permissions";
 import { listPayments } from "@/server/services/payment";
 import { exportToXlsx, exportMaxRows, attachmentHeader } from "@/lib/excel";
 import { METHOD_MAP, PAYMENT_STATUS_MAP } from "@/lib/enum-maps";
+import { formatDateTime } from "@/lib/format";
 
 const query = z.object({
   keyword: z.string().optional(),
@@ -52,7 +54,7 @@ export async function GET(req: Request) {
             key: "receivedAt",
             width: 20,
             formatter: (v) =>
-              v ? new Date(v as string).toLocaleString("zh-CN") : "",
+              v ? formatDateTime(v as string) : "",
           },
           { header: "银行流水号", key: "bankRefNo", width: 22 },
           { header: "收款行", key: "bankName", width: 22 },

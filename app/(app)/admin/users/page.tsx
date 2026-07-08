@@ -1,3 +1,4 @@
+
 "use client";
 import { ProTable, type ActionType, type ProColumns, type ProFormInstance } from "@ant-design/pro-components";
 import { MoreOutlined, ExportOutlined } from "@ant-design/icons";
@@ -9,6 +10,7 @@ import { Page } from "@/components/page";
 import { useResponsive } from "@/lib/use-breakpoint";
 import { PageHeader } from "@/components/page-header";
 import { DateTimeCell } from "@/components/table-cells";
+import { formatDateTime } from "@/lib/format";
 type Role = { id: string; code: string; name: string };
 type User = {
   id: string;
@@ -160,8 +162,8 @@ export default function UsersPage() {
       u.role?.name ?? "",
       u.department?.name ?? "",
       u.status === "ACTIVE" ? "启用" : "禁用",
-      u.lastLoginAt ? new Date(u.lastLoginAt).toLocaleString("zh-CN") : "",
-      new Date(u.createdAt).toLocaleString("zh-CN")
+      u.lastLoginAt ? formatDateTime(u.lastLoginAt) : "",
+      formatDateTime(u.createdAt)
     ]);
     const csv = "\uFEFF" + [headers, ...rows].map((r) => r.map(escape).join(",")).join("\n");
     const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });

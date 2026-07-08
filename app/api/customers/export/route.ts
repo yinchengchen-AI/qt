@@ -1,3 +1,4 @@
+
 // 客户列表导出 XLSX
 // - 入参同 GET /api/customers(keyword), 便于从列表页带当前筛选条件拉全量
 // - 行级隔离: 仍调 listCustomers, SALES 用户只会导出自己负责的客户
@@ -12,6 +13,7 @@ import { listCustomers } from "@/server/services/customer";
 import { exportToXlsx, exportMaxRows, attachmentHeader } from "@/lib/excel";
 import { prisma } from "@/lib/prisma";
 import { ALLOWED_DICTIONARY_CATEGORIES } from "@/lib/dictionary-categories";
+import { formatDateTime } from "@/lib/format";
 
 // 把动态字典(category+code -> label)拍平成一个查找表
 async function loadDict(): Promise<Record<string, string>> {
@@ -134,7 +136,7 @@ export async function GET(req: Request) {
             key: "createdAt",
             width: 20,
             formatter: (v) =>
-              v ? new Date(v as string).toLocaleString("zh-CN") : "",
+              v ? formatDateTime(v as string) : "",
           },
         ],
       );

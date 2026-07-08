@@ -1,3 +1,4 @@
+
 "use client";
 // 操作日志列表
 // 改进点(相对旧版):
@@ -29,6 +30,7 @@ import {
 import { DateTimeCell } from "@/components/table-cells";
 import { SYSTEM_USER_ID } from "@/lib/system";
 import { OperationLogDrawer } from "@/components/admin/operation-log-drawer";
+import { formatDateTime } from "@/lib/format";
 
 type Actor = {
   id: string;
@@ -175,7 +177,7 @@ async function exportLogsToCsv(
     return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
   };
   const rows = list.map((l) => [
-    new Date(l.at).toLocaleString("zh-CN"),
+    formatDateTime(l.at),
     l.status === "SUCCESS" ? "成功" : "失败",
     l.actor?.name ?? (l.actorId === SYSTEM_USER_ID ? "系统" : l.actorId),
     l.actor?.employeeNo ?? "",

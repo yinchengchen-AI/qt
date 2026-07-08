@@ -1,3 +1,4 @@
+
 // 发票详情 → 打印页 HTML
 import { err } from "@/lib/api";
 import { runWithRequestContext } from "@/lib/request-context";
@@ -11,6 +12,7 @@ import { requirePermission, RESOURCE, ACTION } from "@/lib/permissions";
 import { getInvoice } from "@/server/services/invoice";
 import { prisma } from "@/lib/prisma";
 import { renderPrintHtml, type PrintDoc } from "@/lib/print-html";
+import { formatDate, formatDateTime } from "@/lib/format";
 
 const TITLE_TYPE_MAP: Record<string, string> = {
   COMPANY: "公司",
@@ -76,12 +78,12 @@ export async function GET(
           },
           {
             label: "申请日",
-            value: new Date(inv.applyDate).toLocaleDateString("zh-CN"),
+            value: formatDate(inv.applyDate),
           },
           {
             label: "实际开票日",
             value: inv.actualIssueDate
-              ? new Date(inv.actualIssueDate).toLocaleDateString("zh-CN")
+              ? formatDate(inv.actualIssueDate)
               : "—",
           },
           {
@@ -117,7 +119,7 @@ export async function GET(
             rows: payments.length
               ? payments.map((p) => ({
                   label: p.paymentNo,
-                  value: `¥${Number(p.amount).toFixed(2)} · 到账 ${new Date(p.receivedAt).toLocaleString("zh-CN")} · ${PAYMENT_STATUS_MAP[p.status] ?? p.status}`,
+                  value: `¥${Number(p.amount).toFixed(2)} · 到账 ${formatDateTime(p.receivedAt)} · ${PAYMENT_STATUS_MAP[p.status] ?? p.status}`,
                 }))
               : [{ label: "(无)", value: "" }],
           },

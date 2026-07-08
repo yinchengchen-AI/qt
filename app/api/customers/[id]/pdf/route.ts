@@ -1,3 +1,4 @@
+
 // 客户详情 → 打印页 HTML(浏览器"另存为 PDF"使用)
 // 字段来源 = lib/types/entities.ts 的 Customer + 关联合同/项目/开票/回款
 import { err } from "@/lib/api";
@@ -12,11 +13,12 @@ import { prisma } from "@/lib/prisma";
 import { renderPrintHtml, type PrintDoc } from "@/lib/print-html";
 import { ALLOWED_DICTIONARY_CATEGORIES } from "@/lib/dictionary-categories";
 import { CONTRACT_STATUS_MAP, INVOICE_STATUS_MAP, PAYMENT_STATUS_MAP } from "@/lib/enum-maps";
+import { formatDate, formatDateTime } from "@/lib/format";
 
 const fmtDate = (s: string | Date | null | undefined) =>
-  s ? new Date(s).toLocaleDateString("zh-CN") : "—";
+  s ? formatDate(s) : "—";
 const fmtDateTime = (s: string | Date | null | undefined) =>
-  s ? new Date(s).toLocaleString("zh-CN") : "—";
+  s ? formatDateTime(s) : "—";
 const fmtAmount = (v: string | number | null | undefined) =>
   v == null || v === "" ? "—" : "¥" + Number(v).toFixed(2);
 

@@ -1,3 +1,4 @@
+
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
@@ -38,6 +39,7 @@ import { useResponsive } from "@/lib/use-breakpoint";
 import { ROLE_LABEL } from "@/lib/status";
 import { useT } from "@/lib/i18n";
 import { ReleasePopup, type ReleasePopupData } from "@/components/release-popup";
+import { formatDate, formatDateTime } from "@/lib/format";
 
 const { Sider, Header, Content } = Layout;
 const { Text } = Typography;
@@ -749,7 +751,7 @@ export function DashboardShell({ user, children }: Props) {
                       <Tag color={typeColor} style={{ margin: 0, fontSize: 11, lineHeight: "16px", padding: "0 6px" }}>
                         {m.type}
                       </Tag>
-                      <span title={new Date(m.createdAt).toLocaleString("zh-CN")}>
+                      <span title={formatDateTime(m.createdAt)}>
                         {relativeTime(m.createdAt)}
                       </span>
                     </div>
@@ -885,5 +887,5 @@ function relativeTime(iso: string): string {
   if (hr < 24) return `${hr} 小时前`;
   const day = Math.floor(hr / 24);
   if (day < 7) return `${day} 天前`;
-  return new Date(iso).toLocaleDateString("zh-CN");
+  return formatDate(iso);
 }

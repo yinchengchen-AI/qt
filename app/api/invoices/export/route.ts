@@ -1,3 +1,4 @@
+
 // 发票列表导出 XLSX
 import { z } from "zod";
 import { exportFileTimestamp } from "@/lib/date-range";
@@ -12,6 +13,7 @@ import {
   TITLE_TYPE_MAP,
   INVOICE_STATUS_MAP,
 } from "@/lib/enum-maps";
+import { formatDate } from "@/lib/format";
 
 const query = z.object({
   keyword: z.string().optional(),
@@ -87,14 +89,14 @@ export async function GET(req: Request) {
             key: "applyDate",
             width: 14,
             formatter: (v) =>
-              v ? new Date(v as string).toLocaleDateString("zh-CN") : "",
+              v ? formatDate(v as string) : "",
           },
           {
             header: "实际开票日",
             key: "actualIssueDate",
             width: 14,
             formatter: (v) =>
-              v ? new Date(v as string).toLocaleDateString("zh-CN") : "",
+              v ? formatDate(v as string) : "",
           },
           {
             header: "状态",

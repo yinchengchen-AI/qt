@@ -30,16 +30,27 @@ export function formatCompact(n: NumericInput): string {
   return v.toString();
 }
 
+/**
+ * 内部: Date → "YYYY-MM-DD" (本地时区).
+ * 跨页面统一显示格式, 导出与打印共用, 不依赖运行时 locale.
+ */
+function formatYmd(d: Date): string {
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+}
+
+/** "HH:mm" (本地时区). */
+function formatHm(d: Date): string {
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
 /** "2026-06-09" — date only, no time. */
 export function formatDate(s: string | Date | null | undefined): string {
   if (!s) return "-";
   const d = typeof s === "string" ? new Date(s) : s;
   if (Number.isNaN(d.getTime())) return "-";
-  return d.toLocaleDateString("zh-CN", {
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit"
-  });
+  return formatYmd(d);
 }
 
 /** "2026-06-09 17:30" — date + time, locale-formatted. */
@@ -47,13 +58,7 @@ export function formatDateTime(s: string | Date | null | undefined): string {
   if (!s) return "-";
   const d = typeof s === "string" ? new Date(s) : s;
   if (Number.isNaN(d.getTime())) return "-";
-  return d.toLocaleString("zh-CN", {
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-    hour: "2-digit",
-    minute: "2-digit"
-  });
+  return `${formatYmd(d)} ${formatHm(d)}`;
 }
 
 /** "34.29%" — accepts a fraction (0.3429) by default, or an already-percent number with isPercent=true. */

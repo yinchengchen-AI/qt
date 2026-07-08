@@ -1,3 +1,4 @@
+
 // 合同列表导出 XLSX — 入参与 GET /api/contracts 对齐
 import { z } from "zod";
 import { exportFileTimestamp } from "@/lib/date-range";
@@ -14,6 +15,7 @@ import {
   CONTRACT_STATUS_MAP,
   BILLING_STATUS_MAP,
 } from "@/lib/enum-maps";
+import { formatDate } from "@/lib/format";
 
 const query = z.object({
   keyword: z.string().optional(),
@@ -89,21 +91,21 @@ export async function GET(req: Request) {
             key: "signDate",
             width: 14,
             formatter: (v) =>
-              v ? new Date(v as string).toLocaleDateString("zh-CN") : "",
+              v ? formatDate(v as string) : "",
           },
           {
             header: "服务起期",
             key: "startDate",
             width: 14,
             formatter: (v) =>
-              v ? new Date(v as string).toLocaleDateString("zh-CN") : "",
+              v ? formatDate(v as string) : "",
           },
           {
             header: "服务止期",
             key: "endDate",
             width: 14,
             formatter: (v) =>
-              v ? new Date(v as string).toLocaleDateString("zh-CN") : "",
+              v ? formatDate(v as string) : "",
           },
           {
             header: "含税总额",

@@ -1,3 +1,4 @@
+
 // 合同详情 → 打印页 HTML
 import { err } from "@/lib/api";
 import { runWithRequestContext } from "@/lib/request-context";
@@ -7,11 +8,12 @@ import { getContract, getContractOverview } from "@/server/services/contract";
 import { prisma } from "@/lib/prisma";
 import { renderPrintHtml, type PrintDoc } from "@/lib/print-html";
 import { serviceTypeLabel, PAYMENT_METHOD_MAP, CONTRACT_STATUS_MAP, INVOICE_STATUS_MAP, PAYMENT_STATUS_MAP, REVIEW_ACTION_MAP } from "@/lib/enum-maps";
+import { formatDate, formatDateTime } from "@/lib/format";
 
 const fmtDate = (s: string | Date | null | undefined) =>
-  s ? new Date(s).toLocaleDateString("zh-CN") : "—";
+  s ? formatDate(s) : "—";
 const fmtDateTime = (s: string | Date | null | undefined) =>
-  s ? new Date(s).toLocaleString("zh-CN") : "—";
+  s ? formatDateTime(s) : "—";
 const fmtAmount = (v: string | number | null | undefined) =>
   v == null || v === "" ? "—" : "¥" + Number(v).toFixed(2);
 

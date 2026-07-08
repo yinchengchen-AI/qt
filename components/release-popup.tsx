@@ -1,3 +1,4 @@
+
 "use client";
 
 // 登录后弹窗:展示 AppRelease 内容。
@@ -20,6 +21,7 @@ import { useRouter } from "next/navigation";
 import { Button, Modal, Space, Tag, Typography, theme } from "antd";
 import { useResponsive } from "@/lib/use-breakpoint";
 import { useT } from "@/lib/i18n";
+import { formatDateTime } from "@/lib/format";
 
 const { Text, Title } = Typography;
 
@@ -128,7 +130,7 @@ export function ReleasePopup({ release, open, onClose }: Props) {
         </Title>
         <Text type="secondary" style={{ fontSize: 12 }}>
           {t("release.popup.publishedAt")}:{" "}
-          {new Date(release.publishedAt).toLocaleString("zh-CN")}
+          {formatDateTime(release.publishedAt)}
         </Text>
       </div>
 

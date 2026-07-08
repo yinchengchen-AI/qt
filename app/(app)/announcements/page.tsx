@@ -1,3 +1,4 @@
+
 "use client";
 import { useRef, useState } from "react";
 import Link from "next/link";
@@ -20,6 +21,7 @@ import { makeListRequest } from "@/lib/use-list-request";
 import { DateTimeCell } from "@/components/table-cells";
 import { FormCard, FormSection, FormGrid } from "@/components/form";
 import { useT } from "@/lib/i18n";
+import { formatDate } from "@/lib/format";
 
 type Announcement = {
   id: string;
@@ -167,7 +169,7 @@ export default function AnnouncementsPage() {
       dataIndex: "effectiveFrom",
       width: 240,
       render: (_, r) =>
-        `${r.effectiveFrom ? new Date(r.effectiveFrom).toLocaleDateString("zh-CN") : "—"} ~ ${r.effectiveTo ? new Date(r.effectiveTo).toLocaleDateString("zh-CN") : t("announcements.effectivePeriod.forever")}`
+        `${r.effectiveFrom ? formatDate(r.effectiveFrom) : "—"} ~ ${r.effectiveTo ? formatDate(r.effectiveTo) : t("announcements.effectivePeriod.forever")}`
     },
     {
       title: t("announcements.column.publishTime"),

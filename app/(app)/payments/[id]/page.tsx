@@ -1,3 +1,4 @@
+
 "use client";
 import { ProCard, ProDescriptions } from "@ant-design/pro-components";
 import { App, Button, Input, Modal, Space } from "antd";
@@ -18,6 +19,7 @@ import { useUserName } from "@/lib/user-lookup";
 import { CurrencyCell, DateTimeCell } from "@/components/table-cells";
 import { METHOD_MAP, PAYMENT_METHOD_MAP, serviceTypeLabel } from "@/lib/enum-maps";
 import { useResponsive } from "@/lib/use-breakpoint";
+import { formatDateTime } from "@/lib/format";
 
 const DESC_COL = { xs: 1, sm: 1, md: 2, lg: 2, xl: 3 } as const;
 
@@ -106,7 +108,7 @@ export default function PaymentDetailPage() {
       <PageHeader
         back={goBack}
         title={`回款 ${payment.paymentNo}`}
-        subtitle={`到账日：${payment.receivedAt ? new Date(payment.receivedAt).toLocaleString("zh-CN") : "—"}`}
+        subtitle={`到账日：${payment.receivedAt ? formatDateTime(payment.receivedAt) : "—"}`}
         meta={<StatusTag status={payment.status} domain="payment" />}
         actions={
           <Space wrap>

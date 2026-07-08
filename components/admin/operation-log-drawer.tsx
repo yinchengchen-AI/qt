@@ -1,3 +1,4 @@
+
 "use client";
 // 单条 OperationLog 详情抽屉：
 //   - 顶部元数据：时间 / 操作人 / 动作 / 状态 / IP / UA / 请求 ID / method / path / 失败原因
@@ -23,6 +24,7 @@ import {
 } from "@/lib/operation-log-format";
 import { StatusTag } from "@/components/status-tag";
 import { SYSTEM_USER_ID } from "@/lib/system";
+import { formatDateTime } from "@/lib/format";
 
 const { Text, Paragraph } = Typography;
 
@@ -138,7 +140,7 @@ function DetailBody({ data }: { data: OperationLogDetail }) {
             label: "时间",
             children: (
               <Text style={{ fontFeatureSettings: '"tnum"' }}>
-                {new Date(data.at).toLocaleString("zh-CN")}
+                {formatDateTime(data.at)}
               </Text>
             ),
           },

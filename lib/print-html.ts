@@ -1,3 +1,4 @@
+
 // 详情页"导出 PDF"用的打印页模板。
 // 设计要点:
 // - 服务端用同一份数据渲染一个独立 HTML 页面,新窗口打开后自动 window.print(),
@@ -8,6 +9,7 @@
 // - 长内容用 page-break-inside: avoid 切分,避免撑破单页
 
 import { exportFileTimestamp } from "@/lib/date-range";
+import { formatDateTime } from "@/lib/format";
 
 export type PrintRow = { label: string; value: string | number | null | undefined };
 
@@ -189,7 +191,7 @@ function renderSignature(): string {
 export function renderPrintHtml(doc: PrintDoc): string {
   const sys = doc.systemName ?? "杭州企泰安全科技 业务管理系统";
   const showSig = doc.signature !== false;
-  const stamp = new Date().toLocaleString("zh-CN");
+  const stamp = formatDateTime(new Date());
 
   return `<!DOCTYPE html>
 <html lang="zh-CN">

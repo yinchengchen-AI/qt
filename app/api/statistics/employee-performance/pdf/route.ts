@@ -1,3 +1,4 @@
+
 // 员工业绩汇总 → 打印页 HTML（用户浏览器「另存为 PDF」）
 // 结构对标 Excel 导出：汇总表（8 列）+ 明细表（7 列，按签约人分组小计）
 import { z } from "zod";
@@ -11,6 +12,7 @@ import {
   getSignerContractDetail
 } from "@/server/services/statistics";
 import { renderPrintHtml, type PrintDoc } from "@/lib/print-html";
+import { formatDate } from "@/lib/format";
 
 const query = z.object({
   from: z.string().optional(),
@@ -19,7 +21,7 @@ const query = z.object({
 });
 
 const fmtDate = (s: string | Date | null | undefined) =>
-  s ? new Date(s).toLocaleDateString("zh-CN") : "-";
+  s ? formatDate(s) : "-";
 
 // 金额统一保留 2 位小数，与 Excel #,##0.00 对齐
 const fmtMoney = (v: string | number | null | undefined) => {

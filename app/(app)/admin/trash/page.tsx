@@ -1,3 +1,4 @@
+
 "use client";
 // P13: 回收站 — 查看和恢复已软删除的记录
 import useSWR from "swr";
@@ -9,6 +10,7 @@ import { UndoOutlined } from "@ant-design/icons";
 import { Page } from "@/components/page";
 import { PageHeader } from "@/components/page-header";
 import { useResponsive } from "@/lib/use-breakpoint";
+import { formatDateTime } from "@/lib/format";
 
 const { Text } = Typography;
 
@@ -79,7 +81,7 @@ export default function TrashPage() {
         title: "删除时间",
         dataIndex: "deletedAt",
         width: 180,
-        render: (_, r) => <Text type="secondary">{new Date(r.deletedAt).toLocaleString("zh-CN")}</Text>
+        render: (_, r) => <Text type="secondary">{formatDateTime(r.deletedAt)}</Text>
       },
       {
         title: "操作",

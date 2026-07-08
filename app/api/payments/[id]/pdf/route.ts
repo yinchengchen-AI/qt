@@ -1,3 +1,4 @@
+
 // 回款详情 → 打印页 HTML
 import { err } from "@/lib/api";
 import { runWithRequestContext } from "@/lib/request-context";
@@ -7,6 +8,7 @@ import { requirePermission, RESOURCE, ACTION } from "@/lib/permissions";
 import { getPayment } from "@/server/services/payment";
 import { prisma } from "@/lib/prisma";
 import { renderPrintHtml, type PrintDoc } from "@/lib/print-html";
+import { formatDateTime } from "@/lib/format";
 
 export async function GET(
   req: Request,
@@ -40,7 +42,7 @@ export async function GET(
           { label: "收款方式", value: METHOD_MAP[p.method] ?? p.method },
           {
             label: "到账日",
-            value: new Date(p.receivedAt).toLocaleString("zh-CN"),
+            value: formatDateTime(p.receivedAt),
           },
           { label: "银行流水号", value: p.bankRefNo ?? "—" },
           { label: "收款行", value: p.bankName ?? "—" },
@@ -61,7 +63,7 @@ export async function GET(
           {
             label: "对账时间",
             value: p.reconciledAt
-              ? new Date(p.reconciledAt).toLocaleString("zh-CN")
+              ? formatDateTime(p.reconciledAt)
               : "—",
           },
           { label: "备注", value: p.remark ?? "—" },
