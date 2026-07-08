@@ -1,7 +1,7 @@
 # 杭州企泰安全科技 业务管理系统 (qt-biz)
 
 > 客户 / 合同 / 开票 / 回款 一体化管理,附件走 MinIO presigned 直传。
-> **当前版本: v0.8.2**(2026-07-04)
+> **当前版本: v0.9.7**(2026-07-08)
 > 详细设计见 [docs/DESIGN-v3.md](docs/DESIGN-v3.md),用户手册见 [docs/USER_MANUAL.md](docs/USER_MANUAL.md)。
 > 2026-07-04 增量同步: 全库代码审计 10 处 bug 修复 + 2 组单元测试已补到「最近更新」开头。
 
@@ -398,6 +398,33 @@ xlsx 导出走 `lib/excel.ts` + `exceljs`; 中文文件名通过 `attachmentHead
 
 ## 最近更新
 
+### v0.9.7(2026-07-08) 日期与日期时间显示/导出统一为 YYYY-MM-DD 风格
+
+> 此前 `lib/format.ts` 的 `formatDate`/`formatDateTime` 依赖 `zh-CN` locale,输出 `2026/06/09` 与 `2026/06/09 17:30`;
+> 同时全库散落 18 处裸 `new Date(x).toLocaleDateString('zh-CN')` / `toLocaleString('zh-CN')`,与中央函数行为分裂。
+> 本次把中央函数切到本地时区的 `YYYY-MM-DD` / `YYYY-MM-DD HH:mm`,所有调用点统一走中央 helper。
+
+**中央函数改造** (`lib/format.ts`):
+- 新增 `formatYmd(d)` / `formatHm(d)` 两个内部工具,纯本地时区拼接,无 locale 依赖
+- `formatDate` → `YYYY-MM-DD`,`formatDateTime` → `YYYY-MM-DD HH:mm`,空值仍返回 `-`
+
+**18 处调用点统一**:
+- 显示/页面 (8): `components/release-popup`、`components/admin/operation-log-drawer`、`components/dashboard-shell`、`app/(app)/admin/{operation-logs,trash,users}/page.tsx`、`app/(app)/admin/users/page.tsx` (CSV 导出)、`app/(app)/announcements/page.tsx`、`app/(app)/payments/[id]/page.tsx`
+- 导出/CSV (5): `app/api/{contracts,customers,invoices,payments}/export/route.ts` + 上述 users 导出 — 空值回退保留为 `""`
+- PDF 路由 (4): `app/api/{contracts,customers,invoices,payments}/[id]/pdf/route.ts` + `lib/print-html.ts` — 空值回退保留为 `"—"`
+- 统计 PDF (1): `app/api/statistics/employee-performance/pdf/route.ts` — 空值回退保留为 `"-"`
+
+**保留不动**:
+- `server/events/bus.ts` 本地 `formatDate` 本就 `toISOString().slice(0,10)`,已是 `YYYY-MM-DD`
+- `scripts/migrate/{contract-fake-close-recovery,contract-fake-close-recurrent-lock}.ts` 本地 `formatDate` 用于 SQL 表名 `YYYYMMDD`,非用户可见
+
+**版本号**: `0.9.6` → `0.9.7`(patch bump,纯 UI 文案统一,无 schema 变更,无 API 契约变更,无 breaking)
+
+**部署说明**:
+- 无 schema 变更、无新 migration,`prisma migrate deploy` 不需要跑
+- 重启 next start 即可生效(无缓存文件、无服务端状态依赖)
+- 导出 CSV/Excel 列宽可按需调整(日期字段从 14 → 10 字符宽度更紧凑)
+
 ### v0.8.2(2026-07-04) 回滚 9a48265 + README 乱码修复 + 删 CI/Deploy 自动化
 
 > `9a48265` 那次 commit 引入 3 个 prisma migration 试图下线报表中心,但在 fresh DB 上按时间序 apply 时与历史 migration `20260707_report_center` 冲突(同一 `ReportDefinition` 表被两次 CREATE 字段结构不同的版本),CI 在 `prisma drift` 和 `vitest` 两个 job 的 `prisma migrate deploy` 步骤上失败。本版本决定回滚该 commit 的代码 + migration 改动,保留 v0.8.1 状态;同时彻底删除 CI 和 GitHub 自动部署(workflow 文件 + 依赖),改回「本地开发 + 运维手动部署」模式。
@@ -745,6 +772,7 @@ sudo systemctl restart crond
 
 ## 历史里程碑
 
+- **v0.9.7(2026-07-08)**: 日期与日期时间显示/导出统一为 `YYYY-MM-DD` 风格 — `lib/format.ts` 切到本地时区 + 18 处 `toLocaleDateString/toLocaleString('zh-CN')` 改走中央 helper;空值回退(`""` / `"—"` / `"-"`)按各调用点原地保留
 - **v0.8.2(2026-07-04)**: 回滚 9a48265 (CI 暴露 schema migration 冲突, 19 个代码/lib 文件 + 3 migration 目录回退到 ced7665) + README 乱码修复(从 v0.8.1 还原 blob + 追加修复叙事段) + 删 CI/GitHub 自动部署 (改回本地开发 + 运维手动部署)
 - **v0.8.0(2026-07-03)**: 报表中心 PDF 5 字段对齐 + Excel 多 sheet + 移除自动生成 (cron 删了, 走手动) + 文件名时间戳 (YYYY-MM-DD_HHMM)
 - **v0.6.0(2026-06-29)**:cron 静默失败 9 个月事故复盘 (242 个合同 269 万应收恢复) + reopen API + force 旁路 + cron-healthcheck 自检 + 强关 7/3/1 醒目文案 + postmortem reopen vs force 业务选择指南 + Timeline icon 对称 + serviceTypeLabel helper + by-region Tooltip
