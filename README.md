@@ -1,7 +1,7 @@
 # 杭州企泰安全科技 业务管理系统 (qt-biz)
 
 > 客户 / 合同 / 开票 / 回款 一体化管理,附件走 MinIO presigned 直传。
-> **当前版本: v0.9.7**(2026-07-08)
+> **当前版本: v0.10.0**(2026-07-11)
 > 详细设计见 [docs/DESIGN-v3.md](docs/DESIGN-v3.md),用户手册见 [docs/USER_MANUAL.md](docs/USER_MANUAL.md)。
 > 2026-07-04 增量同步: 全库代码审计 10 处 bug 修复 + 2 组单元测试已补到「最近更新」开头。
 
@@ -223,11 +223,27 @@ NextAuth v4 + JWT 策略(不挂 PrismaAdapter,P0 阶段简化)。
 
 权限位定义在 `lib/permissions.ts`,与 `prisma/seed.ts` 同源。SALES 行级隔离依靠 `ownershipWhere(user)` 注入 Prisma 查询 `where` 子句。
 
+### 登录安全加固(v0.10.0 起)
+
+| 防护层 | 实现 | 阈值 |
+|---|---|---|
+| IP 限速 | `lib/login-rate-limit.ts` 进程内 bucket + `app/api/auth/[...nextauth]/route.ts` 包裹层 | 5min 窗口内 20 次失败 → 429 |
+| 用户失败计数 | `User.failedLoginCount / lockedUntil`,DB 持久化 | 5 次 → 锁 15min;第 6 次起锁 60min |
+| 登录审计 | `lib/login-audit.ts` → `OperationLog`,8 类事件(LOGIN_SUCCESS / LOGIN_FAIL / LOGIN_LOCKED / LOGIN_RATE_LIMITED / PASSWORD_RESET_REQUESTED / PASSWORD_RESET_CONSUMED / PASSWORD_RESET_INVALID / PASSWORD_CHANGED) | 全量记录,`/api/operation-logs` 可见 |
+| 密码自服务重置 | `lib/password-reset.ts` + `/api/auth/password-reset/{request,confirm}`,30min TTL,SHA-256 token,一次性消费 | 5min/5 次 IP 限速防洪水 |
+| 必须改密 | `User.mustChangePassword`,legacy 迁移 / admin 重置后置 true,登录跳 `/login?resetToken=...` | 见 `lib/auth.ts` jwt callback |
+| callbackUrl 开放重定向 | `lib/safe-callback-url.ts` 用 `URL` 解析做白名单,禁 `//` / `/\` / `javascript:` / userinfo / 跨 origin | 见 `tests/safe-callback-url.test.ts` |
+| 角色撤销 | `User.roleVersion` 嵌入 JWT + `lib/auth.ts` 缓存 TTL 降到 2s,改角色/禁用户 ≤ 2s 全局失效 | 主动 `invalidateAuthCache` 加速 |
+| 工号归一化 | `lib/auth.ts#normalizeEmployeeNo`,trim + toLowerCase,`@unique` 大小写敏感引起的双账号隐患消除 | login / authorize / scripts 同源 |
+
+设计取舍与回放见 [docs/login-security-review-2026-07-11.md](docs/login-security-review-2026-07-11.md)。
+
 ### Cookie & 会话
 
 - 生产 `useSecureCookies` 仅在 `FORCE_HTTPS=true` 时开启(HTTP 反代下保持非 secure)
-- 密码 bcrypt cost=10 哈希
-- 角色 / 状态 30s TTL 缓存,admin 改角色 / 禁用户最迟 30s 生效
+- 密码 bcrypt cost=12 哈希
+- 角色 / 状态 2s TTL 缓存 + `roleVersion` 校验,admin 改角色 / 禁用户最迟 2s 生效
+- 安全响应头(CSP / X-Frame-Options DENY / nosniff / Referrer-Policy / Permissions-Policy)由 `next.config.mjs` 全站下发
 
 ## 附件存储 (MinIO)
 
@@ -397,6 +413,65 @@ xlsx 导出走 `lib/excel.ts` + `exceljs`; 中文文件名通过 `attachmentHead
 | dev server `/login` `/dashboard` `/contracts` `/reports/PERFORMANCE` | 200 |
 
 ## 最近更新
+
+### v0.10.0(2026-07-11) 登录安全加固 + 自服务密码重置
+
+> v0.9.x 阶段登录链路只有 bcrypt 校验, 无失败计数 / 限速 / 审计 / 密码自服务重置.
+> 本次按 [docs/login-security-review-2026-07-11.md](docs/login-security-review-2026-07-11.md) 触发的修复集, 一次性把 P1/P2 全部上线.
+> Schema 改动: User 表新增 5 字段 + 新表 PasswordResetToken (migration `20260711_login_security_hardening`).
+
+**Schema 变更** (`prisma/migrations/20260711_login_security_hardening/migration.sql`):
+- `User.mustChangePassword Boolean @default(false)` — legacy 迁移 / admin 重置后强制改密
+- `User.failedLoginCount Int @default(0)` — 连续失败计数, 登录成功清零
+- `User.lockedUntil DateTime?` — 临时锁定到期时间 (DB 索引), 过期自动失效
+- `User.lastFailedLoginAt DateTime?` — 衰减窗口判断用
+- `User.roleVersion Int @default(0)` — 角色/权限变更时 +1, JWT 携带, 缓存命中检查
+- 新表 `PasswordResetToken` (tokenHash 唯一索引, 30min TTL, 一次性消费, 申请人/消费人 IP+UA 全留痕)
+
+**限速双层防护**:
+- **IP 维度** (in-memory, `lib/login-rate-limit.ts` + `app/api/auth/[...nextauth]/route.ts` 包裹层): 5min 窗口内 20 次失败 → 429
+- **用户维度** (DB 持久化, 跨实例可见): 5 次失败锁 15min, 第 6 次起锁 60min, 距上次失败 30min+ 视为新一轮
+
+**登录审计** (`lib/login-audit.ts`):
+- 8 类事件写 `OperationLog` (entity="Auth"): LOGIN_SUCCESS / LOGIN_FAIL / LOGIN_LOCKED / LOGIN_RATE_LIMITED / PASSWORD_RESET_REQUESTED / PASSWORD_RESET_CONSUMED / PASSWORD_RESET_INVALID / PASSWORD_CHANGED
+- `diff` 字段记 employeeNo + reason (e.g. `failed_count=3`, `locked_until=2026-07-11T...`), 不写明文密码 / token
+- `/api/operation-logs` 直接展示审计时间线, 无需新 schema
+
+**自服务密码重置** (`lib/password-reset.ts` + 2 个 API):
+- `POST /api/auth/password-reset/request` — 校验 (employeeNo, email) 匹配, 签发 token, **统一返回 200** 防枚举; reset URL 写到 `OperationLog` (action=PASSWORD_RESET_LINK), 管理员通过 `/api/operation-logs` 查链接后内部送达
+- `POST /api/auth/password-reset/confirm` — 校验 token + 写新密码 + 清锁定; 区分 NOT_FOUND/EXPIRED/ALREADY_USED, 对外统一 "链接无效或已过期"
+- 5min/5 次 IP 限速防 token 洪水
+
+**登录页改动** (`app/login/page.tsx`):
+- 「忘记密码?」由 mailto 改为 Modal 申请表单 (employeeNo + email)
+- 新增 `?resetToken=xxx` 改密页 (覆盖原有登录表单), 改密成功后 `router.replace("/login")`
+- 登录成功后 `mustChangePassword=true` 跳 `?resetRequired=1` 强制改密
+- `callbackUrl` 解析从黑名单 (`//`, `/\\`, `/%5C`, `/%2f`) 升级到 URL 解析白名单, 禁 `javascript:` / `data:` / `vbscript:` / userinfo / `///evil.com` / 反斜杠绕过 / 跨 origin
+- `router.push(callbackUrl) + router.refresh()` 改为 `router.replace + await refresh`, 修竞态
+- 工号 `trim().toLowerCase()` 归一化, 消除 `@unique` 大小写敏感引起的双账号隐患
+
+**其他安全点**:
+- `lib/auth.ts` 缓存 TTL 30s → 2s, JWT 显式写 `token.exp`, 杜绝 "老 token 跨升级保留旧 exp" 窗口
+- `lib/auth.ts#normalizeEmployeeNo` 导出, 登录 / authorize / scripts 共用
+- `next.config.mjs` 加 CSP / X-Frame-Options DENY / nosniff / Referrer-Policy / Permissions-Policy 全站响应头
+- `lib/auth.ts#lastLoginAt` 失败包 try/catch, 不阻塞登录主流程
+- `lib/auth.ts#secret` 走 `env.NEXTAUTH_SECRET` (启动期 fail-fast), 不直接读 `process.env`
+- `prisma/seed.ts` + `scripts/shared/seed-roles.ts` 的 system 占位 user 改用 `bcrypt(randomBytes(32))`, 杜绝固定 `$2b$10$ZZZ...` 占位串在不同 bcrypt 实现下的不稳定行为
+- `scripts/shared/seed-test-users.ts` 加 `NODE_ENV=production` 守门, 防止误在生产覆盖 5 个内置账号密码
+- `scripts/migrate/legacy-fineui.mjs` 不再批量设 `123456`, 每个用户随机 22 字符密码 + `mustChangePassword=true`, 落地后由管理员通过 reset 流程送达
+
+**新增测试**:
+- `tests/login-security.test.ts` — 14 个测试 (IP 限速 + 工号归一化 + token hash 抗碰撞 + buildResetUrl)
+- `tests/safe-callback-url.test.ts` — 9 个测试 (开放重定向各种绕过)
+
+**版本号**: `0.9.7` → `0.10.0` (minor bump, 含 schema 变更 + 新表 + API 端点, 涉及契约)
+
+**部署说明**:
+- **必须**跑 `npx prisma migrate deploy` 应用 `20260711_login_security_hardening` (新增 1 表 + 5 列)
+- 现有用户新字段都是 NOT NULL + DEFAULT, 老数据零迁移成本 (PG 把 NULL/缺省按 DEFAULT 填充)
+- 现有 `id="system"` 占位用户的 `passwordHash` migration 不会重写 (仅 DDL); 若想让它也用随机 hash, 部署后手动跑 `pnpm seed-roles` 覆盖即可
+- `next.config.mjs` 加了响应头, 反代 / CDN 缓存层需要 purge 一次, 避免老资源仍走旧头
+- 无 frontend breaking, 已登录用户下次刷新即生效 (新 schema 字段实时读)
 
 ### v0.9.7(2026-07-08) 日期与日期时间显示/导出统一为 YYYY-MM-DD 风格
 
@@ -772,6 +847,7 @@ sudo systemctl restart crond
 
 ## 历史里程碑
 
+- **v0.10.0(2026-07-11)**: 登录安全加固 — 限速 + 失败计数锁定 + 审计日志 + 自服务密码重置 + 开放重定向 URL 白名单;新增 `User.mustChangePassword / failedLoginCount / lockedUntil / lastFailedLoginAt / roleVersion` 5 字段 + 新表 `PasswordResetToken`(migration `20260711_login_security_hardening`),详见 [docs/login-security-review-2026-07-11.md](docs/login-security-review-2026-07-11.md) 与 README 「最近更新」v0.10.0 段
 - **v0.9.7(2026-07-08)**: 日期与日期时间显示/导出统一为 `YYYY-MM-DD` 风格 — `lib/format.ts` 切到本地时区 + 18 处 `toLocaleDateString/toLocaleString('zh-CN')` 改走中央 helper;空值回退(`""` / `"—"` / `"-"`)按各调用点原地保留
 - **v0.8.2(2026-07-04)**: 回滚 9a48265 (CI 暴露 schema migration 冲突, 19 个代码/lib 文件 + 3 migration 目录回退到 ced7665) + README 乱码修复(从 v0.8.1 还原 blob + 追加修复叙事段) + 删 CI/GitHub 自动部署 (改回本地开发 + 运维手动部署)
 - **v0.8.0(2026-07-03)**: 报表中心 PDF 5 字段对齐 + Excel 多 sheet + 移除自动生成 (cron 删了, 走手动) + 文件名时间戳 (YYYY-MM-DD_HHMM)
