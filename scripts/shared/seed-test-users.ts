@@ -54,6 +54,16 @@ function resolvePassword(): string {
   return pwd;
 }
 
+// 守门: 生产环境禁止跑这个脚本, 避免把 admin/sales/finance/ops/expert 这些
+// 短工号覆盖到生产真账号的密码, 或者在生产库里插 5 个弱密码角色。
+if (process.env.NODE_ENV === "production") {
+  console.error(
+    "[FATAL] seed-test-users 拒绝在生产环境运行 (NODE_ENV=production)。\n" +
+      "        这些 dev 测试账号 (admin/sales/...) 工号短, 会跟生产真账号冲突。"
+  );
+  process.exit(2);
+}
+
 async function main(): Promise<void> {
   const password = resolvePassword();
   const passwordHash = await bcrypt.hash(password, BCRYPT_COST);

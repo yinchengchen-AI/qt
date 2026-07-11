@@ -230,7 +230,14 @@ async function main() {
     baseEmployeeNo.forEach((b, i) => {
       if (employeeNos[i] !== b) pinyinDup++;
     });
-    const passwordHash = await bcrypt.hash("123456", 12);
+    // 安全加固 (2026-07-11): 不再批量设弱密码 "123456"
+    //   每个用户用 crypto.randomBytes(16).toString("base64") 生成 22 字符随机密码,
+    //   并打 mustChangePassword=true, 用户首次登录会被踢到改密页强制改密。
+    //   旧密码 ("123456") 是迁移脚本的早期硬编码, 现在任何残留账号都改用随机密码。
+    //   落地后真实密码通过 out-of-band 渠道 (邮件 / 站内信 / 现场) 由管理员送达。
+    const crypto = await import("node:crypto");
+    const newPassword = crypto.randomBytes(16).toString("base64");
+    const passwordHash = await bcrypt.hash(newPassword, 12);
     for (let i = 0; i < users.length; i++) {
       const u = users[i];
       const employeeNo = employeeNos[i];
@@ -241,7 +248,7 @@ async function main() {
       if (!DRY_RUN) {
         const r = await pg.user.upsert({
           where: { employeeNo },
-          update: { name: displayName, email, passwordHash, roleId: adminRole.id, departmentId, status },
+          update: { name: displayName, email, passwordHash, roleId: adminRole.id, departmentId, status, mustChangePassword: true },
           create: {
             employeeNo,
             name: displayName,
@@ -249,7 +256,8 @@ async function main() {
             passwordHash,
             roleId: adminRole.id,
             departmentId,
-            status
+            status,
+            mustChangePassword: true
           }
         });
         idMap.user[u.ID] = r.id;

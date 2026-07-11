@@ -8,6 +8,8 @@
  * 用法:
  *   pnpm seed-roles
  */
+import { randomBytes } from "node:crypto";
+import bcrypt from "bcrypt";
 import { prisma } from "@/lib/prisma";
 import { ROLE_PERMISSIONS } from "@/lib/permissions";
 
@@ -36,9 +38,12 @@ async function main(): Promise<void> {
   }
 
   // System actor: 状态机自动转换/定时任务 等"非人"行为共用 id="system" 的占位 user
-  // 见 lib/system.ts SYSTEM_USER_ID;不可登录(passwordHash 是不合法 bcrypt,isSystem=true)
+  // 见 lib/system.ts SYSTEM_USER_ID;不可登录(isSystem=true 拦在 authorize,密码永不匹配)
+  // passwordHash 用 bcrypt(crypto.randomBytes(32)) 一次性随机生成, 杜绝固定占位字符串:
+  //   - 旧固定 $2b$10$ZZZ... 在某些 bcrypt 实现里会抛异常或比对结果不稳定
+  //   - 随机串永远不会和真实密码撞, 永远不能"侥幸"登入
   const SYSTEM_USER_ID = "system";
-  const SYSTEM_USER_PASSWORD_HASH = "$2b$10$ZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZ";
+  const SYSTEM_USER_PASSWORD_HASH = bcrypt.hashSync(randomBytes(32), 12);
   const adminRole = await prisma.role.findUnique({ where: { code: "ADMIN" } });
   if (!adminRole) throw new Error("ADMIN role not seeded; cannot create system user");
   const sys = await prisma.user.upsert({

@@ -53,37 +53,68 @@ enum MessageType {
 }
 
 model User {
-  id           String      @id @default(cuid())
-  employeeNo   String      @unique
-  name         String
-  email        String      @unique
-  phone        String?
-  passwordHash String
-  roleId       String
-  role         Role        @relation(fields: [roleId], references: [id])
-  departmentId String?
-  department   Department? @relation("UserDepartment", fields: [departmentId], references: [id])
-  status       String      @default("ACTIVE") // ACTIVE | DISABLED
-  isSystem     Boolean     @default(false)
-  lastLoginAt  DateTime?   @db.Timestamptz(6)
-  wechatWorkId String?
-  createdAt    DateTime    @default(now()) @db.Timestamptz(6)
-  updatedAt    DateTime    @updatedAt @db.Timestamptz(6)
-  deletedAt    DateTime?   @db.Timestamptz(6)
+  id                 String      @id @default(cuid())
+  employeeNo         String      @unique
+  name               String
+  email              String      @unique
+  phone              String?
+  passwordHash       String
+  roleId             String
+  role               Role        @relation(fields: [roleId], references: [id])
+  departmentId       String?
+  department         Department? @relation("UserDepartment", fields: [departmentId], references: [id])
+  status             String      @default("ACTIVE") // ACTIVE | DISABLED
+  isSystem           Boolean     @default(false)
+  lastLoginAt        DateTime?   @db.Timestamptz(6)
+  wechatWorkId       String?
+  // ---- 登录安全 (2026-07-11 hardening) ----
+  // mustChangePassword: legacy 迁移/管理员重置后置 true, 登录后强制改密
+  mustChangePassword Boolean     @default(false)
+  // failedLoginCount / lockedUntil: 失败计数 + 临时锁定 (authorize 写)
+  failedLoginCount   Int         @default(0)
+  lockedUntil        DateTime?   @db.Timestamptz(6)
+  lastFailedLoginAt  DateTime?   @db.Timestamptz(6)
+  // roleVersion: 角色/权限变更时 +1, JWT 携带, 用于快速撤销缓存命中
+  roleVersion        Int         @default(0)
+  createdAt          DateTime    @default(now()) @db.Timestamptz(6)
+  updatedAt          DateTime    @updatedAt @db.Timestamptz(6)
+  deletedAt          DateTime?   @db.Timestamptz(6)
 
   uploadedAttachments    Attachment[]
-  signedContracts        Contract[]       @relation("ContractSigner")
-  ownedContracts         Contract[]       @relation("ContractOwner")
+  signedContracts        Contract[]           @relation("ContractSigner")
+  ownedContracts         Contract[]           @relation("ContractOwner")
   messages               Message[]
-  publishedAnnouncements Announcement[]   @relation("AnnouncementPublishUser")
+  publishedAnnouncements Announcement[]       @relation("AnnouncementPublishUser")
   dunningNotes           DunningNote[]
-  publishedReleases      AppRelease[]       @relation("AppReleasePublishUser")
+  publishedReleases      AppRelease[]         @relation("AppReleasePublishUser")
   releaseReads           AppReleaseRead[]
   profile                EmployeeProfile?
+  passwordResetTokens    PasswordResetToken[]
 
   @@index([roleId])
   @@index([status])
   @@index([departmentId])
+  @@index([lockedUntil])
+}
+
+model PasswordResetToken {
+  // 自服务密码重置 token (2026-07-11)
+  // 设计: 仅存 tokenHash, 原始 token 一次性返回给请求方;
+  // 使用后置 usedAt, 重复消费会被拒; expiresAt 默认 30 分钟。
+  id                 String    @id @default(cuid())
+  userId             String
+  user               User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tokenHash          String    @unique
+  expiresAt          DateTime  @db.Timestamptz(6)
+  usedAt             DateTime? @db.Timestamptz(6)
+  createdAt          DateTime  @default(now()) @db.Timestamptz(6)
+  requestedIp        String?
+  requestedUserAgent String?
+  consumedIp         String?
+  consumedUserAgent  String?
+
+  @@index([userId])
+  @@index([expiresAt])
 }
 
 model EmployeeProfile {
@@ -374,7 +405,7 @@ model Contract {
   completionInvoiceRatio Decimal   @default(0.95) @db.Decimal(4, 2)
   // legacy-fineui.mjs 迁移时把 ContractAmount<=0 的合同 totalAmount 写成 0.01 占位值,
   // 这里标 true 让统计/列表默认排除(可经 includeLegacyZeroAmount=true 显式包含). 详见 migration 20260705.
-  isLegacyZeroAmount    Boolean   @default(false)
+  isLegacyZeroAmount     Boolean   @default(false)
   createdAt              DateTime  @default(now()) @db.Timestamptz(6)
   updatedAt              DateTime  @updatedAt @db.Timestamptz(6)
   createdById            String
@@ -713,33 +744,33 @@ model DunningNote {
 //     决定 popup 是否弹出,不需要行级隔离)。
 // =====================================================
 model AppRelease {
-  id            String    @id @default(cuid())
+  id            String           @id @default(cuid())
   // 版本号,如 "v0.7.0";允许自由填写,但本项目默认按 package.json 同步。
-  version       String    @db.VarChar(50)
-  title         String    @db.VarChar(200)
+  version       String           @db.VarChar(50)
+  title         String           @db.VarChar(200)
   // 概要:卡片/列表的 1-2 行简介(<=500 字符)
-  summary       String    @db.VarChar(500)
+  summary       String           @db.VarChar(500)
   // 详情:支持换行的 Markdown 文本(<=10000),在弹窗/详情页用白名单渲染。
-  content       String    @db.VarChar(10000)
+  content       String           @db.VarChar(10000)
   // 是否"重要"更新:important=true 时,即使已读,顶部仍展示红点提示用户回顾
   // (popup 的视觉权重不同: important → 大弹窗, normal → 小提示)
-  important     Boolean   @default(false)
-  publishedAt   DateTime  @default(now()) @db.Timestamptz(6)
+  important     Boolean          @default(false)
+  publishedAt   DateTime         @default(now()) @db.Timestamptz(6)
   publishedById String
-  publishedBy   User      @relation("AppReleasePublishUser", fields: [publishedById], references: [id], onDelete: Restrict)
-  createdAt     DateTime  @default(now()) @db.Timestamptz(6)
-  updatedAt     DateTime  @updatedAt @db.Timestamptz(6)
-  deletedAt     DateTime? @db.Timestamptz(6)
+  publishedBy   User             @relation("AppReleasePublishUser", fields: [publishedById], references: [id], onDelete: Restrict)
+  createdAt     DateTime         @default(now()) @db.Timestamptz(6)
+  updatedAt     DateTime         @updatedAt @db.Timestamptz(6)
+  deletedAt     DateTime?        @db.Timestamptz(6)
   reads         AppReleaseRead[]
 
   // 来源:MANUAL 管理员手敲;GIT_COMMITS 从 git log 自动生成 (scripts/release/generate.ts)
   // - MANUAL 为旧数据 / 紧急补丁的兼容值,新版本应优先用 GIT_COMMITS
   // - gitFrom/gitTo 记录该 release 覆盖的 commit 区间(可空:手敲的 release 没源)
   // - gitCommitCount 用于列表展示"基于 N 个 commit",辅助审计
-  source          String    @default("MANUAL")
-  gitFrom         String?   @db.VarChar(40)
-  gitTo           String?   @db.VarChar(40)
-  gitCommitCount  Int?
+  source         String  @default("MANUAL")
+  gitFrom        String? @db.VarChar(40)
+  gitTo          String? @db.VarChar(40)
+  gitCommitCount Int?
 
   @@index([publishedAt])
   @@index([deletedAt])

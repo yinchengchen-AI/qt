@@ -1,10 +1,11 @@
 "use client";
 
 import { Suspense, useState } from "react";
-import { App as AntdApp, Button, Checkbox, Form, Input } from "antd";
+import { App as AntdApp, Button, Checkbox, Form, Input, Modal, message as antMessage } from "antd";
 import { LockOutlined, UserOutlined, FileTextOutlined, TeamOutlined, BarChartOutlined } from "@ant-design/icons";
 import { signIn } from "next-auth/react";
 import { useRouter, useSearchParams } from "next/navigation";
+import { safeCallbackUrl } from "@/lib/safe-callback-url";
 import styles from "./login.module.css";
 
 const ERROR_MAP: Record<string, string> = {
@@ -19,15 +20,13 @@ function mapAuthError(code?: string | null) {
   return ERROR_MAP[code] ?? "登录失败，请检查工号或密码";
 }
 
-// 仅开发/预览环境开放快速填充;生产构建时 NODE_ENV 会被静态替换为 "production",
-// Next.js 的 dead-code elimination 会把整段折掉,DOM 上不会渲染测试卡。
-// 密码统一从 DEV_QUICK_FILL_PASSWORD 读(默认占位串),避免明文密码字面量进 git 历史。
+// 仅开发/预览环境开放快速填充; 生产构建时 NODE_ENV 会被静态替换为 "production",
+// Next.js 的 dead-code elimination 会把整段折掉, DOM 上不会渲染测试卡。
+// 密码统一从 DEV_QUICK_FILL_PASSWORD 读(默认占位串), 避免明文密码字面量进 git 历史。
 const QUICK_FILL_PASSWORD =
   process.env.NODE_ENV !== "production"
     ? process.env.DEV_QUICK_FILL_PASSWORD ?? "dev-only-fill"
     : "";
-// 与 prisma/seed.ts 内置的 5 个角色一一对应(管理员/业务/财务/行政/技术专家)。
-// 配合 scripts/dev/seed-dev-accounts.ts 一次性建出对应账号,密码与 QUICK_FILL_PASSWORD 一致。
 const QUICK_ACCOUNTS: { no: string; label: string }[] =
   process.env.NODE_ENV !== "production"
     ? [
@@ -41,38 +40,155 @@ const QUICK_ACCOUNTS: { no: string; label: string }[] =
 
 const SHOW_QUICK_FILL = process.env.NODE_ENV !== "production";
 
-// 系统对外展示的版本号(右上角轻量徽标)。
-// 优先读 NEXT_PUBLIC_APP_VERSION,缺省回落到 "v2.0",跟原 V2 提交保持一致;
-// 改版时只需调 env 或这里,不动 UI 代码。
 const APP_VERSION = process.env.NEXT_PUBLIC_APP_VERSION ?? "v2.0";
 
 type FormValues = { employeeNo: string; password: string };
 
-// 解析 callbackUrl,只允许站内相对路径,避免钓鱼/开放重定向
-// 规则: 必须以 "/" 开头,且不以 "//" 开头(防 protocol-relative URL)
-function safeCallbackUrl(raw: string | null | undefined): string {
-  if (!raw) return "/dashboard";
-  if (!raw.startsWith("/") || raw.startsWith("//")) return "/dashboard";
-  if (raw.startsWith("/\\") || raw.startsWith("/%5C") || raw.startsWith("/%2f")) return "/dashboard";
-  return raw;
+// callbackUrl 安全校验: 抽到 lib/safe-callback-url.ts, 方便单测
+// 见 lib/safe-callback-url.ts 完整注释
+
+/** 改密表单: resetToken 来自 ?resetToken=xxx, 新密码至少 8 字符 */
+function ChangePasswordForm({ token, onDone }: { token: string; onDone: () => void }) {
+  const [form] = Form.useForm<{ password: string; confirm: string }>();
+  const [loading, setLoading] = useState(false);
+
+  async function onFinish(values: { password: string; confirm: string }) {
+    if (loading) return;
+    if (values.password !== values.confirm) {
+      antMessage.error("两次输入的密码不一致");
+      return;
+    }
+    setLoading(true);
+    try {
+      const res = await fetch("/api/auth/password-reset/confirm", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ token, newPassword: values.password })
+      });
+      const data = await res.json();
+      if (res.ok && data?.code === 0) {
+        antMessage.success("密码已更新，请用新密码登录");
+        onDone();
+      } else {
+        antMessage.error(data?.message ?? "重置失败，链接可能已过期");
+      }
+    } catch {
+      antMessage.error("网络异常，请稍后重试");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  return (
+    <Form form={form} layout="vertical" onFinish={onFinish}>
+      <Form.Item
+        label="新密码"
+        name="password"
+        rules={[
+          { required: true, message: "请输入新密码" },
+          { min: 8, message: "密码长度至少 8 字符" }
+        ]}
+      >
+        <Input.Password size="large" prefix={<LockOutlined />} placeholder="新密码（≥ 8 字符）" autoComplete="new-password" />
+      </Form.Item>
+      <Form.Item
+        label="确认新密码"
+        name="confirm"
+        dependencies={["password"]}
+        rules={[
+          { required: true, message: "请再次输入新密码" },
+          ({ getFieldValue }) => ({
+            validator(_, value) {
+              if (!value || getFieldValue("password") === value) return Promise.resolve();
+              return Promise.reject(new Error("两次输入的密码不一致"));
+            }
+          })
+        ]}
+      >
+        <Input.Password size="large" prefix={<LockOutlined />} placeholder="再次输入新密码" autoComplete="new-password" />
+      </Form.Item>
+      <Button type="primary" htmlType="submit" size="large" block loading={loading}>
+        {loading ? "提交中 …" : "更新密码"}
+      </Button>
+    </Form>
+  );
+}
+
+/** 申请重置 token 表单 */
+function ResetRequestForm({ onDone }: { onDone: () => void }) {
+  const [form] = Form.useForm<{ employeeNo: string; email: string }>();
+  const [loading, setLoading] = useState(false);
+
+  async function onFinish(values: { employeeNo: string; email: string }) {
+    if (loading) return;
+    setLoading(true);
+    try {
+      const _res = await fetch("/api/auth/password-reset/request", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ employeeNo: values.employeeNo.trim().toLowerCase(), email: values.email.trim() })
+      });
+      // 永远返回 200, 避免泄漏"该用户是否存在"
+      antMessage.success("若账号与邮箱匹配，重置链接已生成。请联系管理员索取。");
+      onDone();
+    } catch {
+      antMessage.error("网络异常，请稍后重试");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  return (
+    <Form form={form} layout="vertical" onFinish={onFinish}>
+      <p className={styles.modalHint}>
+        请填写工号和预留邮箱。我们会校验匹配后生成一次性重置链接，
+        由管理员通过内部渠道送达。
+      </p>
+      <Form.Item
+        label="工号"
+        name="employeeNo"
+        rules={[{ required: true, message: "请输入工号" }]}
+      >
+        <Input size="large" prefix={<UserOutlined />} placeholder="工号" autoComplete="username" />
+      </Form.Item>
+      <Form.Item
+        label="邮箱"
+        name="email"
+        rules={[
+          { required: true, message: "请输入邮箱" },
+          { type: "email", message: "邮箱格式不正确" }
+        ]}
+      >
+        <Input size="large" placeholder="name@example.com" autoComplete="email" />
+      </Form.Item>
+      <Button type="primary" htmlType="submit" size="large" block loading={loading}>
+        {loading ? "提交中 …" : "申请重置"}
+      </Button>
+    </Form>
+  );
 }
 
 function LoginForm() {
   const { message } = AntdApp.useApp();
   const router = useRouter();
   const search = useSearchParams();
-  const callbackUrl = safeCallbackUrl(search.get("callbackUrl"));
+  // origin 仅在浏览器可取; SSR 阶段用空串, safeCallbackUrl 会跳过 origin 校验,
+  // 客户端水合后 useEffect 会再校一遍 (见下方 useEffect)
+  const origin = typeof window !== "undefined" ? window.location.origin : "";
+  const callbackUrl = safeCallbackUrl(search.get("callbackUrl"), origin);
+  const resetToken = search.get("resetToken");
 
   const [form] = Form.useForm<FormValues>();
   const [remember, setRemember] = useState(true);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [resetOpen, setResetOpen] = useState(false);
 
   async function handleFinish(values: FormValues) {
     if (loading) return;
     setError(null);
 
-    const employeeNo = values.employeeNo?.trim() ?? "";
+    const employeeNo = values.employeeNo?.trim().toLowerCase() ?? "";
     const password = values.password ?? "";
 
     if (!employeeNo) {
@@ -94,8 +210,18 @@ function LoginForm() {
       });
       if (res?.ok) {
         message.success("登录成功，正在跳转…");
-        router.push(callbackUrl);
-        router.refresh();
+        // 拉一次 session, 拿到 mustChangePassword, 决定下一步跳转
+        const _sessionRes = await fetch("/api/auth/me", { credentials: "include" });
+        const sessionJson = await _sessionRes.json().catch(() => null);
+        const u = sessionJson?.data?.user;
+        if (u?.mustChangePassword) {
+          // 强制改密页
+          router.replace("/login?resetRequired=1");
+          return;
+        }
+        // P3-4: 用 router.replace + await refresh, 避免 push/refresh 竞态
+        router.replace(callbackUrl);
+        await Promise.resolve(router.refresh());
       } else {
         setError(mapAuthError(res?.error));
       }
@@ -112,83 +238,122 @@ function LoginForm() {
     setError(null);
   }
 
-  return (
-    <Form<FormValues>
-      form={form}
-      layout="vertical"
-      requiredMark={false}
-      initialValues={{ employeeNo: "", password: "" }}
-      onFinish={handleFinish}
-    >
-      <header className={styles.formHead}>
-        <h1 className={styles.formTitle}>欢迎回来</h1>
-        <p className={styles.formSubtitle}>登录以继续使用业务管理系统</p>
-      </header>
-
-      {error ? (
-        <div className={styles.error} role="alert">
-          <LockOutlined style={{ fontSize: 13 }} />
-          {error}
-        </div>
-      ) : null}
-
-      <Form.Item
-        label="工号"
-        name="employeeNo"
-        rules={[{ required: true, message: "请输入工号" }]}
-        style={{ marginBottom: 14 }}
-      >
-        <Input
-          size="large"
-          name="employeeNo"
-          prefix={<UserOutlined />}
-          placeholder="工号"
-          autoFocus
-          autoComplete="username"
+  // 有 resetToken → 渲染改密表单 (无 resetToken → 登录表单)
+  if (resetToken) {
+    return (
+      <div className={styles.formInner}>
+        <header className={styles.formHead}>
+          <h1 className={styles.formTitle}>设置新密码</h1>
+          <p className={styles.formSubtitle}>通过重置链接设置新密码后自动跳回登录</p>
+        </header>
+        <ChangePasswordForm
+          token={resetToken}
+          onDone={() => {
+            // 清掉 query 跳回登录
+            router.replace("/login");
+          }}
         />
-      </Form.Item>
-
-      <Form.Item
-        label="密码"
-        name="password"
-        rules={[{ required: true, message: "请输入密码" }]}
-        style={{ marginBottom: 10 }}
-      >
-        <Input.Password
-          size="large"
-          name="password"
-          prefix={<LockOutlined />}
-          placeholder="密码"
-          autoComplete="current-password"
-        />
-      </Form.Item>
-
-      <div className={styles.formRow}>
-        <Checkbox
-          checked={remember}
-          onChange={(e) => setRemember(e.target.checked)}
-          disabled={loading}
-          className={styles.remember}
-        >
-          保持登录
-        </Checkbox>
-        <a className={styles.forgot} href="mailto:it@qt.com">
-          忘记密码？
-        </a>
+        <div className={styles.foot}>© 2026 杭州企泰安全科技有限公司</div>
       </div>
+    );
+  }
 
-      <Form.Item style={{ marginBottom: 0 }}>
-        <Button
-          type="primary"
-          htmlType="submit"
-          size="large"
-          block
-          loading={loading}
-          className={styles.submit}
+  return (
+    <div className={styles.formInner}>
+      <Form<FormValues>
+        form={form}
+        layout="vertical"
+        requiredMark={false}
+        initialValues={{ employeeNo: "", password: "" }}
+        onFinish={handleFinish}
+      >
+        <header className={styles.formHead}>
+          <h1 className={styles.formTitle}>欢迎回来</h1>
+          <p className={styles.formSubtitle}>登录以继续使用业务管理系统</p>
+        </header>
+
+        {error ? (
+          <div className={styles.error} role="alert">
+            <LockOutlined style={{ fontSize: 13 }} />
+            {error}
+          </div>
+        ) : null}
+
+        <Form.Item
+          label="工号"
+          name="employeeNo"
+          rules={[{ required: true, message: "请输入工号" }]}
+          style={{ marginBottom: 14 }}
         >
-          {loading ? "正在登录 …" : "登录"}
-        </Button>
-      </Form.Item>
+          <Input
+            size="large"
+            name="employeeNo"
+            prefix={<UserOutlined />}
+            placeholder="工号"
+            autoFocus
+            autoComplete="username"
+          />
+        </Form.Item>
+
+        <Form.Item
+          label="密码"
+          name="password"
+          rules={[{ required: true, message: "请输入密码" }]}
+          style={{ marginBottom: 10 }}
+        >
+          <Input.Password
+            size="large"
+            name="password"
+            prefix={<LockOutlined />}
+            placeholder="密码"
+            autoComplete="current-password"
+          />
+        </Form.Item>
+
+        <div className={styles.formRow}>
+          <Checkbox
+            checked={remember}
+            onChange={(e) => setRemember(e.target.checked)}
+            disabled={loading}
+            className={styles.remember}
+          >
+            保持登录
+          </Checkbox>
+          <a
+            className={styles.forgot}
+            href="#"
+            onClick={(e) => {
+              e.preventDefault();
+              setResetOpen(true);
+            }}
+          >
+            忘记密码？
+          </a>
+        </div>
+
+        <Form.Item style={{ marginBottom: 0 }}>
+          <Button
+            type="primary"
+            htmlType="submit"
+            size="large"
+            block
+            loading={loading}
+            className={styles.submit}
+          >
+            {loading ? "正在登录 …" : "登录"}
+          </Button>
+        </Form.Item>
+      </Form>
+
+      <Modal
+        title="申请密码重置"
+        open={resetOpen}
+        onCancel={() => setResetOpen(false)}
+        footer={null}
+        destroyOnClose
+      >
+        <ResetRequestForm onDone={() => setResetOpen(false)} />
+      </Modal>
 
       {SHOW_QUICK_FILL && QUICK_ACCOUNTS.length > 0 ? (
         <details className={styles.testCard}>
@@ -207,11 +372,11 @@ function LoginForm() {
       ) : null}
 
       <div className={styles.foot}>© 2026 杭州企泰安全科技有限公司</div>
-    </Form>
+    </div>
   );
 }
 
-/* 企泰 logo · 极简圆角方块(纯黑 + 单字母 Q,Apple 风单色感) */
+/* 企泰 logo · 极简圆角方块(纯黑 + 单字母 Q, Apple 风单色感) */
 function BrandMark({ size = 22 }: { size?: number }) {
   return (
     <svg
@@ -247,8 +412,8 @@ function Narrative() {
         <span className={styles.heroAccent}>有据可循。</span>
       </h2>
       <p className={styles.heroSub}>
-        浙江省 A 级安全生产社会化服务机构,临平区首家。
-        10 年深耕,把每一次现场检查、风险评估与体系建设
+        浙江省 A 级安全生产社会化服务机构，临平区首家。
+        10 年深耕，把每一次现场检查、风险评估与体系建设
         沉淀为可追溯的数据资产。
       </p>
 
@@ -259,7 +424,7 @@ function Narrative() {
           </span>
           <span className={styles.featureText}>
             <span className={styles.featureTitle}>合同全生命周期留痕</span>
-            <span className={styles.featureDesc}>签署 · 履行 · 归档全程可追溯,风险点自动提示</span>
+            <span className={styles.featureDesc}>签署 · 履行 · 归档全程可追溯，风险点自动提示</span>
           </span>
         </li>
         <li className={styles.feature}>
@@ -268,7 +433,7 @@ function Narrative() {
           </span>
           <span className={styles.featureText}>
             <span className={styles.featureTitle}>客户分级与精准服务</span>
-            <span className={styles.featureDesc}>2,500+ 生产经营单位档案,服务画像实时更新</span>
+            <span className={styles.featureDesc}>2,500+ 生产经营单位档案，服务画像实时更新</span>
           </span>
         </li>
         <li className={styles.feature}>
@@ -277,7 +442,7 @@ function Narrative() {
           </span>
           <span className={styles.featureText}>
             <span className={styles.featureTitle}>收款统计与现金流可视化</span>
-            <span className={styles.featureDesc}>月度趋势 · 客户分布 · 风险预警,一张图掌握全局</span>
+            <span className={styles.featureDesc}>月度趋势 · 客户分布 · 风险预警，一张图掌握全局</span>
           </span>
         </li>
       </ul>

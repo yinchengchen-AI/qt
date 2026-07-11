@@ -248,6 +248,19 @@
 }
 
 /* 表单卡 — 细腻圆角 + 多层轻柔阴影 */
+.formInner {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+}
+
+.modalHint {
+  margin: 0 0 16px;
+  font-size: 13.5px;
+  line-height: 1.55;
+  color: #6E6E73;
+}
+
 .formCard {
   position: relative;
   width: 100%;

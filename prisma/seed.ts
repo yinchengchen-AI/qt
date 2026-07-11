@@ -3,6 +3,8 @@
 // 种子: 5 角色 + 5 部门 + 字典 (系统管理数据)
 // 业务数据 (客户/合同/项目/发票/回款/跟进) 不再 seed, 生产用真实数据
 // 初始账号: 跑 pnpm create-admin 自行创建
+import { randomBytes } from "node:crypto";
+import bcrypt from "bcrypt";
 import { PrismaClient } from "@prisma/client";
 import { PrismaPg } from "@prisma/adapter-pg";
 import "dotenv/config";
@@ -25,13 +27,17 @@ async function main() {
   ] as const;
 
   // System actor: 状态机自动转换/定时任务 等"非人"行为共用 id="system" 的占位 user
-  // 见 lib/system.ts SYSTEM_USER_ID;不可登录(passwordHash 是不合法 bcrypt,isSystem=true)
+  // 见 lib/system.ts SYSTEM_USER_ID;不可登录(isSystem=true 拦在 authorize,密码永不匹配)
+  // passwordHash 用 bcrypt(crypto.randomBytes(32)) 一次性随机, 杜绝固定占位字符串:
+  //   - 旧固定 $2b$10$ZZZ... 在某些 bcrypt 实现里会抛异常或 hash 校验失败时返回诡异结果
+  //   - 用随机串永远不会和真实密码撞, 永远不会"侥幸"登录成功
+  const SYSTEM_RANDOM_HASH = bcrypt.hashSync(randomBytes(32), 12);
   const SYSTEM_USER = {
     id: "system",
     employeeNo: "SYSTEM",
     name: "System",
     email: "system@internal.local",
-    passwordHash: "$2b$10$ZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZ"
+    passwordHash: SYSTEM_RANDOM_HASH
   };
 
   for (const r of roleDefs) {

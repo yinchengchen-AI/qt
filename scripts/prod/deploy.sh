@@ -72,15 +72,22 @@ npx --no-install prisma generate
 # 顺带: BUILD_WORKERS=1 也是收敛 RSS 的关键, 多 worker 在小内存机器上加剧争抢。
 #
 # 调度 telemetry: 关闭 Next.js 上报, 与构建内存无关, 借本脚本一并设上, 保持幂等.
-if [ -z "${NODE_MAX_OLD_SPACE:-}" ]; then
-  TOTAL_MEM_KB=$(awk '/^MemTotal:/ {print $2}' /proc/meminfo 2>/dev/null || echo 0)
+# /proc/meminfo 读取提到 if 外面, 即便用户显式覆盖 NODE_MAX_OLD_SPACE 也能打日志,
+# 也避免 set -u 下 TOTAL_MEM_GB unbound-variable 退出 (回归 v0.9.7 部署脚本).
+# meminfo 读不到 (非 Linux / 容器受限) 时 fallback 到 unknown, 自适应档位保守走 1536 MB.
+TOTAL_MEM_KB=$(awk '/^MemTotal:/ {print $2}' /proc/meminfo 2>/dev/null || echo 0)
+if [ "$TOTAL_MEM_KB" -gt 0 ]; then
   TOTAL_MEM_GB=$((TOTAL_MEM_KB / 1024 / 1024))
-  if [ "$TOTAL_MEM_GB" -ge 8 ]; then
-    NODE_MAX_OLD_SPACE=4096
-  elif [ "$TOTAL_MEM_GB" -ge 4 ]; then
-    NODE_MAX_OLD_SPACE=2048
-  else
+else
+  TOTAL_MEM_GB="unknown"
+fi
+if [ -z "${NODE_MAX_OLD_SPACE:-}" ]; then
+  if [ "$TOTAL_MEM_GB" = "unknown" ] || [ "$TOTAL_MEM_GB" -lt 4 ]; then
     NODE_MAX_OLD_SPACE=1536
+  elif [ "$TOTAL_MEM_GB" -ge 8 ]; then
+    NODE_MAX_OLD_SPACE=4096
+  else
+    NODE_MAX_OLD_SPACE=2048
   fi
 fi
 BUILD_WORKERS="${BUILD_WORKERS:-1}"

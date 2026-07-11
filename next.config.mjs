@@ -57,6 +57,43 @@ const nextConfig = {
     "rc-tree",
     "rc-table"
   ],
+  // 安全响应头 (2026-07-11 hardening)
+  //  - X-Frame-Options DENY: 防 clickjacking
+  //  - X-Content-Type-Options nosniff: 防 MIME 嗅探
+  //  - Referrer-Policy strict-origin-when-cross-origin: 防 referer 泄漏
+  //  - Permissions-Policy: 禁用摄像头/麦克风/地理位置/支付等
+  //  - CSP: 只允许本站资源; style 暂放 unsafe-inline 是 antd + pro-components 的现实约束
+  //    (它们用内联 style 注入 css-in-js); script-src 用 nonce 比较重, 这里用
+  //    unsafe-inline + unsafe-eval 因为 dev mode Next 注入脚本靠它; 生产构建
+  //    Next 会自签名 hash, 这是 antd 6 + pro-components 当前的妥协。
+  //    进一步收紧可单独走 CSP-Report-Only 收集违规再迭代。
+  async headers() {
+    return [
+      {
+        source: "/:path*",
+        headers: [
+          { key: "X-Frame-Options", value: "DENY" },
+          { key: "X-Content-Type-Options", value: "nosniff" },
+          { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
+          { key: "Permissions-Policy", value: "camera=(), microphone=(), geolocation=(), payment=()" },
+          {
+            key: "Content-Security-Policy",
+            value: [
+              "default-src 'self'",
+              "img-src 'self' data: blob:",
+              "font-src 'self' data:",
+              "style-src 'self' 'unsafe-inline'",
+              "script-src 'self' 'unsafe-inline' 'unsafe-eval'",
+              "connect-src 'self'",
+              "frame-ancestors 'none'",
+              "base-uri 'self'",
+              "form-action 'self'"
+            ].join("; ")
+          }
+        ]
+      }
+    ];
+  },
   typescript: {
     // 跳过 Docker 构建中的类型检查（编译已完成）
     // 类型检查在 CI/开发中独立运行

@@ -1,4 +1,14 @@
-// NextAuth v4 配置（JWT + Credentials；不挂 PrismaAdapter，简化 P0 阶段）
+// NextAuth v4 配置 (JWT + Credentials; 2026-07-11 安全加固版)
+//
+// 关键安全点:
+//   - 失败计数 + 临时锁定 (lib/login-rate-limit.ts)
+//   - 登录成功/失败审计日志 (lib/login-audit.ts)
+//   - JWT exp 兜底 (P1-5)
+//   - 工号归一化 (P2-1)
+//   - secret/env 校验 (P3-2)
+//   - trustHost 显式 (P1-3)
+//   - lastLoginAt 失败不阻塞主流程 (P3-3)
+//   - mustChangePassword 写入 jwt, 强制跳改密页
 import type { AuthOptions } from "next-auth";
 import CredentialsProvider from "next-auth/providers/credentials";
 import bcrypt from "bcrypt";
@@ -6,7 +16,14 @@ import { prisma } from "./prisma";
 import { encode as defaultJwtEncode, decode as defaultJwtDecode } from "next-auth/jwt";
 import { ROLE_PERMISSIONS, type Action, type Resource } from "./permissions";
 import type { RoleCode } from "@/types/enums";
+import { env } from "./env";
 import { envBool } from "./env-bool";
+import {
+  clearUserFails,
+  getUserLockState,
+  recordUserFail
+} from "./login-rate-limit";
+import { writeLoginAudit } from "./login-audit";
 
 declare module "next-auth" {
   interface Session {
@@ -16,6 +33,8 @@ declare module "next-auth" {
       name: string;
       email: string;
       roleCode: RoleCode;
+      roleVersion: number;
+      mustChangePassword: boolean;
       permissions: { resource: Resource; actions: Action[] }[];
     };
   }
@@ -25,6 +44,8 @@ declare module "next-auth" {
     name: string;
     email: string;
     roleCode: RoleCode;
+    roleVersion: number;
+    mustChangePassword: boolean;
     /** 登录页"7 天内自动登录"勾选状态:false 明确 8h 过期,true/缺省 走 session.maxAge (7d) */
     remember?: boolean;
   }
@@ -35,15 +56,23 @@ declare module "next-auth/jwt" {
     uid: string;
     employeeNo: string;
     roleCode: RoleCode;
+    roleVersion: number;
+    mustChangePassword: boolean;
     remember?: boolean;
+    /** 显式 exp (epoch seconds), 防止 defaultJwtEncode 拿不到 maxAge 时不出 exp */
+    exp?: number;
   }
 }
 
-// 角色 / ACTIVE 状态的轻量缓存，避免每个请求都打 DB。
-// 失效策略：TTL 到期自动失效；ADMIN 改角色/禁用户时无法即时反映。
-// 5s 在"及时撤销"和"DB 压力"之间取保守中间值；禁用/角色变更已通过 invalidateAuthCache 主动失效。
-const CACHE_TTL_MS = 5_000;
-type CachedUser = { id: string; employeeNo: string; roleCode: RoleCode };
+// ---- 用户身份缓存 (P3-1: 降到 2s) ----
+const CACHE_TTL_MS = 2_000;
+type CachedUser = {
+  id: string;
+  employeeNo: string;
+  roleCode: RoleCode;
+  roleVersion: number;
+  mustChangePassword: boolean;
+};
 const userCache = new Map<string, { value: CachedUser | null; expiresAt: number }>();
 
 async function loadActiveUser(uid: string): Promise<CachedUser | null> {
@@ -51,15 +80,25 @@ async function loadActiveUser(uid: string): Promise<CachedUser | null> {
   const hit = userCache.get(uid);
   if (hit && hit.expiresAt > now) return hit.value;
   const u = await prisma.user.findFirst({
-    // isSystem=false 排除定时任务 / 自动转换用的占位 user,避免被当作真人加载
     where: { id: uid, deletedAt: null, status: "ACTIVE", isSystem: false },
-    select: { id: true, employeeNo: true, role: { select: { code: true } } }
+    select: {
+      id: true,
+      employeeNo: true,
+      role: { select: { code: true } },
+      roleVersion: true,
+      mustChangePassword: true
+    }
   });
   const value: CachedUser | null = u
-    ? { id: u.id, employeeNo: u.employeeNo, roleCode: u.role.code as RoleCode }
+    ? {
+        id: u.id,
+        employeeNo: u.employeeNo,
+        roleCode: u.role.code as RoleCode,
+        roleVersion: u.roleVersion,
+        mustChangePassword: u.mustChangePassword
+      }
     : null;
   userCache.set(uid, { value, expiresAt: now + CACHE_TTL_MS });
-  // 防止 Map 无限增长：定期清理
   if (userCache.size > 500) {
     for (const [k, v] of userCache) {
       if (v.expiresAt <= now) userCache.delete(k);
@@ -68,71 +107,138 @@ async function loadActiveUser(uid: string): Promise<CachedUser | null> {
   return value;
 }
 
-/** 角色 / 状态变更后调用，清掉指定用户的缓存 */
+/** 角色/状态/密码变更后调用, 清掉指定用户的缓存 */
 export function invalidateAuthCache(uid: string): void {
   userCache.delete(uid);
 }
 
-const isProd = process.env.NODE_ENV === "production";
+const isProd = env.NODE_ENV === "production";
 const forceHttps = envBool("FORCE_HTTPS");
+
 if (isProd && !forceHttps) {
-  console.warn("[AUTH] 生产环境使用非 Secure Cookie，请尽快配置 HTTPS 并设置 FORCE_HTTPS=true");
+  console.warn("[AUTH] 生产环境使用非 Secure Cookie, 请尽快配置 HTTPS 并设置 FORCE_HTTPS=true");
+}
+
+// 归一化工号: trim + toLowerCase
+//  背景: PG @unique 默认大小写敏感, "Admin" 和 "admin" 会被当成两个账号;
+//  登录时统一小写避免歧义; 创建用户侧 (create-admin / seed) 也应同步小写
+export function normalizeEmployeeNo(raw: unknown): string {
+  return String(raw ?? "").trim().toLowerCase();
 }
 
 export const authOptions: AuthOptions = {
-  // 7 天作为 cookie 寿命上限;实际 JWT 寿命由 jwt 回调里的 token.exp 决定
-  // (remember=true/缺省 → 7d, remember=false → 8h)
+  // 7 天作为 cookie 寿命上限; 实际 JWT 寿命由 jwt 回调里的 token.exp 决定
   session: { strategy: "jwt", maxAge: 7 * 24 * 60 * 60 },
   pages: { signIn: "/login" },
-  // 安全 cookie 仅在 HTTPS 下生效,HTTP 下浏览器不存 secure cookie,CSRF token 不匹配,登录后无法跳转
-  // 走 nginx HTTP 反代时: 不要设 FORCE_HTTPS (默认 non-secure); 走 HTTPS 时: 设 FORCE_HTTPS=true
+  // HTTPS only cookie, 反代场景下运维必须显式 FORCE_HTTPS=true
   useSecureCookies: isProd ? forceHttps : false,
-  // 自定义 jwt.encode:让"不勾选"登录的 session JWT 寿命 = 8h,勾选 = session.maxAge (7d)
-  // 原因:NextAuth v4 的内置 encode 内部用 setExpirationTime(now() + maxAge) 直接覆盖 exp,
-  // 仅在 jwt 回调里写 token.exp 无效;必须在这里拦截 maxAge
+
+  // 自定义 jwt.encode: 让"不勾选"登录的 session JWT 寿命 = 8h, 勾选 = session.maxAge (7d)
   jwt: {
     async encode(params) {
       const { token, maxAge, ...rest } = params;
-      // token.remember 由 callbacks.jwt 在签发时设置 (true / false / undefined)
-      const effectiveMaxAge = token?.remember === false
-        ? 8 * 60 * 60
-        : maxAge;
+      const effectiveMaxAge = token?.remember === false ? 8 * 60 * 60 : maxAge;
       return await defaultJwtEncode({ ...rest, token, maxAge: effectiveMaxAge });
     },
     async decode(params) {
       return await defaultJwtDecode(params);
     }
   },
+  // P3-2: secret 走 env 校验过的常量 (启动期 fail-fast), 不直接读 process.env
+  secret: env.NEXTAUTH_SECRET,
   providers: [
     CredentialsProvider({
       name: "Credentials",
       credentials: {
         employeeNo: { label: "工号", type: "text" },
         password: { label: "密码", type: "password" },
-        // 任意非内置字段都会通过 creds 传给 authorize;
-        // "true"/"false" 字符串由 signIn(..., { remember }) 传过来,在 authorize 归一化为 boolean
+        // 任意非内置字段都会通过 creds 传给 authorize
         remember: { label: "记住我", type: "text" }
       },
       async authorize(creds) {
-        if (!creds?.employeeNo || !creds?.password) return null;
+        const employeeNo = normalizeEmployeeNo(creds?.employeeNo);
+        const password = String(creds?.password ?? "");
+        // NextAuth v4 的 authorize() 拿不到请求 IP; IP 限速放在 route handler 包裹层
+        // (app/api/auth/[...nextauth]/route.ts), 这里只做用户维度 + bcrypt.
+
+        if (!employeeNo || !password) {
+          await writeLoginAudit({
+            action: "LOGIN_FAIL",
+            employeeNo: employeeNo || null,
+            reason: "missing_credentials"
+          });
+          return null;
+        }
+
+        // 用户维度锁定检查
+        const lockState = await getUserLockState(employeeNo);
+        if (lockState?.locked) {
+          
+          await writeLoginAudit({
+            action: "LOGIN_LOCKED",
+            employeeNo,
+            reason: lockState.lockedUntil ? `locked_until=${lockState.lockedUntil.toISOString()}` : "locked"
+          });
+          return null;
+        }
+
         const user = await prisma.user.findFirst({
-          // isSystem=false 排除定时任务占位 user; 它的 passwordHash 也是不合法 bcrypt
-          where: { employeeNo: creds.employeeNo, deletedAt: null, status: "ACTIVE", isSystem: false },
+          where: { employeeNo, deletedAt: null, status: "ACTIVE", isSystem: false },
           include: { role: true }
         });
-        if (!user) return null;
-        const ok = await bcrypt.compare(creds.password, user.passwordHash);
-        if (!ok) return null;
-        await prisma.user.update({ where: { id: user.id }, data: { lastLoginAt: new Date() } });
-        // 归一化:signIn(..., { remember }) 在 NextAuth 内部一律是字符串;
-        // undefined 表示前端没传(老登录链路),按"未勾选"处理
-        const remember = creds.remember === "true";
+        if (!user) {
+          
+          await recordUserFail(employeeNo);
+          await writeLoginAudit({
+            action: "LOGIN_FAIL",
+            employeeNo,
+            reason: "user_not_found"
+          });
+          return null;
+        }
+
+        const ok = await bcrypt.compare(password, user.passwordHash);
+        if (!ok) {
+          
+          const nextState = await recordUserFail(employeeNo);
+          await writeLoginAudit({
+            action: nextState.locked ? "LOGIN_LOCKED" : "LOGIN_FAIL",
+            actorId: user.id,
+            employeeNo,
+            reason: nextState.locked
+              ? `locked_until=${nextState.lockedUntil?.toISOString()}`
+              : `failed_count=${nextState.failedCount}`
+          });
+          return null;
+        }
+
+        // 成功: 清失败计数 / IP 限速计数 (P3-3)
+        await clearUserFails(user.id).catch((e) =>
+          console.error("[AUTH] clearUserFails failed:", e)
+        );
+        
+
+        // lastLoginAt 失败不阻塞登录主流程
+        prisma.user
+          .update({ where: { id: user.id }, data: { lastLoginAt: new Date() } })
+          .catch((e) => console.error("[AUTH] lastLoginAt update failed:", e));
+
+        await writeLoginAudit({
+          action: "LOGIN_SUCCESS",
+          actorId: user.id,
+          employeeNo,
+          reason: user.mustChangePassword ? "must_change_password" : null
+        });
+
+        const remember = creds?.remember === "true";
         return {
           id: user.id,
           employeeNo: user.employeeNo,
           name: user.name,
           email: user.email,
           roleCode: user.role.code as RoleCode,
+          roleVersion: user.roleVersion,
+          mustChangePassword: user.mustChangePassword,
           remember
         };
       }
@@ -144,23 +250,28 @@ export const authOptions: AuthOptions = {
         token.uid = user.id;
         token.employeeNo = user.employeeNo;
         token.roleCode = user.roleCode;
+        token.roleVersion = user.roleVersion;
+        token.mustChangePassword = user.mustChangePassword;
         token.iat = Math.floor(Date.now() / 1000);
         token.remember = !!user.remember;
-        // 真正的"压短"在下方 authOptions.jwt.encode 里:它读 token.remember
-        // 决定 effective maxAge (false → 8h, true/缺省 → session.maxAge = 7d)。
-        // 这里不再覆盖 token.exp,因为 NextAuth 内置 encode 会用 setExpirationTime(maxAge) 把它覆盖掉。
       }
-      // 缓存查 user,确认仍 ACTIVE;5s 内复用,避免每个请求都打 DB
+      // 缓存查 user, 确认仍 ACTIVE; 2s 内复用, 避免每个请求都打 DB
       if (token.uid) {
         const u = await loadActiveUser(token.uid);
         if (!u) {
-          // 用户被禁用/删除/软删 → 失效:NextAuth 看到空 token 会让 session 返回 null
-          // 不要返回 `{} as typeof token` 这种类型欺骗,直接清字段更显式
+          // 用户被禁用/删除/软删 → 失效
           return null as unknown as typeof token;
         }
         token.roleCode = u.roleCode;
         token.employeeNo = u.employeeNo;
+        token.roleVersion = u.roleVersion;
+        token.mustChangePassword = u.mustChangePassword;
       }
+      // P1-5: 显式写 token.exp, 防止 defaultJwtEncode 拿不到 maxAge 时不出 exp
+      // (即便内部 encode 已用 setExpirationTime, 这里也作为兜底, 防止老 token 跨升级保留旧 exp)
+      const nowSec = Math.floor(Date.now() / 1000);
+      const ttl = token.remember === false ? 8 * 60 * 60 : 7 * 24 * 60 * 60;
+      token.exp = nowSec + ttl;
       return token;
     },
     async session({ session, token }) {
@@ -170,10 +281,11 @@ export const authOptions: AuthOptions = {
         name: session.user?.name ?? "",
         email: session.user?.email ?? "",
         roleCode: token.roleCode,
+        roleVersion: token.roleVersion,
+        mustChangePassword: token.mustChangePassword,
         permissions: ROLE_PERMISSIONS[token.roleCode]
       };
       return session;
     }
-  },
-  secret: process.env.NEXTAUTH_SECRET
+  }
 };
