@@ -172,7 +172,7 @@ export function DunningDrawer({ open, invoiceId, invoiceNo, onClose, onChanged }
       open={open}
       onClose={onClose}
       width={isMobile ? "100%" : 520}
-      destroyOnClose
+      destroyOnHidden
     >
       <Authority resource={RESOURCE.DUNNING} action={ACTION.CREATE}>
         <Form

@@ -327,7 +327,7 @@ export default function ReleasesAdminPage() {
         title={editingId ? t("releases.edit") : t("releases.publishManual")}
         open={modalOpen}
         onCancel={closeModal}
-        destroyOnClose
+        destroyOnHidden
         width={760}
         footer={
           <Space>
@@ -404,7 +404,7 @@ export default function ReleasesAdminPage() {
           setGitModalOpen(false);
           setGitPreview(null);
         }}
-        destroyOnClose
+        destroyOnHidden
         width={820}
         footer={
           gitPreview && gitPreview.commits.length > 0 ? (

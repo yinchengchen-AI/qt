@@ -85,7 +85,7 @@ export function ReleasePopup({ release, open, onClose }: Props) {
       onCancel={handleClose}
       width={isMobile ? "100%" : 560}
       centered
-      destroyOnClose
+      destroyOnHidden
       maskClosable={!release.important}
       // 重要更新不点遮罩关闭:防止误触;普通更新允许
       footer={

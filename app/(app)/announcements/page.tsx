@@ -225,7 +225,7 @@ export default function AnnouncementsPage() {
         title={editingId ? t("announcements.edit") : t("announcements.create")}
         open={modalOpen}
         onCancel={closeModal}
-        destroyOnClose
+        destroyOnHidden
         width={760}
         footer={
           <Space>

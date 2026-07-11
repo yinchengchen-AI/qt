@@ -314,7 +314,7 @@ export default function UsersPage() {
         okText="确认重置"
         cancelText="取消"
         okButtonProps={{ danger: true, loading: resetSubmitting }}
-        destroyOnClose
+        destroyOnHidden
         maskClosable={false}
         onCancel={() => { if (resetSubmitting) return; setResetting(null); }}
         onOk={async () => {

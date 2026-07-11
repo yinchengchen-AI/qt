@@ -316,7 +316,7 @@ export default function PerformancePage() {
         open={drawerUserId !== null}
         onClose={closeDrawer}
         width={isMobile ? "100%" : 720}
-        destroyOnClose
+        destroyOnHidden
       >
         {drawerLoading ? (
           <div style={{ textAlign: "center", padding: 40 }}><Spin /></div>

@@ -151,7 +151,7 @@ export default function InvoiceDetailPage() {
         open={modalOpen === "issue"}
         onOk={handleIssue}
         onCancel={closeModal}
-        destroyOnClose
+        destroyOnHidden
       >
         <div style={{ marginBottom: 6 }}>请填写 20 位电子发票号：</div>
         <Input value={invoiceNo} onChange={(e) => setInvoiceNo(e.target.value)} placeholder="如：01100210031112345678" />
@@ -161,7 +161,7 @@ export default function InvoiceDetailPage() {
         open={modalOpen === "redFlush"}
         onOk={handleRedFlush}
         onCancel={closeModal}
-        destroyOnClose
+        destroyOnHidden
       >
         <Input.TextArea rows={3} value={reason} onChange={(e) => setReason(e.target.value)} placeholder="请填写红冲原因，将记入操作记录" />
       </Modal>
@@ -170,7 +170,7 @@ export default function InvoiceDetailPage() {
         open={modalOpen === "reject"}
         onOk={handleReject}
         onCancel={closeModal}
-        destroyOnClose
+        destroyOnHidden
       >
         <Input.TextArea rows={3} value={reason} onChange={(e) => setReason(e.target.value)} placeholder="请填写驳回原因，业务员可见" />
       </Modal>
@@ -179,7 +179,7 @@ export default function InvoiceDetailPage() {
         open={modalOpen === "void"}
         onOk={handleVoid}
         onCancel={closeModal}
-        destroyOnClose
+        destroyOnHidden
       >
         <Input.TextArea rows={2} value={reason} onChange={(e) => setReason(e.target.value)} placeholder="请填写作废原因，将记入操作记录" />
       </Modal>

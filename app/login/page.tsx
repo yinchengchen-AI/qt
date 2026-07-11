@@ -350,7 +350,7 @@ function LoginForm() {
         open={resetOpen}
         onCancel={() => setResetOpen(false)}
         footer={null}
-        destroyOnClose
+        destroyOnHidden
       >
         <ResetRequestForm onDone={() => setResetOpen(false)} />
       </Modal>
