@@ -1,7 +1,9 @@
 # 杭州企泰安全科技有限公司 业务管理系统 — 完整设计文档（v3，最新版本矩阵审查版）
 
-> 最近同步：2026-06-29（追加 §0.5 v0.5.x 增量修订说明 + §14 增量索引）
-> 当前实现版本：v0.5.1（2026-06-29）
+> 最近同步：2026-07-13（文档路径整理，当前实现版本更新为 v0.10.1）
+> 当前实现版本：v0.10.1（2026-07-13）
+> 
+> 注意：本文档 v3 基线仍有效，但 §0.5 仅记录到 v0.5.x；v0.6.0 ~ v0.10.1 的详细变更请参见 README.md「最近更新」与「历史里程碑」章节。
 
 ## 0. 修订说明（相对 v2）
 
@@ -187,11 +189,13 @@
 ### 4.1 实体关系
 
 ```
-Customer (1) ──< (N) Contract (1) ──< (N) Project (1) ──< (N) Invoice (1) ──< (N) Payment
-   │                  │                  │                  │                  │
-   ├─< ContactPerson   ├─< Attachment     ├─< ProgressLog    ├─< InvoiceItem    ├─< PaymentAllocation(N)
-   ├─< FollowUp        └─< ReviewLog      └─< Milestone(JSON)└─< AuditLog       ↘ ↗
+Customer (1) ──< (N) Contract (1) ──< (N) Invoice (1) ──< (N) Payment
+   │                  │                  │                  │
+   ├─< ContactPerson   ├─< Attachment     ├─< InvoiceItem    ├─< (历史)PaymentAllocation(N)  ← v0.3.0 随 Project 下线
+   ├─< FollowUp        └─< ReviewLog      └─< AuditLog       └─< (历史)RefundLog(N)        ← v0.3.0 同步移除
    └─< OperationLog
+   
+(v0.3.0 起 Project / Workflow / CompanyAsset 已下线，关系图中不再展示，详见 §0.5.1)
 ```
 
 ### 4.2 Prisma Schema 关键表（节选，按版本钉到 Prisma 7 语法）
@@ -211,7 +215,7 @@ enum ServiceType { SAFETY_CONSULT SAFETY_TRAIN HAZARD_ANA EMERGENCY_PLAN EVALUAT
 enum ContractStatus { DRAFT ACTIVE CLOSED }
 enum PaymentMethod { LUMP_SUM BY_PHASE BY_MONTH BY_QUARTER }
 enum ReviewAction { SUBMIT APPROVE REJECT WITHDRAW }
-enum ProjectStatus { PLANNED IN_PROGRESS SUSPENDED DELIVERED ACCEPTED CLOSED CANCELLED }
+enum ProjectStatus { PLANNED IN_PROGRESS SUSPENDED DELIVERED ACCEPTED CLOSED CANCELLED }  // v0.3.0 已下线（Project 模块移除）
 enum InvoiceType { VAT_SPECIAL VAT_GENERAL VAT_ELECTRONIC ELEC_NORMAL }
 enum TitleType { COMPANY PERSONAL }
 enum InvoiceStatus { DRAFT PENDING_FINANCE ISSUED REJECTED VOIDED RED_FLUSHED }
@@ -267,19 +271,17 @@ enum MessageType {
 #### 4.2.6 `ContractReviewLog`
 - `contractId`、`reviewerId`、`action ReviewAction`、`comment String?`、`at DateTime @default(now()) @db.Timestamptz(6)`
 
-#### 4.2.7 `Project`
-- `projectNo String @unique`（`QT-P-YYYY-####`）
-- `contractId`、`name`、`serviceScope String`、`managerUserId`
-- `startDate DateTime`、`endDate DateTime`、`budgetAmount Decimal? @db.Decimal(18,2)`、`milestones Json?`
-- `status ProjectStatus @default(PLANNED)`
-- 唯一：`@@unique([contractId, name])`（仅未软删）
+#### 4.2.7 `Project`（v0.3.0 已下线）
 
-#### 4.2.8 `ProjectProgressLog` / `OperationLog` / `Dictionary` / `Sequence`（同 v2）
+> 本节保留为历史参考。Project 表、`ProjectStatus` enum、`ProjectProgressLog`、`Milestone`、`PaymentAllocation` 已于 v0.3.0 移除。当前业务流：Customer → Contract → Invoice → Payment。
+
+#### 4.2.8 `OperationLog` / `Dictionary` / `Sequence`（同 v2）
 - `Sequence` 用于业务编号：唯一 `(prefix, year)`，事务内 `SELECT … FOR UPDATE` 保证并发安全。
+- `ProjectProgressLog` 已随 Project 模块于 v0.3.0 下线。
 
-#### 4.2.9 `Invoice`
+#### 4.2.8 `Invoice`（v0.3.0 起无 `projectId`，Project 已下线）
 - `invoiceNo String @unique`、`invoiceCode String?`
-- `projectId`、`contractId String`（快照）、`customerId String`（快照）、`customerName String`（快照）
+- `contractId String`（快照）、`customerId String`（快照）、`customerName String`（快照）
 - `invoiceType InvoiceType`
 - `amount Decimal @db.Decimal(18,2)`、`taxRate Decimal @db.Decimal(6,4)`、`taxAmount Decimal @db.Decimal(18,2)`、`amountExcludingTax Decimal @db.Decimal(18,2)`
 - `applyDate DateTime`、`expectedIssueDate DateTime?`、`actualIssueDate DateTime?`
@@ -288,7 +290,7 @@ enum MessageType {
 - `status InvoiceStatus @default(DRAFT)`
 - `applicantUserId`、`financeUserId String?`、`reviewedAt DateTime?`、`reviewComment String?`
 - `linkedInvoiceId String? @unique`（红冲指向蓝字）
-- 索引：`@@index([projectId])`、`@@index([status])`、`@@index([actualIssueDate])`
+- 索引：`@@index([status])`、`@@index([actualIssueDate])`
 
 #### 4.2.10 `InvoiceAuditLog`
 - `invoiceId`、`actorId`、`action String`、`before Json?`、`after Json?`、`at DateTime @default(now())`、`comment String?`
@@ -304,9 +306,9 @@ enum MessageType {
 - `recorderUserId`、`reconcileUserId String?`、`reconciledAt DateTime?`
 - 索引：`@@index([invoiceId])`、`@@index([contractId])`、`@@index([status])`、`@@index([receivedAt])`
 
-#### 4.2.12 `PaymentAllocation`
-- `paymentId`、`invoiceId String?`、`projectId String?`、`amount Decimal @db.Decimal(18,2)`、`remark String?`
-- 校验：`SUM(PaymentAllocation.amount) = Payment.amount`（已 CONFIRMED 的收款）
+#### 4.2.12 `PaymentAllocation`（v0.3.0 已下线）
+
+> 本节保留为历史参考。`PaymentAllocation` 表随 Project 模块于 v0.3.0 移除。当前 Payment 直接与 Invoice / Contract 关联，`Payment.invoiceId` 可空以支持合同预收款。
 
 #### 4.2.13 `Message` / `Announcement` / `OperationLog`（同 v2）
 
