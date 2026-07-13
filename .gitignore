@@ -45,14 +45,11 @@ prisma/migrations/dev
 *.swo
 
 # agent / e2e tooling state (not source)
+.claude/
 .omc/
 .playwright-mcp/
 .playwright-cli/
 .serena/
-
-# agent / e2e tooling state (not source)
-.omc/
-.playwright-mcp/
 
 # local runtime artifacts
 .next-pid.txt
