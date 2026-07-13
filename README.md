@@ -1,7 +1,7 @@
 # 杭州企泰安全科技 业务管理系统 (qt-biz)
 
 > 客户 / 合同 / 开票 / 回款 一体化管理,附件走 MinIO presigned 直传。
-> **当前版本: v0.10.0**(2026-07-11)
+> **当前版本: v0.10.1**(2026-07-13)
 > 详细设计见 [docs/DESIGN-v3.md](docs/DESIGN-v3.md),用户手册见 [docs/USER_MANUAL.md](docs/USER_MANUAL.md)。
 > 2026-07-04 增量同步: 全库代码审计 10 处 bug 修复 + 2 组单元测试已补到「最近更新」开头。
 
@@ -413,6 +413,42 @@ xlsx 导出走 `lib/excel.ts` + `exceljs`; 中文文件名通过 `attachmentHead
 | dev server `/login` `/dashboard` `/contracts` `/reports/PERFORMANCE` | 200 |
 
 ## 最近更新
+
+### v0.10.1(2026-07-13) 安全与并发修复
+
+> 针对 v0.10.0 上线后安全审计发现的 5 处中高风险点进行修复, 无 schema 变更, 无 API 契约变更。
+
+**密码重置链路加固** (`lib/password-reset.ts` + `app/api/auth/password-reset/*`):
+- request 接口不再把原始 reset token / 完整 reset URL 写入 `OperationLog.diff`, 仅记录 `expiresAt` 与 `issuedByIp`
+- confirm 接口把 "消费 token" 与 "写新密码" 包进同一 Prisma 事务; token 消费使用 `updateMany` 条件抢锁, 避免并发下同一 token 被重复消费导致账号可被多次改密
+
+**文件下载代理加固** (`app/api/files/raw/[id]/route.ts`):
+- 路由入口接入 `runWithRequestContext`, 为审计提供 IP/UA/requestId/method/path
+- 每次成功下载写入 `OperationLog` (`entity=Attachment`, `action=ATTACHMENT_DOWNLOAD`), `diff` 仅含文件名/mime/大小, 不含 MinIO bucket/objectKey
+- 响应头增加 `X-Content-Type-Options: nosniff` 与 `X-Frame-Options: DENY`
+
+**回款确认并发竞争** (`server/services/payment.ts`):
+- confirm 前置条件中对 `Contract` / `Invoice` 行加 `FOR UPDATE` 锁, 序列化同一合同/发票下的并发确认
+- 对 `bankRefNo` 使用 `pg_advisory_xact_lock(hashtext(...))` 事务级分布式锁, 防止同一流水号被并发确认导致重复
+
+**合同总额调小并发竞争** (`server/services/contract/crud.ts`):
+- `updateContract` 事务内先 `UPDATE Contract SET updatedAt=now() WHERE id AND deletedAt IS NULL` 锁行, 并重新读取 `status`/`totalAmount`
+- 校验基于锁行后的最新 `totalAmount`, 避免事务外快照被并发覆盖导致超额调小
+- 最终 update 的 `where` 增加 `deletedAt: null`, 防止并发软删后仍更新幽灵行
+
+**Zod 校验错误脱敏** (`lib/api.ts`):
+- `err()` 对 ZodError 的 `details` 仅返回 `{ path, message }[]`, 不再把完整 `ZodError` 对象(含原始输入值)暴露给前端
+
+**新增/更新测试**:
+- 更新 `tests/unit/server/contract-update-amount-guard.test.ts` mock, 适配事务内锁行读取 `totalAmount` 的新逻辑
+- 全量 Vitest 回归: 70 文件 / 564 用例全绿
+
+**版本号**: `0.10.0` → `0.10.1`(patch bump, 安全修复, 无 schema 变更, 无 breaking)
+
+**部署说明**:
+- 无 schema 变更、无新 migration, `prisma migrate deploy` 不需要跑
+- 直接重启 `next start` 即可生效; 反代 / CDN 缓存层建议 purge 一次以刷新新增响应头
+- 无 frontend breaking, 已登录用户下次刷新即生效
 
 ### v0.10.0(2026-07-11) 登录安全加固 + 自服务密码重置
 
