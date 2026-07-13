@@ -294,6 +294,17 @@ export async function updateContract(user: SessionUser, id: string, input: Contr
   }
   const wasDraft = existing.status === "DRAFT";
   return prisma.$transaction(async (tx) => {
+    // 用 UPDATE 先锁住合同行并重新读取当前值, 序列化并发总额调整,
+    // 防止基于事务外快照的校验被覆盖(同时排除已软删行)
+    const locked = await tx.contract.update({
+      where: { id, deletedAt: null },
+      data: { updatedAt: new Date() },
+      select: { id: true, status: true, totalAmount: true },
+    });
+    if (user.roleCode !== "ADMIN" && locked.status !== "DRAFT") {
+      throw new ApiError(ERROR_CODES.ENTITY_IMMUTABLE, "当前状态不可修改", 403);
+    }
+
     const attachments = input.attachments
       ? await resolveAttachmentSnapshots(input.attachments, "Contract", id, tx)
       : undefined;
@@ -301,7 +312,7 @@ export async function updateContract(user: SessionUser, id: string, input: Contr
     // 总额调小时, 校验已有发票/回款不超出新的合同总额 (0.01 元容差)
     if (input.totalAmount !== undefined) {
       const newTotal = new Prisma.Decimal(input.totalAmount.toString());
-      const existingTotal = new Prisma.Decimal(existing.totalAmount.toString());
+      const existingTotal = new Prisma.Decimal(locked.totalAmount.toString());
       if (newTotal.lessThan(existingTotal)) {
         const TOL = MONEY_TOLERANCE;
         const invoiced = await tx.invoice.aggregate({
@@ -325,7 +336,7 @@ export async function updateContract(user: SessionUser, id: string, input: Contr
 
     try {
       const updated = await tx.contract.update({
-      where: { id },
+      where: { id, deletedAt: null },
         data: {
           ...(safeInput as ContractUpdateInput),
           signDate: input.signDate ? new Date(input.signDate) : undefined,

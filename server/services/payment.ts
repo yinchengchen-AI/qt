@@ -233,6 +233,13 @@ export async function paymentAction(user: SessionUser, id: string, input: Paymen
         precondition: async (current, t) => {
           const ref = input.bankRefNo ?? current.bankRefNo;
           if (!ref) throw new ApiError(ERROR_CODES.VALIDATION_FAILED, "请填写银行流水号", 400);
+          // 加分布式锁防止同一流水号并发确认导致重复
+          await t.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${ref})::bigint)`;
+          // 对合同/发票行加锁, 序列化同一合同/发票下的并发确认, 防止累计金额超限
+          await t.$queryRaw`SELECT id FROM "Contract" WHERE id = ${current.contractId} AND "deletedAt" IS NULL FOR UPDATE`;
+          if (current.invoiceId) {
+            await t.$queryRaw`SELECT id FROM "Invoice" WHERE id = ${current.invoiceId} AND "deletedAt" IS NULL FOR UPDATE`;
+          }
           // R-10: 流水号唯一 (在 CONFIRMED/RECONCILED 池里)
           const dup = await t.payment.findFirst({
             where: { bankRefNo: ref, status: { in: ["CONFIRMED", "RECONCILED"] }, NOT: { id: current.id } },

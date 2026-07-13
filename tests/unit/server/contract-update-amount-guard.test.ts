@@ -45,9 +45,9 @@ function makeMockTx(
       update: vi.fn(async () => ({
         id: "c-1",
         status: "ACTIVE",
-        totalAmount: new Prisma.Decimal(1000),
+        totalAmount: new Prisma.Decimal(10000),
         taxAmount: new Prisma.Decimal(0),
-        amountExcludingTax: new Prisma.Decimal(1000),
+        amountExcludingTax: new Prisma.Decimal(10000),
       })),
     },
     attachment: {

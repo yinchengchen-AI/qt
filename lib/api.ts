@@ -28,9 +28,10 @@ export function err(e: unknown) {
       { status: e.status }
     );
   }
-  // Zod 错误: 把 issue path + msg 拼到 message 顶部, details 保留完整
+  // Zod 错误: 只返回 path + message, 避免把原始输入值/内部字段详情泄漏到响应
   if (e && typeof e === "object" && "issues" in (e as { issues?: unknown })) {
-    const issues = (e as { issues: Array<{ path: Array<string | number>; message: string }> }).issues ?? [];
+    const rawIssues = (e as { issues: Array<{ path: Array<string | number>; message: string }> }).issues ?? [];
+    const issues = rawIssues.map((issue) => ({ path: issue.path, message: issue.message }));
     const firstIssue = issues[0];
     const firstPath = firstIssue ? firstIssue.path.join(".") : "";
     const firstMsg = firstIssue ? firstIssue.message : "数据校验失败";
@@ -42,7 +43,7 @@ export function err(e: unknown) {
         code: 400,
         errorCode: ERROR_CODES.VALIDATION_FAILED,
         message: summary || "数据校验失败",
-        details: e
+        details: issues
       },
       { status: 400 }
     );

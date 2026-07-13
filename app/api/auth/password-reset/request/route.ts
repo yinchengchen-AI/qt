@@ -3,7 +3,7 @@ import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { runWithRequestContext } from "@/lib/request-context";
 import { writeLoginAudit } from "@/lib/login-audit";
-import { issueResetToken, buildResetUrl } from "@/lib/password-reset";
+import { issueResetToken } from "@/lib/password-reset";
 import { ok, ApiError, err } from "@/lib/api";
 import { ERROR_CODES } from "@/types/errors";
 
@@ -79,15 +79,16 @@ export async function POST(req: NextRequest) {
         ip: ctx,
         userAgent: req.headers.get("user-agent")
       });
-      const resetUrl = buildResetUrl(issued.token);
+      // 注意: 原始 token 绝不写入审计日志或任何持久化存储(除 SHA-256 hash 外)。
+      // 管理员应通过 /admin/users 页面的"重置密码"功能直接帮用户改密,
+      // 而不是从日志里读取一次性链接。
       await writeLoginAudit({
         action: "PASSWORD_RESET_REQUESTED",
         actorId: user.id,
         employeeNo,
         reason: "issued"
       });
-      // diff 字段给管理员查 OperationLog 时看到完整链接 (一次性原始 token)
-      // 仅写一行, 不污染密码哈希 / 用户敏感字段
+      // diff 字段仅记录元数据; 原始一次性 token 绝不入审计日志, 避免日志泄露导致账号被接管
       await prisma.operationLog
         .create({
           data: {
@@ -95,7 +96,7 @@ export async function POST(req: NextRequest) {
             entity: "Auth",
             entityId: user.id,
             action: "PASSWORD_RESET_LINK",
-            diff: { url: resetUrl, expiresAt: issued.expiresAt.toISOString() } as unknown as object,
+            diff: { expiresAt: issued.expiresAt.toISOString(), issuedByIp: ctx } as unknown as object,
             ip: ctx,
             userAgent: req.headers.get("user-agent"),
             method: "POST",

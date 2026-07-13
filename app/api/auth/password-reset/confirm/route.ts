@@ -40,7 +40,25 @@ export async function POST(req: NextRequest) {
       ?? null;
     const ua = req.headers.get("user-agent");
 
-    const result = await consumeResetToken({ token, ip, userAgent: ua });
+    // 先 hash 密码, 缩短事务内持锁时间
+    const passwordHash = await bcrypt.hash(newPassword, BCRYPT_COST);
+
+    // token 消费 + 写密码在同一事务, 防止并发重复消费同一 token
+    const result = await prisma.$transaction(async (tx) => {
+      const consumed = await consumeResetToken({ tx, token, ip, userAgent: ua });
+      if (!consumed.ok) return consumed;
+      await tx.user.update({
+        where: { id: consumed.userId },
+        data: {
+          passwordHash,
+          mustChangePassword: false,
+          failedLoginCount: 0,
+          lockedUntil: null,
+          lastFailedLoginAt: null
+        }
+      });
+      return consumed;
+    });
 
     if (!result.ok) {
       await writeLoginAudit({
@@ -50,19 +68,6 @@ export async function POST(req: NextRequest) {
       // 对外统一说 "链接无效或已过期", 不区分 NOT_FOUND / EXPIRED / ALREADY_USED (防探测)
       throw new ApiError(ERROR_CODES.VALIDATION_FAILED, "重置链接无效或已过期", 400);
     }
-
-    // 改密码: 强制清掉 mustChangePassword, 清掉失败计数
-    const passwordHash = await bcrypt.hash(newPassword, BCRYPT_COST);
-    await prisma.user.update({
-      where: { id: result.userId },
-      data: {
-        passwordHash,
-        mustChangePassword: false,
-        failedLoginCount: 0,
-        lockedUntil: null,
-        lastFailedLoginAt: null
-      }
-    });
 
     await writeLoginAudit({
       action: "PASSWORD_RESET_CONSUMED",
