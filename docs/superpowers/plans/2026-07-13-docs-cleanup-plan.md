@@ -23,7 +23,7 @@
 
 **Files:**
 - Delete: `.env.bak`
-- Delete: `lib/copy.ts`
+- Keep: `lib/copy.ts`（`app/(app)/admin/users/new/page.tsx` 仍依赖其 `copyToClipboard`，不删除；执行中曾误删，已从 git 历史恢复）
 - Delete: `docs/contract-fake-close-recovery-list.csv`
 - Delete: `docs/db-schema-snapshot.sql`
 - Delete: `docker-data/postgres.corrupt-20260703`
@@ -37,7 +37,7 @@
 - [ ] **Step 1: 确认文件存在并查看内容**
 
 ```bash
-ls -la .env.bak lib/copy.ts docs/contract-fake-close-recovery-list.csv docs/db-schema-snapshot.sql
+ls -la .env.bak docs/contract-fake-close-recovery-list.csv docs/db-schema-snapshot.sql
 ls -ld docker-data/postgres.corrupt-20260703 backups/profile-migration-2026-06-25-*
 ```
 
@@ -46,7 +46,7 @@ Expected: 所有文件/目录均存在。
 - [ ] **Step 2: 删除文件和目录**
 
 ```bash
-rm -f .env.bak lib/copy.ts docs/contract-fake-close-recovery-list.csv docs/db-schema-snapshot.sql
+rm -f .env.bak docs/contract-fake-close-recovery-list.csv docs/db-schema-snapshot.sql
 rm -rf docker-data/postgres.corrupt-20260703 backups/profile-migration-2026-06-25-104730 backups/profile-migration-2026-06-25-105143
 ```
 
@@ -64,10 +64,11 @@ Expected: 显示上述文件/目录为 `D`（deleted）状态。
 git add -A
 git commit -m "chore(docs): 删除临时/备份/损坏文件
 
-- .env.bak、lib/copy.ts
+- .env.bak
 - docs/contract-fake-close-recovery-list.csv、docs/db-schema-snapshot.sql
 - docker-data/postgres.corrupt-20260703
 - backups/profile-migration-2026-06-25-*
+- 保留 lib/copy.ts（被 admin 用户新增页依赖，误删后已从 git 历史恢复）
 
 Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>"
 ```
@@ -400,28 +401,28 @@ cat > docs/README.md << 'EOF'
 
 | 文档 | 说明 |
 |---|---|
-| [DESIGN-v3.md](./architecture/DESIGN-v3.md) | 详细设计规范 |
-| [RLS.md](./architecture/RLS.md) | 行级安全（RLS）部署说明 |
+| [DESIGN-v3.md../../architecture/DESIGN-v3.md) | 详细设计规范 |
+| [RLS.md../../architecture/RLS.md) | 行级安全（RLS）部署说明 |
 
 ### user/ — 用户手册
 
 | 文档 | 说明 |
 |---|---|
-| [USER_MANUAL.md](./user/USER_MANUAL.md) | 最终用户操作手册 |
+| [USER_MANUAL.md../../user/USER_MANUAL.md) | 最终用户操作手册 |
 
 ### ops/ — 运维与部署
 
 | 文档 | 说明 |
 |---|---|
-| [db-bootstrap.md](./ops/db-bootstrap.md) | 数据库初始化 |
-| [deploy-ecs.md](./ops/deploy-ecs.md) | 阿里云 ECS 单主机部署方案与记录 |
+| [db-bootstrap.md../../ops/db-bootstrap.md) | 数据库初始化 |
+| [deploy-ecs.md../../ops/deploy-ecs.md) | 阿里云 ECS 单主机部署方案与记录 |
 
 ### reference/ — 参考材料
 
 | 文档 | 说明 |
 |---|---|
-| [project-summary.md](./reference/project-summary.md) | 项目总结 |
-| [design-system-alignment.md](./reference/design-system-alignment.md) | 设计系统落地与主要页面对齐 |
+| [project-summary.md../../reference/project-summary.md) | 项目总结 |
+| [design-system-alignment.md../../reference/design-system-alignment.md) | 设计系统落地与主要页面对齐 |
 
 ### history/ — 历史归档（不再更新）
 
@@ -429,22 +430,22 @@ cat > docs/README.md << 'EOF'
 
 | 文档 | 说明 |
 |---|---|
-| [code-review-announcement.md](./history/code-review/code-review-announcement.md) | 代码审查公告 |
-| [code-review.md](./history/code-review/code-review.md) | 代码审查报告 |
-| [phase-review.md](./history/code-review/phase-review.md) | P2/P3 阶段验收报告 |
+| [code-review-announcement.md../../history/code-review/code-review-announcement.md) | 代码审查公告 |
+| [code-review.md../../history/code-review/code-review.md) | 代码审查报告 |
+| [phase-review.md../../history/code-review/phase-review.md) | P2/P3 阶段验收报告 |
 
 #### postmortem/
 
 | 文档 | 说明 |
 |---|---|
-| [contract-fake-close-recovery.md](./history/postmortem/contract-fake-close-recovery.md) | 合同误关闭恢复复盘 |
-| [cron-silent-failure-postmortem.md](./history/postmortem/cron-silent-failure-postmortem.md) | 定时任务静默失败复盘 |
+| [contract-fake-close-recovery.md../../history/postmortem/contract-fake-close-recovery.md) | 合同误关闭恢复复盘 |
+| [cron-silent-failure-postmortem.md../../history/postmortem/cron-silent-failure-postmortem.md) | 定时任务静默失败复盘 |
 
 #### security/
 
 | 文档 | 说明 |
 |---|---|
-| [login-security-review-2026-07-11.md](./history/security/login-security-review-2026-07-11.md) | 登录安全审查报告 |
+| [login-security-review-2026-07-11.md../../history/security/login-security-review-2026-07-11.md) | 登录安全审查报告 |
 
 ## 历史文件名对照表
 
@@ -514,13 +515,13 @@ Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>"
 ```markdown
 ## 文档索引
 
-完整文档地图见 [docs/README.md](./docs/README.md)。
+完整文档地图见 [docs/README.md../../README.md)。
 
 主要入口：
-- [设计规范](./docs/architecture/DESIGN-v3.md)
-- [用户手册](./docs/user/USER_MANUAL.md)
-- [部署方案](./docs/ops/deploy-ecs.md)
-- [项目总结](./docs/reference/project-summary.md)
+- [设计规范../../architecture/DESIGN-v3.md)
+- [用户手册../../user/USER_MANUAL.md)
+- [部署方案../../ops/deploy-ecs.md)
+- [项目总结../../reference/project-summary.md)
 ```
 
 - [ ] **Step 2: 验证修改**

@@ -377,7 +377,7 @@ PLANNED ─confirm(finance)─▶ CONFIRMED ─reconcile(finance)─▶ RECONCIL
 
 > v0.5.0 起客户表下线 `status` 字段及关联的状态机/自动化/撤销横幅(原 5 态 LEAD/NEGOTIATING/SIGNED/LOST/FROZEN + 4 条自动规则 + 7 天可撤销窗口); 客户跟进(`FollowUp`)已在 v0.3.1 软下线。
 > 业务方后续定义新流程。完整下线原因 / 数据迁移 / 历史消息处理见
-> [docs/superpowers/specs/2026-06-29-customer-status-deprecation.md](superpowers/specs/2026-06-29-customer-status-deprecation.md)。
+> [docs/superpowers/specs/2026-06-29-customer-status-deprecation.md](../superpowers/specs/2026-06-29-customer-status-deprecation.md)。
 
 ## 6. 跨模块校验规则（核心规则清单）
 
@@ -616,8 +616,8 @@ PLANNED ─confirm(finance)─▶ CONFIRMED ─reconcile(finance)─▶ RECONCIL
 
 | 阶段 | 产出 | 验收 |
 |---|---|---|
-| **P0 脚手架** | Next.js 16 + TS 6 strict + Prisma 7 + NextAuth v4 + antd 6 + pro 3 + AntdRegistry；4 角色/字典种子；ESLint/Prettier/Typecheck/Test CI | `pnpm dev` 启动；4 角色可登录；首页 ProLayout 正常渲染；样式无闪烁 |
-| **P1 主链路** | 客户/合同/项目/开票/回款 五大模块 CRUD + 状态机 + 关键校验 + ProTable/ProForm 页面 | §11 用例 1-6 全部通过；E2E 主链路 Playwright 全绿 |
+| **P0 脚手架** | Next.js 16 + TS 6 strict + Prisma 7 + NextAuth v4 + antd 6 + pro 3 + AntdRegistry；5 角色/字典种子；ESLint/Prettier/Typecheck/Test CI | `pnpm dev` 启动；5 角色可登录；首页 ProLayout 正常渲染；样式无闪烁 |
+| **P1 主链路** | 客户/合同/开票/回款 四大模块 CRUD + 状态机 + 关键校验 + ProTable/ProForm 页面 | §11 用例 1-6 全部通过；E2E 主链路 Playwright 全绿 |
 | **P2 支撑** | 消息提醒（Vercel Cron + 站内信）、统计看板、xlsx 导出、操作日志 | §11 用例 7-9 全部通过；导出 1 万行统计 P95 < 2s |
 | **P3 完善** | SSO 接入、备份脚本、压测报告（原通知三通道已并入站内信） | 200 并发列表查询 P95 < 500ms |
 

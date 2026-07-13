@@ -29,11 +29,11 @@ P0 阶段登录链路只做了 `bcrypt.compare`, 没有任何:
 `authorize()` 只做"账号存在 + bcrypt 通过". 没有失败计数 / IP 限速 / 全局阈值. 攻击者对弱密码 admin 账号可以无限尝试. bcrypt cost=12 约 250ms/次, 攻击者用代理池完全可承受.
 
 **修复**:
-- 新建 [`lib/login-rate-limit.ts`](../../lib/login-rate-limit.ts): 双层防护
+- 新建 [`lib/login-rate-limit.ts`](../../../lib/login-rate-limit.ts): 双层防护
   - **IP 维度** (in-memory Map): 5min 窗口内 20 次失败 → 限速, 跨实例不共享但单实例足够挡 99% 暴力
   - **用户维度** (DB `User.lockedUntil` / `User.failedLoginCount`): 5 次失败锁 15min, 第 6 次起锁 60min, 跨实例可见
 - 衰减窗口 30min: 距上次失败 > 30min 视为新一轮, 允许"输错几次后冷静一会"
-- IP 限速挂在 [`app/api/auth/[...nextauth]/route.ts`](../../app/api/auth/%5B...nextauth%5D/route.ts) 包裹层 (因 NextAuth v4 `authorize()` 拿不到请求 IP)
+- IP 限速挂在 [`app/api/auth/[...nextauth]/route.ts`](../../../app/api/auth/%5B...nextauth%5D/route.ts) 包裹层 (因 NextAuth v4 `authorize()` 拿不到请求 IP)
 
 ### P1-2 登录失败没有审计日志
 
@@ -48,7 +48,7 @@ P0 阶段登录链路只做了 `bcrypt.compare`, 没有任何:
 `authorize()` 里 `bcrypt.compare` 失败直接 `return null`, 连日志都没有.
 
 **修复**:
-- 新建 [`lib/login-audit.ts`](../../lib/login-audit.ts), 8 类事件写 `OperationLog`:
+- 新建 [`lib/login-audit.ts`](../../../lib/login-audit.ts), 8 类事件写 `OperationLog`:
   - `LOGIN_SUCCESS` / `LOGIN_FAIL` / `LOGIN_LOCKED` / `LOGIN_RATE_LIMITED`
   - `PASSWORD_RESET_REQUESTED` / `PASSWORD_RESET_CONSUMED` / `PASSWORD_RESET_INVALID` / `PASSWORD_CHANGED`
 - `diff` 字段仅记 employeeNo + reason (e.g. `failed_count=3`, `locked_until=2026-07-11T...`), **绝不写明文密码 / token**
@@ -87,11 +87,11 @@ if (raw.startsWith("/\\") || raw.startsWith("/%5C") || raw.startsWith("/%2f")) r
 - `https://evil.com` (显式协议)
 
 **修复**:
-- 抽到独立模块 [`lib/safe-callback-url.ts`](../../lib/safe-callback-url.ts), 便于单测
+- 抽到独立模块 [`lib/safe-callback-url.ts`](../../../lib/safe-callback-url.ts), 便于单测
 - 用 `URL` 解析做白名单: 必须解析成绝对 URL, 且 `origin` 与传入 origin 一致
 - 禁止 scheme / protocol-relative (`//`) / 反斜杠绕过 (`/\\`) / userinfo / 跨 origin
 - SSR 时 origin 为空仅做基础白名单, 客户端水合后会再校一次
-- 单测 [`tests/safe-callback-url.test.ts`](../../tests/safe-callback-url.test.ts) 9 个用例覆盖所有绕过路径
+- 单测 [`tests/safe-callback-url.test.ts`](../../../tests/safe-callback-url.test.ts) 9 个用例覆盖所有绕过路径
 
 ### P1-5 JWT `maxAge` 截断后 `token.exp` 兜底缺失
 
@@ -105,7 +105,7 @@ return await defaultJwtEncode({ ...rest, token, maxAge: effectiveMaxAge });
 NextAuth v4 的 `defaultJwtEncode` 内部调 `setExpirationTime(maxAge)`, 但前提是 token 里没有 `exp`. 老 token (升级前签发、`exp` 还没过期) 从 `decode` 出来仍带 `exp`, NextAuth 不会再用 `maxAge` 重新算.
 
 **修复**:
-- [`lib/auth.ts`](../../lib/auth.ts) `jwt` 回调里显式写 `token.exp = nowSec + ttl`, 兜底覆盖老 token 跨升级的情况
+- [`lib/auth.ts`](../../../lib/auth.ts) `jwt` 回调里显式写 `token.exp = nowSec + ttl`, 兜底覆盖老 token 跨升级的情况
 - 顺手把 TTL = `remember ? 7d : 8h` 抽成常量, 避免 `remember=false` 误用其他值
 
 ---
@@ -162,14 +162,14 @@ passwordHash: "$2b$10$ZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZ"
 两个都不抗压, 没有审计、没有临时令牌.
 
 **修复**:
-- 新建 [`lib/password-reset.ts`](../../lib/password-reset.ts) + `app/api/auth/password-reset/{request,confirm}` 两个 endpoint
+- 新建 [`lib/password-reset.ts`](../../../lib/password-reset.ts) + `app/api/auth/password-reset/{request,confirm}` 两个 endpoint
 - token 设计: `crypto.randomBytes(32).toString("base64url")` (43 字符), 仅存 `SHA-256(token)`, 一次性消费, 30min TTL
 - 无邮件基础设施下的送达: 申请接口把完整 reset URL 写到 `OperationLog` (action=`PASSWORD_RESET_LINK`), 管理员通过 `/api/operation-logs` 查到链接, 通过内部渠道 (电话 / 现场 / 后续接 IM) 送达
 - 改密成功后自动清 `User.mustChangePassword / failedLoginCount / lockedUntil`
 - 登录页 `?resetToken=xxx` 直接进改密表单 (覆盖原有登录表单); 改密成功后 `router.replace("/login")`
 - 登录成功但 `mustChangePassword=true` 跳 `/login?resetRequired=1` 强制改密
 - 5min/5 次 IP 限速防 token 洪水
-- 单测 [`tests/login-security.test.ts`](../../tests/login-security.test.ts) 覆盖 hash 抗碰撞 / 长度 / 唯一性 / TTL / URL 拼接
+- 单测 [`tests/login-security.test.ts`](../../../tests/login-security.test.ts) 覆盖 hash 抗碰撞 / 长度 / 唯一性 / TTL / URL 拼接
 
 ### P2-6 旧密码泄漏到 git — `legacy-fineui.mjs`
 
@@ -240,7 +240,7 @@ await prisma.user.update({ where: { id: user.id }, data: { lastLoginAt: new Date
 
 没设 `headers()`, 登录页可能被嵌入 iframe 做 clickjacking, MIME 嗅探, referer 泄漏等.
 
-**修复** ([`next.config.mjs`](../../next.config.mjs)):
+**修复** ([`next.config.mjs`](../../../next.config.mjs)):
 - `X-Frame-Options: DENY` 防 clickjacking
 - `X-Content-Type-Options: nosniff` 防 MIME 嗅探
 - `Referrer-Policy: strict-origin-when-cross-origin` 防 referer 泄漏

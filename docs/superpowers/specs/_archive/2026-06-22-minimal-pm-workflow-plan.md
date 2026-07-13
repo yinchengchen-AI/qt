@@ -17,8 +17,8 @@
 - 约定: `@/*` 别名指仓库根;Conventional Commits;`2 空格` 缩进,单引号
 
 **Reference:**
-- 设计文档:[`docs/superpowers/specs/2026-06-22-minimal-pm-workflow-design.md`](../../specs/2026-06-22-minimal-pm-workflow-design.md)
-- 字段删除回归测试模式:[`tests/milestones-removed.test.ts`](../../../tests/milestones-removed.test.ts)
+- 设计文档:[`docs/superpowers/specs/_archive/2026-06-22-minimal-pm-workflow-design.md`](2026-06-22-minimal-pm-workflow-design.md)
+- 字段删除回归测试模式:[`tests/milestones-removed.test.ts`](../../../../tests/milestones-removed.test.ts)
 - 现有 5 dev 账号:`admin` / `sales` / `finance` / `ops` / `expert`,密码 `dev-only-fill`(来自 `DEV_QUICK_FILL_PASSWORD`)
 
 ---
@@ -1420,11 +1420,11 @@ Expected: 全绿
 
 - [ ] **Step 2: 手工冒烟 5 个 dev 账号**
 
-按 [设计文档 §7.3](/Users/yinchengchen/qt/docs/superpowers/specs/2026-06-22-minimal-pm-workflow-design.md) 跑 7 步流程,5 账号 × 7 步 = 35 次操作,任何一步报错就回滚 PR-1。
+按 [设计文档 §7.3](2026-06-22-minimal-pm-workflow-design.md) 跑 7 步流程,5 账号 × 7 步 = 35 次操作,任何一步报错就回滚 PR-1。
 
 - [ ] **Step 3: 部署 dev → staging → prod**
 
-按 [设计文档 §6.3](/Users/yinchengchen/qt/docs/superpowers/specs/2026-06-22-minimal-pm-workflow-design.md) 走,每环境观察 1 天。
+按 [设计文档 §6.3](2026-06-22-minimal-pm-workflow-design.md) 走,每环境观察 1 天。
 
 - [ ] **Step 4: 标签**
 

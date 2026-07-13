@@ -4,7 +4,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** 把 `EmployeeProfile` 从"长文本 + ProCard 堆叠"重做为"5 张子表 + 5 步向导 + Anchor 详情 + 证书到期提醒",范围由 [`docs/superpowers/specs/2026-06-25-employee-profile-redesign-design.md`](../../specs/2026-06-25-employee-profile-redesign-design.md) 锁定。
+**Goal:** 把 `EmployeeProfile` 从"长文本 + ProCard 堆叠"重做为"5 张子表 + 5 步向导 + Anchor 详情 + 证书到期提醒",范围由 [`docs/superpowers/specs/2026-06-25-employee-profile-redesign-design.md`](../specs/2026-06-25-employee-profile-redesign-design.md) 锁定。
 
 **Architecture:** schema 迁移先行(5 张子表 + 字段调整 + Attachment.category + MessageType 扩),后端 service / API 改造,前端 5 步向导 + 详情 Anchor + 两段式新建,最后接 cron + 证书列表页。**10 个 PR 严格按顺序合**,前序是后序基础,不并行。
 

@@ -175,7 +175,7 @@
 v0.5.0(2026-06-29)起客户表不再有 `status` 字段, 详情页右上角「变更状态」入口已移除。客户跟进(`FollowUp`)在 v0.3.1 已软下线。
 
 > 业务方后续定义新流程。完整下线原因 / 历史约束见
-> [docs/superpowers/specs/2026-06-29-customer-status-deprecation.md](superpowers/specs/2026-06-29-customer-status-deprecation.md)。
+> [docs/superpowers/specs/2026-06-29-customer-status-deprecation.md](../superpowers/specs/2026-06-29-customer-status-deprecation.md)。
 >
 > 软删除的客户在列表里默认隐藏;管理员可在筛选中开启「含已删除」。
 

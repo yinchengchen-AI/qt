@@ -897,8 +897,8 @@ sudo systemctl restart crond
 - **v0.1.0-rc.1**:MinIO 接入(presign upload/download + Attachment 表 + CORS);Docker 合并为单 image;合同/发票上传/预览/下载/删除端到端打通
 - **P3**:RLS 策略 + 备份脚本 + Vercel Cron(原通知三通道已合并到站内信)
 - **P2**:领域事件总线 + 4 个定时任务 + 统计分析 + xlsx 导出 + 软删除
-- **P1**:五大模块 CRUD + 16 条跨模块校验 + 27/27 e2e
-- **P0**:项目脚手架 + 登录 + 字典种子 + 4 角色权限
+- **P1**:四大模块 CRUD + 16 条跨模块校验 + 27/27 e2e
+- **P0**:项目脚手架 + 登录 + 字典种子 + 5 角色权限
 
 ## 部署
 

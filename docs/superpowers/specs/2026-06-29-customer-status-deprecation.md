@@ -4,7 +4,7 @@
 **日期**: 2026-06-29
 **状态**: Design Draft (待 review)
 **关联**:
-- 上线文档 [2026-06-28-customer-status-automation.md](2026-06-28-customer-status-automation.md) (本 spec 反向清理其影响)
+- 上线文档 [2026-06-28-customer-status-automation.md](_archive/2026-06-28-customer-status-automation.md) (本 spec 反向清理其影响)
 - 实施 v0.4.0 提交 `45dcfcd` (feat) + `64469f8` (docs) + `e60f60a` (docs 精简)
 
 ## 1. 背景与目标

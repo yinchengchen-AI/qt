@@ -17,8 +17,8 @@
 - 约定: `@/*` 别名指仓库根;Conventional Commits;`2 空格` 缩进,单引号;`noUncheckedIndexedAccess` 严格模式
 
 **Reference:**
-- 设计文档: [`docs/superpowers/specs/2026-06-24-qt-biz-service-refactor-design.md`](../../specs/2026-06-24-qt-biz-service-refactor-design.md)
-- 现有 `vi.mock` 范本: [`tests/unit/server/customer-status.test.ts`](../../../tests/unit/server/customer-status.test.ts) / [`customer-list-filters.test.ts`](../../../tests/unit/server/customer-list-filters.test.ts)
+- 设计文档: [`docs/superpowers/specs/2026-06-24-qt-biz-service-refactor-design.md`](../specs/2026-06-24-qt-biz-service-refactor-design.md)
+- 现有 `vi.mock` 范本: `tests/unit/server/customer-status.test.ts` / [`customer-list-filters.test.ts`](../../../tests/unit/server/customer-list-filters.test.ts)
 - 现有 5 dev 账号: `admin` / `sales` / `finance` / `ops` / `expert`,密码 `dev-only-fill`(来自 `DEV_QUICK_FILL_PASSWORD`)
 
 ---
@@ -2709,7 +2709,7 @@ git push
 
 ### 1. Spec 覆盖(spec coverage)
 
-逐条对照 [`docs/superpowers/specs/2026-06-24-qt-biz-service-refactor-design.md`](../../specs/2026-06-24-qt-biz-service-refactor-design.md) 的 9 条 in-scope 债务:
+逐条对照 [`docs/superpowers/specs/2026-06-24-qt-biz-service-refactor-design.md`](../specs/2026-06-24-qt-biz-service-refactor-design.md) 的 9 条 in-scope 债务:
 
 | 债务 | 任务 / 步骤 | 覆盖 |
 |---|---|---|
