@@ -2,7 +2,7 @@
 
 > 客户 / 合同 / 开票 / 回款 一体化管理,附件走 MinIO presigned 直传。
 > **当前版本: v0.10.1**(2026-07-13)
-> 详细设计见 [docs/DESIGN-v3.md](docs/DESIGN-v3.md),用户手册见 [docs/USER_MANUAL.md](docs/USER_MANUAL.md)。
+> 详细设计见 [docs/architecture/DESIGN-v3.md](docs/architecture/DESIGN-v3.md),用户手册见 [docs/user/USER_MANUAL.md](docs/user/USER_MANUAL.md)。
 > 2026-07-04 增量同步: 全库代码审计 10 处 bug 修复 + 2 组单元测试已补到「最近更新」开头。
 
 ## 目录
@@ -45,7 +45,7 @@
 | 加密 | bcrypt | 6.0.0 |
 | 测试 | Vitest + @playwright/test | 4.1.8 / 1.60.0 |
 
-完整版本矩阵与兼容性说明见 [docs/DESIGN-v3.md §1](docs/DESIGN-v3.md)。
+完整版本矩阵与兼容性说明见 [docs/architecture/DESIGN-v3.md §1](docs/architecture/DESIGN-v3.md)。
 
 ## 快速启动
 
@@ -199,7 +199,7 @@ PLANNED ──confirm──> CONFIRMED ──reconcile──> RECONCILED
 | R-12 | 合同级回款不超额 | service 事务 | 422 PAYMENT_OVER_CONTRACT |
 | – | SALES 行级隔离 | ownershipWhere 注入 | 404 |
 
-完整规则与边界场景见 [docs/DESIGN-v3.md §6](docs/DESIGN-v3.md)。
+完整规则与边界场景见 [docs/architecture/DESIGN-v3.md §6](docs/architecture/DESIGN-v3.md)。
 
 ## 认证 & 权限
 
@@ -236,7 +236,7 @@ NextAuth v4 + JWT 策略(不挂 PrismaAdapter,P0 阶段简化)。
 | 角色撤销 | `User.roleVersion` 嵌入 JWT + `lib/auth.ts` 缓存 TTL 降到 2s,改角色/禁用户 ≤ 2s 全局失效 | 主动 `invalidateAuthCache` 加速 |
 | 工号归一化 | `lib/auth.ts#normalizeEmployeeNo`,trim + toLowerCase,`@unique` 大小写敏感引起的双账号隐患消除 | login / authorize / scripts 同源 |
 
-设计取舍与回放见 [docs/login-security-review-2026-07-11.md](docs/login-security-review-2026-07-11.md)。
+设计取舍与回放见 [docs/history/security/login-security-review-2026-07-11.md](docs/history/security/login-security-review-2026-07-11.md)。
 
 ### Cookie & 会话
 
@@ -453,7 +453,7 @@ xlsx 导出走 `lib/excel.ts` + `exceljs`; 中文文件名通过 `attachmentHead
 ### v0.10.0(2026-07-11) 登录安全加固 + 自服务密码重置
 
 > v0.9.x 阶段登录链路只有 bcrypt 校验, 无失败计数 / 限速 / 审计 / 密码自服务重置.
-> 本次按 [docs/login-security-review-2026-07-11.md](docs/login-security-review-2026-07-11.md) 触发的修复集, 一次性把 P1/P2 全部上线.
+> 本次按 [docs/history/security/login-security-review-2026-07-11.md](docs/history/security/login-security-review-2026-07-11.md) 触发的修复集, 一次性把 P1/P2 全部上线.
 > Schema 改动: User 表新增 5 字段 + 新表 PasswordResetToken (migration `20260711_login_security_hardening`).
 
 **Schema 变更** (`prisma/migrations/20260711_login_security_hardening/migration.sql`):
@@ -712,8 +712,8 @@ nginx 反代架构 (`nginx :80` → `next start :3000`) 下, 上游应用重启 
 - `tests/e2e/15-aging-redesign.spec.ts` — Playwright 端到端(详情页打开催收抽屉 + 录入催收 + 列表显示)
 
 **文档 (八)**:
-- `docs/DESIGN-v3.md` — 加 59 行(账龄重设计 + DunningNote 实体 + dueDate basis 规则)
-- `docs/USER_MANUAL.md` — 加 27 行(账龄页使用 + 催收流程 + Authority 组件用法)
+- `docs/architecture/DESIGN-v3.md` — 加 59 行(账龄重设计 + DunningNote 实体 + dueDate basis 规则)
+- `docs/user/USER_MANUAL.md` — 加 27 行(账龄页使用 + 催收流程 + Authority 组件用法)
 
 **版本号**: `0.6.0` → `0.7.0`(minor bump,新功能 + 新 schema,无 breaking change)
 **部署说明**: 含 1 个新迁移(`20260703_aging_redesign`),含 DunningNote 表创建 + Invoice.dueDate 加列 + 回填;首次部署后 ISSUED 发票的 dueDate 会被自动回填为 `actualIssueDate + 30 天`,财务可在开票审核时手动覆盖
@@ -727,7 +727,7 @@ nginx 反代架构 (`nginx :80` → `next start :3000`) 下, 上游应用重启 
 - **feat(contract)**:新增 `POST /api/contracts/[id]/reopen` 接口, admin 专属, CLOSED → ACTIVE。4 档 `reason` 枚举 (`recovered_from_fake_close` / `data_correction` / `reopen_for_payment` / `other`, `other` 必填 `reasonNote`), 完整事务 + `ContractReviewLog` (`action=MANUAL_REOPEN`) + audit log + `reviewComment` 标记 `reopened:<reason>` 便于追溯
 - **feat(payment)**: `createPayment` 加 `force: true` / `forceReason` 旁路, 仅 ADMIN 可用, 仅 CLOSED 合同允许, 业务校验保留 (金额/发票), `remark` 自动追加 `[FORCE_BACKFILL:<reason>]` 审计标记
 - **feat(api)**: `POST /api/payments` body 加 `force + forceReason` overlay (不进 `PaymentCreateInput` 主 schema, 避免污染前端类型)
-- **docs**: postmortem `docs/cron-silent-failure-postmortem.md` (完整复盘 + 鱼骨图 + 修复时间线) + `docs/contract-fake-close-recovery.md` (修复方案 + 选择指南) + `scripts/migrate/contract-fake-close-recovery.{sql,ts}` (事务 + 备份 + 审计 + 回滚 SQL)
+- **docs**: postmortem `docs/history/postmortem/cron-silent-failure-postmortem.md` (完整复盘 + 鱼骨图 + 修复时间线) + `docs/history/postmortem/contract-fake-close-recovery.md` (修复方案 + 选择指南) + `scripts/migrate/contract-fake-close-recovery.{sql,ts}` (事务 + 备份 + 审计 + 回滚 SQL)
 - **部署记录**: 2026-06-29 已执行恢复脚本, 242 个合同已恢复 ACTIVE, 财务可补录回款
 
 **防再发 (二) cron 健康监控** (`af734c28`)：
@@ -736,11 +736,11 @@ nginx 反代架构 (`nginx :80` → `next start :3000`) 下, 上游应用重启 
 - **chore(ops)**: `ops/qt-jobs.cron` 加 `5 * * * * cron-healthcheck.sh` 条目 (跟 `0 * * * * run-all` 错开, 防止互相干扰)
 - **feat(deploy)**: `scripts/prod/deploy.sh` 加 deploy 后自检 — `/etc/cron.d/qt-jobs` 必须含 `source .env` + 立即触发 `run-all` 验证 token + 跑一次 `cron-healthcheck.sh` (防 deploy 静默 break cron)
 - **feat(events)**: `server/events/bus.ts` `CONTRACT_EXPIRED_UNPAID` 文案分档 — `daysUntilForceClose` ∈ {7, 3, 1} 红色醒目 `⚠️【强关预警】` + 立即处理指引; = 0 时 `⚠️ 今天将被系统强关`; 其它普通 `还剩 N 天`
-- **docs**: `docs/USER_MANUAL.md` 新增 §16 运维小贴士 (30 秒自检 / 健康监控 / 强关文案规则 / deploy 报错排查 / 应急处理入口)
+- **docs**: `docs/user/USER_MANUAL.md` 新增 §16 运维小贴士 (30 秒自检 / 健康监控 / 强关文案规则 / deploy 报错排查 / 应急处理入口)
 
 **选择指南 (三) postmortem 补 reopen vs force** (`c959b300`)：
 
-- **docs(postmortem)**: `docs/contract-fake-close-recovery.md` 新增 §4.4 / §4.5 — 4 档典型场景对应推荐路径 (历史批量 → SQL / 单合同误关 → reopen / CLOSED 补录 → force / DRAFT 拒绝), 关键提醒 (reopen 后 cron 仍可能再次强关, 正确流程是 reopen → 立即补录 → tryAutoComplete), 接口 curl 示例
+- **docs(postmortem)**: `docs/history/postmortem/contract-fake-close-recovery.md` 新增 §4.4 / §4.5 — 4 档典型场景对应推荐路径 (历史批量 → SQL / 单合同误关 → reopen / CLOSED 补录 → force / DRAFT 拒绝), 关键提醒 (reopen 后 cron 仍可能再次强关, 正确流程是 reopen → 立即补录 → tryAutoComplete), 接口 curl 示例
 
 **审查修复 (四)** (`dd3cfa29`)：
 
@@ -777,7 +777,7 @@ sudo systemctl restart crond
 - **chore(contract)**:合同 Timeline 切 antd 6 API(`TimelineItem dot` → `dot` 接受 ReactNode),失败状态加红 icon
 - **chore(payments)**:清未使用的 `Tag` 导入(antd 6 lint 警告)
 - **fix(certificates)**:到期证书页 `request` 解包错位(`response` 二层包)→ 直接读 `data.items`
-- **chore(db)**:恢复漂移的 3 个迁移文件(从 git 历史找回,不能 `migrate resolve` 凭空标记),加 `docs/db-bootstrap.md` + `prisma db-schema-snapshot.sql` 兜底脚本
+- **chore(db)**:恢复漂移的 3 个迁移文件(从 git 历史找回,不能 `migrate resolve` 凭空标记),加 `docs/ops/db-bootstrap.md` + `prisma db-schema-snapshot.sql` 兜底脚本
 - **chore(deps)**:`dev / test / typecheck` 加 `predev` 钩子自动 `prisma generate`,免手动 build 漏掉 client
 - **feat(dev)**:登录页测试账号对齐 5 个内置角色(原 4 个,加 `expert` 用于权限矩阵测试,不进快速填充卡)
 - **chore(harness)**:初始化 Mavis 团队配置(`.harness/` + `AGENTS.md`),`harness / developer / prisma-expert / backend-expert / ui-expert / code-reviewer` 6 个 rein,详见 [.harness/agent.md](.harness/agent.md)
@@ -845,7 +845,7 @@ sudo systemctl restart crond
 
 ### v0.3.0(2026-06-24)统计分析 round-2 收尾
 
-详见 [docs/P2_REVIEW.md](docs/P2_REVIEW.md) 末尾 Round-2 修复节、[docs/DESIGN-v3.md](docs/DESIGN-v3.md) §8 / §9.7、[docs/USER_MANUAL.md](docs/USER_MANUAL.md) §11。
+详见 [docs/history/code-review/phase-review.md](docs/history/code-review/phase-review.md) 末尾 Round-2 修复节、[docs/architecture/DESIGN-v3.md](docs/architecture/DESIGN-v3.md) §8 / §9.7、[docs/user/USER_MANUAL.md](docs/user/USER_MANUAL.md) §11。
 
 - **chore(statistics)**:round-2 工具与脚本入库 — `lib/date-range.ts` 统一前后端日期范围,`scripts/dev/seed-customers-contracts.ts` dev 测试数据,`scripts/shared/cleanup-minio-objects.ts` MinIO 桶清理
 - **test(statistics)**:`tests/api/statistics-aggregation.test.ts` 4 条真实 DB 集成断言(账龄 total / REFUNDED 抵消 / unpaidAmount clamp / SALES short-circuit)
@@ -883,7 +883,7 @@ sudo systemctl restart crond
 
 ## 历史里程碑
 
-- **v0.10.0(2026-07-11)**: 登录安全加固 — 限速 + 失败计数锁定 + 审计日志 + 自服务密码重置 + 开放重定向 URL 白名单;新增 `User.mustChangePassword / failedLoginCount / lockedUntil / lastFailedLoginAt / roleVersion` 5 字段 + 新表 `PasswordResetToken`(migration `20260711_login_security_hardening`),详见 [docs/login-security-review-2026-07-11.md](docs/login-security-review-2026-07-11.md) 与 README 「最近更新」v0.10.0 段
+- **v0.10.0(2026-07-11)**: 登录安全加固 — 限速 + 失败计数锁定 + 审计日志 + 自服务密码重置 + 开放重定向 URL 白名单;新增 `User.mustChangePassword / failedLoginCount / lockedUntil / lastFailedLoginAt / roleVersion` 5 字段 + 新表 `PasswordResetToken`(migration `20260711_login_security_hardening`),详见 [docs/history/security/login-security-review-2026-07-11.md](docs/history/security/login-security-review-2026-07-11.md) 与 README 「最近更新」v0.10.0 段
 - **v0.9.7(2026-07-08)**: 日期与日期时间显示/导出统一为 `YYYY-MM-DD` 风格 — `lib/format.ts` 切到本地时区 + 18 处 `toLocaleDateString/toLocaleString('zh-CN')` 改走中央 helper;空值回退(`""` / `"—"` / `"-"`)按各调用点原地保留
 - **v0.8.2(2026-07-04)**: 回滚 9a48265 (CI 暴露 schema migration 冲突, 19 个代码/lib 文件 + 3 migration 目录回退到 ced7665) + README 乱码修复(从 v0.8.1 还原 blob + 追加修复叙事段) + 删 CI/GitHub 自动部署 (改回本地开发 + 运维手动部署)
 - **v0.8.0(2026-07-03)**: 报表中心 PDF 5 字段对齐 + Excel 多 sheet + 移除自动生成 (cron 删了, 走手动) + 文件名时间戳 (YYYY-MM-DD_HHMM)
@@ -931,7 +931,7 @@ npm run seed       # 此时找到 ADMIN, 写入工作流模板
 
 ### 阿里云 ECS 单主机部署
 
-详见 [docs/阿里云 ECS 单主机部署方案 — qt-biz v0.1.0.md](docs/%E9%98%BF%E9%87%8C%E4%BA%91%20ECS%20%E5%8D%95%E4%B8%BB%E6%9C%BA%E9%83%A8%E7%BD%B2%E6%96%B9%E6%A1%88%20%E2%80%94%20qt-biz%20v0.1.0.md) 和 [ops/](ops/)。
+详见 [docs/ops/deploy-ecs.md](docs/ops/deploy-ecs.md) 和 [ops/](ops/)。
 
 ### 备份与定时任务
 
@@ -943,14 +943,13 @@ npm run seed       # 此时找到 ADMIN, 写入工作流模板
 
 | 文档 | 用途 |
 |---|---|
-| [docs/DESIGN-v3.md](docs/DESIGN-v3.md) | 完整设计(v3,版本矩阵钉版) |
-| [docs/USER_MANUAL.md](docs/USER_MANUAL.md) | 用户手册(对应 v0.2.0,v0.3.0 项目模块已下线) |
-| [docs/PROJECT_SUMMARY.md](docs/PROJECT_SUMMARY.md) | 项目总结 |
-| [docs/CODE_REVIEW.md](docs/CODE_REVIEW.md) | 上线前代码审查 |
-| [docs/P2_REVIEW.md](docs/P2_REVIEW.md) | P2 评审 + 统计分析 round-2 修复 |
-| [docs/P3_REVIEW.md](docs/P3_REVIEW.md) | P3 评审 |
-| [docs/RLS.md](docs/RLS.md) | RLS 策略 |
-| [docs/PLAYWRIGHT_E2E_REPORT.md](docs/PLAYWRIGHT_E2E_REPORT.md) | Playwright E2E 报告 |
+| [docs/architecture/DESIGN-v3.md](docs/architecture/DESIGN-v3.md) | 完整设计(v3,版本矩阵钉版) |
+| [docs/user/USER_MANUAL.md](docs/user/USER_MANUAL.md) | 用户手册(对应 v0.2.0,v0.3.0 项目模块已下线) |
+| [docs/reference/project-summary.md](docs/reference/project-summary.md) | 项目总结 |
+| [docs/history/code-review/code-review.md](docs/history/code-review/code-review.md) | 上线前代码审查 |
+| [docs/history/code-review/phase-review.md](docs/history/code-review/phase-review.md) | P2 / P3 阶段验收报告 |
+| [docs/architecture/RLS.md](docs/architecture/RLS.md) | RLS 策略 |
+| [docs/history/test-reports/playwright-e2e-report.md](docs/history/test-reports/playwright-e2e-report.md) | Playwright E2E 报告 |
 | [docs/ops/字典维护说明.md](docs/ops/%E5%AD%97%E5%85%B8%E7%BB%B4%E6%8A%A4%E8%AF%B4%E6%98%8E.md) | 数据字典维护 |
 | [docs/specs/dict-redesign.md](docs/specs/dict-redesign.md) | 字典重设计 spec |
 | [ops/README.md](ops/README.md) | 运维脚本说明 |
@@ -958,7 +957,7 @@ npm run seed       # 此时找到 ADMIN, 写入工作流模板
 
 ## 安全
 
-- **不要**提交 `.env`、`docker-data/`、`backups/`、`docs/*部署记录*.md`
+- **不要**提交 `.env`、`docker-data/`、`backups/`
 - 上传/下载走 Next.js 代理,MinIO 留在 `:9000` 内网,不公网暴露
 - `npm run seed` 仅系统管理数据;生产种子在干净环境手动跑,不随例行更新跑
 - dev 默认账号(`minioadmin/minioadmin`、`postgres/postgres`)仅本地用,生产前必须轮换
