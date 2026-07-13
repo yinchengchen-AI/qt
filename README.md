@@ -950,7 +950,7 @@ npm run seed       # 此时找到 ADMIN, 写入工作流模板
 | [docs/history/code-review/phase-review.md](docs/history/code-review/phase-review.md) | P2 / P3 阶段验收报告 |
 | [docs/architecture/RLS.md](docs/architecture/RLS.md) | RLS 策略 |
 | [docs/history/test-reports/playwright-e2e-report.md](docs/history/test-reports/playwright-e2e-report.md) | Playwright E2E 报告 |
-| [docs/ops/字典维护说明.md](docs/ops/%E5%AD%97%E5%85%B8%E7%BB%B4%E6%8A%A4%E8%AF%B4%E6%98%8E.md) | 数据字典维护 |
+| [docs/ops/dictionary-maintenance.md](docs/ops/dictionary-maintenance.md) | 数据字典维护 |
 | [docs/specs/dict-redesign.md](docs/specs/dict-redesign.md) | 字典重设计 spec |
 | [ops/README.md](ops/README.md) | 运维脚本说明 |
 | [scripts/README.md](scripts/README.md) | 脚本说明 |

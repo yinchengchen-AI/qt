@@ -31,6 +31,7 @@
 |---|---|
 | [db-bootstrap.md](./ops/db-bootstrap.md) | 数据库初始化 |
 | [deploy-ecs.md](./ops/deploy-ecs.md) | 阿里云 ECS 单主机部署方案与记录 |
+| [dictionary-maintenance.md](./ops/dictionary-maintenance.md) | 数据字典维护 |
 
 ### reference/ — 参考材料
 
@@ -84,6 +85,7 @@
 | `docs/db-bootstrap.md` | `docs/ops/db-bootstrap.md` |
 | `docs/阿里云 ECS 单主机部署方案 — qt-biz v0.1.0.md` | 并入 `docs/ops/deploy-ecs.md` |
 | `docs/部署记录 — qt-biz v0.1.0 — Aliyun ECS.md` | 并入 `docs/ops/deploy-ecs.md` |
+| `docs/ops/字典维护说明.md` | `docs/ops/dictionary-maintenance.md` |
 | `docs/contract-fake-close-recovery.md` | `docs/history/postmortem/contract-fake-close-recovery.md` |
 | `docs/cron-silent-failure-postmortem.md` | `docs/history/postmortem/cron-silent-failure-postmortem.md` |
 | `docs/login-security-review-2026-07-11.md` | `docs/history/security/login-security-review-2026-07-11.md` |
