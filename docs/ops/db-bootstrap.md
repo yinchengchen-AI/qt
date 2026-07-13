@@ -61,8 +61,8 @@ npm run prisma:deploy
 
 简单说：`prisma migrations` 是**生产数据库的 schema 演进日志**，不是「如何从空库建出当前 schema」的脚本。
 
-- 生产 DB 的 `_prisma_migrations` 表已经记录了全部 30 条历史
-- 把本地 29 个文件删成 1 个 init，`migrate deploy` 会立刻报 "migration not found"
+- 生产 DB 的 `_prisma_migrations` 表已经记录了全部 40 条历史
+- 把本地 40 个文件删成 1 个 init，`migrate deploy` 会立刻报 "migration not found"
 - 即便强行对齐（清空生产 `_prisma_migrations` 重新打 baseline），也会丢失「某天加过某列/某索引」的审计线索
 
 合理做法是**只对未来的迁移做发布节奏 squash**：在 PR 合并时把同一次发布的若干 ALTER 合并成 1 个语义命名的迁移（`v0.4.0_consolidated`），但**永远不回头改旧历史**。
@@ -95,4 +95,4 @@ npm run seed
 npm run db:snapshot
 ```
 
-会在 `docs/db-schema-snapshot.sql` 写入一份按 Prisma schema 生成的完整 DDL。**这是只读参考**，不会进入 `_prisma_migrations`，跟生产 deploy 无冲突。
+会在 `docs/db-schema-snapshot.sql` 写入一份按 Prisma schema 生成的完整 DDL。**这是只读参考**，不会进入 `_prisma_migrations`，跟生产 deploy 无冲突；该文件已加入 `.gitignore`，由脚本运行时生成，不进入版本控制。

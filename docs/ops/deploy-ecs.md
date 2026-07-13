@@ -1,6 +1,8 @@
 
 # 阿里云 ECS 单主机部署方案 — qt-biz v0.1.0
 
+> **历史注**：本文为 v0.1.0 首部署的原始记录，保留作历史参考。当前项目已改用 `npm`（`pnpm` 命令需替换为 `npm run` / `npx`），最新部署脚本与流程请优先参考 `scripts/prod/` 与 `README.md`。
+
 > **目标**:`yinchengchen-AI/qt@main`(`ff6ef4d`)部署到阿里云杭州区一台全新 Aliyun Linux 3 ECS,IP+HTTP,全栈同机(Docker 跑 PG/MinIO,native 跑 Node 应用 + nginx 反代 + systemd 托管),首登通过新增 CLI 脚本 `scripts/shared/create-admin.ts` 建第一个 admin。
 
 ## 一、拓扑与组件

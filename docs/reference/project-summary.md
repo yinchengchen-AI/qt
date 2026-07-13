@@ -241,7 +241,7 @@ dev 模式无：
 | 统计 | `server/services/statistics.ts` | 总览 / 账龄 / Top / 业绩 |
 | 导出 | `lib/excel.ts` | exceljs 流式生成 |
 | RLS | `lib/rls.ts`、`prisma/migrations/20260614_init/migration.sql` | DB 层兜底 |
-| 通知 | `lib/notify-config.ts` | env 驱动通道开关 |
+| 通知 | `server/events/bus.ts` | 站内信唯一写入入口；外部通道（email / 企微 webhook）已下线 |
 
 ### 4.2 测试与文档
 

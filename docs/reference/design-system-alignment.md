@@ -2,11 +2,11 @@
 
 ## Summary
 
-把登录页的「深海军蓝 + 安全琥珀」视觉语言做成全站设计令牌,并抽出 `PageHeader / Page / StatGrid / StatusTag` 等公共组件,落到 19 个主要页(Dashboard、5 列表、5 详情、3 表单、3 统计、消息/公告),让侧栏保留白底但用新强调色。`/admin/*` 不动(其中 3 页是 P3 计划内的占位),`/not-found` 顺手换成新风格。完成后 E2E 截图对比验证。
+把登录页的「深海军蓝 + 安全琥珀」视觉语言做成全站设计令牌,并抽出 `PageHeader / Page / StatGrid / StatusTag` 等公共组件,落到主要业务页面(Dashboard、4 个列表、4 个详情、4 个表单、4 个统计、消息/公告),让侧栏保留白底但用新强调色。`/admin/*` 不动(其中 3 页是 P3 计划内的占位),`/not-found` 顺手换成新风格。完成后 E2E 截图对比验证。
 
 ## Design Tokens(单点改、全站生效)
 
-新增 `app/tokens.css`(独立 CSS 文件被 `globals.css` 引用)定义 CSS 变量;在 `app/layout.tsx` 把同一组值透传给 antd `ConfigProvider.theme.token`,保证 antd 组件和我手写的组件颜色一致。
+设计令牌统一放在 `app/globals.css` 的 `:root` 中定义，由 `app/layout.tsx` 的 `ConfigProvider.theme.token` 与所有页面共享，保证 antd 组件和手写组件颜色一致。
 
 | Token | 值 | 用途 |
 | --- | --- | --- |
@@ -38,10 +38,10 @@ antd `ConfigProvider.theme`:`colorPrimary=#0a1c33`,`colorInfo=#0f2a47`,`colorWar
 - **`components/stat-grid.tsx`** + `stat-grid.module.css`
   替代 Dashboard / 统计页的裸 `ProCard split="vertical"`,支持 `columns` 控制栅格;`items: { label, value, prefix?, suffix?, delta?, tone? }[]`。Dashboard 顶部的 4 个数字 + 账龄 4 个桶用它统一。
 - **`components/status-tag.tsx`** + `status-tag.module.css`
-  把所有页面里散落的 `STATUS_COLOR: Record<string, string>` 收口。props:`status`、`type: 'customer' | 'contract' | 'project' | 'invoice' | 'payment' | 'message' | 'announcement'`。色板统一:default / info(navy) / processing(amber) / success(green) / warning / danger。
+  把所有页面里散落的 `STATUS_COLOR: Record<string, string>` 收口。props:`status`、`type: 'customer' | 'contract' | 'invoice' | 'payment' | 'message' | 'announcement'`。色板统一:default / info(navy) / processing(amber) / success(green) / warning / danger。
 - **`components/empty-state.tsx`** + `empty-state.module.css`
   统一加载中 / 错误 / 真空态。Props:`loading?`、`error?`、`empty?`、`icon?`、`description?`、`action?: ReactNode`。
-- **`components/qt-mark.tsx`**
+- **`components/qt-mark.tsx`**（未实现；登录页 Q 字标目前内联在 `app/login/login-client.tsx`，Dashboard 侧栏未加独立 Logo 组件）
   复用登录页的 Q 字标 SVG(内联),`size` 控制尺寸,放在侧栏头部和移动端品牌条。
 
 新增 `lib/status.ts`:导出每个业务域的 `STATUS_PALETTE` 和 `formatStatus(status, type)` 工具函数,供 `StatusTag` 和各页 `valueEnum` 复用,消除重复的 `STATUS_COLOR` 常量。
@@ -50,7 +50,7 @@ antd `ConfigProvider.theme`:`colorPrimary=#0a1c33`,`colorInfo=#0f2a47`,`colorWar
 
 `components/dashboard-shell.tsx`:
 - `ProLayout` 传 `token={{ colorTextMenuSelected: '#0a1c33', colorBgMenuItemSelected: 'rgba(15,42,71,0.08)', sider: { colorMenuBackground: '#ffffff' } }}` 保持白底,只换选中色
-- 头部 logo 文字「企泰业务管理」前加 `<QtMark size={28} />`,与登录页 Q 字标呼应
+- 头部 logo 文字「企泰业务管理」保持纯文字展示（Q 字标组件未落地），仅调整选中色与整体风格一致
 - `BellOutlined` 区域不动
 - `Drawer` `width={420}` 不变(那 2 个 deprecation warning 是 antd 6 升级遗留,本任务不动)
 
@@ -61,21 +61,21 @@ antd `ConfigProvider.theme`:`colorPrimary=#0a1c33`,`colorInfo=#0f2a47`,`colorWar
 - 顶部 4 个 KPI(合同额 / 已开票额 / 已回款额 / 未回款额)用 `<StatGrid columns={4}>` 替掉 `ProCard split="vertical"` + 4 个 `StatisticCard`
 - 应收账款账龄 4 桶用 `<StatGrid columns={4}>` + 90+ 自动套 danger tone
 
-**5 个列表页**(customers / contracts / projects / invoices / payments)
+**4 个列表页**(customers / contracts / invoices / payments)
 - `Page > PageHeader(title, subtitle="描述该页能做什么") + actions: 新建按钮`
 - 保留 `ProTable`(查询/分页/列配置现成的),只换外壳:加 `cardBordered={false}` + `search={{ labelWidth: 'auto' }}`,表格容器去掉默认 padding,背景透到 page 底色
 - 把每个页内联的 `STATUS_COLOR` 替换为 `formatStatus(row.status, 'customer' | 'contract' | …)` + `<StatusTag>`
 
-**5 个详情页**(customers/[id] / contracts/[id] / projects/[id] / invoices/[id] / payments/[id])
+**4 个详情页**(customers/[id] / contracts/[id] / invoices/[id] / payments/[id])
 - `Page > PageHeader(back: true, title: 实体名 + 编号, extra: [编辑/删除])`
 - `ProDescriptions` 维持,但包一层 `<EmptyState loading isLoading error>` 处理
 - 跟进记录 / 关联合同 / 附件 这些子区块统一用 `<PageHeader level={2}>`(缩小版)+ 表格,不再裸 `ProCard title`
 
-**3 个表单页**(customers/new、customers/[id]/edit、contracts/new、projects/new、invoices/new、payments/new)
+**4 个表单页**(customers/new、customers/[id]/edit、contracts/new、invoices/new、payments/new)
 - `Page > PageHeader(back, title, subtitle)`
 - 表单本身保留 `ProForm`(它和权限/字典配合最稳),但通过 ConfigProvider 已经统一色,无需大改;只把页面级 `padding` 收一下
 
-**3 个统计页**(statistics/overview, /aging, /performance)
+**4 个统计页**(statistics/overview, /aging, /by-region, /performance)
 - `Page > PageHeader(title, subtitle, extra: [RangePicker, 导出按钮])`
 - 顶部 4 卡片用 `<StatGrid>`
 - 图表用 `@ant-design/charts` 保留(色板已经在 antd 主题里影响),外层包 `<Card bordered={false}>` 收紧
@@ -90,13 +90,13 @@ antd `ConfigProvider.theme`:`colorPrimary=#0a1c33`,`colorInfo=#0f2a47`,`colorWar
 - 其余 3 页用 `<Page>` + `<PageHeader>` 包现有 `ProTable`
 
 **全局错误/404**(`app/not-found.tsx`)
-- 重写成跟登录同语言的「404 · 找不到页面」卡,带 Q 字标 + 「返回工作台」按钮,延续深色品牌色块装饰
+- 已统一为 antd `Result` 组件展示「404 · 找不到页面」与「返回工作台」按钮，保持与全站一致的页面底色与卡片风格（Q 字标组件未落地，未使用独立 Logo）。
 
 ## Key files changed
 
-- 新建:`app/tokens.css`、`components/page.tsx`+css、`components/page-header.tsx`+css、`components/stat-grid.tsx`+css、`components/status-tag.tsx`+css、`components/empty-state.tsx`+css、`components/qt-mark.tsx`、`lib/status.ts`
-- 改:`app/layout.tsx`(接 tokens)、`app/globals.css`(引入 tokens.css)、`app/not-found.tsx`、`components/dashboard-shell.tsx`(logo + ProLayout token)
-- 改 19 个 page:`app/dashboard/page.tsx` + `app/{customers,contracts,projects,invoices,payments}/page.tsx` + `app/{customers,contracts,projects,invoices,payments}/[id]/page.tsx` + 5 个 new/edit 表单 + 3 个 statistics + `app/messages/page.tsx` + `app/announcements/page.tsx` + 4 个 admin 子页
+- 新建:`components/page.tsx`+css、`components/page-header.tsx`+css、`components/stat-grid.tsx`+css、`components/status-tag.tsx`+css、`components/empty-state.tsx`+css、`lib/status.ts`；设计令牌落地在 `app/globals.css`
+- 改:`app/layout.tsx`(主题 token)、`app/globals.css`(变量定义)、`app/not-found.tsx`、`components/dashboard-shell.tsx`(ProLayout token)
+- 改主要业务 page:`app/dashboard/page.tsx` + `app/{customers,contracts,invoices,payments}/page.tsx` + `app/{customers,contracts,invoices,payments}/[id]/page.tsx` + 4 个 new/edit 表单 + 4 个 statistics + `app/messages/page.tsx` + `app/announcements/page.tsx` + 4 个 admin 子页
 
 ## Out of scope(明确不做)
 
