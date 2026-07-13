@@ -2,7 +2,7 @@
 import { prisma } from "@/lib/prisma";
 import { type SessionUser } from "@/lib/session";
 import { requirePermission, RESOURCE, ACTION } from "@/lib/permissions";
-import type { Prisma } from "@prisma/client";
+import { Prisma } from "@prisma/client";
 import { ownerEq, ownerViaContract } from "@/lib/ownership";
 import type { DateRange } from "@/lib/date-range";
 
@@ -52,19 +52,19 @@ export async function getOverview(user: SessionUser, range: DateRange) {
       _count: { _all: true }
     })
   ]);
-  const contractAmount = Number(contractAgg._sum.totalAmount ?? 0);
-  const invoiceAmount = Number(invoiceAgg._sum.amount ?? 0);
-  const paymentAmount = Number(paymentAgg._sum.amount ?? 0);
+  const contractAmount = new Prisma.Decimal(contractAgg._sum.totalAmount ?? 0);
+  const invoiceAmount = new Prisma.Decimal(invoiceAgg._sum.amount ?? 0);
+  const paymentAmount = new Prisma.Decimal(paymentAgg._sum.amount ?? 0);
   // 未回款 = 已开票 - 已回款。paymentAmount 包含未挂账到发票的预付款,
   // 可能大于 invoiceAmount(此时算出的"未回款"为负),clamp 到 0 防止出现 -¥X
-  const unpaidRaw = invoiceAmount - paymentAmount;
+  const unpaidRaw = invoiceAmount.minus(paymentAmount);
   return {
     contractAmount: round2(contractAmount),
     invoiceAmount: round2(invoiceAmount),
     paymentAmount: round2(paymentAmount),
-    unpaidAmount: round2(Math.max(0, unpaidRaw)),
-    invoiceRate: contractAmount > 0 ? round2((invoiceAmount / contractAmount) * 100) : 0,
-    paymentRate: invoiceAmount > 0 ? round2((paymentAmount / invoiceAmount) * 100) : 0,
+    unpaidAmount: round2(unpaidRaw.greaterThan(0) ? unpaidRaw : 0),
+    invoiceRate: contractAmount.greaterThan(0) ? round2(invoiceAmount.div(contractAmount).mul(100)) : 0,
+    paymentRate: invoiceAmount.greaterThan(0) ? round2(paymentAmount.div(invoiceAmount).mul(100)) : 0,
     contractCount: contractAgg._count._all,
     invoiceCount: invoiceAgg._count._all,
     paymentCount: paymentAgg._count._all
@@ -118,34 +118,34 @@ export async function getTimeSeries(user: SessionUser, range: DateRange) {
     cursor.setMonth(cursor.getMonth() + 1);
   }
 
-  const buckets = new Map<string, { contract: number; invoice: number; payment: number }>();
-  for (const m of months) buckets.set(m, { contract: 0, invoice: 0, payment: 0 });
+  const buckets = new Map<string, { contract: Prisma.Decimal; invoice: Prisma.Decimal; payment: Prisma.Decimal }>();
+  for (const m of months) buckets.set(m, { contract: new Prisma.Decimal(0), invoice: new Prisma.Decimal(0), payment: new Prisma.Decimal(0) });
 
   for (const c of contracts) {
     const d = new Date(c.signDate);
     const k = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
     const b = buckets.get(k);
-    if (b) b.contract += Number(c.totalAmount);
+    if (b) b.contract = b.contract.plus(c.totalAmount);
   }
   for (const i of invoices) {
     if (!i.actualIssueDate) continue;
     const d = new Date(i.actualIssueDate);
     const k = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
     const b = buckets.get(k);
-    if (b) b.invoice += Number(i.amount);
+    if (b) b.invoice = b.invoice.plus(i.amount);
   }
   for (const p of payments) {
     const d = new Date(p.receivedAt);
     const k = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
     const b = buckets.get(k);
-    if (b) b.payment += Number(p.amount);
+    if (b) b.payment = b.payment.plus(p.amount);
   }
 
   return months.map((m) => ({
     month: m,
     contractAmount: round2(buckets.get(m)!.contract),
     invoiceAmount: round2(buckets.get(m)!.invoice),
-    paymentAmount: round2(buckets.get(m)!.payment)
+    paymentAmount: round2(buckets.get(m)!.payment),
   }));
 }
 
@@ -349,8 +349,8 @@ export async function getInvoiceAging(
         : (inv.dueDate ?? inv.actualIssueDate);
     if (!basisDate) continue; // 都没值,跳过
     const days = daysBetween(now, new Date(basisDate));
-    const remain = Number(inv.amount) - (paidMap.get(inv.id) ?? 0);
-    if (remain <= 0.01) continue; // 0.01 容差
+    const remain = new Prisma.Decimal(inv.amount).minus(paidMap.get(inv.id) ?? 0);
+    if (remain.lessThanOrEqualTo(0.01)) continue; // 0.01 容差
     const bucket = bucketOf(days);
     allRows.push({
       invoiceId: inv.id,
@@ -516,8 +516,8 @@ async function getAgingByDimensionGrouped(
   for (const inv of invoices) {
     const basisDate = basis === "issue" ? inv.actualIssueDate : inv.dueDate ?? inv.actualIssueDate;
     if (!basisDate) continue;
-    const remain = Number(inv.amount) - (paidMap.get(inv.id) ?? 0);
-    if (remain <= 0.01) continue;
+    const remain = new Prisma.Decimal(inv.amount).minus(paidMap.get(inv.id) ?? 0);
+    if (remain.lessThanOrEqualTo(0.01)) continue;
     const days = daysBetween(now, new Date(basisDate));
     const bucket = bucketOf(days);
     const key = dim === "customer" ? inv.customerId : (inv.contract?.ownerUserId ?? "");
@@ -525,11 +525,11 @@ async function getAgingByDimensionGrouped(
     const name = dim === "customer" ? inv.customerName : (inv.contract?.owner?.name ?? "-");
     const existing = agg.get(key);
     if (existing) {
-      existing.totalReceivable = round2(existing.totalReceivable + remain);
-      if (bucket === "0-30") existing.bucket0_30 = round2(existing.bucket0_30 + remain);
-      else if (bucket === "31-60") existing.bucket31_60 = round2(existing.bucket31_60 + remain);
-      else if (bucket === "61-90") existing.bucket61_90 = round2(existing.bucket61_90 + remain);
-      else if (bucket === "90+") existing.bucket90 = round2(existing.bucket90 + remain);
+      existing.totalReceivable = round2(new Prisma.Decimal(existing.totalReceivable).plus(remain));
+      if (bucket === "0-30") existing.bucket0_30 = round2(new Prisma.Decimal(existing.bucket0_30).plus(remain));
+      else if (bucket === "31-60") existing.bucket31_60 = round2(new Prisma.Decimal(existing.bucket31_60).plus(remain));
+      else if (bucket === "61-90") existing.bucket61_90 = round2(new Prisma.Decimal(existing.bucket61_90).plus(remain));
+      else if (bucket === "90+") existing.bucket90 = round2(new Prisma.Decimal(existing.bucket90).plus(remain));
       existing.invoiceCount += 1;
     } else {
       agg.set(key, {
@@ -735,13 +735,13 @@ async function getInvoiceAgingForDate(
     // asOf 必须 >= basisDate 才算"已超期"
     if (asOf.getTime() < new Date(basisDate).getTime()) continue;
     const days = daysBetween(asOf, new Date(basisDate));
-    const remain = Number(inv.amount) - (paidMap.get(inv.id) ?? 0);
-    if (remain <= 0.01) continue;
+    const remain = new Prisma.Decimal(inv.amount).minus(paidMap.get(inv.id) ?? 0);
+    if (remain.lessThanOrEqualTo(0.01)) continue;
     const b = bucketOf(days);
-    if (b === "0-30") out.bucket0_30 = round2(out.bucket0_30 + remain);
-    else if (b === "31-60") out.bucket31_60 = round2(out.bucket31_60 + remain);
-    else if (b === "61-90") out.bucket61_90 = round2(out.bucket61_90 + remain);
-    else out.bucket90 = round2(out.bucket90 + remain);
+    if (b === "0-30") out.bucket0_30 = round2(new Prisma.Decimal(out.bucket0_30).plus(remain));
+    else if (b === "31-60") out.bucket31_60 = round2(new Prisma.Decimal(out.bucket31_60).plus(remain));
+    else if (b === "61-90") out.bucket61_90 = round2(new Prisma.Decimal(out.bucket61_90).plus(remain));
+    else out.bucket90 = round2(new Prisma.Decimal(out.bucket90).plus(remain));
   }
   return out;
 }
@@ -866,19 +866,19 @@ async function aggregatePerformance(owners: { id: string; name: string; employee
     : [];
   const contractOwnerMap = new Map(contractOwners.map((c) => [c.id, c.ownerUserId]));
 
-  const sumByOwner = new Map<string, { invoice: number; payment: number }>();
+  const sumByOwner = new Map<string, { invoice: Prisma.Decimal; payment: Prisma.Decimal }>();
   for (const r of invoiceRows) {
     const owner = contractOwnerMap.get(r.contractId);
     if (!owner) continue;
-    const cur = sumByOwner.get(owner) ?? { invoice: 0, payment: 0 };
-    cur.invoice += Number(r._sum.amount ?? 0);
+    const cur = sumByOwner.get(owner) ?? { invoice: new Prisma.Decimal(0), payment: new Prisma.Decimal(0) };
+    cur.invoice = cur.invoice.plus(r._sum.amount ?? 0);
     sumByOwner.set(owner, cur);
   }
   for (const r of paymentRows) {
     const owner = contractOwnerMap.get(r.contractId);
     if (!owner) continue;
-    const cur = sumByOwner.get(owner) ?? { invoice: 0, payment: 0 };
-    cur.payment += Number(r._sum.amount ?? 0);
+    const cur = sumByOwner.get(owner) ?? { invoice: new Prisma.Decimal(0), payment: new Prisma.Decimal(0) };
+    cur.payment = cur.payment.plus(r._sum.amount ?? 0);
     sumByOwner.set(owner, cur);
   }
 
@@ -889,7 +889,7 @@ async function aggregatePerformance(owners: { id: string; name: string; employee
       userId: u.id,
       name: u.name,
       employeeNo: u.employeeNo,
-      contractAmount: round2(Number(cr?._sum.totalAmount ?? 0)),
+      contractAmount: round2(new Prisma.Decimal(cr?._sum.totalAmount ?? 0)),
       invoiceAmount: round2(ip.invoice),
       paymentAmount: round2(ip.payment),
       contractCount: cr?._count._all ?? 0
@@ -1031,7 +1031,7 @@ export async function getSignerContractDetail(
       town ? town :
       district ? `${district} (未填镇街)` :
       "未填写";
-    const amount = round2(Number(c.totalAmount));
+    const amount = round2(c.totalAmount);
     const svcCode = c.serviceType;
     const svcLabel = dictMap.get(svcCode) ?? svcCode;
     g.rows.push({
@@ -1050,7 +1050,7 @@ export async function getSignerContractDetail(
       signDate: c.signDate.toISOString(),
       totalAmount: amount
     });
-    g.contractAmount = round2(g.contractAmount + amount);
+    g.contractAmount = round2(new Prisma.Decimal(g.contractAmount).plus(amount));
   }
 
   // 排序:签约人按 employeeNo 升序(对齐 PDF 手填习惯),同组内按 signDate 已在 SQL 排好
@@ -1154,9 +1154,9 @@ export async function getSignerSummary(
       out.set(signer.id, row);
     }
     row.contractCount += 1;
-    row.contractAmount = round2(row.contractAmount + Number(c.totalAmount));
-    row.invoiceAmount = round2(row.invoiceAmount + (invoiceByContract.get(c.id) ?? 0));
-    row.paymentAmount = round2(row.paymentAmount + (paymentByContract.get(c.id) ?? 0));
+    row.contractAmount = round2(new Prisma.Decimal(row.contractAmount).plus(c.totalAmount));
+    row.invoiceAmount = round2(new Prisma.Decimal(row.invoiceAmount).plus(invoiceByContract.get(c.id) ?? 0));
+    row.paymentAmount = round2(new Prisma.Decimal(row.paymentAmount).plus(paymentByContract.get(c.id) ?? 0));
   }
   return Array.from(out.values()).sort((a, b) => b.contractAmount - a.contractAmount);
 }
@@ -1262,21 +1262,21 @@ export async function getRegionStatistics(user: SessionUser, range?: DateRange):
     if (!reg) continue;
     const b = getOrCreate(reg.district, reg.town);
     b.contractCount += r._count._all;
-    b.contractAmount += Number(r._sum.totalAmount ?? 0);
+    b.contractAmount = round2(new Prisma.Decimal(b.contractAmount).plus(r._sum.totalAmount ?? 0));
     b.customers.add(r.customerId);
   }
   for (const r of invoiceRows) {
     const reg = regionOf.get(r.customerId);
     if (!reg) continue;
     const b = getOrCreate(reg.district, reg.town);
-    b.invoiceAmount += Number(r._sum.amount ?? 0);
+    b.invoiceAmount = round2(new Prisma.Decimal(b.invoiceAmount).plus(r._sum.amount ?? 0));
     b.customers.add(r.customerId);
   }
   for (const r of paymentRows) {
     const reg = regionOf.get(r.customerId);
     if (!reg) continue;
     const b = getOrCreate(reg.district, reg.town);
-    b.paymentAmount += Number(r._sum.amount ?? 0);
+    b.paymentAmount = round2(new Prisma.Decimal(b.paymentAmount).plus(r._sum.amount ?? 0));
     b.customers.add(r.customerId);
   }
 
@@ -1284,7 +1284,7 @@ export async function getRegionStatistics(user: SessionUser, range?: DateRange):
     const contract = round2(b.contractAmount);
     const invoice = round2(b.invoiceAmount);
     const payment = round2(b.paymentAmount);
-    const unpaid = round2(Math.max(0, invoice - payment));
+    const unpaid = round2(new Prisma.Decimal(invoice).minus(payment).greaterThan(0) ? new Prisma.Decimal(invoice).minus(payment) : 0);
     // 显示名:都填 -> "区 镇街";只填 town -> "镇街";只填 district -> "区(未填镇街)";都没 -> "未填写"
     const region =
       b.district && b.town ? `${b.district} ${b.town}` :
@@ -1300,8 +1300,8 @@ export async function getRegionStatistics(user: SessionUser, range?: DateRange):
       contractAmount: contract,
       invoiceAmount: invoice,
       paymentAmount: payment,
-      invoiceRate: contract > 0 ? round2((invoice / contract) * 100) : 0,
-      paymentRate: invoice > 0 ? round2((payment / invoice) * 100) : 0,
+      invoiceRate: contract > 0 ? round2(new Prisma.Decimal(invoice).div(contract).mul(100)) : 0,
+      paymentRate: invoice > 0 ? round2(new Prisma.Decimal(payment).div(invoice).mul(100)) : 0,
       unpaidAmount: unpaid
     };
   });
@@ -1316,6 +1316,6 @@ export async function getRegionStatistics(user: SessionUser, range?: DateRange):
   return rows;
 }
 
-function round2(v: number): number {
-  return Math.round(v * 100) / 100;
+function round2(v: number | Prisma.Decimal): number {
+  return new Prisma.Decimal(v).toDecimalPlaces(2).toNumber();
 }

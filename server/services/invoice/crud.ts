@@ -148,7 +148,7 @@ export async function updateInvoice(user: SessionUser, id: string, input: Invoic
   const newAmount = safeInput.amount as number | undefined;
   const newTaxRate = safeInput.taxRate as number | undefined;
   if (newAmount !== undefined || newTaxRate !== undefined) {
-    const r = calcTaxBreakdown(newAmount ?? Number(inv.amount), newTaxRate ?? Number(inv.taxRate));
+    const r = calcTaxBreakdown(newAmount ?? inv.amount, newTaxRate ?? inv.taxRate);
     taxAmount = r.taxAmount;
     amountExcludingTax = r.amountExcludingTax;
   }

@@ -216,7 +216,7 @@ export async function tryAutoClose(contractId: string, now: Date): Promise<"CLOS
     to: "CLOSED",
     precondition: async (c, tx) => {
       // 条件 1: endDate < now (合同已过自然到期日)
-      if (new Date(c.endDate as unknown as Date) >= now) throw new SkipTransition();
+      if (!c.endDate || c.endDate >= now) throw new SkipTransition();
 
       const ratio = Number(c.completionInvoiceRatio ?? fallbackRatio);
       const total = new Prisma.Decimal(c.totalAmount.toString());
@@ -296,7 +296,8 @@ export async function tryAutoCloseOnOverdue(contractId: string, now: Date): Prom
     to: "CLOSED",
     precondition: async (c, tx) => {
       // 条件 1: endDate + GRACE_DAYS < now
-      const graceCutoff = new Date(new Date(c.endDate as unknown as Date).getTime() + graceMs);
+      if (!c.endDate) throw new SkipTransition();
+      const graceCutoff = new Date(c.endDate.getTime() + graceMs);
       if (graceCutoff >= now) throw new SkipTransition();
 
       const ratio = Number(c.completionInvoiceRatio ?? fallbackRatio);

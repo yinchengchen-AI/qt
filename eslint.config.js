@@ -30,7 +30,8 @@ const config = [
       ".qt-screenshots/**",
       "inspect-dash.mjs",
       "inspect-dash2.mjs",
-      "scripts/_*.mjs"
+      "scripts/_*.mjs",
+      ".remember/tmp/**"
     ]
   },
   // next 推荐档(含 react / jsx-a11y / @next/eslint-plugin-next / react-hooks)

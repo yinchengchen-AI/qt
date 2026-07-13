@@ -112,7 +112,7 @@ export async function createPayment(
     }
     let inv: Awaited<ReturnType<typeof tx.invoice.findFirst>> = null;
     if (input.invoiceId) {
-      inv = await tx.invoice.findFirst({ where: { id: input.invoiceId, deletedAt: null } });
+      inv = await tx.invoice.findFirst({ where: { id: input.invoiceId, deletedAt: null, ...(ownerViaContract(user) as Prisma.InvoiceWhereInput) } });
       if (!inv || inv.contractId !== input.contractId) {
         throw new ApiError(ERROR_CODES.NOT_FOUND, "发票不属于该合同", 404);
       }

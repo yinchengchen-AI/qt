@@ -286,8 +286,8 @@ export async function updateContract(user: SessionUser, id: string, input: Contr
   let taxAmount = existing.taxAmount;
   let amountExcludingTax = existing.amountExcludingTax;
   if (input.totalAmount !== undefined || input.taxRate !== undefined) {
-    const ta = input.totalAmount ?? Number(existing.totalAmount);
-    const tr = input.taxRate ?? Number(existing.taxRate);
+    const ta = input.totalAmount ?? existing.totalAmount;
+    const tr = input.taxRate ?? existing.taxRate;
     const r = calcTaxBreakdown(ta, tr);
     taxAmount = r.taxAmount;
     amountExcludingTax = r.amountExcludingTax;

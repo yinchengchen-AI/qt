@@ -7,7 +7,7 @@ import { prisma } from "@/lib/prisma";
 import { type SessionUser } from "@/lib/session";
 import { requirePermission, RESOURCE, ACTION } from "@/lib/permissions";
 import {  ownerViaContract } from "@/lib/ownership";
-import type { Prisma } from "@prisma/client";
+import { Prisma } from "@prisma/client";
 
 export const DUNNING_STATUS = ["CONTACTED", "PROMISED", "DISPUTED", "LEGAL"] as const;
 export type DunningStatus = (typeof DUNNING_STATUS)[number];
@@ -286,11 +286,11 @@ export async function getDunningSummary(user: SessionUser): Promise<DunningSumma
     },
     _sum: { amount: true }
   });
-  const topPaidMap = new Map<string, number>();
-  for (const p of topPaid) topPaidMap.set(p.invoiceId!, Number(p._sum.amount ?? 0));
+  const topPaidMap = new Map<string, Prisma.Decimal>();
+  for (const p of topPaid) topPaidMap.set(p.invoiceId!, new Prisma.Decimal(p._sum.amount ?? 0));
   const topOverdue = candidateInvoices
     .map(({ note, days }) => {
-      const remain = round2(Number(note.invoice.amount) - (topPaidMap.get(note.invoice.id) ?? 0));
+      const remain = round2(new Prisma.Decimal(note.invoice.amount).minus(topPaidMap.get(note.invoice.id) ?? 0));
       return {
         invoiceId: note.invoice.id,
         invoiceNo: note.invoice.invoiceNo,
@@ -310,8 +310,8 @@ export async function getDunningSummary(user: SessionUser): Promise<DunningSumma
   };
 }
 
-function round2(v: number): number {
-  return Math.round(v * 100) / 100;
+function round2(v: number | Prisma.Decimal): number {
+  return new Prisma.Decimal(v).toDecimalPlaces(2).toNumber();
 }
 
 function daysBetween(later: Date, earlier: Date): number {
