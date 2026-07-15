@@ -1,11 +1,10 @@
 import { LoginClient } from "./login-client";
+import { getDevQuickFillPassword } from "@/lib/dev-quick-fill";
 
-// 在 Server Component 中读取 DEV_QUICK_FILL_PASSWORD, 再作为 props 传给 Client Component。
-// Client Component 无法访问非 NEXT_PUBLIC_ 前缀的环境变量, 因此不能直接在浏览器端读取。
-const QUICK_FILL_PASSWORD =
-  process.env.NODE_ENV !== "production"
-    ? process.env.DEV_QUICK_FILL_PASSWORD ?? "dev-only-fill"
-    : "";
+// Server Component 读 env, 通过 lib/dev-quick-fill.ts 统一封装 (含 NODE_ENV 守卫与默认值),
+// 然后作为 props 传给 Client Component — 这样客户端 bundle 不会包含密码字面量,
+// 也不会出现 `process.env.DEV_QUICK_FILL_PASSWORD` 这种敏感引用。
+const QUICK_FILL_PASSWORD = getDevQuickFillPassword();
 
 export default function LoginPage() {
   return <LoginClient quickFillPassword={QUICK_FILL_PASSWORD} />;
