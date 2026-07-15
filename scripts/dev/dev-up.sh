@@ -3,6 +3,11 @@
 # 用法: ./scripts/dev/dev-up.sh
 # 停止: ./scripts/dev/dev-down.sh
 set -euo pipefail
+# 强制 bash 走 UTF-8 locale,避免 Windows / Git-Bash 默认 zh_CN.GBK / 936 把
+# 脚本里的 printf、next dev / prisma 的中文日志输出成乱码。
+# 已显式是 UTF-8 的 locale 不变;落到其它 locale 时覆盖为 C.UTF-8 (POSIX 兜底)。
+export LANG="${LANG:-C.UTF-8}"
+export LC_ALL="${LC_ALL:-C.UTF-8}"
 cd "$(dirname "$0")/../.."
 
 PG_COMPOSE=docker-compose.postgres.yml
