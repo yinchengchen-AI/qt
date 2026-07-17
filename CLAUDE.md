@@ -134,7 +134,7 @@ Services generally accept `prisma` or a transaction client `tx` so they can be c
 - `lib/auth.ts` also caches active-user lookups for 5 seconds.
 - Roles are hardcoded: `ADMIN`, `SALES`, `FINANCE`, `OPS`, `EXPERT`.
 - Permissions are defined in `lib/permissions.ts` as a resource × action × role matrix.
-- `SALES` and `EXPERT` have row-level isolation: use `ownershipWhere(user)` or `buildOwnershipWhere(user)` from `lib/ownership.ts` when querying customers/contracts/invoices/payments.
+- `SALES` and `EXPERT` have row-level isolation: use `isRowRestricted(user)` / `ownerEq(user)` / `ownerViaContract(user)` from `lib/ownership.ts` when querying customers/contracts/invoices/payments.
 
 ### State Machines
 

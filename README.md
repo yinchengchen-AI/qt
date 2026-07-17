@@ -1,7 +1,7 @@
 # 杭州企泰安全科技 业务管理系统 (qt-biz)
 
 > 客户 / 合同 / 开票 / 回款 一体化管理,附件走 MinIO presigned 直传。
-> **当前版本: v0.10.1**(2026-07-13)
+> **当前版本: v0.10.2**(2026-07-17)
 > 详细设计见 [docs/architecture/DESIGN-v3.md](docs/architecture/DESIGN-v3.md),用户手册见 [docs/user/USER_MANUAL.md](docs/user/USER_MANUAL.md)。
 > 2026-07-04 增量同步: 全库代码审计 10 处 bug 修复 + 2 组单元测试已补到「最近更新」开头。
 
@@ -219,9 +219,9 @@ NextAuth v4 + JWT 策略(不挂 PrismaAdapter,P0 阶段简化)。
 | SALES | 业务执行,行级隔离 | 业务模块 R/W,只读自己 owner 的数据 |
 | FINANCE | 开票/回款 | 开票/回款 R/W,其余只读 |
 | OPS | 部门/字典维护 | 系统管理 R/W,业务只读 |
-| EXPERT | 专家角色(权限测试) | 最小权限 |
+| EXPERT | 技术专家,行级隔离 | 与 SALES 同权限位,只读自己 owner 的数据 |
 
-权限位定义在 `lib/permissions.ts`,与 `prisma/seed.ts` 同源。SALES 行级隔离依靠 `ownershipWhere(user)` 注入 Prisma 查询 `where` 子句。
+权限位定义在 `lib/permissions.ts`,与 `prisma/seed.ts` 同源。SALES/EXPERT 行级隔离依靠 `lib/ownership.ts` 的 `isRowRestricted`/`ownerEq`/`ownerViaContract` 注入 Prisma 查询 `where` 子句。
 
 ### 登录安全加固(v0.10.0 起)
 
@@ -413,6 +413,46 @@ xlsx 导出走 `lib/excel.ts` + `exceljs`; 中文文件名通过 `attachmentHead
 | dev server `/login` `/dashboard` `/contracts` `/reports/PERFORMANCE` | 200 |
 
 ## 最近更新
+
+### v0.10.2(2026-07-17) 业务不变量与行级隔离修复
+
+> 针对一次六路并行代码审查发现的 2 项 Critical + 5 项 High 缺陷进行修复, 无 schema 变更, 无 API 契约变更。
+
+**累计开票上限 R-08 双重缺陷** (`lib/invoice-amounts.ts` 新增 + `server/services/invoice/{crud,action}.ts` + `server/services/contract/crud.ts`):
+- R-08 口径此前漏掉 `PENDING_FINANCE`, 发票提交(DRAFT→PENDING_FINANCE)即在额度校验中"隐身", 顺序操作即可无限超额开票。新建统一常量 `INVOICE_LIMIT_COUNTED_STATUSES`(含 PENDING_FINANCE)收敛三处硬编码(create/update/调低合同总额守卫), 一张票生命周期内恰好计一次
+- `submit`/`issue` 流转挂 `precondition` 复检 R-08(对齐 DESIGN-v3.md:393), 堵住"提交后隐身"与"并发绕过"两条超额路径
+- `createInvoice` 由"先 findFirst 快照读 → SUM → INSERT"改为事务内 dummy UPDATE 锁合同行(模式同 `updateContract`), 消除并发 TOCTOU 超额竞态
+
+**EXPERT 行级隔离缺失** (`lib/ownership.ts` + `server/services/dunning.ts` + `server/services/statistics.ts`):
+- `ownerEq`/`ownerViaContract` 此前只判 `SALES`, EXPERT 零过滤可读/改/导出全公司客户/合同/发票/回款。抽 `isRowRestricted`(SALES+EXPERT)统一判断, 与 DESIGN-v3.md:183 / init RLS 策略对齐
+- `dunning.ts` 的 `whereForUser` 同步纳入 EXPERT, 并修正"EXPERT 看到全部"的漂移注释
+- `statistics.ts` 三处 `isSales` 特判(员工业绩 short-circuit + 两处 owner/signer 并集查询)统一改 `isRowRestricted`, 避免 EXPERT 丢失 signerId 维度
+
+**账龄统计越权 (IDOR)** (`server/services/statistics.ts`):
+- `getInvoiceAging` 的 `ownerUserId` 入参此前用对象展开覆盖隔离注入, 受限角色传他人 id 即可查看/导出他人账龄明细。现对受限角色强制等于自己
+
+**红冲后"已开票"口径错乱** (`lib/invoice-amounts.ts` + contract/status·crud·overview + statistics):
+- 红冲对 = 原票 `RED_FLUSHED(+A)` + 负票 `ISSUED(−A)`, 净贡献应为 0, 但所有 `status:"ISSUED"` 金额聚合把它算成 `−A` → 红冲+重开+全额回款后合同永远卡 ACTIVE 且无通知, 统计金额每笔红冲少计 2A。新建 `INVOICE_ISSUED_AMOUNT_STATUSES`(ISSUED+RED_FLUSHED)统一"已开票有效金额"口径: tryAutoClose / 合同列表 / 概览 / statistics 六处金额聚合; 账龄/应收口径(四处 `status:"ISSUED"`)语义不同, 明确保留
+
+**附件安全两处** (`app/api/files/raw/[id]/route.ts` + `server/storage/presign.ts`):
+- raw 下载代理此前不查 `deletedAt`, 已软删附件凭 id 仍可下载。补 `att.deletedAt` → 404, 与 presign-download 一致
+- presign-upload 对 `contractId/invoiceId/employeeProfileId` 此前零归属校验, 任意登录用户可向他人合同/发票/档案注入附件。新增 `assertCanAttachToTarget` 按绑定目标逐一校验(ADMIN / 合同 owner·signer / FINANCE / 档案本人)
+
+**with-profile 绕过"最后 ADMIN"护栏** (`server/services/employee-profile.ts` + `server/services/user.ts`):
+- `updateUserFullProfile` 此前直接 `tx.user.update(input.user)`, 未走 `assertNotSelfAndNotLastAdmin`, 一条请求即可禁用/降级最后一位 ACTIVE ADMIN 致系统无可用管理员。现复用该护栏(导出共享)对齐 `updateUser` 语义, roleId/status 变更后调 `invalidateAuthCache`
+
+**新增/更新测试**:
+- 新增 `tests/api/ownership-isolation.test.ts`(6 用例): ownership 助手语义 + 真实 `getInvoiceAging` 越权被堵
+- 扩充 `tests/api/invoice-amount.test.ts`(2 用例): 提交后隐身超额被拦、改额 P1-1 复检拦截
+- 更新 `tests/unit/server/contract-update-amount-guard.test.ts`: 状态断言改引用 `INVOICE_LIMIT_COUNTED_STATUSES` 常量, 防口径再漂移
+- 全量 Vitest 回归: 71 文件 / 572 用例全绿; `npm run typecheck` 通过
+
+**版本号**: `0.10.1` → `0.10.2`(patch bump, 缺陷修复, 无 schema 变更, 无 breaking)
+
+**部署说明**:
+- 无 schema 变更、无新 migration, `prisma migrate deploy` 不需要跑
+- 直接重启 `next start` 即可生效
+- **行为变化提醒**: EXPERT 角色从"可见全公司数据"变为"仅见自己名下数据"(行级隔离生效), 若有 EXPERT 账号依赖全量视图需提前知会
 
 ### v0.10.1(2026-07-13) 安全与并发修复
 
@@ -883,6 +923,8 @@ sudo systemctl restart crond
 
 ## 历史里程碑
 
+- **v0.10.2(2026-07-17)**: 业务不变量与行级隔离修复 — R-08 开票上限补 PENDING_FINANCE 口径 + submit/issue 复检 + 锁合同行消竞态;EXPERT 行级隔离生效(`isRowRestricted`);账龄统计越权;红冲"已开票"口径统一(`INVOICE_ISSUED_AMOUNT_STATUSES`);raw 软删附件 404 + presign-upload 归属校验;with-profile 接入"最后 ADMIN"护栏,详见 README 「最近更新」v0.10.2 段
+- **v0.10.1(2026-07-13)**: 安全与并发修复 — 密码重置链路加固 + 文件下载代理审计/响应头 + 回款确认 FOR UPDATE + advisory lock + 合同总额调小锁行 + Zod 错误脱敏,详见 README 「最近更新」v0.10.1 段
 - **v0.10.0(2026-07-11)**: 登录安全加固 — 限速 + 失败计数锁定 + 审计日志 + 自服务密码重置 + 开放重定向 URL 白名单;新增 `User.mustChangePassword / failedLoginCount / lockedUntil / lastFailedLoginAt / roleVersion` 5 字段 + 新表 `PasswordResetToken`(migration `20260711_login_security_hardening`),详见 [docs/history/security/login-security-review-2026-07-11.md](docs/history/security/login-security-review-2026-07-11.md) 与 README 「最近更新」v0.10.0 段
 - **v0.9.7(2026-07-08)**: 日期与日期时间显示/导出统一为 `YYYY-MM-DD` 风格 — `lib/format.ts` 切到本地时区 + 18 处 `toLocaleDateString/toLocaleString('zh-CN')` 改走中央 helper;空值回退(`""` / `"—"` / `"-"`)按各调用点原地保留
 - **v0.8.2(2026-07-04)**: 回滚 9a48265 (CI 暴露 schema migration 冲突, 19 个代码/lib 文件 + 3 migration 目录回退到 ced7665) + README 乱码修复(从 v0.8.1 还原 blob + 追加修复叙事段) + 删 CI/GitHub 自动部署 (改回本地开发 + 运维手动部署)

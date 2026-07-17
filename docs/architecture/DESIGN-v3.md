@@ -439,13 +439,13 @@ PLANNED ─confirm(finance)─▶ CONFIRMED ─reconcile(finance)─▶ RECONCIL
 - **账龄 REFUNDED 处理**:schema 的 `refund` 动作把原 `Payment.status` 翻为 `REFUNDED`(amount 不变)。账龄 paidMap 只聚合 `status ∈ {CONFIRMED, RECONCILED}`——已退款的回款视为从未生效,**不**用符号抵消(否则会从负的净额里错误高估应收)。`getInvoiceAging` 同时返回 `total`(全部超期数)与 `rows`(`rows.length ≤ 100`,按 daysOverdue 降序),前端用 `total` 渲染「共 N 条」与「查看全部 N 条 →」的真实总数。
 - **daysOverdue 计算**:走 `Date.UTC` 归一日历日差(不是 `ms / 86_400_000`),避免 DST/时区边界差一天。`actualIssueDate` 在未来(时钟漂移/录错)统一归入 `90+` 段。
 - **客户分布 label**:`byScale / byType / byStatus` 在路由层用 `lib/enum-maps.ts` 的 `CUSTOMER_SCALE_MAP / CUSTOMER_TYPE_MAP` 翻译成中文,前端 `valueEnum` 不必再维护;`key` 仍保留原始 code 供筛选/导出。
-- **业务人员业绩行级隔离**:业务人员 (SALES) 角色 short-circuit,只返回自己一行;其它角色查 `isSystem=false AND role.code != "ADMIN" AND status=ACTIVE` 的用户。
+- **业务人员业绩行级隔离**:受限角色 (SALES/EXPERT) short-circuit,只返回自己一行;其它角色查 `isSystem=false AND role.code != "ADMIN" AND status=ACTIVE` 的用户。
 - **Top 客户 metric**:`metric=contract` 时筛 `total > 0`,`metric=payment` 时筛 `paymentTotal > 0`,避免按所选维度无数据的客户出现在榜上。
 - **账龄基准 `Invoice.dueDate`**: 合同约定付款日(可空);`getInvoiceAging(basis="due")` 优先用 `dueDate`,回退 `actualIssueDate`。
   新增/编辑发票时由用户在开票审核/录入时填写;历史 ISSUED 发票 SQL 回填 `actualIssueDate + 30 天`(迁移 `20260703_aging_redesign`)。
 - **催收记录 `DunningNote`**: invoiceId 级(1:N cascade delete),字段 status(CONTACTED/PROMISED/DISPUTED/LEGAL) / channel / promisedDate / lastContactAt / remark / actorId。
   资源权限 `DUNNING`: ADMIN CRUD+EXPORT, FINANCE CRU, SALES/EXPERT CRUD(业务人员需能记录催收), OPS R。
-  行级隔离: SALES 仅能看到自己 owner 合同下发票的催收, 看不到的发票创建/读取统一 404(不泄露存在性)。
+  行级隔离: SALES/EXPERT 仅能看到自己 owner 合同下发票的催收, 看不到的发票创建/读取统一 404(不泄露存在性)。
   PROMISED 状态必须带 `promisedDate`; `getDunningSummary.topOverdue.remaining` 走与 `getInvoiceAging` 同口径(减回款)。
 
 ### 8.2 看板 / 导出
@@ -512,7 +512,7 @@ PLANNED ─confirm(finance)─▶ CONFIRMED ─reconcile(finance)─▶ RECONCIL
   - 催收汇总 `{ totalOpen, withDunning, byStatus, topOverdue }`;
     `topOverdue[i].remaining = amount - paid` 与 getInvoiceAging 同口径
 - `GET /api/statistics/aging/dunning-notes?invoiceId=&limit=200`
-  - 业务人员 (SALES) 行级隔离走 `Invoice -> Contract -> ownerUserId`
+  - 业务人员 (SALES/EXPERT) 行级隔离走 `Invoice -> Contract -> ownerUserId`
 - `POST /api/statistics/aging/dunning-notes`(需 `DUNNING:CREATE`)
   - PROMISED 状态必须带 `promisedDate` (400)
 - `PATCH /api/statistics/aging/dunning-notes/:id`(需 `DUNNING:UPDATE`)
