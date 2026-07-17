@@ -3,6 +3,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { Prisma } from "@prisma/client";
 import { updateContract } from "@/server/services/contract";
+import { INVOICE_LIMIT_COUNTED_STATUSES } from "@/lib/invoice-amounts";
 import { ERROR_CODES } from "@/types/errors";
 import type { ContractUpdateInput } from "@/lib/validators/contract";
 import type { SessionUser } from "@/lib/session";
@@ -127,7 +128,8 @@ describe("updateContract - totalAmount 调小不变式", () => {
 
     const r = await updateContract(ADMIN, "c-1", { ...baseInput(), totalAmount: 6000 });
     expect(r).toBeDefined();
-    expect(captured.invoiceStatuses).toEqual(["DRAFT", "ISSUED", "RED_FLUSHED"]);
+    // R-08 口径 (C1 修复后含 PENDING_FINANCE), 引用统一常量防止口径再漂移
+    expect(captured.invoiceStatuses).toEqual([...INVOICE_LIMIT_COUNTED_STATUSES]);
     expect(captured.paymentStatuses).toEqual(["CONFIRMED", "RECONCILED"]);
   });
 

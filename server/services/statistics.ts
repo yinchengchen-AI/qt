@@ -3,7 +3,8 @@ import { prisma } from "@/lib/prisma";
 import { type SessionUser } from "@/lib/session";
 import { requirePermission, RESOURCE, ACTION } from "@/lib/permissions";
 import { Prisma } from "@prisma/client";
-import { ownerEq, ownerViaContract } from "@/lib/ownership";
+import { isRowRestricted, ownerEq, ownerViaContract } from "@/lib/ownership";
+import { INVOICE_ISSUED_AMOUNT_STATUSES } from "@/lib/invoice-amounts";
 import type { DateRange } from "@/lib/date-range";
 
 /**
@@ -34,7 +35,7 @@ export async function getOverview(user: SessionUser, range: DateRange) {
     prisma.invoice.aggregate({
       where: {
         deletedAt: null,
-        status: "ISSUED",
+        status: { in: [...INVOICE_ISSUED_AMOUNT_STATUSES] },
         actualIssueDate: dateWhere(range, "actualIssueDate"),
         ...(ownerViaContract(user) as Prisma.InvoiceWhereInput)
       },
@@ -92,7 +93,7 @@ export async function getTimeSeries(user: SessionUser, range: DateRange) {
     prisma.invoice.findMany({
       where: {
         deletedAt: null,
-        status: "ISSUED",
+        status: { in: [...INVOICE_ISSUED_AMOUNT_STATUSES] },
         actualIssueDate: { gte: from, lte: to },
         ...(ownerViaContract(user) as Prisma.InvoiceWhereInput)
       },
@@ -260,8 +261,11 @@ export async function getInvoiceAging(
   if (query.customerId) baseWhere.customerId = query.customerId;
   if (query.contractId) baseWhere.contractId = query.contractId;
   if (query.ownerUserId) {
+    // 行级隔离修复: 受限角色(SALES/EXPERT)的 ownerUserId 强制为自己,
+    // 否则入参会展开覆盖 ownerViaContract 注入的隔离条件造成越权 (IDOR)
+    const effectiveOwnerId = isRowRestricted(user) ? user.id : query.ownerUserId;
     const existing = (baseWhere.contract ?? {}) as Prisma.ContractWhereInput;
-    baseWhere.contract = { ...existing, ownerUserId: query.ownerUserId } as Prisma.InvoiceWhereInput['contract'];
+    baseWhere.contract = { ...existing, ownerUserId: effectiveOwnerId } as Prisma.InvoiceWhereInput['contract'];
   }
   // 报表中心:按日期范围过滤发票开具/到期日
   if (query.from || query.to) {
@@ -753,7 +757,7 @@ async function getInvoiceAgingForDate(
 export async function getTopCustomers(user: SessionUser, metric: "contract" | "payment" = "contract", limit = 10, range?: DateRange) {
   requirePermission(user.roleCode, RESOURCE.STATISTICS, ACTION.READ);
   const signWhere = { deletedAt: null, status: { in: ["ACTIVE", "CLOSED"] }, isLegacyZeroAmount: false, ...(range ? { signDate: dateWhere(range) } : {}), ...ownerEq(user) };
-  const invoiceWhere = { deletedAt: null, status: "ISSUED", ...(range ? { actualIssueDate: dateWhere(range, "actualIssueDate") } : {}), ...(ownerViaContract(user) as Prisma.InvoiceWhereInput) };
+  const invoiceWhere = { deletedAt: null, status: { in: [...INVOICE_ISSUED_AMOUNT_STATUSES] }, ...(range ? { actualIssueDate: dateWhere(range, "actualIssueDate") } : {}), ...(ownerViaContract(user) as Prisma.InvoiceWhereInput) };
   const paymentWhere = { deletedAt: null, status: { in: ["CONFIRMED", "RECONCILED"] }, ...(range ? { receivedAt: dateWhere(range, "receivedAt") } : {}), ...(ownerViaContract(user) as Prisma.PaymentWhereInput) };
   const [customers, contractRows, invoiceRows, paymentRows] = await Promise.all([
     prisma.customer.findMany({
@@ -826,7 +830,7 @@ async function aggregatePerformance(owners: { id: string; name: string; employee
   };
   const invoiceWhere = {
     deletedAt: null,
-    status: "ISSUED",
+    status: { in: [...INVOICE_ISSUED_AMOUNT_STATUSES] },
     ...(range ? { actualIssueDate: dateWhere(range, "actualIssueDate") } : {})
   };
   const paymentWhere = {
@@ -901,8 +905,8 @@ async function aggregatePerformance(owners: { id: string; name: string; employee
 
 export async function getEmployeePerformance(user: SessionUser, targetUserId?: string, range?: DateRange) {
   requirePermission(user.roleCode, RESOURCE.STATISTICS, ACTION.READ);
-  // SALES 角色：只能看自己,直接 short-circuit (避免下面循环把别人全填 0)
-  if (user.roleCode === "SALES") {
+  // 受限角色(SALES/EXPERT)：只能看自己,直接 short-circuit (避免下面循环把别人全填 0)
+  if (isRowRestricted(user)) {
     return aggregatePerformance(
       [{ id: user.id, name: user.name, employeeNo: user.employeeNo }],
       range
@@ -970,15 +974,15 @@ export async function getSignerContractDetail(
 ): Promise<SignerDetailGroup[]> {
   requirePermission(user.roleCode, RESOURCE.STATISTICS, ACTION.READ);
   // 合同查询条件:deletedAt/状态/range + 行级隔离
-  // SALES 角色:行级隔离要求 owner/signer 至少匹配一个(因业务上 SALES 既是
-  // 业务人员 [owner] 也可能作为签约人 [signer] 出现, 单一维度会漏);其它角色
+  // 受限角色(SALES/EXPERT):行级隔离要求 owner/signer 至少匹配一个(因业务上他们既可能是
+  // 负责人 [owner] 也可能作为签约人 [signer] 出现, 单一维度会漏);其它角色
   // 走 ownerEq 走 ownerUserId 过滤即可。
-  const isSales = user.roleCode === "SALES";
+  const isRestricted = isRowRestricted(user);
   const where: Prisma.ContractWhereInput = {
     deletedAt: null,
     status: { in: ["ACTIVE", "CLOSED"] },
     ...(range ? { signDate: dateWhere(range) } : {}),
-    ...(isSales ? { OR: [{ ownerUserId: user.id }, { signerId: user.id }] } : ownerEq(user)),
+    ...(isRestricted ? { OR: [{ ownerUserId: user.id }, { signerId: user.id }] } : ownerEq(user)),
   };
 
   const contracts = await prisma.contract.findMany({
@@ -1090,12 +1094,12 @@ export async function getSignerSummary(
 ): Promise<SignerSummaryRow[]> {
   requirePermission(user.roleCode, RESOURCE.STATISTICS, ACTION.READ);
   // 拉该 range 内所有 ACTIVE/CLOSED 合同，按 signerId 聚合
-  const isSales = user.roleCode === "SALES";
+  const isRestricted = isRowRestricted(user);
   const contractWhere: Prisma.ContractWhereInput = {
     deletedAt: null,
     status: { in: ["ACTIVE", "CLOSED"] },
     ...(range ? { signDate: dateWhere(range) } : {}),
-    ...(isSales
+    ...(isRestricted
       ? { OR: [{ ownerUserId: user.id }, { signerId: user.id }] }
       : ownerEq(user)),
   };
@@ -1109,11 +1113,11 @@ export async function getSignerSummary(
     },
   });
   if (contracts.length === 0) return [];
-  // 拉 ISSUED invoice / CONFIRMED+RECONCILED payment, 按 contractId 聚合
+  // 拉已开票(含 RED_FLUSHED, 红冲对净 0) invoice / CONFIRMED+RECONCILED payment, 按 contractId 聚合
   const contractIds = contracts.map((c) => c.id);
   const invoiceWhere: Prisma.InvoiceWhereInput = {
     deletedAt: null,
-    status: "ISSUED",
+    status: { in: [...INVOICE_ISSUED_AMOUNT_STATUSES] },
     contractId: { in: contractIds },
     ...(range ? { actualIssueDate: dateWhere(range, "actualIssueDate") } : {}),
   };
@@ -1209,7 +1213,7 @@ export async function getRegionStatistics(user: SessionUser, range?: DateRange):
   } as Prisma.ContractWhereInput;
   const invoiceWhere = {
     deletedAt: null,
-    status: "ISSUED",
+    status: { in: [...INVOICE_ISSUED_AMOUNT_STATUSES] },
     ...(range ? { actualIssueDate: dateWhere(range, "actualIssueDate") } : {}),
     ...(ownerViaContract(user) as Prisma.InvoiceWhereInput)
   };

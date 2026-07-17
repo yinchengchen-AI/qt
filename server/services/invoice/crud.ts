@@ -8,6 +8,7 @@ import { Prisma } from "@prisma/client";
 import { ownerEq, ownerViaContract, parseStatusList } from "@/lib/ownership";
 import { calcTaxBreakdown } from "@/lib/money";
 import { MONEY_TOLERANCE } from "@/lib/money-tolerance";
+import { INVOICE_LIMIT_COUNTED_STATUSES } from "@/lib/invoice-amounts";
 import { resolveAttachmentSnapshots } from "@/lib/attachment-snapshot";
 
 export async function listInvoices(
@@ -45,10 +46,21 @@ export async function getInvoice(user: SessionUser, id: string) {
 export async function createInvoice(user: SessionUser, input: InvoiceCreateInput) {
   requirePermission(user.roleCode, RESOURCE.INVOICE, ACTION.CREATE);
   return prisma.$transaction(async (tx) => {
-    const contract = await tx.contract.findFirst({
-      where: { id: input.contractId, deletedAt: null, ...ownerEq(user) }
-    });
-    if (!contract) throw new ApiError(ERROR_CODES.NOT_FOUND, "合同不存在", 404);
+    // 先锁合同行 (序列化同一合同的并发开票), 消除 R-08 "先 SUM 后 INSERT" 的 TOCTOU 竞态。
+    // 模式与 updateContract (contract/crud.ts:299) 一致: dummy UPDATE 拿行锁并确认未软删。
+    let contract;
+    try {
+      contract = await tx.contract.update({
+        where: { id: input.contractId, deletedAt: null, ...ownerEq(user) },
+        data: { updatedAt: new Date() },
+        select: { id: true, contractNo: true, status: true, totalAmount: true, customerId: true, customerName: true }
+      });
+    } catch (e) {
+      if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === "P2025") {
+        throw new ApiError(ERROR_CODES.NOT_FOUND, "合同不存在", 404);
+      }
+      throw e;
+    }
     if (contract.status !== "ACTIVE") {
       throw new ApiError(
         ERROR_CODES.CONTRACT_STATUS_INVALID,
@@ -57,10 +69,9 @@ export async function createInvoice(user: SessionUser, input: InvoiceCreateInput
       );
     }
     // R-08：累计开票不能超合同总额 (P2-1: 与 R-11/R-12 一致, 加 0.01 元容差)
-    // R-08: 累计开票 = DRAFT + ISSUED + RED_FLUSHED (负数自然抵扣), VOIDED 不算 (已作废)
-    // 包含 DRAFT 是为了避免业务可以无限制创建草稿, 实际开票时才发现超额
+    // R-08 口径含 PENDING_FINANCE (此前漏掉, 发票提交后即"隐身"可无限超额)
     const issued = await tx.invoice.aggregate({
-      where: { contractId: contract.id, status: { in: ["DRAFT", "ISSUED", "RED_FLUSHED"] }, deletedAt: null },
+      where: { contractId: contract.id, status: { in: [...INVOICE_LIMIT_COUNTED_STATUSES] }, deletedAt: null },
       _sum: { amount: true }
     });
     // 用 Prisma.Decimal 比较，避免 JS number 浮点失真
@@ -160,11 +171,11 @@ export async function updateInvoice(user: SessionUser, id: string, input: Invoic
         where: { id: inv.contractId },
         select: { totalAmount: true }
       });
-      // R-08 口径与 createInvoice 对齐: DRAFT + ISSUED + RED_FLUSHED, 排除自身
+      // R-08 口径与 createInvoice 对齐 (含 PENDING_FINANCE), 排除自身
       const issued = await tx.invoice.aggregate({
         where: {
           contractId: inv.contractId,
-          status: { in: ["DRAFT", "ISSUED", "RED_FLUSHED"] },
+          status: { in: [...INVOICE_LIMIT_COUNTED_STATUSES] },
           deletedAt: null,
           NOT: { id }
         },

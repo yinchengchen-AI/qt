@@ -10,6 +10,7 @@ import { MONEY_TOLERANCE } from "@/lib/money-tolerance";
 import { audit } from "@/server/audit";
 import { listAdminUserIds } from "@/server/events/bus";
 import { runTransition, runTransitionInTx, SkipTransition } from "@/lib/status-machine";
+import { INVOICE_ISSUED_AMOUNT_STATUSES } from "@/lib/invoice-amounts";
 import { SYSTEM_USER_ID } from "@/lib/system";
 import { env } from "@/lib/env";
 
@@ -223,9 +224,9 @@ export async function tryAutoClose(contractId: string, now: Date): Promise<"CLOS
       const threshold = total.mul(ratio);
       const effectiveThreshold = threshold.minus(MONEY_TOLERANCE);
 
-      // 条件 2: 开票足额
+      // 条件 2: 开票足额 (口径含 RED_FLUSHED: 红冲对 +A/−A 净 0, 避免红冲+重开+回款后永远漏关)
       const invoiced = await tx.invoice.aggregate({
-        where: { contractId, status: "ISSUED", deletedAt: null },
+        where: { contractId, status: { in: [...INVOICE_ISSUED_AMOUNT_STATUSES] }, deletedAt: null },
         _sum: { amount: true },
       });
       const invoicedSum = new Prisma.Decimal(invoiced._sum.amount?.toString() ?? "0");

@@ -10,6 +10,7 @@ import { getBillingStatus } from "@/lib/contract-billing";
 import { Prisma } from "@prisma/client";
 import { calcTaxBreakdown } from "@/lib/money";
 import { MONEY_TOLERANCE } from "@/lib/money-tolerance";
+import { INVOICE_LIMIT_COUNTED_STATUSES, INVOICE_ISSUED_AMOUNT_STATUSES } from "@/lib/invoice-amounts";
 import { resolveAttachmentSnapshots } from "@/lib/attachment-snapshot";
 import { softDelete } from "@/lib/soft-delete";
 import { tryAutoPublish } from "./status";
@@ -68,14 +69,14 @@ export async function listContracts(
     prisma.contract.count({ where })
   ]);
 
-  // 批量聚合每张合同的已开票(Invoice.status=ISSUED)与已回款(Payment.status IN CONFIRMED,RECONCILED)
+  // 批量聚合每张合同的已开票(含 RED_FLUSHED, 红冲对净 0)与已回款(Payment.status IN CONFIRMED,RECONCILED)
   // 避免 N+1;与 server/services/statistics.ts:18-30 语义一致
   const ids = list.map((c) => c.id);
   const [invoiceAgg, paymentAgg] = ids.length
     ? await Promise.all([
         prisma.invoice.groupBy({
           by: ["contractId"],
-          where: { contractId: { in: ids }, status: "ISSUED", deletedAt: null },
+          where: { contractId: { in: ids }, status: { in: [...INVOICE_ISSUED_AMOUNT_STATUSES] }, deletedAt: null },
           _sum: { amount: true }
         }),
         prisma.payment.groupBy({
@@ -316,7 +317,7 @@ export async function updateContract(user: SessionUser, id: string, input: Contr
       if (newTotal.lessThan(existingTotal)) {
         const TOL = MONEY_TOLERANCE;
         const invoiced = await tx.invoice.aggregate({
-          where: { contractId: id, status: { in: ["DRAFT", "ISSUED", "RED_FLUSHED"] }, deletedAt: null },
+          where: { contractId: id, status: { in: [...INVOICE_LIMIT_COUNTED_STATUSES] }, deletedAt: null },
           _sum: { amount: true },
         });
         const invoicedSum = new Prisma.Decimal(invoiced._sum.amount?.toString() ?? "0");

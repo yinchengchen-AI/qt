@@ -5,6 +5,7 @@ import { type SessionUser } from "@/lib/session";
 import { requirePermission, RESOURCE, ACTION } from "@/lib/permissions";
 
 import {ownerEq, ownerViaContract} from "@/lib/ownership";
+import { INVOICE_ISSUED_AMOUNT_STATUSES } from "@/lib/invoice-amounts";
 import { getBillingStatus, getPaymentStatus } from "@/lib/contract-billing";
 import type { BillingStatus, PaymentProgressStatus } from "@/types/enums";
 import { Prisma } from "@prisma/client";
@@ -94,10 +95,10 @@ export async function getContractOverview(
   ]);
 
   // 总数(与 server/services/statistics.ts:18-30 语义一致):
-  //   invoicedAmount = sum(Invoice.amount)  where status=ISSUED         (red-flush 负数已含, 自动净额)
+  //   invoicedAmount = sum(Invoice.amount)  where status IN (ISSUED,RED_FLUSHED)  (红冲对 +A/−A 净 0)
   //   paidAmount     = sum(Payment.amount)  where status IN (CONFIRMED,RECONCILED)
   let invoicedAmount = 0;
-  for (const inv of invoices) if (inv.status === "ISSUED") invoicedAmount += Number(inv.amount);
+  for (const inv of invoices) if ((INVOICE_ISSUED_AMOUNT_STATUSES as readonly string[]).includes(inv.status)) invoicedAmount += Number(inv.amount);
   let paidAmount = 0;
   for (const p of payments) if (p.status === "CONFIRMED" || p.status === "RECONCILED") paidAmount += Number(p.amount);
 

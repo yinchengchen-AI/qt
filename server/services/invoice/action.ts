@@ -10,6 +10,34 @@ import { nextBusinessNo } from "@/lib/sequence";
 import {ownerViaContract} from "@/lib/ownership";
 import { runTransitionInTx } from "@/lib/status-machine";
 import { refundPaymentInTx } from "@/server/services/payment";
+import { MONEY_TOLERANCE } from "@/lib/money-tolerance";
+import { INVOICE_LIMIT_COUNTED_STATUSES } from "@/lib/invoice-amounts";
+
+// R-08 复检 (DESIGN-v3.md:393 要求 submit/issue 环节执行):
+// 确认累计开票 (含本票, 本票在 DRAFT/PENDING_FINANCE 口径内) ≤ 合同总额。
+// 堵住 "提交后隐身" 与 "并发绕过" 两类超额路径——创建环节的校验在这些场景下不可靠。
+async function assertWithinContractLimit(
+  tx: Prisma.TransactionClient,
+  inv: { id: string; contractId: string }
+): Promise<void> {
+  const [contract, issued] = await Promise.all([
+    tx.contract.findUniqueOrThrow({ where: { id: inv.contractId }, select: { totalAmount: true, contractNo: true } }),
+    tx.invoice.aggregate({
+      where: { contractId: inv.contractId, status: { in: [...INVOICE_LIMIT_COUNTED_STATUSES] }, deletedAt: null },
+      _sum: { amount: true }
+    })
+  ]);
+  const issuedAmt = new Prisma.Decimal(issued._sum.amount?.toString() ?? "0");
+  const contractTotal = new Prisma.Decimal(contract.totalAmount.toString());
+  // 本票已在口径内, 无需再加; 只校验当前累计未超额
+  if (issuedAmt.greaterThan(contractTotal.plus(MONEY_TOLERANCE))) {
+    throw new ApiError(
+      ERROR_CODES.INVOICE_OVER_LIMIT,
+      `累计开票 ¥${issuedAmt.toFixed(2)} 已超过合同总额 ¥${contract.totalAmount}，不可继续`,
+      422
+    );
+  }
+}
 
 export async function invoiceAction(user: SessionUser, id: string, input: InvoiceActionInput) {
   requirePermission(user.roleCode, RESOURCE.INVOICE, ACTION.UPDATE);
@@ -30,6 +58,7 @@ export async function invoiceAction(user: SessionUser, id: string, input: Invoic
         loadInTx: commonLoad,
         from: ["DRAFT"],
         to: "PENDING_FINANCE",
+        precondition: (current, t) => assertWithinContractLimit(t, current),
         audit: () => ({ actorId: user.id, action: "INVOICE_SUBMIT", before: { status: "DRAFT" }, after: { status: "PENDING_FINANCE" } }),
         mismatchError: { ...mismatch, message: (_c, to) => `仅 DRAFT 可提交(目标: ${to})` },
       });
@@ -60,6 +89,7 @@ export async function invoiceAction(user: SessionUser, id: string, input: Invoic
         loadInTx: commonLoad,
         from: ["PENDING_FINANCE"],
         to: "ISSUED",
+        precondition: (current, t) => assertWithinContractLimit(t, current),
         extraData: () => data,
         audit: () => ({ actorId: user.id, action: "INVOICE_ISSUE", before, after: { status: "ISSUED", invoiceNo } }),
         mismatchError: { ...mismatch, message: (_c, to) => `仅 PENDING_FINANCE 可开票(目标: ${to})` },

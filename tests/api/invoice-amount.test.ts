@@ -229,6 +229,26 @@ describe("createInvoice R-08 累计开票", () => {
   }));
 });
 
+// C1 回归: R-08 口径含 PENDING_FINANCE, 提交后不再"隐身"可超额
+describe("R-08 PENDING_FINANCE 盲区 (C1)", () => {
+  it("A 提交待审后, 再创建超额草稿 → 抛 INVOICE_OVER_LIMIT", guard(async () => {
+    const c = await mkContract("100.00", "R08-PEND");
+    const a = await mkDraftInvoice(c.id, 100, "R08-PEND-A");
+    // A 提交 → PENDING_FINANCE (旧口径漏算, B=1 也能通过)
+    await invoiceAction(buildAdmin(), a.id, { action: "submit" });
+    await expect(mkDraftInvoice(c.id, 1, "R08-PEND-B")).rejects.toMatchObject({ errorCode: ERROR_CODES.INVOICE_OVER_LIMIT });
+  }));
+
+  it("A 提交待审 + B 草稿, B 改成超额金额 → P1-1 复检拦截", guard(async () => {
+    const c = await mkContract("100.00", "R08-PENDUPD");
+    const a = await mkDraftInvoice(c.id, 90, "R08-PU-A");
+    await invoiceAction(buildAdmin(), a.id, { action: "submit" });
+    const b = await mkDraftInvoice(c.id, 10, "R08-PU-B");
+    // A(90, PENDING_FINANCE) + B 改 20 → 110 > 100, 旧口径 A 隐身 → 90 被漏算
+    await expect(updateInvoice(buildAdmin(), b.id, { amount: 20 })).rejects.toMatchObject({ errorCode: ERROR_CODES.INVOICE_OVER_LIMIT });
+  }));
+});
+
 describe("updateInvoice R-08 重新校验 (P1-1)", () => {
   it("DRAFT 改 amount 推超合同总额 → 抛 INVOICE_OVER_LIMIT", guard(async () => {
     const c = await mkContract("100.00", "R08-UPDATE");
