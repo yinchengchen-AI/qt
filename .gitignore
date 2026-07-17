@@ -1,4 +1,4 @@
-﻿# deps
+# deps
 node_modules
 .pnpm-store
 
@@ -59,6 +59,7 @@ server.log.err
 
 # docker volumes (local)
 docker-data/
+docker-data.bak-*/
 
 # local runtime artifacts
 backups/
