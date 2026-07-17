@@ -1,7 +1,7 @@
 # 杭州企泰安全科技 业务管理系统 (qt-biz)
 
 > 客户 / 合同 / 开票 / 回款 一体化管理,附件走 MinIO presigned 直传。
-> **当前版本: v0.10.2**(2026-07-17)
+> **当前版本: v0.10.3**(2026-07-18)
 > 详细设计见 [docs/architecture/DESIGN-v3.md](docs/architecture/DESIGN-v3.md),用户手册见 [docs/user/USER_MANUAL.md](docs/user/USER_MANUAL.md)。
 > 2026-07-04 增量同步: 全库代码审计 10 处 bug 修复 + 2 组单元测试已补到「最近更新」开头。
 
@@ -413,6 +413,42 @@ xlsx 导出走 `lib/excel.ts` + `exceljs`; 中文文件名通过 `attachmentHead
 | dev server `/login` `/dashboard` `/contracts` `/reports/PERFORMANCE` | 200 |
 
 ## 最近更新
+
+### v0.10.3(2026-07-18) 发布更新流程简化
+
+> 把"手写发布"和"git 自动生成"两个 Modal 合并为单一表单 + 表单顶部"从 git 自动填充"按钮,history 页去掉 Timeline 装饰。无 schema 变更, 无 API 契约变更。
+
+**管理员发布页合并** (`app/(app)/admin/releases/page.tsx`):
+- 删除第二个 Modal (`releases.gitModal.*`);"从 git 自动生成"改为表单顶部一颗副按钮,点击拉 `/api/app-releases/preview-from-git` 草稿,只覆盖空字段,管理员审阅后直接保存
+- release 列表删掉 commit 数 / `fromGit` badge;git 来源元数据不再透出到 UI
+
+**更新日志页收紧** (`app/(app)/releases/page.tsx`):
+- 从 antd Timeline 改为扁平卡片列表;除"版本号 + 重要红点"外的节点装饰全部移除;未读提示沿用顶部一条 banner
+
+**Validator 收紧** (`lib/validators/app-release.ts`):
+- 删除 M-1 自动加 `v` 前缀的 transform;显式要求 `v` 开头 + 含数字, 长度 1-50;一并消除 `V0.7.0 → vV0.7.0` 这种边角 case
+
+**Preview / Service / git-format** (`app/api/app-releases/preview-from-git/route.ts` + `server/services/app-release.ts` + `lib/git-format.ts`):
+- preview 响应只回 `{ version, title, summary, content, commitCount }`;`commits` / `from` / `to` / `truncated` 不再外露
+- `createRelease` 入参去掉 `source` / `gitFrom` / `gitTo` / `gitCommitCount` (DB 列保留以兼容存量, 新建行一律 MANUAL / null)
+- `formatReleaseContent` 不再做事先的 `v` 归一化,由 validator 把关
+
+**清理**:
+- 删除未在 `package.json` 注册的 `scripts/release/generate.ts` CLI 脚本 (admin 按钮行为已覆盖)
+- `lib/i18n.ts` 删 14 个 `releases.gitModal.*` / `releases.fromGit` / `releases.tag.fromGit` 键;新增 `releases.autoFill` / `releases.autoFillHint` / `releases.toast.autoFilled`
+
+**新增/更新测试**:
+- `tests/lib/app-release-schema.test.ts`: 反映新版本号规则 (`v` 开头 + 含数字),以及 "已带 v 透传" / "缺 v 被拒"
+- `tests/lib/git-format.test.ts`: 用例 "version 自动补 v 前缀" 改写为 "version 透传原样"
+- `tests/api/app-release.test.ts`: 移除 git source 相关用例,加 "不传 important 默认 false"
+- 全量 Vitest 回归: 72 文件 / 572 用例全绿; `npm run typecheck` 通过
+
+**版本号**: `0.10.2` → `0.10.3` (patch bump, UX 重构 + 接口精简, 无 schema 变更, 无 API 契约变更)
+
+**部署说明**:
+- 无 schema 变更、无新 migration, `prisma migrate deploy` 不需要跑
+- 直接重启 `next start` 即可生效
+- **行为变化提醒**: i18n 删 14 个键,前端已无残留引用 (admin 的 git Modal 已删除);preview 端点响应字段缩减,只有内部 UI 在用,无第三方消费者
 
 ### v0.10.2(2026-07-17) 业务不变量与行级隔离修复
 

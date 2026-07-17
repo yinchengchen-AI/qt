@@ -39,7 +39,7 @@ Node `>=20.9.0`. Use `npm`; `pnpm-lock.yaml` is kept in sync.
 - One logical change per commit; squash WIP locally before pushing.
 - PRs cover motivation, change summary, and validation (commands run, screenshots for UI). Link the issue or `docs/` runbook. Call out schema/migration, auth, and storage-affecting changes explicitly.
 - Never commit `.env`, `docker-data/`, `backups/`, or `docs/*部署记录*.md` (see `.gitignore`).
-- **发布版本**: 用 `npm version patch|minor|major`(自动 bump + commit + tag),不要手动改 `package.json:version` 之后忘记 tag。Commit message 风格 `chore(release): bump to vX.Y.Z`。当前 base 与 README 同步在 `0.10.1`;登录页右上 chip 由 `next.config.mjs#computeAppVersion()` 自动派生为 `<base>+<git short sha>.<MMDD>`,commit → dev/build 重启即可看到新版本号;CI 容器无 `.git` 时回落到 `NEXT_PUBLIC_APP_VERSION` env 或 `"v2.0"`。
+- **发布版本**: 用 `npm version patch|minor|major`(自动 bump + commit + tag),不要手动改 `package.json:version` 之后忘记 tag。Commit message 风格 `chore(release): bump to vX.Y.Z`。当前 base 与 README 同步在 `0.10.3`;登录页右上 chip 由 `next.config.mjs#computeAppVersion()` 自动派生为 `<base>+<git short sha>.<MMDD>`,commit → dev/build 重启即可看到新版本号;CI 容器无 `.git` 时回落到 `NEXT_PUBLIC_APP_VERSION` env 或 `"v2.0"`。
 
 ## Security & Configuration Tips
 
