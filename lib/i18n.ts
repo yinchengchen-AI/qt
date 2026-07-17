@@ -122,10 +122,10 @@ const messages: Record<Locale, Record<string, string>> = {
     "releases.column.summary": "概要",
     "releases.column.publishedAt": "发布时间",
     "releases.column.actions": "操作",
-    "releases.section.basic": "基本信息",
+
     "releases.field.version": "版本号",
     "releases.field.version.placeholder": "如 v0.7.0",
-    "releases.field.version.rule": "版本号 1 — 50 字符(必填)",
+    "releases.field.version.rule": "版本号必须以 v 开头并包含数字,例如 v0.7.0",
     "releases.field.title": "标题",
     "releases.field.title.placeholder": "如:更新日志发布流程",
     "releases.field.title.rule": "标题 2 — 200 字符(必填)",
@@ -138,21 +138,13 @@ const messages: Record<Locale, Record<string, string>> = {
     "releases.field.important": "标记为重要",
     "releases.field.important.tooltip": "重要更新顶部展示红点提示,弹窗视觉权重更高",
 
-    // 从 git 自动生成
-    "releases.fromGit": "从 git 自动生成",
-    "releases.publishManual": "手写发布",
-    "releases.tag.fromGit": "自动生成",
-    "releases.gitModal.title": "从 git commits 自动生成更新",
-    "releases.gitModal.summaryHint": "将基于 {version} 的 git 历史自动生成 {n} 条 commit 的更新说明",
-    "releases.gitModal.range": "commit 区间",
-    "releases.gitModal.previewTitle": "标题",
-    "releases.gitModal.previewContent": "正文预览",
-    "releases.gitModal.rawCommits": "查看原始 commit 列表 ({n} 条)",
-    "releases.gitModal.publish": "发布",
-    "releases.gitModal.markImportant": "标记为重要更新",
-    "releases.gitModal.emptyRange": "当前 commit 区间内没有变更",
-    "releases.gitModal.emptyRangeDesc": "可能原因:已经发布过这个版本,或 --from 指定的 tag 之后没有新 commit。",
-    "releases.gitModal.fetchError": "读取 git 历史失败:请确认服务器 .git 目录存在且可执行 git 命令",
+
+    // 管理员表单同入口,内嵌"从 git 自动填充"按钮,不用单独 Modal
+    "releases.publishManual": "发布更新",
+    "releases.autoFill": "从 git 自动填充",
+    "releases.autoFillHint": "可一键带入最近 git commits 自动生成的版本号与正文,在表单中二次审阅后再发布。",
+    "releases.toast.autoFilled": "已带入 {n} 条 commit 到表单",
+    "releases.section.basic": "基本信息",
 
     "releases.history.title": "更新日志",
     "releases.history.subtitle": "查看项目所有历史更新记录",
@@ -433,10 +425,10 @@ const messages: Record<Locale, Record<string, string>> = {
     "releases.column.summary": "Summary",
     "releases.column.publishedAt": "Published at",
     "releases.column.actions": "Actions",
-    "releases.section.basic": "Basic info",
+
     "releases.field.version": "Version",
     "releases.field.version.placeholder": "e.g. v0.7.0",
-    "releases.field.version.rule": "Version: 1-50 chars (required)",
+    "releases.field.version.rule": "Version must start with v and include a digit, e.g. v0.7.0",
     "releases.field.title": "Title",
     "releases.field.title.placeholder": "e.g. Release notes workflow",
     "releases.field.title.rule": "Title: 2-200 chars (required)",
@@ -449,21 +441,13 @@ const messages: Record<Locale, Record<string, string>> = {
     "releases.field.important": "Mark as important",
     "releases.field.important.tooltip": "Important releases get a red tag in the popup header",
 
-    // From git auto-generation
-    "releases.fromGit": "Generate from git",
-    "releases.publishManual": "Write manually",
-    "releases.tag.fromGit": "Auto-generated",
-    "releases.gitModal.title": "Auto-generate release from git commits",
-    "releases.gitModal.summaryHint": "Will auto-generate release notes for {version} based on {n} commits",
-    "releases.gitModal.range": "commit range",
-    "releases.gitModal.previewTitle": "Title",
-    "releases.gitModal.previewContent": "Content preview",
-    "releases.gitModal.rawCommits": "View raw commit list ({n})",
-    "releases.gitModal.publish": "Publish",
-    "releases.gitModal.markImportant": "Mark as important",
-    "releases.gitModal.emptyRange": "No commits in the selected range",
-    "releases.gitModal.emptyRangeDesc": "Possible causes: this version was already published, or there are no new commits after the --from tag.",
-    "releases.gitModal.fetchError": "Failed to read git history: ensure the server has a .git directory and git is executable",
+
+    // The publish form doubles as auto-fill target, no separate modal
+    "releases.publishManual": "Publish release",
+    "releases.autoFill": "Auto-fill from git",
+    "releases.autoFillHint": "Pre-fill the form with the most recent git commits; review before publishing.",
+    "releases.toast.autoFilled": "Pre-filled form with {n} commits",
+    "releases.section.basic": "Basic info",
 
     "releases.history.title": "Release history",
     "releases.history.subtitle": "Browse all historical release notes",

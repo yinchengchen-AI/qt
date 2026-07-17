@@ -1,12 +1,10 @@
 // AppRelease 服务:应用更新记录
 //
 // 与 Announcement 的区别:
-//   - Announcement 是一次性公告 (有生效期 / 目标角色 / 置顶),
-//     可见性按 targetRoles 过滤。
-//   - AppRelease 是发版日志,全员可见;每位用户的"是否已读"通过 AppReleaseRead
-//     单独追踪,list/get 不需要 join Read 表(getLatestUnread 由 client 拼)。
+//   - Announcement 是一次性公告 (有生效期 / 目标角色 / 置顶),可按 targetRoles 过滤可见性。
+//   - AppRelease 是发版日志,全员可见;每位用户单独追踪"是否已读"通过 AppReleaseRead。
 //
-// 可见性策略:deletedAt IS NULL (无 targetRoles 概念);任一登录用户都能 list/get。
+// 可见性策略:deletedAt IS NULL (没有 targetRoles 概念);任一登录用户都能 list/get。
 import { prisma } from "@/lib/prisma";
 import { ApiError } from "@/lib/api";
 import { ERROR_CODES } from "@/types/errors";
@@ -53,17 +51,9 @@ export async function listReleases(
   return { list, total, page, pageSize };
 }
 
-/** 给 popup 用的"未读首发"查询:最新一条用户尚未标已读的 release。
- *  - 候选:publishedAt 倒序取首条 deletedAt IS NULL
- *  - 已读过滤:不在 AppReleaseRead 的当前用户行里
- *  - 若该用户对最新 release 已标已读 → 返回 null (弹窗不显示)
- *
- * M-5: 三个查询包在 prisma.$transaction 里(单连接快照),
- *   避免 race: 并发插入新 release / 标记已读时,totalPublished/totalRead/release
- *   不会指向不同时间点,弹窗 UI 不会出现 "totalPublished=10 totalRead=9 release 存在"
- *   但 release 实际已被标记已读这种错位。
- * m-2: orderBy 加 id desc 作为 tiebreaker,
- *   避免两条 release publishedAt 完全相同时 findFirst 拿哪条不定。 */
+/** 给 popup 用的"未读首条"查询:最新一条用户尚未标记已读的 release。
+ * 三个查询包在 prisma.$transaction 里,避免并发标记已读时 race。
+ */
 export async function getLatestUnreadRelease(user: SessionUser) {
   requirePermission(user.roleCode, RESOURCE.APP_RELEASE, ACTION.READ);
   const [release, totalPublished, totalRead] = await prisma.$transaction([
@@ -95,17 +85,11 @@ export async function createRelease(
     summary: string;
     content: string;
     important?: boolean;
-    source?: "MANUAL" | "GIT_COMMITS";
-    gitFrom?: string;
-    gitTo?: string;
-    gitCommitCount?: number;
   }
 ) {
   requirePermission(user.roleCode, RESOURCE.APP_RELEASE, ACTION.CREATE);
-  // m-5: 查重同 version 未软删记录; 软删后的同名 version 允许重建
-  // (否则 release 内容写错后无法重新发布,只能改标题/版本号)
-  // validator 已经归一化 version (M-1), 不会因为 "v0.7.0" / "0.7.0"
-  // 写法不同而漏检
+  // 查重:同 version 未软删记录。validator 已经要求 version 以 v 开头,
+  // 直接做字符串相等比较即可,不需要额外的归一化层。
   const dup = await prisma.appRelease.findFirst({
     where: { version: input.version, deletedAt: null },
     select: { id: true }
@@ -113,7 +97,7 @@ export async function createRelease(
   if (dup) {
     throw new ApiError(
       ERROR_CODES.CONFLICT,
-      `版本 ${input.version} 已有未删除的 release;如需更新内容请先在 /admin/releases 删除旧的`,
+      `版本 ${input.version} 已有未删除的 release;如需更新内容请先到 /admin/releases 删除旧的`,
       409
     );
   }
@@ -124,11 +108,9 @@ export async function createRelease(
       summary: input.summary,
       content: input.content,
       important: input.important ?? false,
-      source: input.source ?? "MANUAL",
-      // 不传 source 时不打 gitFrom/gitTo/gitCommitCount(留 NULL)
-      ...(input.gitFrom !== undefined ? { gitFrom: input.gitFrom } : {}),
-      ...(input.gitTo !== undefined ? { gitTo: input.gitTo } : {}),
-      ...(input.gitCommitCount !== undefined ? { gitCommitCount: input.gitCommitCount } : {}),
+      // git 相关的 source/gitFrom/gitTo/gitCommitCount 列保留以兼容存量数据;
+      // 新建记录全部写入 MANUAL / null,管理员入口不暴露这些内部字段。
+      source: "MANUAL",
       publishedById: user.id
     }
   });
@@ -140,11 +122,7 @@ export async function createRelease(
     after: {
       version: r.version,
       title: r.title,
-      important: r.important,
-      source: r.source,
-      gitFrom: r.gitFrom,
-      gitTo: r.gitTo,
-      gitCommitCount: r.gitCommitCount
+      important: r.important
     }
   });
   return r;
@@ -194,13 +172,11 @@ export async function softDeleteRelease(user: SessionUser, id: string) {
   return { ok: true };
 }
 
-/** 标记某条 release 为当前用户已读;幂等。 */
+/** 标记某条 release 为当前用户已读 */
 export async function markReleaseRead(user: SessionUser, releaseId: string) {
   requirePermission(user.roleCode, RESOURCE.APP_RELEASE, ACTION.READ);
-  // 先确认 release 存在且未删(防 dangling id 写入 AppReleaseRead)
   const r = await prisma.appRelease.findFirst({ where: { id: releaseId, deletedAt: null } });
   if (!r) throw new ApiError(ERROR_CODES.NOT_FOUND, "更新记录不存在", 404);
-  // upsert 保证幂等;unique(userId, releaseId)
   const row = await prisma.appReleaseRead.upsert({
     where: { userId_releaseId: { userId: user.id, releaseId } },
     create: { userId: user.id, releaseId, readAt: new Date() },

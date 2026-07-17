@@ -1,4 +1,4 @@
-// AppRelease (应用更新记录) — service 回归测试
+﻿// AppRelease (应用更新记录) — service 回归测试
 //
 // 覆盖:
 //   - createRelease / getRelease / listReleases / softDeleteRelease 基本流程
@@ -128,28 +128,8 @@ describe("AppRelease 基本流程", () => {
     const ids = found.map((x) => x.id);
     expect(ids.indexOf(newer.id)).toBeLessThan(ids.indexOf(older.id));
   }));
-});
 
-describe("AppRelease git source", () => {
-  it("createRelease with source=GIT_COMMITS 写库时落 gitFrom/gitTo/gitCommitCount", guard(async () => {
-    const r = await createRelease(buildAdmin(), {
-      version: "vTEST-GIT-0.0.1",
-      title: "git 生成测试",
-      summary: "auto",
-      content: "content",
-      source: "GIT_COMMITS",
-      gitFrom: "abc1234",
-      gitTo: "def5678",
-      gitCommitCount: 7
-    });
-    createdIds.push(r.id);
-    expect(r.source).toBe("GIT_COMMITS");
-    expect(r.gitFrom).toBe("abc1234");
-    expect(r.gitTo).toBe("def5678");
-    expect(r.gitCommitCount).toBe(7);
-  }));
-
-  it("m-5: 同 version 重复创建抛 409 CONFLICT", guard(async () => {
+  it("同 version 重复创建 -> 409 CONFLICT (关键:已归一化,字符串相等即可判重)", guard(async () => {
     const r = await createRelease(buildAdmin(), {
       version: "vTEST-DUP-0.0.1",
       title: "first",
@@ -157,7 +137,7 @@ describe("AppRelease git source", () => {
       content: "c"
     });
     createdIds.push(r.id);
-    // 第二次同 version 应拒绝
+    // 第二次同 version 应该被拒
     await expect(
       createRelease(buildAdmin(), {
         version: "vTEST-DUP-0.0.1",
@@ -178,43 +158,15 @@ describe("AppRelease git source", () => {
     expect(r2.title).toBe("recreate");
   }));
 
-  it("M-1: validator 归一化 '0.7.0' → 'v0.7.0' 后 service 视为重复", guard(async () => {
-    // admin POST /api/app-releases 走 service.createRelease, 那里已经
-    // 看到归一化后的 version。直接调 service 验证: 先用 v0.7.1 创一条,
-    // 再用 0.7.1 (validator 归一化后到 v0.7.1) 应该报 409。
-    // 这里直接传归一化后的 version 模拟 service 内部看到的值。
-    const v = "vTEST-NORM-0.0.1";
-    const r1 = await createRelease(buildAdmin(), {
-      version: v,
-      title: "first",
+  it("不传 important 默认 false", guard(async () => {
+    const r = await createRelease(buildAdmin(), {
+      version: "vTEST-DEFAULT-0.0.1",
+      title: "默认测试",
       summary: "s",
       content: "c"
     });
-    createdIds.push(r1.id);
-    // service 接到 version 时 validator 已经归一化; service 内部不再
-    // 二次 transform, 查重就是同字符串比较
-    await expect(
-      createRelease(buildAdmin(), {
-        version: v,
-        title: "dup",
-        summary: "s",
-        content: "c"
-      })
-    ).rejects.toMatchObject({ status: 409 });
-  }));
-
-  it("不传 source 时默认 MANUAL 且 git* 字段为 null", guard(async () => {
-    const r = await createRelease(buildAdmin(), {
-      version: "vTEST-MANUAL-0.0.1",
-      title: "手写测试",
-      summary: "manual",
-      content: "content"
-    });
     createdIds.push(r.id);
-    expect(r.source).toBe("MANUAL");
-    expect(r.gitFrom).toBeNull();
-    expect(r.gitTo).toBeNull();
-    expect(r.gitCommitCount).toBeNull();
+    expect(r.important).toBe(false);
   }));
 });
 
@@ -234,7 +186,7 @@ describe("AppReleaseRead 已读追踪", () => {
     expect(second.readAt.getTime()).toBe(first.readAt.getTime());
   }));
 
-  it("getLatestUnreadRelease 已读后返回 null", guard(async () => {
+  it("getLatestUnreadRelease 已读后不再返回 r", guard(async () => {
     const r = await createRelease(buildAdmin(), {
       version: "vTEST-latest-unread",
       title: "即将被读",
@@ -242,23 +194,19 @@ describe("AppReleaseRead 已读追踪", () => {
       content: "x"
     });
     createdIds.push(r.id);
-    // 初始:对该用户是未读(假设这个 release 是最新)
     const before = await getLatestUnreadRelease(buildSales());
-    // 在最干净的场景下 before.release 应当是 r;但测试中可能插入了多条最新 release,
-    // 我们不强制 before.release===r,只验证 read 后 release 不再是 r。
+    expect(before).toBeTruthy();
     await markReleaseRead(buildSales(), r.id);
-    createdReadIds.push(
-      (await prisma.appReleaseRead.findUnique({
-        where: { userId_releaseId: { userId: buildSales().id, releaseId: r.id } }
-      }))!.id
-    );
+    const readRow = await prisma.appReleaseRead.findUnique({
+      where: { userId_releaseId: { userId: buildSales().id, releaseId: r.id } }
+    });
+    if (readRow) createdReadIds.push(readRow.id);
     const after = await getLatestUnreadRelease(buildSales());
     if (after.release) {
       expect(after.release.id).not.toBe(r.id);
     } else {
-      // 所有 release 都已读,也算符合预期
+      // 所有 release 都已读也算符合预期
       expect(after.release).toBeNull();
     }
-    expect(before).toBeTruthy();
   }));
 });

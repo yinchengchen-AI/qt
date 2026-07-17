@@ -1,9 +1,11 @@
-// AppRelease zod validator 单元测试
+﻿// AppRelease zod validator 单元测试
+// 校验规则:version 必须以 v 开头并至少有一个数字;title 2-200;summary 1-500;
+// content 1-10000;important 默认 false。
 import { describe, it, expect } from "vitest";
 import { appReleaseCreateSchema, appReleaseUpdateSchema } from "@/lib/validators/app-release";
 
 describe("appReleaseCreateSchema", () => {
-  it("必填字段缺失 → 抛错", () => {
+  it("必填字段缺失 -> 抛错", () => {
     expect(() => appReleaseCreateSchema.parse({})).toThrow();
     expect(() => appReleaseCreateSchema.parse({ version: "v1" })).toThrow();
   });
@@ -19,10 +21,16 @@ describe("appReleaseCreateSchema", () => {
     expect(v.version).toBe("v0.7.0");
   });
 
-  it("version 必须含数字 (regex)", () => {
+  it("version 必须以 v 开头并包含数字 (regex)", () => {
+    expect(() =>
+      appReleaseCreateSchema.parse({ version: "0.7.0", title: "测试标题", summary: "测试概要", content: "测试内容" })
+    ).toThrow(/版本号必须以 v/);
     expect(() =>
       appReleaseCreateSchema.parse({ version: "vNext", title: "测试标题", summary: "测试概要", content: "测试内容" })
-    ).toThrow(/版本号需包含数字/);
+    ).toThrow(/版本号必须以 v/);
+    expect(() =>
+      appReleaseCreateSchema.parse({ version: "v1", title: "测试标题", summary: "测试概要", content: "测试内容" })
+    ).not.toThrow();
   });
 
   it("字段超长被拒", () => {
@@ -37,26 +45,27 @@ describe("appReleaseCreateSchema", () => {
   });
 });
 
-describe("M-1 version 归一化", () => {
-  it("无 v 前缀 → 自动加 v", () => {
+describe("version 格式", () => {
+  it("v 开头 + 数字 -> 原样通过", () => {
     const v = appReleaseCreateSchema.parse({
-      version: "0.7.1", title: "测试标题", summary: "测试概要", content: "测试内容"
+      version: "v0.7.1", title: "测试标题", summary: "测试概要", content: "测试内容"
     });
     expect(v.version).toBe("v0.7.1");
   });
 
-  it("已有 v 前缀 → 不动", () => {
+  it("已有 v 开头 -> 不再二次加 v (避免历史 vV0.7.0 bug)", () => {
     const v = appReleaseCreateSchema.parse({
       version: "v0.7.0", title: "测试标题", summary: "测试概要", content: "测试内容"
     });
     expect(v.version).toBe("v0.7.0");
   });
 
-  it("V (大写) 不被识别为前缀,会被加上 v → vV0.7.0 (这是边缘 case 但保持确定行为)", () => {
-    const v = appReleaseCreateSchema.parse({
-      version: "V0.7.0", title: "测试标题", summary: "测试概要", content: "测试内容"
-    });
-    expect(v.version).toBe("vV0.7.0");
+  it("缺 v 前缀 -> 被拒 (不自动加)", () => {
+    expect(() =>
+      appReleaseCreateSchema.parse({
+        version: "0.7.0", title: "测试标题", summary: "测试概要", content: "测试内容"
+      })
+    ).toThrow();
   });
 });
 

@@ -1,4 +1,4 @@
-// lib/git.ts + lib/git-format.ts 单元测试
+﻿// lib/git.ts + lib/git-format.ts 单元测试
 //
 // 覆盖:
 //   - parseCommitSubject 各种 commit subject 格式
@@ -27,8 +27,6 @@ function mkCommit(type: string | null, scope: string | null, description: string
     category: categoryForType(parsed.type)
   };
 }
-
-
 
 describe("parseCommitSubject", () => {
   it("type + scope + description", () => {
@@ -70,15 +68,19 @@ describe("formatReleaseContent", () => {
   it("无 commits → 占位", () => {
     const r = formatReleaseContent({ version: "v0.0.1", commits: [] });
     expect(r.title).toContain("v0.0.1");
-    expect(r.summary).toBe("本次无任何变更");
-    expect(r.content).toBe("本次无任何变更");
+    expect(r.summary).toBe("本次无任何变化");
+    expect(r.content).toBe("本次无任何变化");
     expect(r.categoryCounts).toEqual([]);
   });
 
-  it("version 自动补 v 前缀", () => {
+  it("version 不再做归一化,透传原样", () => {
+    // 旧逻辑会自动加 v 前缀;现在由 validator 把关,这里只是透传。
+    // 缺失 v 前缀的版本会直接被 admin 表单 reject,这里只是验证格式器忠实输出。
     const commits = [mkCommit("feat", "x", "A")];
-    const r = formatReleaseContent({ version: "0.7.1", commits });
-    expect(r.title.startsWith("v0.7.1")).toBe(true);
+    const r1 = formatReleaseContent({ version: "0.7.1", commits });
+    expect(r1.title.startsWith("0.7.1")).toBe(true);
+    const r2 = formatReleaseContent({ version: "v0.7.1", commits });
+    expect(r2.title.startsWith("v0.7.1")).toBe(true);
   });
 
   it("按 category 分组,feat 在 fix 前面", () => {
