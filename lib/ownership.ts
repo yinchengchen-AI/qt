@@ -6,14 +6,20 @@
 // 对应 model 的 WhereInput;helper 自身只做 SALES 判断 + 对象构造。
 import type { SessionUser } from "@/lib/session";
 
+/** SALES / EXPERT 均需行级数据隔离 (DESIGN-v3.md:183; init 迁移 RLS 策略同口径)。
+ *  此前只判 SALES, 导致 EXPERT 零过滤可见/可改全公司数据, 已修复统一走此判断。 */
+export function isRowRestricted(user: SessionUser): boolean {
+  return user.roleCode === "SALES" || user.roleCode === "EXPERT";
+}
+
 /** 直接挂在主表上的 ownerUserId 过滤(Customer / Contract)。 */
 export function ownerEq(user: SessionUser): { ownerUserId?: string } {
-  return user.roleCode === "SALES" ? { ownerUserId: user.id } : {};
+  return isRowRestricted(user) ? { ownerUserId: user.id } : {};
 }
 
 /** 跨一跳关系时的 ownerUserId 过滤(Invoice / Payment 等经由 contract)。*/
 export function ownerViaContract(user: SessionUser): { contract?: { ownerUserId: string } } {
-  return user.roleCode === "SALES" ? { contract: { ownerUserId: user.id } } : {};
+  return isRowRestricted(user) ? { contract: { ownerUserId: user.id } } : {};
 }
 
 /** 解析逗号分隔的多状态;为空返回 undefined。 */

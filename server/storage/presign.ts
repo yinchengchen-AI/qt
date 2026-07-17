@@ -84,6 +84,78 @@ async function assertCanManageDeliverables(
   }
 }
 
+// H4 归属校验: 非交付物附件此前对 contractId/invoiceId/employeeProfileId 零校验,
+// 任意登录用户可向他人合同/发票/档案注入附件。此处按绑定目标逐一校验写权限,
+// 与 canReadAttachment 的读侧规则对齐, 防止 IDOR 注入。
+async function assertCanAttachToTarget(input: {
+  userId: string;
+  contractId?: string | null;
+  invoiceId?: string | null;
+  employeeProfileId?: string | null;
+}): Promise<void> {
+  const { userId, contractId, invoiceId, employeeProfileId } = input;
+  if (!contractId && !invoiceId && !employeeProfileId) return; // tmp 附件: 仅上传者可读, 低风险
+
+  const user = await prisma.user.findUnique({
+    where: { id: userId },
+    select: { role: { select: { code: true } } }
+  });
+  const roleCode = user?.role?.code;
+  if (roleCode === "ADMIN") return; // 管理员全通
+
+  if (contractId) {
+    const contract = await prisma.contract.findUnique({
+      where: { id: contractId },
+      select: { ownerUserId: true, signerId: true, deletedAt: true }
+    });
+    if (!contract || contract.deletedAt) {
+      throw new ApiError(ERROR_CODES.NOT_FOUND, "合同不存在或已删除", 404);
+    }
+    // 与读侧对齐: owner / 签订人 可挂; FINANCE 走读权限也常需附凭证, 一并放行
+    if (contract.ownerUserId !== userId && contract.signerId !== userId && roleCode !== "FINANCE") {
+      throw new ApiError(ERROR_CODES.FORBIDDEN, "无权向该合同上传附件", 403);
+    }
+  }
+
+  if (invoiceId) {
+    const invoice = await prisma.invoice.findUnique({
+      where: { id: invoiceId },
+      select: {
+        applicantUserId: true,
+        createdById: true,
+        deletedAt: true,
+        contract: { select: { ownerUserId: true, createdById: true } }
+      }
+    });
+    if (!invoice || invoice.deletedAt) {
+      throw new ApiError(ERROR_CODES.NOT_FOUND, "发票不存在或已删除", 404);
+    }
+    const canInvoice =
+      roleCode === "FINANCE" ||
+      invoice.applicantUserId === userId ||
+      invoice.createdById === userId ||
+      invoice.contract?.ownerUserId === userId ||
+      invoice.contract?.createdById === userId;
+    if (!canInvoice) {
+      throw new ApiError(ERROR_CODES.FORBIDDEN, "无权向该发票上传附件", 403);
+    }
+  }
+
+  if (employeeProfileId) {
+    const profile = await prisma.employeeProfile.findUnique({
+      where: { id: employeeProfileId },
+      select: { userId: true }
+    });
+    if (!profile) {
+      throw new ApiError(ERROR_CODES.NOT_FOUND, "员工档案不存在", 404);
+    }
+    // 仅本人或 ADMIN(已在上面 return) 可向档案上传; 避免向他人档案注入 PII/伪造证件
+    if (profile.userId !== userId) {
+      throw new ApiError(ERROR_CODES.FORBIDDEN, "无权向该员工档案上传附件", 403);
+    }
+  }
+}
+
 export async function presignUpload(input: PresignUploadInput): Promise<PresignUploadResult> {
   if (!isAllowedMimeType(input.mimeType)) {
     throw new ApiError(
@@ -112,10 +184,17 @@ export async function presignUpload(input: PresignUploadInput): Promise<PresignU
   // 这样下载时直接按 id 查即可,objectKey 永远从 DB 出,不会因前端篡改而越权
   const now = new Date();
   // 交付物附件写权限校验: 必须在 contractId 存在的前提下, 用户是 admin / 签订人 / 负责人
-  // 非交付物附件 (isDeliverable=false) 跳过此校验, 走 ROLE_PERMISSIONS 兜底
+  // 非交付物附件 (isDeliverable=false) 走下方的归属校验 (H4)
   const isDeliverable = input.isDeliverable === true;
   if (isDeliverable) {
     await assertCanManageDeliverables(input.uploadedById, input.contractId ?? null);
+  } else {
+    await assertCanAttachToTarget({
+      userId: input.uploadedById,
+      contractId: input.contractId ?? null,
+      invoiceId: input.invoiceId ?? null,
+      employeeProfileId: input.employeeProfileId ?? null
+    });
   }
 
   const att = await prisma.attachment.create({

@@ -1,12 +1,12 @@
 // 催收记录服务
-//   - 行级隔离: SALES 角色只看到自己 owner 的合同下发票的催收(走 ownerViaContract)
+//   - 行级隔离: SALES/EXPERT 角色只看到自己 owner 的合同下发票的催收(走 isRowRestricted)
 //   - 权限: DUNNING resource (CRUD+EXPORT for ADMIN, CRU for FINANCE, R for SALES/OPS/EXPERT)
 //   - 注意: 催收记录本身是 invoiceId 级(不存 customerId),所有过滤都通过 Invoice -> Contract -> owner
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { type SessionUser } from "@/lib/session";
 import { requirePermission, RESOURCE, ACTION } from "@/lib/permissions";
-import {  ownerViaContract } from "@/lib/ownership";
+import { isRowRestricted, ownerViaContract } from "@/lib/ownership";
 import { Prisma } from "@prisma/client";
 
 export const DUNNING_STATUS = ["CONTACTED", "PROMISED", "DISPUTED", "LEGAL"] as const;
@@ -51,13 +51,13 @@ export type DunningNoteRow = {
 };
 
 /**
- * 把"按 invoice 限定"的 SALES 隔离条件转成 Prisma where。
- * SALES 只能列出自己 owner 合同下的催收记录;
- * ADMIN/FINANCE/OPS/EXPERT 看到全部。
+ * 把"按 invoice 限定"的行级隔离条件转成 Prisma where。
+ * SALES / EXPERT 只能列出自己 owner 合同下的催收记录;
+ * ADMIN/FINANCE/OPS 看到全部。
  */
 function whereForUser(user: SessionUser, extra: Prisma.DunningNoteWhereInput = {}): Prisma.DunningNoteWhereInput {
   const base: Prisma.DunningNoteWhereInput = { ...extra };
-  if (user.roleCode === "SALES") {
+  if (isRowRestricted(user)) {
     base.invoice = { contract: { ownerUserId: user.id } } as Prisma.InvoiceWhereInput;
   }
   return base;

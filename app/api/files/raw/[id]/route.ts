@@ -39,7 +39,9 @@ export async function GET(
       const { id } = paramsSchema.parse(await ctx.params);
 
       const att = await getAttachmentForRead(id);
-      if (!att) {
+      // 与 presignDownload (presign.ts:228) 一致: 软删附件同样 404,
+      // 否则已删除的附件凭 id 仍可绕过 presign 层直接下载
+      if (!att || att.deletedAt) {
         throw new ApiError(ERROR_CODES.NOT_FOUND, "附件不存在或已删除", 404);
       }
       if (!(await canReadAttachment(att, user.id))) {

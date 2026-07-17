@@ -108,7 +108,7 @@ export async function getUser(user: SessionUser, id: string) {
   return safe;
 }
 
-async function assertNotSelfAndNotLastAdmin(actor: SessionUser, targetId: string, targetRoleCode: string) {
+export async function assertNotSelfAndNotLastAdmin(actor: SessionUser, targetId: string, targetRoleCode: string) {
   if (actor.id === targetId) {
     throw new ApiError(ERROR_CODES.FORBIDDEN, "不能对自己执行此操作", 403);
   }

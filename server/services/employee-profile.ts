@@ -8,6 +8,8 @@ import { ApiError } from "@/lib/api";
 import { ERROR_CODES } from "@/types/errors";
 import type { SessionUser } from "@/lib/session";
 import { requirePermission, hasPermission, RESOURCE, ACTION } from "@/lib/permissions";
+import { assertNotSelfAndNotLastAdmin } from "@/server/services/user";
+import { invalidateAuthCache } from "@/lib/auth";
 import { audit } from "@/server/audit";
 import { encrypt, decrypt } from "@/lib/encryption";
 import type { EmployeeProfileUpdateInput } from "@/lib/validators/employee-profile";
@@ -258,9 +260,26 @@ export async function updateUserFullProfile(
   // 1. 找 user + profile(可能没有)
   const user = await prisma.user.findFirst({
     where: { id: userId, deletedAt: null },
-    include: { profile: true }
+    include: { profile: true, role: true }
   });
   if (!user) throw new ApiError(ERROR_CODES.NOT_FOUND, "用户不存在", 404);
+
+  // H5 护栏: with-profile 路径改 roleId/status 也必须经过"最后 ADMIN/不能操作自己"校验,
+  // 与 updateUser (user.ts:183-201) 语义对齐——此前直接 tx.user.update 完全绕过, 可把最后一位
+  // ACTIVE ADMIN 降级/禁用导致系统无可用管理员。
+  if (input.user) {
+    const userPatch = input.user as { roleId?: string; status?: string };
+    if (userPatch.roleId && userPatch.roleId !== user.roleId) {
+      const newRole = await prisma.role.findUnique({ where: { id: userPatch.roleId } });
+      if (!newRole) throw new ApiError(ERROR_CODES.VALIDATION_FAILED, "角色不存在", 400);
+      if (newRole.code !== "ADMIN" && user.role.code === "ADMIN") {
+        await assertNotSelfAndNotLastAdmin(actor, user.id, "ADMIN");
+      }
+    }
+    if (userPatch.status === "DISABLED" && user.status !== "DISABLED") {
+      await assertNotSelfAndNotLastAdmin(actor, user.id, user.role.code);
+    }
+  }
   // P0-1: 新用户走 PR7 两段式 Modal 时 user.profile 还不存在,允许创建
   const isNewProfile = !user.profile;
   // P1-2: 预检 409 留在事务外(不持有锁),但**真**的并发保护改在事务内
@@ -423,6 +442,12 @@ export async function updateUserFullProfile(
       }
     });
   });
+
+  // roleId/status 变更后失效会话缓存, 使新角色/禁用状态及时生效 (与 updateUser 一致)
+  const userPatch = (input.user ?? {}) as { roleId?: string; status?: string };
+  if (userPatch.roleId !== undefined || userPatch.status !== undefined) {
+    invalidateAuthCache(userId);
+  }
 
   return (await getUserFullProfile(actor, userId))!;
 }
