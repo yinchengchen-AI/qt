@@ -6,6 +6,7 @@ import { requirePermission, RESOURCE, ACTION } from "@/lib/permissions";
 import type { ContractCreateInput, ContractUpdateInput } from "@/lib/validators/contract";
 
 import {ownerEq, parseStatusList} from "@/lib/ownership";
+import { buildRegionWhere } from "@/lib/region";
 import { getBillingStatus } from "@/lib/contract-billing";
 import { Prisma } from "@prisma/client";
 import { calcTaxBreakdown } from "@/lib/money";
@@ -34,14 +35,22 @@ export async function listContracts(
     keyword?: string;
     status?: string;
     customerId?: string;
+    // 客户区域 (省/市/区/镇街): 走 customer 关系过滤, 任一非空层参与过滤 (口径见 lib/region.ts)
+    province?: string;
+    city?: string;
+    district?: string;
+    town?: string;
     // 含历史占位合同: 1/true 显示 legacy 0.01; 默认隐藏. 跟 statistics 保持一致始终排除
     includeLegacyZeroAmount?: boolean | string;
+    // 是否需要 total: 默认 true; 导出等只消费 list 的场景传 false, 跳过白跑的 count (此时 total 固定为 0)
+    countTotal?: boolean;
   }
 ) {
   requirePermission(user.roleCode, RESOURCE.CONTRACT, ACTION.READ);
-  const { page, pageSize, keyword, status, customerId, includeLegacyZeroAmount } = params;
+  const { page, pageSize, keyword, status, customerId, province, city, district, town, includeLegacyZeroAmount, countTotal = true } = params;
   const includeLegacy = includeLegacyZeroAmount === true || includeLegacyZeroAmount === "true" || includeLegacyZeroAmount === "1";
   const statusList = parseStatusList(status);
+  const regionWhere = buildRegionWhere({ province, city, district, town });
   const where: Prisma.ContractWhereInput = {
     // 默认排除 legacy 0.01 占位合同; 显式 includeLegacyZeroAmount=true 时全量
     ...(includeLegacy ? {} : { isLegacyZeroAmount: false }),
@@ -49,6 +58,8 @@ export async function listContracts(
     deletedAt: null,
     ...(statusList ? { status: { in: statusList } } : {}),
     ...(customerId ? { customerId } : {}),
+    // 客户区域: 多对一关系过滤, equals+insensitive 与客户列表同口径
+    ...(regionWhere ? { customer: regionWhere } : {}),
     ...(keyword
       ? {
           OR: [
@@ -64,9 +75,12 @@ export async function listContracts(
       where,
       orderBy: { signDate: "desc" },
       skip: (page - 1) * pageSize,
-      take: pageSize
+      take: pageSize,
+      // 带上客户省/市/区/镇街, 列表"客户区域"列与导出用; 一次 join 查询, 无 N+1
+      include: { customer: { select: { province: true, city: true, district: true, town: true } } }
     }),
-    prisma.contract.count({ where })
+    // countTotal=false (导出) 时跳过白跑的 count; total 固定为 0, 调用方不得消费
+    countTotal ? prisma.contract.count({ where }) : Promise.resolve(0)
   ]);
 
   // 批量聚合每张合同的已开票(含 RED_FLUSHED, 红冲对净 0)与已回款(Payment.status IN CONFIRMED,RECONCILED)
@@ -100,8 +114,14 @@ export async function listContracts(
     const invoicedAmount = invoicedByContract.get(c.id) ?? 0;
     const paidAmount = paidByContract.get(c.id) ?? 0;
     const owner = ownerById.get(c.ownerUserId);
+    // customer 嵌套对象拍平成 customerProvince/City/District/Town, 不直接把嵌套结构透给前端
+    const { customer, ...rest } = c;
     return {
-      ...c,
+      ...rest,
+      customerProvince: customer.province,
+      customerCity: customer.city,
+      customerDistrict: customer.district ?? "",
+      customerTown: customer.town ?? "",
       invoicedAmount,
       paidAmount,
       billingStatus: getBillingStatus(invoicedAmount, Number(c.totalAmount)),

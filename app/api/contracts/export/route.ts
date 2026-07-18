@@ -1,12 +1,13 @@
 
 // 合同列表导出 XLSX — 入参与 GET /api/contracts 对齐
-import { z } from "zod";
 import { exportFileTimestamp } from "@/lib/date-range";
 import { runWithRequestContext } from "@/lib/request-context";
 import { err } from "@/lib/api";
 import { requireSession } from "@/lib/session";
 import { requirePermission, RESOURCE, ACTION } from "@/lib/permissions";
 import { listContracts } from "@/server/services/contract";
+import { contractListQuerySchema } from "@/lib/validators/contract";
+import { formatRegion } from "@/lib/region";
 import { exportToXlsx, exportMaxRows, attachmentHeader } from "@/lib/excel";
 import { prisma } from "@/lib/prisma";
 import {
@@ -17,12 +18,9 @@ import {
 } from "@/lib/enum-maps";
 import { formatDate } from "@/lib/format";
 
-const query = z.object({
-  keyword: z.string().optional(),
-  status: z.string().optional(),
-  customerId: z.string().optional(),
-  includeLegacyZeroAmount: z.string().optional(),
-});
+// 与列表共用一份筛选 schema, 防止两处漂移后导出静默丢条件 (zod 默认 strip 未知键).
+// omit page/pageSize: 列表 schema 的分页默认值 (1/20) 会覆盖 exportMaxRows 兜底, 必须剥掉
+const query = contractListQuerySchema.omit({ page: true, pageSize: true });
 
 export async function GET(req: Request) {
   return runWithRequestContext(req, async () => {
@@ -31,10 +29,11 @@ export async function GET(req: Request) {
       requirePermission(user.roleCode, RESOURCE.CONTRACT, ACTION.EXPORT);
       const url = new URL(req.url);
       const params = query.parse(Object.fromEntries(url.searchParams));
-      // pageSize 用 exportMaxRows() 兜底, 防止单次导出 OOM
+      // pageSize 用 exportMaxRows() 兜底, 防止单次导出 OOM; countTotal=false 跳过用不到的 count
       const { list } = await listContracts(user, {
         page: 1,
         pageSize: exportMaxRows(),
+        countTotal: false,
         ...params,
       });
       // listContracts 已返回 invoicedAmount / paidAmount / billingStatus,直接复用
@@ -61,6 +60,19 @@ export async function GET(req: Request) {
         [
           { header: "合同号", key: "contractNo", width: 22 },
           { header: "客户", key: "customerName", width: 24 },
+          {
+            // 客户区域: listContracts 已拍平成 customerProvince/City/District/Town
+            header: "客户区域",
+            key: "customerProvince",
+            width: 32,
+            formatter: (_v, r) =>
+              formatRegion(
+                r.customerProvince as string | undefined,
+                r.customerCity as string | undefined,
+                r.customerDistrict as string | undefined,
+                r.customerTown as string | undefined
+              ),
+          },
           { header: "合同标题", key: "title", width: 32 },
           {
             header: "服务类型",

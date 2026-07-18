@@ -14,6 +14,7 @@ import { renderPrintHtml, type PrintDoc } from "@/lib/print-html";
 import { ALLOWED_DICTIONARY_CATEGORIES } from "@/lib/dictionary-categories";
 import { CONTRACT_STATUS_MAP, INVOICE_STATUS_MAP, PAYMENT_STATUS_MAP } from "@/lib/enum-maps";
 import { formatDate, formatDateTime } from "@/lib/format";
+import { formatRegion } from "@/lib/region";
 
 const fmtDate = (s: string | Date | null | undefined) =>
   s ? formatDate(s) : "—";
@@ -92,9 +93,7 @@ export async function GET(
           { label: "联系电话", value: c.contactPhone ?? "—" },
           {
             label: "所在地区",
-            value:
-              [c.province, c.city, c.district].filter(Boolean).join(" / ") ||
-              "—",
+            value: formatRegion(c.province, c.city, c.district) || "—",
           },
           { label: "详细地址", value: c.address ?? "—" },
           { label: "创建时间", value: fmtDateTime(c.createdAt) },

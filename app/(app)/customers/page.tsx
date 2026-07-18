@@ -11,6 +11,8 @@ import { PageHeader } from "@/components/page-header";
 import { DateCell } from "@/components/table-cells";
 import { useDict } from "@/lib/dict-client";
 import { makeListRequest } from "@/lib/use-list-request";
+import { useRegionOptions } from "@/lib/use-region-options";
+import { formatRegion, splitRegionPath } from "@/lib/region";
 import { downloadExcel } from "@/lib/excel-client";
 import { useResponsive } from "@/lib/use-breakpoint";
 
@@ -56,20 +58,9 @@ export default function CustomersPage() {
     () => Object.fromEntries(ownerOptions.map((u) => [u.id, { text: u.name }])),
     [ownerOptions]
   );
-  // 地区级联: SWR 拉 /api/divisions (label-keyed 4 级树), 失败/加载中时 regionOptions 为空
+  // 地区级联 options 走共享 hook (含"未知"节点, 见 lib/region.ts); 失败/加载中时 regionOptions 为空
   // 控件不显示 (而不是只显示一个空的 cascader), 等数据回来再渲染. dedupe 60s.
-  type RegionNode = { value: string; label: string; children?: RegionNode[] };
-  const regionsFetcher = useCallback(async (url: string): Promise<RegionNode[]> => {
-    const res = await fetch(url, { credentials: "include" });
-    const j = await res.json();
-    if (j.code !== 0) throw new Error(j.message);
-    return (j.data ?? []) as RegionNode[];
-  }, []);
-  const { data: regionOptions = [] as RegionNode[] } = useSWR<RegionNode[]>(
-    "/api/divisions",
-    regionsFetcher,
-    { revalidateOnFocus: false, dedupingInterval: 60_000 }
-  );
+  const { regionOptions, regionError } = useRegionOptions();
   // 用 ref 拿当前表格的查询参数(关键字/规模/类型/行业/地区等),导出时一并带上
   const searchRef = useRef<Record<string, unknown>>({});
   const actionRef = useRef<ActionType>(undefined);
@@ -128,6 +119,10 @@ export default function CustomersPage() {
     handledKeyRef.current = key;
   }, [initialDistrict, initialTown, regionOptions]);
   const { message } = AntdApp.useApp();
+  // 地区数据加载失败时显式提示 (此前 SWR 吞错, cascader 静默为空, 筛选无声失效)
+  useEffect(() => {
+    if (regionError) message.warning("地区数据加载失败，所在地筛选暂不可用");
+  }, [regionError, message]);
 
   const handleExport = async () => {
     const qs = new URLSearchParams();
@@ -189,20 +184,14 @@ export default function CustomersPage() {
                   return override.path;
                 })()
               : [];
-          const regionProvince = region[0];
-          const regionCity = region[1];
-          const regionDistrict = region[2];
-          const regionTown = region[3];
+          const regionParams = splitRegionPath(region);
           // 记下当前查询参数, 导出时复用 (handleExport 直接读这个 ref)
           searchRef.current = {
             keyword: params.keyword,
             scale: params.scale,
             customerType: params.customerType,
             industry: params.industry,
-            province: regionProvince,
-            city: regionCity,
-            district: regionDistrict,
-            town: regionTown,
+            ...regionParams,
             ownerUserId: params.ownerUserId,
             createdAtFrom,
             createdAtTo,
@@ -212,10 +201,7 @@ export default function CustomersPage() {
             ...params,
             createdAtFrom,
             createdAtTo,
-            province: regionProvince,
-            city: regionCity,
-            district: regionDistrict,
-            town: regionTown,
+            ...regionParams,
           };
           delete apiParams.createdAt;
           delete apiParams.region;
@@ -309,7 +295,7 @@ export default function CustomersPage() {
             // 4 级拼接 (省 / 市 / 区 / 镇街) 最长 ~28 个汉字, 160 在移动端会折断; 桌面 240 给 4 级留够位
             width: 240,
             ellipsis: true,
-            render: (_, r) => [r.province, r.city, r.district, r.town].filter(Boolean).join(" / ") || "—"
+            render: (_, r) => formatRegion(r.province, r.city, r.district, r.town) || "—"
           },
           {
             title: "创建时间",

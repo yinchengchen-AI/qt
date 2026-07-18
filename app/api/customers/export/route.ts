@@ -14,6 +14,7 @@ import { exportToXlsx, exportMaxRows, attachmentHeader } from "@/lib/excel";
 import { prisma } from "@/lib/prisma";
 import { ALLOWED_DICTIONARY_CATEGORIES } from "@/lib/dictionary-categories";
 import { formatDateTime } from "@/lib/format";
+import { formatRegion } from "@/lib/region";
 
 // 把动态字典(category+code -> label)拍平成一个查找表
 async function loadDict(): Promise<Record<string, string>> {
@@ -119,16 +120,12 @@ export async function GET(req: Request) {
             header: "所在地区",
             key: "province",
             width: 28,
-            formatter: (_v, r) => {
-              const x = r as {
-                province?: string;
-                city?: string;
-                district?: string | null;
-              };
-              return [x.province, x.city, x.district]
-                .filter(Boolean)
-                .join(" / ");
-            },
+            formatter: (_v, r) =>
+              formatRegion(
+                r.province as string | undefined,
+                r.city as string | undefined,
+                r.district as string | undefined
+              ),
           },
           { header: "详细地址", key: "address", width: 30 },
           {

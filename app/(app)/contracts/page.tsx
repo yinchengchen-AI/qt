@@ -4,12 +4,14 @@ import { Button, App as AntdApp, Tag } from "antd";
 import { DownloadOutlined } from "@ant-design/icons";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useRef } from "react";
+import { useEffect, useRef } from "react";
 import { Page } from "@/components/page";
 import { PageHeader } from "@/components/page-header";
 import { StatusTag } from "@/components/status-tag";
 import { useStatusValueEnum } from "@/lib/use-status-enum";
 import { makeListRequest } from "@/lib/use-list-request";
+import { useRegionOptions } from "@/lib/use-region-options";
+import { formatRegion, splitRegionPath } from "@/lib/region";
 import { useDict } from "@/lib/dict-client";
 import { downloadExcel } from "@/lib/excel-client";
 import { CurrencyCell, DateCell } from "@/components/table-cells";
@@ -20,6 +22,10 @@ type Row = {
   id: string;
   contractNo: string;
   customerName: string;
+  customerProvince: string;
+  customerCity: string;
+  customerDistrict: string;
+  customerTown: string;
   title: string;
   serviceType: string;
   signDate: string;
@@ -43,6 +49,11 @@ export default function ContractsPage() {
   );
   const searchRef = useRef<Record<string, unknown>>({});
   const { message } = AntdApp.useApp();
+  // 地区级联 options 走共享 hook (含"未知"节点, 见 lib/region.ts); 失败时显式提示, 不再静默空面板
+  const { regionOptions, regionError } = useRegionOptions();
+  useEffect(() => {
+    if (regionError) message.warning("地区数据加载失败，客户区域筛选暂不可用");
+  }, [regionError, message]);
 
   const handleExport = async () => {
     const qs = new URLSearchParams();
@@ -82,13 +93,19 @@ export default function ContractsPage() {
         cardBordered={false}
         sticky={isMobile}
         request={async (params) => {
+          // 客户区域级联: cascader 给的是路径数组 ["浙江省", "杭州市", ...] (任意前缀),
+          // 拆成 4 个标量传给后端 (走 customer 关系过滤); dataIndex="region" 是虚拟字段
+          const regionParams = splitRegionPath(params.region);
           searchRef.current = {
             keyword: params.keyword,
             status: params.status,
             customerId: params.customerId,
-            includeLegacyZeroAmount: params.includeLegacyZeroAmount
+            includeLegacyZeroAmount: params.includeLegacyZeroAmount,
+            ...regionParams
           };
-          return makeListRequest<Row>("/api/contracts")(params);
+          const apiParams: Record<string, unknown> = { ...params, ...regionParams };
+          delete apiParams.region;
+          return makeListRequest<Row>("/api/contracts")(apiParams);
         }}
         columns={[
           // 搜索专属列:仅在 ProTable 搜索表单里出现,数据来自 params.keyword
@@ -107,6 +124,24 @@ export default function ContractsPage() {
             }
           },
           {
+            // 客户区域级联 (省/市/区/镇街). changeOnSelect 让用户能停在任一级, 比如只选"浙江省"
+            // dataIndex="region" 只是个虚拟字段 (后端不认), 真正传给 API 的是 request 回调拆出来的 province/city/district/town
+            title: "客户区域",
+            dataIndex: "region",
+            hideInTable: true,
+            valueType: "cascader",
+            fieldProps: {
+              options: regionOptions,
+              placeholder: "省 / 市 / 区 / 镇街",
+              allowClear: true,
+              changeOnSelect: true,
+              // hover 展开子级 + 单击任一级即选中并收起面板 (默认 click 展开时点中间级虽已选中
+              // 但面板不收起, 容易被当成"不能选中间级"); 保证省/市/区/镇街每一级都能直接查询
+              expandTrigger: "hover",
+              showSearch: true
+            }
+          },
+          {
             title: "合同号",
             dataIndex: "contractNo",
             search: false,
@@ -115,6 +150,15 @@ export default function ContractsPage() {
             render: (_, r) => <Link href={`/contracts/${r.id}`}>{r.contractNo}</Link>
           },
           { title: "客户", dataIndex: "customerName", search: false, width: 180 },
+          {
+            title: "客户区域",
+            dataIndex: "customerProvince",
+            search: false,
+            // 4 级拼接 (省/市/区/镇街) 最长 ~28 个汉字, 与客户页"所在地区"列同宽
+            width: 240,
+            ellipsis: true,
+            render: (_, r) => formatRegion(r.customerProvince, r.customerCity, r.customerDistrict, r.customerTown) || "—"
+          },
           { title: "负责人", dataIndex: "ownerUserId", search: false, width: 110, render: (_, r) => r.ownerName || "—" },
           { title: "合同标题", dataIndex: "title", search: false, width: 240 },
           {

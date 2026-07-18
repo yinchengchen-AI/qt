@@ -10,6 +10,7 @@ import { Prisma } from "@prisma/client";
 import { rlsTransaction } from "@/lib/rls";
 
 import {ownerEq, parseStatusList} from "@/lib/ownership";
+import { buildRegionWhere } from "@/lib/region";
 import { softDelete } from "@/lib/soft-delete";
 
 export async function listCustomers(
@@ -53,11 +54,8 @@ export async function listCustomers(
     ...(scaleList ? { scale: { in: scaleList } } : {}),
     ...(customerTypeList ? { customerType: { in: customerTypeList } } : {}),
     ...(industryList ? { industry: { in: industryList } } : {}),
-    // 地区级联 (省/市/区/镇街): 前端 cascader 给的就是 DB label, 精确匹配
-    ...(params.province ? { province: { equals: params.province, mode: "insensitive" } } : {}),
-    ...(params.city ? { city: { equals: params.city, mode: "insensitive" } } : {}),
-    ...(params.district ? { district: { equals: params.district, mode: "insensitive" } } : {}),
-    ...(params.town ? { town: { equals: params.town, mode: "insensitive" } } : {}),
+    // 地区级联 (省/市/区/镇街): 任一非空层 equals+insensitive 匹配 (与合同列表同口径, 见 lib/region.ts)
+    ...buildRegionWhere(params),
     // 负责人: 精确匹配 (SALES 角色受 ownerEq 限制, 传别人 id 自然返回空集, 符合预期)
     ...(params.ownerUserId ? { ownerUserId: params.ownerUserId } : {}),
     ...(createdAtRange ? { createdAt: createdAtRange } : {}),

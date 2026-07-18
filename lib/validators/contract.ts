@@ -99,6 +99,11 @@ export const contractListQuerySchema = z.object({
   keyword: z.string().optional(),
   status: z.string().optional(),
   customerId: z.string().optional(),
+  // 客户区域 (省/市/区/镇街): equals 匹配, 走 customer 关系过滤; 与客户列表"所在地区"筛选对齐
+  province: z.string().optional(),
+  city: z.string().optional(),
+  district: z.string().optional(),
+  town: z.string().optional(),
   // 含历史占位合同: 默认 false, 列表隐藏 legacy-fineui.mjs 写的 0.01 占位合同; 审计/对账时手动打开
   includeLegacyZeroAmount: z.string().optional(),
 });

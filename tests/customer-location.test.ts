@@ -94,8 +94,8 @@ describe("类型: Customer 含 district", () => {
 describe("渲染 4 处全部拼接 district (省 / 市 / 区)", () => {
   it("列表页拼接 district + town (4 级位置)", () => {
     const src = read("app/(app)/customers/page.tsx");
-    // 4 级 [省/市/区/镇街] 一并 join, 老数据缺镇街时 filter 掉
-    expect(src).toMatch(/\[r\.province,\s*r\.city,\s*r\.district,\s*r\.town\]\.filter\(Boolean\)\.join/);
+    // 4 级 [省/市/区/镇街] 经共享 formatRegion (lib/region.ts) 拼接, 空层跳过
+    expect(src).toMatch(/formatRegion\(r\.province,\s*r\.city,\s*r\.district,\s*r\.town\)/);
   });
 
   it("详情页加 所在区 描述项", () => {
@@ -118,12 +118,13 @@ describe("渲染 4 处全部拼接 district (省 / 市 / 区)", () => {
 
   it("导出 API 拼接 district", () => {
     const src = read("app/api/customers/export/route.ts");
-    expect(src).toMatch(/x\.district/);
+    // 经共享 formatRegion (lib/region.ts) 拼接, district 必须参与
+    expect(src).toMatch(/formatRegion\([\s\S]*?r\.district/);
   });
 
   it("PDF API 拼接 district", () => {
     const src = read("app/api/customers/[id]/pdf/route.ts");
-    expect(src).toMatch(/\[c\.province,\s*c\.city,\s*c\.district\]/);
+    expect(src).toMatch(/formatRegion\(c\.province,\s*c\.city,\s*c\.district\)/);
   });
 });
 
