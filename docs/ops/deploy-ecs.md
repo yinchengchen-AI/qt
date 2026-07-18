@@ -1982,3 +1982,96 @@ $ npx tsx /opt/qt/test-fix.mjs
 - **下拉 SWR 的 onError 改 console.error 至少开发模式可见**: 4.6.1 事故的根因之一, 长期静默掩盖了 5+ 个生产 bug
 - **v0.1.0 文档第六章列的 6 项**(SSH 密钥 / HTTPS / Sentry / rate limit / 关 demo 库 / 关 firewalld)仍未落实
 
+
+# 部署记录 — qt-biz v0.10.3+2f743f3 — Aliyun ECS 杭州 (附件预览 CSP 修复)
+
+> **本次更新部署**: 2026-07-18 11:00-11:20 CST
+> **HEAD 起点**: `782810a` (v0.10.3) / **HEAD 终点**: `2f743f3`
+> **commit 增量**: 1 个 (纯响应头修复, 无迁移、无依赖变更)
+> **服务模式**: 日常更新; build 抗 OOM 期间停机 ~15 分钟
+
+## 一、本次部署内容
+
+```
+2f743f3 fix(security): CSP 补 frame-src blob: 修复附件 PDF 预览被拦截
+```
+
+- 7-11 安全加固 (commit `fb95e74`) 引入的 CSP 未设 `frame-src`, 回落 `default-src 'self'`
+  后浏览器拦截附件预览的 `<iframe src=blob:...>`, 合同管理 PDF 附件无法预览
+- 修复: `next.config.mjs` CSP 加 `frame-src 'self' blob:'` + 回归测试
+  `tests/unit/security-headers.test.ts`
+- 图片预览当时加了 `img-src blob:` 所以没坏; 坏的是 iframe 类 (PDF)
+
+## 二、踩坑与解决: build 编译 4 连 OOM (exit 137)
+
+**现象**: `deploy.sh` 在 "Creating an optimized production build" 阶段被
+`Killed` (exit=137), dmesg 显示 `global_oom, CONSTRAINT_NONE`, node
+anon-rss ~2.1GB 时被全局 OOM 杀。
+
+**根因**: Turbopack 编译的原生 (Rust) 内存 ~2.1GB, **与
+`--max-old-space-size` 无关** (压 V8 堆 1536→1024 无效, anon-rss 不变);
+`next build --webpack` 同样 OOM。真正变化是机器上 7-17 新住进了其它租户进程:
+
+| 进程 | RSS | 归属 |
+|---|---|---|
+| mysqld (`mysql-fineui` 容器) | 356MB | 其它项目, 2026-07-17 启动 |
+| hermes-agent (python) | 375MB | admin 用户, 2026-06-22 启动 |
+
+3.5GB 机器可用内存从历次 build 能过的 ~2.4GB 被压到 ~2.0GB, 刚好不够编译。
+**注意**: 全局 OOM 发生时 6GB swap 几乎空闲 (swappiness=80), 慢云盘上
+swap 回收跟不上 2GB 突发 anon 分配, 不能指望 swap 兜底。
+
+**失败序列**:
+
+1. `deploy.sh` (1536MB 档, qt-app 在跑) → OOM
+2. 停 qt-app 后重跑 `deploy.sh` → OOM
+3. `NODE_OPTIONS=--max-old-space-size=1024` → OOM (V8 堆与原生内存无关, 无效)
+4. `next build --webpack` → OOM (webpack 也放不下)
+
+**通过配方 (第 5 次)**: 停本项目自己的容器腾内存 (PG+MinIO ≈ 320MB,
+编译不依赖 DB/对象存储, 页面全 dynamic):
+
+```bash
+$ docker stop qt-minio qt-postgres          # MemAvailable 2077 → 2358MB
+$ rm -rf .next && NODE_OPTIONS="--max-old-space-size=1536" NEXT_BUILD_WORKERS=1 npm run build
+  build exit=0, BUILD_ID=IrR1P64cui7jLfcLQNIzq
+$ docker start qt-postgres qt-minio         # 立即恢复 healthy
+$ systemctl restart qt-app
+```
+
+**已固化**: 上述配方已写进 `scripts/prod/deploy.sh` — MemAvailable < 2200MB
+时自动停 `qt-postgres`/`qt-minio`, build 结束无论成败都拉起; exit=137 时提示
+可手动 `docker stop mysql-fineui` (§4.6.3 先例, 其它项目容器不自动停)。
+
+## 三、烟测通过
+
+```
+$ systemctl is-active qt-app
+active
+login: 200 / dashboard: 307 / api/customers: 401 (全部符合预期)
+$ curl -sI http://127.0.0.1:3000/login | grep -i content-security-policy
+... connect-src 'self'; frame-src 'self' blob:'; frame-ancestors 'none'; ...
+                            ^^^^^^^^^^^^^^^^^^^ 修复已生效
+$ curl -s -o /dev/null -w '%{http_code}' http://116.62.160.24/login
+200 (外网 nginx :80)
+$ docker ps: qt-postgres Up (healthy) / qt-minio Up (healthy) / mysql-fineui 未动
+```
+
+## 四、最终状态
+
+| 项 | 结果 |
+|---|---|
+| 服务端 HEAD | `2f743f3` |
+| BUILD_ID | `IrR1P64cui7jLfcLQNIzq` |
+| Next.js | 16.2.7 在 127.0.0.1:3000, systemd 托管, active |
+| PostgreSQL / MinIO | 容器已恢复 healthy, 数据零影响 |
+| SSH | 本机 `~/.ssh/qt_deploy` 公钥已装入 root authorized_keys, 后续部署免密 |
+
+## 五、未做但建议跟进
+
+- **mysql-fineui / hermes-agent 挤占编译内存**: 长期方案是把其它项目的 MySQL
+  挪出本机, 或给本机升配到 4GB+; 否则以后每次部署都靠 deploy.sh 的停容器兜底
+- **root 密码登录仍在用**: 本次已装好 `qt_deploy` 密钥, 可按 v0.1.0 第六章建议
+  关 sshd 密码登录 (`/etc/ssh/sshd_config.d/00-disable-password.conf`)
+- **浏览器端实测预览**: 烟测验证了 CSP 头, 附件 PDF 预览的浏览器点击验证由
+  使用方在 合同管理 → 交付物/附件 tab 点开任意 PDF 确认

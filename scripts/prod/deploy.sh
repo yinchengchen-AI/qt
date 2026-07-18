@@ -92,11 +92,46 @@ if [ -z "${NODE_MAX_OLD_SPACE:-}" ]; then
 fi
 BUILD_WORKERS="${BUILD_WORKERS:-1}"
 
+# 低内存兜底 (2026-07-18 v0.10.3 部署教训): Turbopack 编译的原生 (Rust) 内存 ~2.1GB,
+# 与 --max-old-space-size 无关 (压 V8 堆无效, exit=137 全局 OOM); 本机被其它租户进程挤占时
+# (mysql-fineui 356MB / hermes-agent 375MB), 3.5GB 机器编译必被杀。
+# 编译不依赖 DB/对象存储 (页面全 dynamic), 可用内存不足时先停本项目容器腾内存,
+# build 结束无论成败都拉起。只动 qt 自己的容器; mysql-fineui 属其它项目, 不自动停,
+# 需要时手动 docker stop (先例见 docs/ops/deploy-ecs.md §4.6.3)。
+STOPPED_QT_CONTAINERS=""
+if command -v docker >/dev/null 2>&1; then
+  AVAIL_MEM_MB=$(awk '/^MemAvailable:/ {print int($2/1024)}' /proc/meminfo 2>/dev/null || echo 0)
+  if [ "${AVAIL_MEM_MB:-0}" -gt 0 ] && [ "$AVAIL_MEM_MB" -lt 2200 ]; then
+    for c in qt-postgres qt-minio; do
+      if [ "$(docker inspect -f '{{.State.Running}}' "$c" 2>/dev/null)" = "true" ]; then
+        echo "==> MemAvailable=${AVAIL_MEM_MB}MB < 2200MB, 临时停止 $c 腾编译内存"
+        docker stop "$c" >/dev/null
+        STOPPED_QT_CONTAINERS="$STOPPED_QT_CONTAINERS $c"
+      fi
+    done
+  fi
+fi
+
 echo "==> pnpm build (BUILD_WORKERS=$BUILD_WORKERS, NODE_MAX_OLD_SPACE=${NODE_MAX_OLD_SPACE}MB, MEM_TOTAL=${TOTAL_MEM_GB}GB)"
+set +e
 NODE_OPTIONS="--max-old-space-size=${NODE_MAX_OLD_SPACE}" \
   NEXT_TELEMETRY_DISABLED=1 \
   NEXT_BUILD_WORKERS="$BUILD_WORKERS" \
   pnpm build
+BUILD_EXIT=$?
+set -e
+if [ -n "$STOPPED_QT_CONTAINERS" ]; then
+  echo "==> 拉起临时停止的容器:$STOPPED_QT_CONTAINERS"
+  # shellcheck disable=SC2086 -- 需要按空格拆成多个参数
+  docker start $STOPPED_QT_CONTAINERS >/dev/null
+fi
+if [ "$BUILD_EXIT" -ne 0 ]; then
+  echo "[ERR] pnpm build 失败 (exit=$BUILD_EXIT)" >&2
+  if [ "$BUILD_EXIT" -eq 137 ]; then
+    echo "      exit=137 = OOM Kill; 内存仍不足可手动 docker stop mysql-fineui (其它项目, 356MB) 后重跑" >&2
+  fi
+  exit "$BUILD_EXIT"
+fi
 # 生产日常更新不再 seed: roles/dicts/depts/workflow templates 已在首次部署时落地,
 # 重复跑 pnpm seed 会 (1) 浪费时间 (9 份 workflow template × 5 阶段 × N 任务 = 几百次 DB 写),
 # (2) 即使 idempotent, 也有微弱的角色权限/部门字段被 update 覆盖风险。
