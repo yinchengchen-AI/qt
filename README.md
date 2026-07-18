@@ -414,6 +414,37 @@ xlsx 导出走 `lib/excel.ts` + `exceljs`; 中文文件名通过 `attachmentHead
 
 ## 最近更新
 
+### v0.10.4(2026-07-18) 合同列表客户区域筛选 + 区域逻辑共享化
+
+> 合同管理页新增"按客户区域查询"、列表"客户区域"列与导出区域列;并把合同/客户两端重复的区域逻辑(级联拉取、路径拆分、展示拼接、Prisma where)收敛到共享模块。无 schema 变更, 无 API 契约变更 (列表/导出 query 新增 4 个可选参数, 向后兼容)。
+
+**合同列表区域筛选** (`app/(app)/contracts/page.tsx` + `server/services/contract/crud.ts` + `lib/validators/contract.ts`):
+- 搜索区新增"客户区域"级联 (省/市/区/镇街, `changeOnSelect` 可停在任一级);虚拟字段 `region` 在 request 回调拆成 `province/city/district/town` 4 个标量传给后端,走 `customer` 关系过滤
+- 列表新增"客户区域"展示列 (4 级拼接);导出 XLSX 同步带"客户区域"列并跟随当前筛选
+- `listContracts` 返回行拍平为 `customerProvince/City/District/Town` (include 一次 join, 无 N+1)
+
+**区域逻辑共享化** (新增 `lib/region.ts` + `lib/use-region-options.ts`):
+- `buildRegionWhere()`: 合同/客户两个 service 统一为 equals + insensitive (此前合同侧裸 equals、客户侧 insensitive, 两页口径不一)
+- `formatRegion()`: 统一 5 处区域拼接 (合同页列、合同导出、客户页列、客户导出、客户 PDF)
+- `splitRegionPath()` + `useRegionOptions()`: 消除两页逐字复制的级联 fetcher/路径拆分
+- 级联 options 末尾追加"未知"节点: legacy-fineui 导入客户 `province="未知"` 不在行政区划树内, 此前永远无法被区域筛选命中, 现在可筛出并人工清理
+- 地区数据拉取失败时两页显式 `message.warning` 提示 (此前 SWR 静默吞错, 级联无声变空面板)
+
+**导出健壮性** (`app/api/contracts/export/route.ts`):
+- 删除本地私有 zod schema, 复用 `contractListQuerySchema.omit({ page, pageSize })` — 防止两处 schema 漂移后导出静默丢筛选条件; omit 是因为列表 schema 的分页默认值 (1/20) 会覆盖 `exportMaxRows` 兜底
+- `listContracts` 新增 `countTotal` 可选参数, 导出传 `false` 跳过用不到的 `contract.count`
+
+**测试**:
+- 新增 `tests/api/contract-list-region.test.ts`: 7 个用例覆盖单条件/组合/纯区域过滤与拍平字段返回
+- `tests/customer-location.test.ts`: 3 处源码断言从锁旧内联拼接改为锁 `formatRegion` 调用, 守卫意图不变
+- 全量 Vitest 回归: 571 通过 / 10 跳过 (2 个文件因本机 dev DB `User` 表夹具问题失败, 已用 stash 在干净树复现确认为既有问题, 与本次改动无关); `npm run typecheck` 通过; ESLint 零告警
+
+**版本号**: `0.10.3` → `0.10.4` (patch bump, 新筛选维度 + 重构, 无 schema 变更, 无 API 契约变更)
+
+**部署说明**:
+- 无 schema 变更、无新 migration, `prisma migrate deploy` 不需要跑
+- 直接重启 `next start` 即可生效
+
 ### v0.10.3(2026-07-18) 发布更新流程简化
 
 > 把"手写发布"和"git 自动生成"两个 Modal 合并为单一表单 + 表单顶部"从 git 自动填充"按钮,history 页去掉 Timeline 装饰。无 schema 变更, 无 API 契约变更。
