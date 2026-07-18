@@ -85,6 +85,8 @@ const nextConfig = {
               "style-src 'self' 'unsafe-inline'",
               "script-src 'self' 'unsafe-inline' 'unsafe-eval'",
               "connect-src 'self'",
+              // 附件预览: PDF 走 <iframe src=blob:>, 不设 frame-src 会回落 default-src 'self' 被拦
+              "frame-src 'self' blob:",
               "frame-ancestors 'none'",
               "base-uri 'self'",
               "form-action 'self'"
