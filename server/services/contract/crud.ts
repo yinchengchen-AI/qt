@@ -85,8 +85,11 @@ export async function listContracts(
 
   // 批量聚合每张合同的已开票(含 RED_FLUSHED, 红冲对净 0)与已回款(Payment.status IN CONFIRMED,RECONCILED)
   // 避免 N+1;与 server/services/statistics.ts:18-30 语义一致
+  // occupiedAgg 是 R-08 额度占用口径(INVOICE_LIMIT_COUNTED_STATUSES, 含 DRAFT/PENDING_FINANCE),
+  // 供开票新建页前端提示"剩余可开票额度", 与服务端 createInvoice 的 R-08 校验口径一致;
+  // invoicedAmount 只是展示口径(ISSUED+RED_FLUSHED), 两者不可混用
   const ids = list.map((c) => c.id);
-  const [invoiceAgg, paymentAgg] = ids.length
+  const [invoiceAgg, paymentAgg, occupiedAgg] = ids.length
     ? await Promise.all([
         prisma.invoice.groupBy({
           by: ["contractId"],
@@ -97,11 +100,17 @@ export async function listContracts(
           by: ["contractId"],
           where: { contractId: { in: ids }, status: { in: ["CONFIRMED", "RECONCILED"] }, deletedAt: null },
           _sum: { amount: true }
+        }),
+        prisma.invoice.groupBy({
+          by: ["contractId"],
+          where: { contractId: { in: ids }, status: { in: [...INVOICE_LIMIT_COUNTED_STATUSES] }, deletedAt: null },
+          _sum: { amount: true }
         })
       ])
-    : [[], []];
+    : [[], [], []];
   const invoicedByContract = new Map(invoiceAgg.map((r) => [r.contractId, Number(r._sum.amount ?? 0)]));
   const paidByContract = new Map(paymentAgg.map((r) => [r.contractId, Number(r._sum.amount ?? 0)]));
+  const occupiedByContract = new Map(occupiedAgg.map((r) => [r.contractId, Number(r._sum.amount ?? 0)]));
 
   // 批量回填负责人姓名 (ownerName), 列表/详情表头展示用; 避免 N+1
   const ownerIds = Array.from(new Set(list.map((c) => c.ownerUserId).filter(Boolean)));
@@ -113,6 +122,7 @@ export async function listContracts(
   const enriched = list.map((c) => {
     const invoicedAmount = invoicedByContract.get(c.id) ?? 0;
     const paidAmount = paidByContract.get(c.id) ?? 0;
+    const occupiedAmount = occupiedByContract.get(c.id) ?? 0;
     const owner = ownerById.get(c.ownerUserId);
     // customer 嵌套对象拍平成 customerProvince/City/District/Town, 不直接把嵌套结构透给前端
     const { customer, ...rest } = c;
@@ -124,6 +134,7 @@ export async function listContracts(
       customerTown: customer.town ?? "",
       invoicedAmount,
       paidAmount,
+      occupiedAmount,
       billingStatus: getBillingStatus(invoicedAmount, Number(c.totalAmount)),
       ownerName: owner?.name ?? "",
       ownerEmployeeNo: owner?.employeeNo ?? ""

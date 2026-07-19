@@ -7,7 +7,6 @@ import {
   ProFormText,
   ProFormTextArea,
   ProFormSelect,
-  ProFormDigit,
   ProFormDatePicker
 } from "@ant-design/pro-components";
 import { App as AntdApp, Space, Typography } from "antd";
@@ -20,10 +19,9 @@ import { extractOptionLabel } from "@/lib/extract-option-label";
 import { toIsoDateTime } from "@/lib/format";
 import { proCustomRequest } from "@/lib/upload-client";
 import { PreviewableProFormUploadButton as UploadButton } from "@/components/file/pro-form-upload-button";
-import { TAX_RATE_OPTIONS, TAX_RATE_LABELS } from "@/lib/validators/_shared";
 import { Page } from "@/components/page";
 import { PageHeader } from "@/components/page-header";
-import { FormSection, FormGrid, FormCard, SubmitBar } from "@/components/form";
+import { FormSection, FormGrid, FormCard, SubmitBar, AmountTaxFields } from "@/components/form";
 
 const { Text } = Typography;
 
@@ -334,24 +332,13 @@ export default function NewContractPage() {
           </FormSection>
 
           <FormSection title="金额与税率">
-            <FormGrid columns={2}>
-              <ProFormDigit
-                name="totalAmount"
-                label="合同总额（含税）"
-                placeholder="请输入合同总额（元）"
-                min={0.01}
-                rules={[{ required: true, message: "请输入合同总额（必填）" }]}
-                fieldProps={{ size: "large", precision: 2, prefix: "¥" }}
-              />
-              <ProFormSelect
-                name="taxRate"
-                label="税率"
-                initialValue={0.06}
-                options={TAX_RATE_OPTIONS.map((v, i) => ({ value: v, label: TAX_RATE_LABELS[i] }))}
-                rules={[{ required: true, message: "请选择适用税率（必填）" }]}
-                fieldProps={{ size: "large" }}
-              />
-            </FormGrid>
+            <AmountTaxFields
+              amountName="totalAmount"
+              amountLabel="合同总额（含税）"
+              amountPlaceholder="请输入合同总额（元）"
+              requiredMessage="请输入合同总额（必填）"
+              initialTaxRate={0.06}
+            />
           </FormSection>
 
           <FormSection title="备注" description="可填写签约背景、特殊条款、客户偏好等；不影响审批流">

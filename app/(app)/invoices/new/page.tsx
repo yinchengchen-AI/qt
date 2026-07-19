@@ -3,7 +3,6 @@ import {
   ProForm,
   ProFormText,
   ProFormSelect,
-  ProFormDigit,
   ProFormDatePicker
 } from "@ant-design/pro-components";
 import { App as AntdApp, Space, Tag, Typography } from "antd";
@@ -13,11 +12,11 @@ import { useRef, useState } from "react";
 import dayjs from "dayjs";
 import { Page } from "@/components/page";
 import { PageHeader } from "@/components/page-header";
-import { FormSection, FormGrid, FormCard, SubmitBar } from "@/components/form";
+import { FormSection, FormGrid, FormCard, SubmitBar, AmountTaxFields } from "@/components/form";
 import { proCustomRequest } from "@/lib/upload-client";
 import { formatCurrency } from "@/lib/format";
+import { OVER_LIMIT_TOLERANCE } from "@/lib/tax";
 import { PreviewableProFormUploadButton as UploadButton } from "@/components/file/pro-form-upload-button";
-import { TAX_RATE_OPTIONS, TAX_RATE_LABELS } from "@/lib/validators/_shared";
 
 const { Text } = Typography;
 
@@ -54,6 +53,8 @@ export default function NewInvoicePage() {
   const formRef = useRef<any>(null);
   const [form] = ProForm.useForm();
   const [pickedCustomer, setPickedCustomer] = useState<Customer | null>(null);
+  // 选中合同的额度信息(Decimal 经 JSON 序列化为字符串, 已 Number() 化), 用于税率继承 + 剩余可开票额度提示
+  const [pickedContract, setPickedContract] = useState<{ totalAmount: number; occupiedAmount: number } | null>(null);
   const [titleType, setTitleType] = useState<"COMPANY" | "PERSONAL">("COMPANY");
 
   return (
@@ -120,7 +121,7 @@ export default function NewInvoicePage() {
               fieldProps={{
                 size: "large",
                 optionFilterProp: "label",
-                // 选合同 → 拉客户详情 → 写抬头字段
+                // 选合同 → 拉客户详情 → 写抬头字段; 同时继承合同税率、记录额度信息
                 onChange: async (
                   _: unknown,
                   opt: {
@@ -130,19 +131,31 @@ export default function NewInvoicePage() {
                       contractNo: string;
                       title: string;
                       totalAmount: string;
+                      taxRate: string;
+                      occupiedAmount: number;
                       customerId: string;
                       customerName: string;
                     };
                   } | unknown
                 ) => {
-                  const o = opt as { value: string; contract?: { customerId: string } } | undefined;
-                  const customerId = o?.contract?.customerId;
-                  if (!customerId) {
+                  const o = opt as {
+                    value: string;
+                    contract?: { customerId: string; totalAmount: string; taxRate: string; occupiedAmount: number };
+                  } | undefined;
+                  const c = o?.contract;
+                  if (!c) {
                     setPickedCustomer(null);
+                    setPickedContract(null);
                     return;
                   }
+                  setPickedContract({
+                    totalAmount: Number(c.totalAmount),
+                    occupiedAmount: Number(c.occupiedAmount ?? 0)
+                  });
+                  // 税率继承合同(Decimal 序列化为字符串, Number() 化); 用户仍可手改
+                  form.setFieldsValue({ taxRate: Number(c.taxRate) });
                   try {
-                    const r = await fetch(`/api/customers/${customerId}`, {
+                    const r = await fetch(`/api/customers/${c.customerId}`, {
                       credentials: "include"
                     });
                     const j = await r.json();
@@ -175,6 +188,8 @@ export default function NewInvoicePage() {
                   contractNo: string;
                   title: string;
                   totalAmount: string;
+                  taxRate: string;
+                  occupiedAmount: number;
                   customerId: string;
                   customerName: string;
                 }>).map((c) => ({
@@ -184,6 +199,13 @@ export default function NewInvoicePage() {
                 }));
               }}
             />
+            {pickedContract ? (
+              <Text type="secondary" style={{ fontSize: 12 }}>
+                剩余可开票额度 ≈ {formatCurrency(pickedContract.totalAmount - pickedContract.occupiedAmount)}
+                （合同总额 {formatCurrency(pickedContract.totalAmount)} − 已占用{" "}
+                {formatCurrency(pickedContract.occupiedAmount)}，含草稿/待审）
+              </Text>
+            ) : null}
           </FormSection>
 
           <FormSection title="发票信息">
@@ -218,23 +240,27 @@ export default function NewInvoicePage() {
                 }}
               />
             </FormGrid>
-            <FormGrid columns={2}>
-              <ProFormDigit
-                name="amount"
-                label="含税金额"
-                min={0.01}
-                rules={[{ required: true, message: "请输入含税金额（必填）" }]}
-                fieldProps={{ size: "large", precision: 2, prefix: "¥" }}
-              />
-              <ProFormSelect
-                name="taxRate"
-                label="税率"
-                initialValue={0.06}
-                options={TAX_RATE_OPTIONS.map((v, i) => ({ value: v, label: TAX_RATE_LABELS[i] }))}
-                rules={[{ required: true, message: "请选择适用税率（必填）" }]}
-                fieldProps={{ size: "large" }}
-              />
-            </FormGrid>
+            <AmountTaxFields
+              amountName="amount"
+              amountLabel="含税金额"
+              requiredMessage="请输入含税金额（必填）"
+              initialTaxRate={0.06}
+              amountRules={[
+                {
+                  // 仅前端提示(warningOnly 不阻断提交); 权威校验在服务端 createInvoice 的 R-08
+                  warningOnly: true,
+                  validator: async (_rule, value: number | null | undefined) => {
+                    if (!pickedContract || value == null) return;
+                    const remaining = pickedContract.totalAmount - pickedContract.occupiedAmount;
+                    if (value > remaining + OVER_LIMIT_TOLERANCE) {
+                      throw new Error(
+                        `超出该合同剩余可开票额度 ${formatCurrency(remaining)}，提交将被服务端拒绝`
+                      );
+                    }
+                  }
+                }
+              ]}
+            />
             <FormGrid columns={2}>
               <ProFormDatePicker
                 name="applyDate"

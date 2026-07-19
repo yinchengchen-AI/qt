@@ -6,7 +6,6 @@ import {
   ProFormText,
   ProFormTextArea,
   ProFormSelect,
-  ProFormDigit,
   ProFormDatePicker
 } from "@ant-design/pro-components";
 import { App as AntdApp, Space, Typography } from "antd";
@@ -20,12 +19,11 @@ import { useContractTitleAutofill } from "@/lib/use-contract-title-autofill";
 import { toIsoDateTime } from "@/lib/format";
 import { Page } from "@/components/page";
 import { PageHeader } from "@/components/page-header";
-import { FormSection, FormGrid, FormCard, SubmitBar } from "@/components/form";
+import { FormSection, FormGrid, FormCard, SubmitBar, AmountTaxFields } from "@/components/form";
 import { FormPageSkeleton } from "@/components/form-page-skeleton";
 import { proCustomRequest } from "@/lib/upload-client";
 import { PreviewableProFormUploadButton as UploadButton } from "@/components/file/pro-form-upload-button";
 import { AttachmentList, type AttachmentItem } from "@/components/file/attachment-list";
-import { TAX_RATE_OPTIONS, TAX_RATE_LABELS } from "@/lib/validators/_shared";
 
 const { Text } = Typography;
 
@@ -265,22 +263,11 @@ export default function EditContractPage() {
           </FormSection>
 
           <FormSection title="金额与税率">
-            <FormGrid columns={2}>
-              <ProFormDigit
-                name="totalAmount"
-                label="合同总额（含税）"
-                min={0.01}
-                rules={[{ required: true, message: "请输入合同总额（必填）" }]}
-                fieldProps={{ size: "large", precision: 2, prefix: "¥" }}
-              />
-              <ProFormSelect
-                name="taxRate"
-                label="税率"
-                options={TAX_RATE_OPTIONS.map((v, i) => ({ value: v, label: TAX_RATE_LABELS[i] }))}
-                rules={[{ required: true, message: "请选择适用税率（必填）" }]}
-                fieldProps={{ size: "large" }}
-              />
-            </FormGrid>
+            <AmountTaxFields
+              amountName="totalAmount"
+              amountLabel="合同总额（含税）"
+              requiredMessage="请输入合同总额（必填）"
+            />
           </FormSection>
 
           <FormSection title="备注">

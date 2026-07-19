@@ -4,7 +4,6 @@ import {
   ProFormText,
   ProFormTextArea,
   ProFormSelect,
-  ProFormDigit,
   ProFormDatePicker
 } from "@ant-design/pro-components";
 import { App as AntdApp, Space, Tag, Typography } from "antd";
@@ -15,13 +14,12 @@ import { useEffect, useRef, useState } from "react";
 import dayjs from "dayjs";
 import { Page } from "@/components/page";
 import { PageHeader } from "@/components/page-header";
-import { FormSection, FormGrid, FormCard, SubmitBar } from "@/components/form";
+import { FormSection, FormGrid, FormCard, SubmitBar, AmountTaxFields } from "@/components/form";
 import { FormPageSkeleton } from "@/components/form-page-skeleton";
 import { proCustomRequest } from "@/lib/upload-client";
 import { PreviewableProFormUploadButton as UploadButton } from "@/components/file/pro-form-upload-button";
 import { AttachmentList, type AttachmentItem } from "@/components/file/attachment-list";
 import type { AttachmentSnapshot } from "@/lib/types/entities";
-import { TAX_RATE_OPTIONS, TAX_RATE_LABELS } from "@/lib/validators/_shared";
 import type { Invoice as InvoiceEntity } from "@/lib/types/entities";
 import { useGoBack } from "@/lib/navigation";
 import { hasPermission, RESOURCE, ACTION } from "@/lib/permissions";
@@ -243,22 +241,11 @@ export default function EditInvoicePage() {
                 }}
               />
             </FormGrid>
-            <FormGrid columns={2}>
-              <ProFormDigit
-                name="amount"
-                label="含税金额"
-                min={0.01}
-                rules={[{ required: true, message: "请输入含税金额(必填)" }]}
-                fieldProps={{ size: "large", precision: 2, prefix: "¥" }}
-              />
-              <ProFormSelect
-                name="taxRate"
-                label="税率"
-                options={TAX_RATE_OPTIONS.map((v, i) => ({ value: v, label: TAX_RATE_LABELS[i] }))}
-                rules={[{ required: true, message: "请选择适用税率(必填)" }]}
-                fieldProps={{ size: "large" }}
-              />
-            </FormGrid>
+            <AmountTaxFields
+              amountName="amount"
+              amountLabel="含税金额"
+              requiredMessage="请输入含税金额(必填)"
+            />
             <FormGrid columns={2}>
               <ProFormDatePicker
                 name="applyDate"
