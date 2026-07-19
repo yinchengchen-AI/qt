@@ -1,7 +1,7 @@
 # 杭州企泰安全科技 业务管理系统 (qt-biz)
 
 > 客户 / 合同 / 开票 / 回款 一体化管理,附件走 MinIO presigned 直传。
-> **当前版本: v0.10.3**(2026-07-18)
+> **当前版本: v0.10.5**(2026-07-19)
 > 详细设计见 [docs/architecture/DESIGN-v3.md](docs/architecture/DESIGN-v3.md),用户手册见 [docs/user/USER_MANUAL.md](docs/user/USER_MANUAL.md)。
 > 2026-07-04 增量同步: 全库代码审计 10 处 bug 修复 + 2 组单元测试已补到「最近更新」开头。
 
@@ -413,6 +413,32 @@ xlsx 导出走 `lib/excel.ts` + `exceljs`; 中文文件名通过 `attachmentHead
 | dev server `/login` `/dashboard` `/contracts` `/reports/PERFORMANCE` | 200 |
 
 ## 最近更新
+
+### v0.10.5(2026-07-19) 金额+税率表单统一 + 开票页合同联动
+
+> 合同/开票四个表单的"金额+税率"字段收敛为共享组件(带税额实时预览);新建开票页选合同后自动继承合同税率并显示剩余可开票额度,金额超限前端即时提示。无 schema 变更;合同列表 API 返回新增 `occupiedAmount` 字段(纯新增, 向后兼容)。
+
+**共享表单组件** (新增 `components/form/amount-tax-fields.tsx` + `lib/tax.ts`):
+- `AmountTaxFields`: 统一合同新建/编辑、开票新建/编辑四处手写的 ProFormDigit+ProFormSelect;`ProFormDependency` 实时预览"税额 ≈ ¥x · 不含税金额 ≈ ¥y"(标注以服务端计算为准)
+- `lib/tax.ts` 零依赖纯计算(`calcTaxBreakdownPreview`),公式与 `lib/money.ts#calcTaxBreakdown` 严格一致, parity 测试兜底;`lib/money.ts` 依赖 `@prisma/client` 不可进客户端 bundle, 服务端仍走 Prisma.Decimal 权威计算
+- 编辑页不传字段级 `initialValue`, 由 form 级 `initialValues` 回显, 避免默认值冲突
+
+**开票页合同联动** (`app/(app)/invoices/new/page.tsx` + `server/services/contract/crud.ts`):
+- 选合同自动 `setFieldsValue({ taxRate })` 继承合同税率(此前固定默认 6%, 与合同税率不一致时需人工对账)
+- 合同下方常驻"剩余可开票额度 ≈ 合同总额 − 已占用(含草稿/待审)";`listContracts` 新增 `occupiedAmount`(R-08 额度占用口径 `INVOICE_LIMIT_COUNTED_STATUSES`),与展示口径 `invoicedAmount`(ISSUED+RED_FLUSHED)注释区分, 前端提示与服务端 R-08 校验同口径
+- 金额超剩余额度时 antd `warningOnly` 校验即时黄条提示(不阻断提交, 服务端 R-08 仍是权威拦截)
+
+**测试**:
+- 新增 `tests/unit/lib/tax.test.ts`: 预览函数用例 + 与 `calcTaxBreakdown` 的 (金额 × 税率) parity 矩阵 + 容差哨兵
+- 新增 `tests/api/contract-list-occupied-amount.test.ts`: DRAFT/ISSUED 计入 occupiedAmount、VOIDED 不计、invoicedAmount 仅 ISSUED
+- 全量 Vitest 回归: 579 通过 / 10 跳过 (2 个文件因本机 dev DB `User` 表夹具问题失败, 已用 stash 在干净树复现确认为既有问题, 与本次改动无关); `npm run typecheck` 通过; ESLint 零告警
+- UI 端到端实测: 选合同税率继承回弹(13% → 合同 6%)、剩余额度提示、超限 warning、编辑页回显均正确
+
+**版本号**: `0.10.4` → `0.10.5` (patch bump, 表单统一 + 开票 UX 增强, 无 schema 变更, API 纯新增字段向后兼容)
+
+**部署说明**:
+- 无 schema 变更、无新 migration, `prisma migrate deploy` 无增量(deploy.sh 会执行但为空跑)
+- 直接重启 `next start` 即可生效
 
 ### v0.10.4(2026-07-18) 合同列表客户区域筛选 + 区域逻辑共享化
 
