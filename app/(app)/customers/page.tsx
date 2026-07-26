@@ -24,8 +24,9 @@ type Customer = {
   customerType: string;
   scale: string | null;
   industry: string | null;
-  sourceChannel: string | null;
   ownerUserId: string;
+  contactName: string | null;
+  contactTitle: string | null;
   contactPhone: string;
   province: string;
   city: string;
@@ -41,7 +42,6 @@ export default function CustomersPage() {
   const customerTypeDict = useDict("CUSTOMER_TYPE");
   const customerScaleDict = useDict("CUSTOMER_SCALE");
   const industryDict = useDict("CUSTOMER_INDUSTRY");
-  const sourceDict = useDict("CUSTOMER_SOURCE");
   // 负责人筛选: 拉一次全员 (pageSize=100 够用), 失败时回落到空 options, 控件仍可下拉但没有可选项
   const usersFetcher = useCallback(async (url: string) => {
     const res = await fetch(url, { credentials: "include" });
@@ -281,11 +281,13 @@ export default function CustomersPage() {
             }
           },
           {
-            title: "来源",
-            dataIndex: "sourceChannel",
+            // 主联系人 (姓名 · 职务), 与导出 Excel / 详情 PDF 同口径
+            title: "联系人",
+            dataIndex: "contactName",
             search: false,
-            width: 120,
-            render: (_, r) => r.sourceChannel ? (sourceDict.find((d) => d.code === r.sourceChannel)?.label ?? r.sourceChannel) : "—"
+            width: 140,
+            ellipsis: true,
+            render: (_, r) => [r.contactName, r.contactTitle].filter(Boolean).join(" · ") || "—"
           },
           { title: "联系电话", dataIndex: "contactPhone", search: false, width: 140 },
           {

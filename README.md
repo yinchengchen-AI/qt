@@ -1,7 +1,7 @@
 # 杭州企泰安全科技 业务管理系统 (qt-biz)
 
 > 客户 / 合同 / 开票 / 回款 一体化管理,附件走 MinIO presigned 直传。
-> **当前版本: v0.10.5**(2026-07-19)
+> **当前版本: v0.10.6**(2026-07-23)
 > 详细设计见 [docs/architecture/DESIGN-v3.md](docs/architecture/DESIGN-v3.md),用户手册见 [docs/user/USER_MANUAL.md](docs/user/USER_MANUAL.md)。
 > 2026-07-04 增量同步: 全库代码审计 10 处 bug 修复 + 2 组单元测试已补到「最近更新」开头。
 
@@ -413,6 +413,17 @@ xlsx 导出走 `lib/excel.ts` + `exceljs`; 中文文件名通过 `attachmentHead
 | dev server `/login` `/dashboard` `/contracts` `/reports/PERFORMANCE` | 200 |
 
 ## 最近更新
+
+### v0.10.6(2026-07-23) 客户列表「来源」列替换为「联系人」列
+
+> 客户管理列表表格不再展示「来源」(sourceChannel 字典),改为展示主联系人(`contactName · contactTitle`),与导出 Excel、详情 PDF 的口径保持一致;无联系人数据显示 `—`。纯前端列调整,无 schema 变更、无 API 契约变更(列表 API 本就返回全字段)。详情页「来源渠道」与新建/编辑表单「客户来源」保留不变。
+
+- `app/(app)/customers/page.tsx`: 删除来源列 + `CUSTOMER_SOURCE` 字典渲染;新增联系人列(宽 140,`ellipsis`);`Customer` 类型去掉 `sourceChannel`,补 `contactName` / `contactTitle`
+- 验证: `npm run typecheck` 通过;ESLint 零告警
+
+**版本号**: `0.10.5` → `0.10.6` (patch bump, 纯 UI 列调整, 无 schema 变更, 无 API 契约变更)
+
+**部署说明**: 直接重启 `next start` 即可生效
 
 ### v0.10.5(2026-07-19) 金额+税率表单统一 + 开票页合同联动
 
