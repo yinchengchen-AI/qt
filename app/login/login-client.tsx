@@ -240,7 +240,7 @@ function LoginForm({ quickFillPassword }: { quickFillPassword: string }) {
       <div className={styles.formInner}>
         <header className={styles.formHead}>
           <h1 className={styles.formTitle}>设置新密码</h1>
-          <p className={styles.formSubtitle}>通过重置链接设置新密码后自动跳回登录</p>
+          <p className={styles.formSubtitle}>验证通过，请设置新密码；完成后将自动返回登录页</p>
         </header>
         <ChangePasswordForm
           token={resetToken}
@@ -264,8 +264,8 @@ function LoginForm({ quickFillPassword }: { quickFillPassword: string }) {
         onFinish={handleFinish}
       >
         <header className={styles.formHead}>
-          <h1 className={styles.formTitle}>欢迎回来</h1>
-          <p className={styles.formSubtitle}>登录以继续使用业务管理系统</p>
+          <h1 className={styles.formTitle}>欢迎登录</h1>
+          <p className={styles.formSubtitle}>使用工号登录，进入您的安全工作台</p>
         </header>
 
         {error ? (
@@ -404,13 +404,13 @@ function Narrative() {
   return (
     <aside className={styles.narrative} aria-label="品牌叙事">
       <h2 className={styles.hero}>
-        让安全管理<br />
+        让每一次安全服务<br />
         <span className={styles.heroAccent}>有据可循。</span>
       </h2>
       <p className={styles.heroSub}>
         浙江省 A 级安全生产社会化服务机构，临平区首家。
-        10 年深耕，把每一次现场检查、风险评估与体系建设
-        沉淀为可追溯的数据资产。
+        十年深耕安全生产服务，把现场检查、风险评估与体系建设的
+        每一步，沉淀为可追溯的数据资产。
       </p>
 
       <ul className={styles.features} role="list">
@@ -419,8 +419,8 @@ function Narrative() {
             <FileTextOutlined />
           </span>
           <span className={styles.featureText}>
-            <span className={styles.featureTitle}>合同全生命周期留痕</span>
-            <span className={styles.featureDesc}>签署 · 履行 · 归档全程可追溯，风险点自动提示</span>
+            <span className={styles.featureTitle}>合同全程留痕管理</span>
+            <span className={styles.featureDesc}>签署、履行、归档一体贯通，风险节点自动预警</span>
           </span>
         </li>
         <li className={styles.feature}>
@@ -428,8 +428,8 @@ function Narrative() {
             <TeamOutlined />
           </span>
           <span className={styles.featureText}>
-            <span className={styles.featureTitle}>客户分级与精准服务</span>
-            <span className={styles.featureDesc}>2,500+ 生产经营单位档案，服务画像实时更新</span>
+            <span className={styles.featureTitle}>客户分级精准服务</span>
+            <span className={styles.featureDesc}>2,500+ 生产经营单位一企一档，服务画像动态更新</span>
           </span>
         </li>
         <li className={styles.feature}>
@@ -437,8 +437,8 @@ function Narrative() {
             <BarChartOutlined />
           </span>
           <span className={styles.featureText}>
-            <span className={styles.featureTitle}>收款统计与现金流可视化</span>
-            <span className={styles.featureDesc}>月度趋势 · 客户分布 · 风险预警，一张图掌握全局</span>
+            <span className={styles.featureTitle}>经营数据一屏尽览</span>
+            <span className={styles.featureDesc}>回款趋势、客户分布与账龄风险实时可视</span>
           </span>
         </li>
       </ul>

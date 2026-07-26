@@ -1,4 +1,4 @@
-// 验证登录页"7 天内自动登录"复选框实际影响 JWT 寿命。
+// 验证登录页"保持登录"复选框实际影响 JWT 寿命。
 //
 // NextAuth v4 在 NEXTAUTH_SECRET 存在时把 session token 加密成 JWE (5 段)。
 // 加密方式: HKDF-SHA256(secret, salt=cookieName, info="Auth.js Generated Encryption Key (salt)")
@@ -55,12 +55,12 @@ async function decryptSessionToken(jwe: string): Promise<JwtPayload> {
 
 async function login(page: Page, opts: { uncheckRemember: boolean }) {
   await page.goto("/login");
-  await page.getByPlaceholder("请输入工号").fill(ADMIN.employeeNo);
-  await page.getByPlaceholder("请输入密码").fill(ADMIN.password);
+  await page.getByPlaceholder("工号").fill(ADMIN.employeeNo);
+  await page.getByPlaceholder("密码").fill(ADMIN.password);
   if (opts.uncheckRemember) {
-    await page.getByRole("checkbox", { name: "7 天内自动登录" }).uncheck();
+    await page.getByRole("checkbox", { name: "保持登录" }).uncheck();
   }
-  await page.getByText("登 录", { exact: true }).first().click();
+  await page.getByRole("button", { name: "登 录", exact: true }).click();
   await page.waitForURL(/dashboard/, { timeout: 20000 });
 }
 
