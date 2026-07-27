@@ -1,5 +1,6 @@
 // 统一 API 响应封装
 import { NextResponse } from "next/server";
+import { Prisma } from "@prisma/client";
 import { ERROR_CODES, type ErrorCode } from "@/types/errors";
 
 export type ApiOk<T> = { code: 0; data: T; message?: string };
@@ -46,6 +47,13 @@ export function err(e: unknown) {
         details: issues
       },
       { status: 400 }
+    );
+  }
+  // Prisma 唯一约束冲突 (如发票号/回款号撞 @unique): 返回 422 友好提示, 而不是笼统 500
+  if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === "P2002") {
+    return NextResponse.json<ApiErr>(
+      { code: 422, errorCode: ERROR_CODES.VALIDATION_FAILED, message: "编号已存在，请更换后重试" },
+      { status: 422 }
     );
   }
   console.error("Unhandled API error:", e);

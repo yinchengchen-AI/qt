@@ -149,6 +149,7 @@ export default function EditInvoicePage() {
             taxRate: data.taxRate != null ? Number(data.taxRate) : 0.06,
             applyDate: data.applyDate ? dayjs(data.applyDate) : undefined,
             expectedIssueDate: data.expectedIssueDate ? dayjs(data.expectedIssueDate) : undefined,
+            dueDate: data.dueDate ? dayjs(data.dueDate) : undefined,
             titleType: data.titleType,
             titleName: data.titleName,
             taxNo: data.taxNo ?? undefined,
@@ -175,6 +176,7 @@ export default function EditInvoicePage() {
               ...values,
               applyDate: values.applyDate ? dayjs(values.applyDate).toISOString() : undefined,
               expectedIssueDate: values.expectedIssueDate ? dayjs(values.expectedIssueDate).toISOString() : undefined,
+              dueDate: values.dueDate ? dayjs(values.dueDate).toISOString() : undefined,
               attachments: merged
             };
             delete (payload as Record<string, unknown>).attachments_uploads;
@@ -256,6 +258,11 @@ export default function EditInvoicePage() {
               <ProFormDatePicker
                 name="expectedIssueDate"
                 label="预计开票日"
+                fieldProps={{ size: "large", style: { width: "100%" } }}
+              />
+              <ProFormDatePicker
+                name="dueDate"
+                label="到期日"
                 fieldProps={{ size: "large", style: { width: "100%" } }}
               />
             </FormGrid>

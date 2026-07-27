@@ -1,7 +1,7 @@
 /**
  * 合同状态机自动化定时任务
  *
- * tickPublishableDraffts    — 每小时扫 DRAFT, 字段完整+附件就位 → ACTIVE
+ * tickPublishableDrafts    — 每小时扫 DRAFT, 字段完整+附件就位 → ACTIVE
  * tickCompletionCandidates  — 每小时扫 ACTIVE, 满足任一自动完结规则 → CLOSED:
  *                              - tryAutoClose:           endDate<now + 双足额 → CLOSED (reason=completed)
  *                              - tryAutoCloseOnOverdue:  endDate+GRACE<now + 未结清 → CLOSED (reason=overdue_terminated)
@@ -14,7 +14,7 @@ import type { JobResult } from "./runner";
  * 每小时扫一次: DRAFT 中字段/附件已就位的合同, 自动推到 ACTIVE
  * 创建/编辑时已自动触发, 这里兜底防止 cron 中途漏触发或事后补数据的情况
  */
-export async function tickPublishableDraffts(): Promise<JobResult> {
+export async function tickPublishableDrafts(): Promise<JobResult> {
   const t0 = Date.now();
   const candidates = await prisma.contract.findMany({
     where: { status: "DRAFT", deletedAt: null },

@@ -226,7 +226,7 @@ export default function NewPaymentPage() {
           </Space>
           <SubmitBar
             onSubmit={() => formRef.current?.submit()}
-            onCancel={() => goBack}
+            onCancel={goBack}
             submitText="登记回款"
           />
         </ProForm>

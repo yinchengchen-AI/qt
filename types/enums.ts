@@ -107,8 +107,13 @@ export const MESSAGE_TYPE = [
   "CONTRACT_AUTO_OVERDUE_TERMINATED",
   // 合同过期未结清提醒 (tickStaleContracts 触发, endDate<now 但钱没收齐, 给 owner/admin 通知)
   "CONTRACT_EXPIRED_UNPAID",
+  // 回款已足额但开票不足额提醒 (tickStaleContracts 触发; 这种合同 tryAutoClose 永不完结, 需催补开发票)
+  "CONTRACT_PAID_INVOICE_PENDING",
   // 证书 N 天内到期提醒 (server/jobs/certificate-expiry-check 触发)
   "CERTIFICATE_EXPIRING",
+  // 发票开具/驳回结果通知申请人 (invoiceAction issue/reject 触发)
+  "INVOICE_ISSUED",
+  "INVOICE_REJECTED",
 ] as const;
 
 // 5 个内置角色

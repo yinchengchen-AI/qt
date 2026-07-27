@@ -248,9 +248,9 @@ const handleDelete = () => {
   })();
 
   // 状态机提示: 合同已"开票+回款"双足额, 但 endDate 还没到, 处于"等自然到期"状态。
-  // 满足条件: status=ACTIVE + endDate>=now + 已确认回款 >= total*0.95 + 已开票 >= total*0.95
+  // 满足条件: status=ACTIVE + endDate>=now + 已确认回款 >= total*ratio + 已开票 >= total*ratio
   // 这种合同 tryAutoClose 会等 endDate<now 才关, 当前处于"等自然到期"过渡态, 加 tag 提示 admin。
-  // 阈值 0.95 跟 env.CONTRACT_COMPLETION_INVOICE_RATIO 默认值一致, 是 UI 提示不是业务门。
+  // 阈值取该合同行级 completionInvoiceRatio (与 tryAutoClose 同口径), 是 UI 提示不是业务门。
   const settledPreExpiry = (() => {
     if (contract.status !== "ACTIVE") return false;
     if (!contract.endDate) return false;
@@ -259,7 +259,7 @@ const handleDelete = () => {
     if (!t) return false;
     const total = Number(t.totalAmount);
     if (!(total > 0)) return false;
-    const ratio = 0.95;
+    const ratio = Number(contract.completionInvoiceRatio ?? 0.95);
     return Number(t.invoicedAmount) >= total * ratio && Number(t.paidAmount) >= total * ratio;
   })();
   const daysUntilExpiry = (() => {
@@ -287,7 +287,7 @@ const handleDelete = () => {
     }
   };
   // 只读检查: 调 GET /api/contracts/[id]/publish-eligibility, 告诉 admin 缺什么字段。
-  // 不直接发布, 避免和 hourly tickPublishableDraffts 双轨; 补齐后下一次 tick 自动生效。
+  // 不直接发布, 避免和 hourly tickPublishableDrafts 双轨; 补齐后下一次 tick 自动生效。
   const checkPublishEligibility = async () => {
     try {
       const res = await fetch(`/api/contracts/${id}/publish-eligibility`, { credentials: "include" });
@@ -296,7 +296,7 @@ const handleDelete = () => {
       const data = j.data as { status: string; eligible: boolean; missing: string[] };
       if (data.eligible) {
         msg.success(
-          `合同满足自动发布条件, 下一次 tickPublishableDraffts (每小时) 会自动推到 ACTIVE`
+          `合同满足自动发布条件, 下一次 tickPublishableDrafts (每小时) 会自动推到 ACTIVE`
         );
       } else {
         modal.error({

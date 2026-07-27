@@ -49,7 +49,10 @@ const MESSAGE: Record<string, StatusMeta> = {
   CONTRACT_AUTO_EXPIRED:     { label: "自动到期", tone: "default" },
   CONTRACT_AUTO_OVERDUE_TERMINATED: { label: "超期强关", tone: "danger" },
   CONTRACT_EXPIRED_UNPAID:   { label: "到期未结清", tone: "warning" },
+  CONTRACT_PAID_INVOICE_PENDING: { label: "待补开票", tone: "warning" },
   CERTIFICATE_EXPIRING:      { label: "证书到期", tone: "warning" },
+  INVOICE_ISSUED:            { label: "已开票",   tone: "success" },
+  INVOICE_REJECTED:          { label: "开票驳回", tone: "danger" },
 };
 
 const DOMAIN_MAP: Record<StatusDomain, Record<string, StatusMeta>> = {

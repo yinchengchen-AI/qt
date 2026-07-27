@@ -47,6 +47,7 @@ function makeMockTx(
         id: "c-1",
         status: "ACTIVE",
         totalAmount: new Prisma.Decimal(10000),
+        taxRate: new Prisma.Decimal(0),
         taxAmount: new Prisma.Decimal(0),
         amountExcludingTax: new Prisma.Decimal(10000),
       })),

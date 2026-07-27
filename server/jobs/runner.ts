@@ -1,9 +1,11 @@
 // 定时任务统一入口：被 /api/jobs/run 路由调用
 // 每个 job 接受 prisma + now，返回统计
+import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { emit } from "@/server/events/bus";
+import { MONEY_TOLERANCE } from "@/lib/money-tolerance";
 
-import { tickPublishableDraffts, tickCompletionCandidates } from "@/server/jobs/contract-automation";
+import { tickPublishableDrafts, tickCompletionCandidates } from "@/server/jobs/contract-automation";
 import { runCertificateExpiryCheck } from "@/server/jobs/certificate-expiry-check";
 import { tickStaleContracts } from "@/server/jobs/stale-contract";
 
@@ -39,7 +41,7 @@ export async function runAllJobs(now = new Date()): Promise<JobResult[]> {
   const jobs = [
     { name: "contract-expiring", run: () => contractExpiringJob(now, admins) },
     { name: "invoice-overdue", run: () => invoiceOverdueJob(now, admins) },
-    { name: "contract-auto-publish", run: () => tickPublishableDraffts() },
+    { name: "contract-auto-publish", run: () => tickPublishableDrafts() },
     { name: "contract-auto-complete", run: () => tickCompletionCandidates(now) },
     { name: "contract-stale-notify", run: () => tickStaleContracts(now) },
     // P0-11: 证书到期检查,跟 01:00 通用入口打通,便于监控和手动触发
@@ -169,7 +171,7 @@ export async function invoiceOverdueJob(now: Date, admins?: { id: string }[]): P
     _sum: { amount: true }
   });
   const paidByInvoice = new Map(
-    paidAgg.map((p) => [p.invoiceId, Number(p._sum.amount ?? 0)])
+    paidAgg.map((p) => [p.invoiceId, new Prisma.Decimal(p._sum.amount ?? 0)])
   );
 
   // 一次 findMany 拿今天所有 INVOICE_OVERDUE_PAYMENT 消息,再 JS 里按 link.id 过滤
@@ -188,9 +190,9 @@ export async function invoiceOverdueJob(now: Date, admins?: { id: string }[]): P
   let created = 0;
   for (const inv of candidates) {
     if (sentInvoiceIds.has(inv.id)) continue;
-    const paid = paidByInvoice.get(inv.id) ?? 0;
-    const remaining = Number(inv.amount) - paid;
-    if (remaining <= 0.01) continue;
+    const paid = paidByInvoice.get(inv.id) ?? new Prisma.Decimal(0);
+    const remaining = new Prisma.Decimal(inv.amount).minus(paid);
+    if (remaining.lte(MONEY_TOLERANCE)) continue;
     const daysOverdue = Math.floor((now.getTime() - new Date(inv.actualIssueDate!).getTime()) / 86400_000);
     await emit(prisma, {
       type: "INVOICE_OVERDUE_PAYMENT",

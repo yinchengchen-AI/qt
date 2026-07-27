@@ -6,6 +6,7 @@
 //   3) 止期 <= 起期 → 400 VALIDATION_FAILED
 //   4) 合同编号改重 → 422 VALIDATION_FAILED
 //   5) 负责人改成 DISABLED 员工 → 400 VALIDATION_FAILED
+//   6) 非 admin 变更负责人为他人 → 422 (仅 admin 可转交); 传现值放行
 //
 // DB 不可达时整组 skip. 数据带唯一 TAG 前缀,跑完自清理.
 
@@ -80,6 +81,9 @@ afterAll(async () => {
   if (!dbReachable) return;
   try {
     if (createdContractIds.length > 0) {
+      await prisma.operationLog.deleteMany({
+        where: { entity: "Contract", entityId: { in: createdContractIds } }
+      });
       await prisma.contractReviewLog.deleteMany({ where: { contractId: { in: createdContractIds } } });
       await prisma.contract.deleteMany({ where: { id: { in: createdContractIds } } });
     }
@@ -189,5 +193,23 @@ describe("updateContract 服务层校验", () => {
     await expect(
       updateContract(adminUser!, c.id, { ownerUserId: disabledUser!.id })
     ).rejects.toMatchObject({ errorCode: ERROR_CODES.VALIDATION_FAILED });
+  }));
+
+  it("非 admin 变更负责人为他人 → 422 (仅 admin 可转交)", guard(async () => {
+    // mkContract 由 admin 创建, 合同 owner = customer.ownerUserId = salesUser
+    const c = await mkContract("DRAFT", "OWNER-TRANSFER");
+    await expect(
+      updateContract(salesUser!, c.id, { ownerUserId: adminUser!.id })
+    ).rejects.toMatchObject({ errorCode: ERROR_CODES.VALIDATION_FAILED, status: 422 });
+  }));
+
+  it("非 admin 传 ownerUserId = 现值 → 无害 no-op, 放行", guard(async () => {
+    const c = await mkContract("DRAFT", "OWNER-SAME");
+    const updated = await updateContract(salesUser!, c.id, {
+      ownerUserId: salesUser!.id,
+      title: `${TAG}-owner-same`
+    });
+    expect(updated.title).toBe(`${TAG}-owner-same`);
+    expect(updated.ownerUserId).toBe(salesUser!.id);
   }));
 });

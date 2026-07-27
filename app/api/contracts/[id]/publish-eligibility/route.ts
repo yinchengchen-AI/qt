@@ -9,6 +9,7 @@
 import { runWithRequestContext } from "@/lib/request-context";
 import { ok, err, ApiError } from "@/lib/api";
 import { requireSession } from "@/lib/session";
+import { requirePermission, RESOURCE, ACTION } from "@/lib/permissions";
 import { prisma } from "@/lib/prisma";
 import { ownerEq } from "@/lib/ownership";
 import { checkPublishable } from "@/server/services/contract";
@@ -21,6 +22,7 @@ export async function GET(
   return runWithRequestContext(req, async () => {
     try {
       const user = await requireSession();
+      requirePermission(user.roleCode, RESOURCE.CONTRACT, ACTION.READ);
       const { id } = await params;
       const c = await prisma.contract.findFirst({
         where: { id, deletedAt: null, ...ownerEq(user) },

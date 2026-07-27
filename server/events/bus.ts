@@ -75,6 +75,22 @@ function buildMessage(uid: string, ev: DomainEvent): ResolvedMessage {
         content: `回款单号：${p.paymentNo}`,
         link: { kind: "payment", id: p.paymentId }
       };
+    case "INVOICE_ISSUED":
+      // 发票开具结果 (invoiceAction issue 触发), 接收人 = 申请人
+      return {
+        receiverUserId: uid,
+        title: `发票 ${p.invoiceNo} 已开票`,
+        content: `开票金额：¥${p.amount ?? "-"}`,
+        link: { kind: "invoice", id: p.invoiceId }
+      };
+    case "INVOICE_REJECTED":
+      // 发票驳回结果 (invoiceAction reject 触发), 接收人 = 申请人
+      return {
+        receiverUserId: uid,
+        title: `发票 ${p.invoiceNo} 已被驳回`,
+        content: `驳回原因：${p.reason ?? "-"}，可修改后重新提交`,
+        link: { kind: "invoice", id: p.invoiceId }
+      };
     case "CONTRACT_AUTO_EXECUTED":
       return {
         receiverUserId: uid,
@@ -133,6 +149,16 @@ function buildMessage(uid: string, ev: DomainEvent): ResolvedMessage {
         receiverUserId: uid,
         title: `${titlePrefix} ${p.contractNo} 已过期 ${p.daysOverdue} 天, 未结清 ¥${p.remaining ?? "-"}${titleSuffix}`,
         content,
+        link: { kind: "contract", id: p.contractId }
+      };
+    case "CONTRACT_PAID_INVOICE_PENDING":
+      // 回款已足额但开票不足额 (tickStaleContracts 触发): tryAutoClose 要双足额,
+      // 这种合同永不完结也没人察觉, 提醒 owner/admin 补开发票
+      // payload: contractId, contractNo, daysOverdue, paidAmount, totalAmount, invoicedAmount, remaining
+      return {
+        receiverUserId: uid,
+        title: `合同 ${p.contractNo} 回款已收齐, 还差 ¥${p.remaining ?? "-"} 发票未开`,
+        content: `合同已过期 ${p.daysOverdue ?? "-"} 天且回款已足额 (¥${p.paidAmount ?? "-"} / ¥${p.totalAmount ?? "-"}), 已开票 ¥${p.invoicedAmount ?? "-"} 未达完结阈值; 补齐开票后系统会自动完结`,
         link: { kind: "contract", id: p.contractId }
       };
     case "CERTIFICATE_EXPIRING":

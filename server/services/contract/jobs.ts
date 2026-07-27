@@ -2,7 +2,7 @@
  * 合同状态机自动转换 — DRAFT → ACTIVE / ACTIVE → CLOSED
  *
  * 触发入口:
- *   - tryAutoPublish:   createContract / updateContract / tickPublishableDraffts 调
+ *   - tryAutoPublish:   createContract / updateContract / tickPublishableDrafts 调
  *   - tryAutoClose:     tickCompletionCandidates 调
  *                       (R-07: 开票+回款都足额, reason 由 endDate<now 自动判定)
  *
@@ -15,7 +15,7 @@
  *       job 端也只剩 tickCompletionCandidates 一条, runContractExpiryJob 已删除。
  *
  * 真正的实现 (tryAutoClose / tryAutoPublish / closeContract 等) 在 ./status.ts;
- * job runner (tickPublishableDraffts / tickCompletionCandidates) 在 server/jobs/contract-automation.ts。
+ * job runner (tickPublishableDrafts / tickCompletionCandidates) 在 server/jobs/contract-automation.ts。
  * 本文件保留为文档占位, 外部仍然可以从 "@/server/services/contract" barrel 拿到所有 API。
  */
 export {};

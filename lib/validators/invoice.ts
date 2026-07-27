@@ -19,10 +19,17 @@ export const invoiceCreateSchema = z.object({
   // 发票号改为手工录入,不再由系统生成 DRAFT-{timestamp};系统 id 仍保留
   invoiceNo: z.string().min(1, "请填写发票号").max(50, "发票号不超过 50 字"),
   invoiceType: z.enum(["VAT_SPECIAL", "VAT_GENERAL", "VAT_ELECTRONIC", "ELEC_NORMAL"]),
-  amount: z.number().positive("金额必须大于 0"),
+  amount: z
+    .number()
+    .positive("金额必须大于 0")
+    .max(999999999999.99, "金额超出上限")
+    // 字符串形式判定, 避免 0.07*100=7.000000000000001 这类浮点误伤; 与 payment 口径一致
+    .refine((v) => /^\d+(\.\d{1,2})?$/.test(v.toString()), "金额最多 2 位小数"),
   taxRate: taxRateSchema.default(0.06),
   applyDate: isoDate,
   expectedIssueDate: isoDate.optional(),
+  // 合同约定付款日 (账龄 basis=due / 催收消费); 选填
+  dueDate: isoDate.optional(),
   titleType: z.enum(["COMPANY", "PERSONAL"]),
   titleName: z.string().min(1, "请填写抬头名称").max(100),
   taxNo: z.string().max(30).optional(),

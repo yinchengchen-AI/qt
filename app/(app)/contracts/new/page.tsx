@@ -59,6 +59,9 @@ export default function NewContractPage() {
   const { message } = AntdApp.useApp();
   const { data: session } = useSession();
   const currentUserId = (session?.user as { id?: string } | undefined)?.id;
+  // 负责人字段仅 admin 可见可改: 非 admin 提交时会被服务端 422 (仅 admin 可指定他人为负责人),
+  // 非 admin 的合同负责人由服务端默认 = 创建人, 表单不渲染该字段也不提交
+  const isAdmin = (session?.user as { roleCode?: string } | undefined)?.roleCode === "ADMIN";
   // ProForm 的 ProFormRef 类型未导出,用 any 承载动态表单引用
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const formRef = useRef<any>(null);
@@ -107,6 +110,9 @@ export default function NewContractPage() {
                 .map((f: { response?: { id?: string; name?: string; mimeType?: string; size?: number; uploadedBy?: string; uploadedAt?: string } }) => f.response)
                 .filter((r: { id?: string; name?: string; mimeType?: string; size?: number; uploadedBy?: string; uploadedAt?: string } | undefined): r is { id: string; name: string; mimeType: string; size: number; uploadedBy: string; uploadedAt: string } => Boolean(r && r.id))
             };
+            // 非 admin 不提交 ownerUserId (字段未渲染; 选客户时的预填值也要剥掉),
+            // 服务端对非 admin 显式指定他人为负责人会 422, 负责人默认 = 创建人
+            if (!isAdmin) delete (payload as Record<string, unknown>).ownerUserId;
             const res = await fetch("/api/contracts", {
               method: "POST",
               headers: { "Content-Type": "application/json" },
@@ -266,31 +272,33 @@ export default function NewContractPage() {
                   }));
                 }}
               />
-              <ProFormSelect
-                name="ownerUserId"
-                label="负责人"
-                placeholder="按姓名 / 工号搜索员工"
-                tooltip="默认继承所选客户的业务负责人；管理员可改为任意在职员工，便于代录 / 转交"
-                showSearch
-                rules={[{ required: true, message: "请选择合同负责人（必填）" }]}
-                fieldProps={{
-                  size: "large",
-                  optionFilterProp: "label"
-                }}
-                request={async (params: { keyWords?: string }) => {
-                  const qs = new URLSearchParams();
-                  qs.set("pageSize", "100");
-                  qs.set("status", "ACTIVE");
-                  qs.set("keyword", params.keyWords ?? "");
-                  const r = await fetch(`/api/users?${qs}`, { credentials: "include" });
-                  const j = await r.json();
-                  if (j.code !== 0) return [];
-                  return (j.data.list as ActiveUser[]).map((u) => ({
-                    value: u.id,
-                    label: `${u.name} (${u.employeeNo})`
-                  }));
-                }}
-              />
+              {isAdmin && (
+                <ProFormSelect
+                  name="ownerUserId"
+                  label="负责人"
+                  placeholder="按姓名 / 工号搜索员工"
+                  tooltip="默认继承所选客户的业务负责人；管理员可改为任意在职员工，便于代录 / 转交"
+                  showSearch
+                  rules={[{ required: true, message: "请选择合同负责人（必填）" }]}
+                  fieldProps={{
+                    size: "large",
+                    optionFilterProp: "label"
+                  }}
+                  request={async (params: { keyWords?: string }) => {
+                    const qs = new URLSearchParams();
+                    qs.set("pageSize", "100");
+                    qs.set("status", "ACTIVE");
+                    qs.set("keyword", params.keyWords ?? "");
+                    const r = await fetch(`/api/users?${qs}`, { credentials: "include" });
+                    const j = await r.json();
+                    if (j.code !== 0) return [];
+                    return (j.data.list as ActiveUser[]).map((u) => ({
+                      value: u.id,
+                      label: `${u.name} (${u.employeeNo})`
+                    }));
+                  }}
+                />
+              )}
             </FormGrid>
           </FormSection>
 

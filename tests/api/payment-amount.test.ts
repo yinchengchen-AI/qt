@@ -227,6 +227,19 @@ describe("paymentAction.confirm 校验", () => {
     ).rejects.toMatchObject({ errorCode: ERROR_CODES.PAYMENT_OVER_INVOICE });
   }));
 
+  it("R-10 已删除记录的流水号不占号 (deletedAt 过滤)", guard(async () => {
+    const c = await mkContract("1000.00", "R10-DEL");
+    const ref = `${TAG}-R10-DEL`;
+    const p1 = await mkPlannedPayment(c.id, null, 50, ref);
+    await paymentAction(buildFinance(), p1.id, { action: "confirm", bankRefNo: ref });
+    // 软删 p1 后, 同流水号应可再次 confirm (此前漏 deletedAt 过滤会误报 PAYMENT_DUPLICATE_REF)
+    await prisma.payment.update({ where: { id: p1.id }, data: { deletedAt: new Date() } });
+    const p2 = await mkPlannedPayment(c.id, null, 60, ref);
+    await expect(
+      paymentAction(buildFinance(), p2.id, { action: "confirm", bankRefNo: ref })
+    ).resolves.toBeTruthy();
+  }));
+
   it("R-12 超合同总额 → 抛 PAYMENT_OVER_CONTRACT", guard(async () => {
     const c = await mkContract("50.00", "R12");
     const ref1 = `${TAG}-R12-A`;

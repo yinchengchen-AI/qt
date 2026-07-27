@@ -5,7 +5,7 @@ import { type SessionUser } from "@/lib/session";
 import { requirePermission, RESOURCE, ACTION } from "@/lib/permissions";
 import type {InvoiceCreateInput, InvoiceUpdateInput} from "@/lib/validators/invoice";
 import { Prisma } from "@prisma/client";
-import { ownerEq, ownerViaContract, parseStatusList } from "@/lib/ownership";
+import { ownerViaContract, parseStatusList, isRowRestricted } from "@/lib/ownership";
 import { calcTaxBreakdown } from "@/lib/money";
 import { MONEY_TOLERANCE } from "@/lib/money-tolerance";
 import { INVOICE_LIMIT_COUNTED_STATUSES } from "@/lib/invoice-amounts";
@@ -26,7 +26,7 @@ export async function listInvoices(
     ...(ownerViaContract(user) as Prisma.InvoiceWhereInput),
   };
   const [list, total] = await Promise.all([
-    prisma.invoice.findMany({ where, orderBy: { createdAt: "desc" }, skip: (page - 1) * pageSize, take: pageSize }),
+    prisma.invoice.findMany({ where, orderBy: [{ createdAt: "desc" }, { id: "desc" }], skip: (page - 1) * pageSize, take: pageSize }),
     prisma.invoice.count({ where })
   ]);
   return { list, total, page, pageSize };
@@ -46,21 +46,19 @@ export async function getInvoice(user: SessionUser, id: string) {
 export async function createInvoice(user: SessionUser, input: InvoiceCreateInput) {
   requirePermission(user.roleCode, RESOURCE.INVOICE, ACTION.CREATE);
   return prisma.$transaction(async (tx) => {
-    // 先锁合同行 (序列化同一合同的并发开票), 消除 R-08 "先 SUM 后 INSERT" 的 TOCTOU 竞态。
-    // 模式与 updateContract (contract/crud.ts:299) 一致: dummy UPDATE 拿行锁并确认未软删。
-    let contract;
-    try {
-      contract = await tx.contract.update({
-        where: { id: input.contractId, deletedAt: null, ...ownerEq(user) },
-        data: { updatedAt: new Date() },
-        select: { id: true, contractNo: true, status: true, totalAmount: true, customerId: true, customerName: true }
-      });
-    } catch (e) {
-      if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === "P2025") {
-        throw new ApiError(ERROR_CODES.NOT_FOUND, "合同不存在", 404);
-      }
-      throw e;
-    }
+    // 先锁合同行 (SELECT ... FOR UPDATE 序列化同一合同的并发开票), 消除 R-08 "先 SUM 后 INSERT" 的 TOCTOU 竞态。
+    // 用 raw FOR UPDATE 而非 dummy UPDATE, 避免顺带刷新合同 updatedAt 造成污染。
+    // 行级隔离 (SALES/EXPERT 只能在自己的合同上开票) 与 deletedAt 过滤在同一查询里完成。
+    const ownerFilter = isRowRestricted(user) ? Prisma.sql`AND "ownerUserId" = ${user.id}` : Prisma.empty;
+    const contracts = await tx.$queryRaw<Array<{
+      id: string; contractNo: string; status: string; totalAmount: Prisma.Decimal; customerId: string; customerName: string;
+    }>>`
+      SELECT id, "contractNo", status, "totalAmount", "customerId", "customerName"
+      FROM "Contract"
+      WHERE id = ${input.contractId} AND "deletedAt" IS NULL ${ownerFilter}
+      FOR UPDATE`;
+    const contract = contracts[0];
+    if (!contract) throw new ApiError(ERROR_CODES.NOT_FOUND, "合同不存在", 404);
     if (contract.status !== "ACTIVE") {
       throw new ApiError(
         ERROR_CODES.CONTRACT_STATUS_INVALID,
@@ -85,9 +83,10 @@ export async function createInvoice(user: SessionUser, input: InvoiceCreateInput
         422
       );
     }
-    // 发票号唯一性预校验:DB 也有 @unique,但提前抛错返回更明确的 422 信息
+    // 发票号唯一性预校验:DB @unique 覆盖软删行, 预校验同口径查全量 (不带 deletedAt 过滤),
+    // 提前抛 422 友好信息, 避免撞库约束变 500
     const existingNo = await tx.invoice.findFirst({
-      where: { invoiceNo: input.invoiceNo, deletedAt: null }
+      where: { invoiceNo: input.invoiceNo }
     });
     if (existingNo) {
       throw new ApiError(ERROR_CODES.VALIDATION_FAILED, `发票号 ${input.invoiceNo} 已被使用`, 422);
@@ -106,6 +105,7 @@ export async function createInvoice(user: SessionUser, input: InvoiceCreateInput
         amountExcludingTax,
         applyDate: new Date(input.applyDate),
         expectedIssueDate: input.expectedIssueDate ? new Date(input.expectedIssueDate) : null,
+        dueDate: input.dueDate ? new Date(input.dueDate) : null,
         titleType: input.titleType,
         titleName: input.titleName,
         taxNo: input.taxNo ?? null,
@@ -167,10 +167,12 @@ export async function updateInvoice(user: SessionUser, id: string, input: Invoic
   return prisma.$transaction(async (tx) => {
     // P1-1: 改 amount 时重新跑 R-08, 防止"DRAFT 100 → 改 1000000 → 提交 → 财务开票"绕过合同总额
     if (newAmount !== undefined) {
-      const contract = await tx.contract.findUniqueOrThrow({
-        where: { id: inv.contractId },
-        select: { totalAmount: true }
-      });
+      // 先锁合同行 (FOR UPDATE), 与 createInvoice / assertWithinContractLimit 同一序列化点,
+      // 消除并发改金额的复检窗口
+      const contracts = await tx.$queryRaw<Array<{ totalAmount: Prisma.Decimal }>>`
+        SELECT "totalAmount" FROM "Contract" WHERE id = ${inv.contractId} FOR UPDATE`;
+      const contract = contracts[0];
+      if (!contract) throw new ApiError(ERROR_CODES.NOT_FOUND, "合同不存在", 404);
       // R-08 口径与 createInvoice 对齐 (含 PENDING_FINANCE), 排除自身
       const issued = await tx.invoice.aggregate({
         where: {
@@ -195,20 +197,40 @@ export async function updateInvoice(user: SessionUser, id: string, input: Invoic
     const attachments = input.attachments
       ? await resolveAttachmentSnapshots(input.attachments, "Invoice", id, tx)
       : undefined;
-    return tx.invoice.update({
-      where: { id },
-      data: {
-        ...(safeInput as InvoiceUpdateInput),
-        applyDate: input.applyDate ? new Date(input.applyDate) : undefined,
-        expectedIssueDate: input.expectedIssueDate ? new Date(input.expectedIssueDate) : undefined,
-        amount: newAmount,
-        taxRate: newTaxRate,
-        taxAmount,
-        amountExcludingTax,
-        attachments,
-        updatedById: user.id
+    let updated;
+    try {
+      updated = await tx.invoice.update({
+        // 状态门控原子化: 事务外 :142 的读只是友好预判, 真正的门控在这里——
+        // 非 admin 带 status 条件更新, 并发下 DRAFT→他态后这里撞 P2025
+        where: user.roleCode === "ADMIN" ? { id } : { id, status: "DRAFT" },
+        data: {
+          ...(safeInput as InvoiceUpdateInput),
+          applyDate: input.applyDate ? new Date(input.applyDate) : undefined,
+          expectedIssueDate: input.expectedIssueDate ? new Date(input.expectedIssueDate) : undefined,
+          dueDate: input.dueDate ? new Date(input.dueDate) : undefined,
+          amount: newAmount,
+          taxRate: newTaxRate,
+          taxAmount,
+          amountExcludingTax,
+          attachments,
+          updatedById: user.id
+        }
+      });
+    } catch (e) {
+      if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === "P2025") {
+        throw new ApiError(ERROR_CODES.ENTITY_IMMUTABLE, "当前状态不可修改", 403);
       }
-    });
+      throw e;
+    }
+    if (newAmount !== undefined) {
+      // 系统预建 PLANNED 回款 (issue 时按发票全额自动创建, paymentNo 以 -PLANNED 结尾) 是旧金额快照,
+      // 改金额后同步; 手工登记的 PLANNED 不动 (用户自己负责)
+      await tx.payment.updateMany({
+        where: { invoiceId: id, status: "PLANNED", paymentNo: { endsWith: "-PLANNED" }, deletedAt: null },
+        data: { amount: newAmount, updatedById: user.id }
+      });
+    }
+    return updated;
   });
 }
 

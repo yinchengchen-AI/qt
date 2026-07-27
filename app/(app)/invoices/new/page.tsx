@@ -92,6 +92,7 @@ export default function NewInvoicePage() {
               ...values,
               applyDate: values.applyDate ? dayjs(values.applyDate).toISOString() : undefined,
               expectedIssueDate: values.expectedIssueDate ? dayjs(values.expectedIssueDate).toISOString() : undefined,
+              dueDate: values.dueDate ? dayjs(values.dueDate).toISOString() : undefined,
               attachments: newlyUploaded
             };
             delete (payload as Record<string, unknown>).attachments_uploads;
@@ -271,6 +272,11 @@ export default function NewInvoicePage() {
               <ProFormDatePicker
                 name="expectedIssueDate"
                 label="预计开票日"
+                fieldProps={{ size: "large", style: { width: "100%" } }}
+              />
+              <ProFormDatePicker
+                name="dueDate"
+                label="到期日"
                 fieldProps={{ size: "large", style: { width: "100%" } }}
               />
             </FormGrid>

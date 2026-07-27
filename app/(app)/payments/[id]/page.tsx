@@ -1,7 +1,7 @@
 
 "use client";
 import { ProCard, ProDescriptions } from "@ant-design/pro-components";
-import { App, Button, Input, Modal, Space } from "antd";
+import { App, Button, DatePicker, Input, Modal, Select, Space } from "antd";
 import { FilePdfOutlined } from "@ant-design/icons";
 import { useParams} from "next/navigation";
 import { useGoBack } from "@/lib/navigation";
@@ -9,6 +9,7 @@ import type { Payment as PaymentEntity } from "@/lib/types/entities";
 import useSWR from "swr";
 import { useSession } from "next-auth/react";
 import { useRef } from "react";
+import dayjs from "dayjs";
 import { Page } from "@/components/page";
 import { PageHeader } from "@/components/page-header";
 import { DetailPageSkeleton } from "@/components/detail-page-skeleton";
@@ -37,6 +38,8 @@ export default function PaymentDetailPage() {
   // (antd 的静态 Modal 不会随父组件重渲染,onOk 捕获的是点击触发时的旧闭包)
   const bankRefNoRef = useRef("");
   const reasonRef = useRef("");
+  const receivedAtRef = useRef("");
+  const methodRef = useRef("");
 
   const { run } = useActionCall({ baseUrl: `/api/payments/${id}`, reload: () => mutate() });
   // 后端存的是 userId,前端要展示姓名;查不到时 fallback 到原 id
@@ -59,28 +62,50 @@ export default function PaymentDetailPage() {
 
   const askConfirm = () => {
     bankRefNoRef.current = "";
+    // 到账日默认今天 (预建 PLANNED 的 receivedAt 是开票时间快照, 确认时可更正); 方式默认当前值
+    receivedAtRef.current = dayjs().toISOString();
+    methodRef.current = payment.method ?? "";
+    const payload = () => ({
+      bankRefNo: bankRefNoRef.current.trim(),
+      receivedAt: receivedAtRef.current || undefined,
+      method: methodRef.current || undefined
+    });
     Modal.confirm({
       title: "确认回款（财务）？",
       content: (
-        <Input
-          autoFocus
-          placeholder="请输入 20 位银行流水号"
-          onChange={(e) => { bankRefNoRef.current = e.target.value; }}
-          onPressEnter={async (e) => {
-            // 回车直接提交,避开鼠标点 OK 时漏改 state 的问题
-            e.preventDefault();
-            const ref = bankRefNoRef.current.trim();
-            if (!ref) return;
-            await run("confirm", { bankRefNo: ref });
-            bankRefNoRef.current = "";
-            Modal.destroyAll();
-          }}
-        />
+        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+          <Input
+            autoFocus
+            placeholder="请输入银行流水号"
+            onChange={(e) => { bankRefNoRef.current = e.target.value; }}
+            onPressEnter={async (e) => {
+              // 回车直接提交,避开鼠标点 OK 时漏改 state 的问题
+              e.preventDefault();
+              const p = payload();
+              if (!p.bankRefNo) return;
+              await run("confirm", p);
+              bankRefNoRef.current = "";
+              Modal.destroyAll();
+            }}
+          />
+          <DatePicker
+            defaultValue={dayjs()}
+            disabledDate={(d) => d.isAfter(dayjs(), "day")}
+            placeholder="到账日（默认今天）"
+            style={{ width: "100%" }}
+            onChange={(d) => { receivedAtRef.current = d ? d.toISOString() : ""; }}
+          />
+          <Select
+            defaultValue={payment.method}
+            options={Object.entries(METHOD_MAP).map(([value, label]) => ({ value, label }))}
+            onChange={(v) => { methodRef.current = v; }}
+          />
+        </div>
       ),
       onOk: async () => {
-        const ref = bankRefNoRef.current.trim();
-        if (!ref) { Modal.destroyAll(); return; }
-        await run("confirm", { bankRefNo: ref });
+        const p = payload();
+        if (!p.bankRefNo) { Modal.destroyAll(); return; }
+        await run("confirm", p);
         bankRefNoRef.current = "";
       }
     });

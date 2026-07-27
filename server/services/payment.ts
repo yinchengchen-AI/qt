@@ -43,7 +43,7 @@ export async function listPayments(
     // 不带 deliverables — 交付物仅在合同管理侧展示, 回款不掺杂该业务.
     prisma.payment.findMany({
       where,
-      orderBy: { receivedAt: "desc" },
+      orderBy: [{ receivedAt: "desc" }, { id: "desc" }],
       skip: (page - 1) * pageSize,
       take: pageSize,
       select: {
@@ -52,7 +52,9 @@ export async function listPayments(
         remark: true, status: true, recorderUserId: true, reconcileUserId: true,
         reconciledAt: true, createdAt: true, updatedAt: true, createdById: true,
         updatedById: true, deletedAt: true,
-        contract: { select: { contractNo: true, title: true, customerName: true, serviceType: true, totalAmount: true } }
+        contract: { select: { contractNo: true, title: true, customerName: true, serviceType: true, totalAmount: true } },
+        // 导出 Excel"关联发票号"列用; 列表页 UI 不消费该字段
+        invoice: { select: { invoiceNo: true } }
       }
     }),
     prisma.payment.count({ where })
@@ -120,30 +122,48 @@ export async function createPayment(
         throw new ApiError(ERROR_CODES.VALIDATION_FAILED, "仅已开票（ISSUED）状态的发票可关联回款", 422);
       }
     }
-    const paymentNo = await nextBusinessNo("PAYMENT");
+    const paymentNo = await nextBusinessNo("PAYMENT", undefined, tx);
     // 登记阶段即做金额前置校验, 避免"登记通过、确认时才报超额"
     // 即使 force 模式也校验: 防止 force 旁路下被滥用为超额录入
     const TOL = MONEY_TOLERANCE;
     const inputAmt = new Prisma.Decimal(input.amount.toString());
     if (input.invoiceId && inv) {
       const sum = await tx.payment.aggregate({
-        where: { invoiceId: inv.id, status: { in: ["CONFIRMED", "RECONCILED"] }, deletedAt: null },
+        where: {
+          invoiceId: inv.id,
+          deletedAt: null,
+          OR: [
+            { status: { in: ["CONFIRMED", "RECONCILED"] } },
+            // 手工登记的 PLANNED 也计入预检, 防止同发票堆积多笔待确认回款;
+            // 排除 paymentNo 以 -PLANNED 结尾的系统预建记录(开票时自动创建, 金额=发票全额),
+            // 否则已有自动预建记录的发票将完全无法手工登记(死锁)
+            { status: "PLANNED", paymentNo: { not: { endsWith: "-PLANNED" } } }
+          ]
+        },
         _sum: { amount: true }
       });
       const sumAmt = new Prisma.Decimal(sum._sum.amount?.toString() ?? "0");
       const invAmt = new Prisma.Decimal(inv.amount.toString());
       if (sumAmt.plus(inputAmt).greaterThan(invAmt.plus(TOL))) {
-        throw new ApiError(ERROR_CODES.PAYMENT_OVER_INVOICE, "该发票累计回款将超过发票金额", 422);
+        throw new ApiError(ERROR_CODES.PAYMENT_OVER_INVOICE, "该发票累计回款将超过发票金额（已存在待确认回款，请先确认或取消）", 422);
       }
     }
     const sumC = await tx.payment.aggregate({
-      where: { contractId: contract.id, status: { in: ["CONFIRMED", "RECONCILED"] }, deletedAt: null },
+      where: {
+        contractId: contract.id,
+        deletedAt: null,
+        OR: [
+          { status: { in: ["CONFIRMED", "RECONCILED"] } },
+          // 同上: 手工 PLANNED 计入, 系统预建(-PLANNED 后缀)不计
+          { status: "PLANNED", paymentNo: { not: { endsWith: "-PLANNED" } } }
+        ]
+      },
       _sum: { amount: true }
     });
     const sumCAmt = new Prisma.Decimal(sumC._sum.amount?.toString() ?? "0");
     const contractAmt = new Prisma.Decimal(contract.totalAmount.toString());
     if (sumCAmt.plus(inputAmt).greaterThan(contractAmt.plus(TOL))) {
-      throw new ApiError(ERROR_CODES.PAYMENT_OVER_CONTRACT, "该合同累计回款将超过合同总额", 422);
+      throw new ApiError(ERROR_CODES.PAYMENT_OVER_CONTRACT, "该合同累计回款将超过合同总额（已存在待确认回款，请先确认或取消）", 422);
     }
     // force 模式下追加审计标记到 remark, 方便后续筛查所有 force 录入的回款
     const baseRemark = input.remark ?? "";
@@ -210,7 +230,14 @@ export async function refundPaymentInTx(
 // 主体改走 lib/status-machine.ts:runTransitionInTx, 4 个 arm 共用 mismatchError 覆写
 // ENTITY_IMMUTABLE 403, 角色校验 (FINANCE/ADMIN) 留在 caller.
 export async function paymentAction(user: SessionUser, id: string, input: PaymentActionInput): Promise<Record<string, unknown>> {
-  requirePermission(user.roleCode, RESOURCE.PAYMENT, ACTION.UPDATE);
+  // 权限按动作分流: cancel 只需 CREATE (SALES/EXPERT 有, 修复其无法取消自己登记的 PLANNED),
+  // 能否取消仍由下方 precondition 限定"创建人本人或 ADMIN/FINANCE";
+  // confirm/reconcile/refund 需 UPDATE (FINANCE/ADMIN), 且有 requireFinance 门控
+  if (input.action === "cancel") {
+    requirePermission(user.roleCode, RESOURCE.PAYMENT, ACTION.CREATE);
+  } else {
+    requirePermission(user.roleCode, RESOURCE.PAYMENT, ACTION.UPDATE);
+  }
   return prisma.$transaction(async (tx) => {
     const commonLoad = (t: typeof tx) => t.payment.findFirst({
       where: { id, deletedAt: null, ...(ownerViaContract(user) as Prisma.PaymentWhereInput) },
@@ -240,9 +267,9 @@ export async function paymentAction(user: SessionUser, id: string, input: Paymen
           if (current.invoiceId) {
             await t.$queryRaw`SELECT id FROM "Invoice" WHERE id = ${current.invoiceId} AND "deletedAt" IS NULL FOR UPDATE`;
           }
-          // R-10: 流水号唯一 (在 CONFIRMED/RECONCILED 池里)
+          // R-10: 流水号唯一 (在 CONFIRMED/RECONCILED 池里, 已删除记录不占号)
           const dup = await t.payment.findFirst({
-            where: { bankRefNo: ref, status: { in: ["CONFIRMED", "RECONCILED"] }, NOT: { id: current.id } },
+            where: { bankRefNo: ref, status: { in: ["CONFIRMED", "RECONCILED"] }, deletedAt: null, NOT: { id: current.id } },
           });
           if (dup) throw new ApiError(ERROR_CODES.PAYMENT_DUPLICATE_REF, `流水号 ${ref} 已存在`, 409);
           // R-11 (若挂发票): 累计回款 ≤ 发票金额
@@ -270,7 +297,12 @@ export async function paymentAction(user: SessionUser, id: string, input: Paymen
             throw new ApiError(ERROR_CODES.PAYMENT_OVER_CONTRACT, "该合同累计回款将超过合同总额", 422);
           }
         },
-        extraData: (current) => ({ bankRefNo: input.bankRefNo ?? current.bankRefNo }),
+        extraData: (current) => ({
+          bankRefNo: input.bankRefNo ?? current.bankRefNo,
+          // 预建/登记时的 receivedAt 可能是开票时间快照, confirm 时允许更正为实际到账日
+          ...(input.receivedAt ? { receivedAt: new Date(input.receivedAt) } : {}),
+          ...(input.method ? { method: input.method } : {}),
+        }),
         audit: (current) => {
           const ref = input.bankRefNo ?? current.bankRefNo;
           return {
@@ -287,7 +319,7 @@ export async function paymentAction(user: SessionUser, id: string, input: Paymen
           return {
             type: "PAYMENT_RECEIVED",
             payload: { paymentId: current.id, paymentNo: current.paymentNo, amount: Number(current.amount), customerName: customer.name },
-            receivers: Array.from(new Set([ct.ownerUserId, ...admins])),
+            receivers: Array.from(new Set([ct.ownerUserId, current.recorderUserId, ...admins])),
           };
         },
         mismatchError: { ...mismatch, message: (_c, to) => `仅 PLANNED 可确认(目标: ${to})` },
@@ -319,8 +351,11 @@ export async function paymentAction(user: SessionUser, id: string, input: Paymen
         from: ["CONFIRMED", "RECONCILED"],
         to: "REFUNDED",
         // P1-2: 把原 payment 翻为 REFUNDED, 累计和 (R-11/R-12) 自动从 CONFIRMED/RECONCILED 池里掉出来
+        // 退款即失去对账语义, 清空对账人/对账时间
         extraData: (current) => ({
           remark: `退款:${reason}${current.remark ? ` | 原备注:${current.remark}` : ""}`,
+          reconcileUserId: null,
+          reconciledAt: null,
           updatedById: user.id,
         }),
         audit: (current) => ({
@@ -345,7 +380,12 @@ export async function paymentAction(user: SessionUser, id: string, input: Paymen
             throw new ApiError(ERROR_CODES.FORBIDDEN, "仅创建人或财务可取消", 403);
           }
         },
-        audit: () => ({ actorId: user.id, action: "PAYMENT_CANCEL", before: { status: "PLANNED" }, after: { status: "CANCELLED" } }),
+        audit: (current) => ({
+          actorId: user.id,
+          action: "PAYMENT_CANCEL",
+          before: { status: "PLANNED", amount: Number(current.amount), bankRefNo: current.bankRefNo },
+          after: { status: "CANCELLED" },
+        }),
         mismatchError: { ...mismatch, message: (_c, to) => `仅 PLANNED 可取消(目标: ${to})` },
       });
       return result.updated!;

@@ -256,3 +256,54 @@ describe("tickStaleContracts — 过期未结清提醒 (集成)", () => {
     expect(r2.created).toBe(0);
   });
 });
+
+describe("tickStaleContracts — 回款已足额但开票不足额提醒 (CONTRACT_PAID_INVOICE_PENDING)", () => {
+  // 查本测试合同当天收到的某类型消息 (link.id = contractId)
+  async function findMessages(contractId: string, type: "CONTRACT_PAID_INVOICE_PENDING" | "CONTRACT_EXPIRED_UNPAID") {
+    const msgs = await prisma.message.findMany({
+      where: { type },
+      select: { id: true, link: true }
+    });
+    const mine = msgs.filter((m) => (m.link as { id?: string } | null)?.id === contractId);
+    for (const m of mine) createdMessageIds.push(m.id);
+    return mine;
+  }
+
+  it("回款足额 + 开票不足额 → 发 CONTRACT_PAID_INVOICE_PENDING, 且同一天去重", async () => {
+    if (!dbReachable) return;
+    const c = await mkContract({ endDate: veryOldEndDate, totalAmount: "1000.00", suffix: "P1" });
+    await mkReconciledPayment(c.id, "1000.00", "P1"); // 钱收齐
+    await mkIssuedInvoice(c.id, "500.00", "P1");      // 票只开了一半
+
+    const now = new Date("2026-06-26T00:00:00Z");
+    await tickStaleContracts(now);
+
+    const pendingMsgs = await findMessages(c.id, "CONTRACT_PAID_INVOICE_PENDING");
+    expect(pendingMsgs.length).toBeGreaterThan(0);
+    // 不应再走"未结清催款"分支
+    const unpaidMsgs = await findMessages(c.id, "CONTRACT_EXPIRED_UNPAID");
+    expect(unpaidMsgs.length).toBe(0);
+
+    // 同一天再跑: 已去重, 不再发
+    const before = (await findMessages(c.id, "CONTRACT_PAID_INVOICE_PENDING")).length;
+    await tickStaleContracts(now);
+    const after = (await findMessages(c.id, "CONTRACT_PAID_INVOICE_PENDING")).length;
+    expect(after).toBe(before);
+  });
+
+  it("回款在 0.01 容差内视为足额 (与 status.ts Decimal+容差口径一致)", async () => {
+    if (!dbReachable) return;
+    // total=1000, ratio=0.95 → threshold=950, 容差后有效阈值 949.99
+    // 旧 JS number 口径 (paid >= total*ratio) 会把 949.99 判为未足额走催款分支
+    const c = await mkContract({ endDate: veryOldEndDate, totalAmount: "1000.00", suffix: "P2" });
+    await mkReconciledPayment(c.id, "949.99", "P2");
+    // 不开票 → 若视为回款足额, 应走"待补开票"分支
+
+    await tickStaleContracts(new Date("2026-06-26T00:00:00Z"));
+
+    const pendingMsgs = await findMessages(c.id, "CONTRACT_PAID_INVOICE_PENDING");
+    expect(pendingMsgs.length).toBeGreaterThan(0);
+    const unpaidMsgs = await findMessages(c.id, "CONTRACT_EXPIRED_UNPAID");
+    expect(unpaidMsgs.length).toBe(0);
+  });
+});
