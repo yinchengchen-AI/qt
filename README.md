@@ -1,7 +1,7 @@
 # 杭州企泰安全科技 业务管理系统 (qt-biz)
 
 > 客户 / 合同 / 开票 / 回款 一体化管理,附件走 MinIO presigned 直传。
-> **当前版本: v0.10.6**(2026-07-23)
+> **当前版本: v0.11.0**(2026-07-24)
 > 详细设计见 [docs/architecture/DESIGN-v3.md](docs/architecture/DESIGN-v3.md),用户手册见 [docs/user/USER_MANUAL.md](docs/user/USER_MANUAL.md)。
 > 2026-07-04 增量同步: 全库代码审计 10 处 bug 修复 + 2 组单元测试已补到「最近更新」开头。
 
@@ -413,6 +413,38 @@ xlsx 导出走 `lib/excel.ts` + `exceljs`; 中文文件名通过 `attachmentHead
 | dev server `/login` `/dashboard` `/contracts` `/reports/PERFORMANCE` | 200 |
 
 ## 最近更新
+
+### v0.11.0(2026-07-24) 合同 / 开票 / 回款 全模块逻辑审查修复(24 项)
+
+> 对三个核心模块做了一轮完整代码逻辑审查并修复全部确认问题:P0 功能失效 4 项、P1 数据一致性 / 业务漏洞 12 项、P2/P3 不一致与健壮性问题若干。新增 24 个回归测试,全量 615 用例全绿。
+
+**P0 功能失效**:
+- 回款登记页「取消」按钮无效(`onCancel={() => goBack}` 未调用)
+- 回款导出 Excel「关联发票号」列恒为空(listPayments select 缺 invoice 关系)
+- SALES/EXPERT 无法取消自己登记的 PLANNED 回款(权限自相矛盾):cancel 改走 CREATE 权限 + 创建人校验
+- 发票详情页「提交」按钮只有财务可见(服务端本就不限):销售可提交自己的草稿
+
+**P1 数据一致性 / 业务漏洞**:
+- `Invoice.dueDate` 补齐写入链路(validator → service → 新建/编辑表单「到期日」选填),账龄 basis=due 不再恒空
+- 红冲票(负数票)禁止再作废 / 再红冲,净额自洽
+- `updateInvoice` 状态门控 TOCTOU:非 admin 的 update 带 `status: "DRAFT"` 条件
+- R-08 累计开票复检全部加合同行 `FOR UPDATE` 锁(create/update/submit/issue),并发不再超额;顺带消除 dummy update 污染合同 `updatedAt`
+- 票号唯一性:P2002 → 422 友好报错,预校验与 DB unique 同口径(含软删行)
+- 回款 confirm 可更正到账日 / 收款方式(修复预建回款 receivedAt=开票时间的账龄失真)
+- 发票作废/红冲取消 PLANNED 回款补审计日志;admin 改 ISSUED 票金额自动同步预建回款
+- issue 补 R-09 公司抬头税号强校验;驳回 / 开票站内信通知申请人(`INVOICE_ISSUED` / `INVOICE_REJECTED`)
+- 合同创建/编辑补 `CONTRACT_CREATE` / `CONTRACT_UPDATE` 审计(操作记录 tab 不再空白)
+- 新增「合同过期 + 回款足额但开票不足额」每日提醒 `CONTRACT_PAID_INVOICE_PENDING`(原三条路径的盲区)
+- updateContract 税额重算改用事务内 locked 行;补 serviceType 字典校验;非 admin 显式指定他人负责人 → 422
+- `nextBusinessNo` 支持传入外层 tx,修复回滚跳号
+
+**P2/P3**:作废文案与 24h 窗口对齐、三个列表补 id 排序 tiebreaker、stale 阈值统一 Decimal+容差、逾期提醒浮点改 Decimal、金额入参 2 位小数+上限、到账日不得为未来、refund 清对账字段、publish-eligibility 补 READ 权限、死代码/拼写/过期注释清理。
+
+**版本号**: `0.10.6` → `0.11.0` (minor bump, 含新功能:到期日字段、新消息类型、新提醒分支)
+
+**部署说明**:
+- 含 2 个新 migration(MessageType 枚举加 `INVOICE_ISSUED` / `INVOICE_REJECTED` / `CONTRACT_PAID_INVOICE_PENDING`),部署时执行 `npm run prisma:deploy`
+- 行为变更注意:非 admin 不能再显式指定他人为合同负责人(前端表单已同步收窄);手工 PLANNED 回款计入登记预检(开票自动预建的不计入)
 
 ### v0.10.6(2026-07-23) 客户列表「来源」列替换为「联系人」列
 

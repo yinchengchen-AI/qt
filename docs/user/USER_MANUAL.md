@@ -259,7 +259,7 @@ v0.5.0(2026-06-29)起客户表不再有 `status` 字段, 详情页右上角「�
 | `CLOSED` 已完结 | 终态 | 编辑(修正字段) / 删除(子数据兜底) |
 
 **自动化细节**:
-- `DRAFT → ACTIVE`:`createContract` / `updateContract` 保存时自动判定 `isPublishable(c)`,条件满足即升 ACTIVE。每小时 cron `tickPublishableDraffts` 兜底。
+- `DRAFT → ACTIVE`:`createContract` / `updateContract` 保存时自动判定 `isPublishable(c)`,条件满足即升 ACTIVE。每小时 cron `tickPublishableDrafts` 兜底。
 - `ACTIVE → CLOSED (completed)`:每日 `tickCompletionCandidates` 扫开票足额合同,自动完结。
 - `ACTIVE → CLOSED (expired)`:每日 `runContractExpiryJob` 扫 `endDate<now` 的合同,自动完结。
 - `ACTIVE → CLOSED (terminated)` / `completed`:admin 强制完结弹窗选 reason。
@@ -409,8 +409,8 @@ DRAFT ─submit─▶ PENDING_FINANCE ─issue─▶ ISSUED
 
 ### 8.2 关键校验
 
-- **R-08**:**同一合同累计开票金额 ≤ 合同总额**,超额时拒绝 `INVOICE_OVER_LIMIT`
-- **R-09**:`→ ISSUED` 必须有 **抬头 / 税号 / 开户行 / 账号 / 地址电话** 等发票信息
+- **R-08**:**同一合同累计开票金额 ≤ 合同总额**,超额时拒绝 `INVOICE_OVER_LIMIT`(创建 / 提交 / 开票 / 改金额四处带合同行锁复检)
+- **R-09**:`→ ISSUED` 时:电子发票号必须 **20 位数字**;**公司抬头必须填写税号**,缺失拒绝 `INVOICE_INFO_INVALID`
 - 抬头 / 税号 通常自动取自 **客户档案**;如有差异可手工调整
 - **草稿编号**:`DRAFT-{timestamp}`,正式号在 `issue` 时由系统重排
 
@@ -425,6 +425,7 @@ DRAFT ─submit─▶ PENDING_FINANCE ─issue─▶ ISSUED
 | 税率 * | ✓ | 默认 6% |
 | 申请日期 * | ✓ | 默认今天 |
 | 预计开票日期 | — | 用于提醒 |
+| 到期日 | — | 合同约定付款日,账龄「按到期日」基准;未填回退到实际开票日 |
 | 抬头类型 * | ✓ | 公司 / 个人 |
 | 抬头名称 * | ✓ | 自动从客户档案带出 |
 | 税号 | — | 公司抬头时建议填写 |
@@ -433,11 +434,11 @@ DRAFT ─submit─▶ PENDING_FINANCE ─issue─▶ ISSUED
 
 ### 8.4 提交 / 审核流程
 
-- **提交**:`DRAFT → PENDING_FINANCE`,触发领域事件 `CONTRACT_PENDING_REVIEW` 同类通知(管理员 + 财务)
-- **审核通过**(财务):`→ ISSUED`,系统分配正式号
-- **驳回**:`→ DRAFT`,必填意见,申请人收到 `INVOICE_REJECTED` 通知
-- **作废**:`ISSUED → VOIDED`,必填作废原因
-- **红冲**:`ISSUED → RED_FLUSHED`,生成反向负数发票,自动关联原票
+- **提交**:`DRAFT → PENDING_FINANCE`,销售可提交自己的草稿(限本人合同的行级权限)
+- **审核通过**(财务):`→ ISSUED`,系统分配正式号,申请人收到 `INVOICE_ISSUED` 通知;同时自动预建一笔 `PLANNED` 回款(金额=发票额)
+- **驳回**:`→ REJECTED`,必填意见,申请人收到 `INVOICE_REJECTED` 通知
+- **作废**:`ISSUED → VOIDED`,必填作废原因,**仅开票后 24 小时内**可操作;该发票的预建回款同步取消、已确认回款自动退款
+- **红冲**:`ISSUED → RED_FLUSHED`,生成反向负数发票,自动关联原票;**红冲票(负数票)不可再作废 / 再红冲**
 
 ---
 
@@ -470,6 +471,7 @@ PLANNED ─confirm─▶ CONFIRMED ─reconcile─▶ RECONCILED
 - **R-10**:`bankRefNo`(银行流水号)在 `CONFIRMED` 状态全局唯一,重复 confirm 会被拒 `PAYMENT_DUPLICATE_REF`;**`PLANNED` 阶段允许重复**(草稿期间填错不阻塞)
 - **R-11**:回款到单张发票的累计金额 ≤ 该发票金额
 - **R-12**:回款到单张合同的累计金额 ≤ 该合同总额
+- **登记预检**:手工登记的 `PLANNED` 回款计入 R-11/R-12 累计(防止同一发票重复登记多笔待确认);开票时系统自动预建的 `PLANNED` 不计入,不阻塞正常登记
 
 ### 9.3 新建回款
 
@@ -478,8 +480,8 @@ PLANNED ─confirm─▶ CONFIRMED ─reconcile─▶ RECONCILED
 | 客户 * | ✓ | 自动取合同客户 |
 | 合同 * | ✓ | 选 `ACTIVE` / `ACTIVE` 合同 |
 | 发票 | — | 若已开票可挂接 |
-| 金额 * | ✓ | ≤ 合同剩余未回款额 |
-| 到账日期 * | ✓ | 默认今天 |
+| 金额 * | ✓ | ≤ 合同剩余未回款额;最多 2 位小数 |
+| 到账日期 * | ✓ | 默认今天;不得为未来日期 |
 | 收款方式 * | ✓ | 银行转账 / 支票 / 现金 / 微信 / 支付宝 / 其他 |
 | 银行流水号 | — | `PLANNED` 阶段允许重复,confirm 前补齐 |
 | 开户行 | — | 建议填写 |
@@ -487,11 +489,11 @@ PLANNED ─confirm─▶ CONFIRMED ─reconcile─▶ RECONCILED
 
 ### 9.4 确认 / 核销
 
-- **确认到账**:`PLANNED → CONFIRMED`,流水号此时起全局唯一
+- **确认到账**:`PLANNED → CONFIRMED`,流水号此时起全局唯一;确认时可更正 **到账日 / 收款方式**(如开票自动预建的回款,默认到账日为开票日,确认时改成实际到账日)
 - **核销**:`CONFIRMED → RECONCILED`,由 finance 在「对账」动作里勾选目标发票即可
 - 一笔回款对应 **一张发票**(`payment.invoiceId`),没有跨发票分摊 —— 回款在创建时已绑定发票,避免一笔回款挂多张发票带来的跨合同抹账风险
-- **退款**:`→ REFUNDED`,必填退款原因
-- **取消**:`PLANNED / CONFIRMED → CANCELLED`,`RECONCILED` 状态不能直接取消(需先反核销)
+- **退款**:`→ REFUNDED`,必填退款原因,退款后核销人 / 核销时间自动清空
+- **取消**:仅 `PLANNED → CANCELLED`;**创建人本人**或财务 / 管理员可取消(销售可自助撤掉自己录错的登记)
 
 ---
 
@@ -509,8 +511,11 @@ PLANNED ─confirm─▶ CONFIRMED ─reconcile─▶ RECONCILED
 | `CONTRACT_APPROVED` | 合同 approve | 合同负责人 |
 | `CONTRACT_REJECTED` | 合同 reject | 合同负责人 |
 | `CONTRACT_EXPIRING` | 合同 endDate 提前 30 / 7 / 1 天 | 合同负责人 + 全部管理员 |
-| `PAYMENT_RECEIVED` | 回款 confirm | 合同负责人 + 全部管理员 |
+| `PAYMENT_RECEIVED` | 回款 confirm | 合同负责人 + 登记人 + 全部管理员 |
+| `INVOICE_ISSUED` | 发票开票通过 | 发票申请人 |
+| `INVOICE_REJECTED` | 发票被驳回 | 发票申请人 |
 | `INVOICE_OVERDUE_PAYMENT` | 实际开票日后 30 天仍未回款 | 负责人 + 管理员 + 财务 |
+| `CONTRACT_PAID_INVOICE_PENDING` | 合同过期且回款已足额但开票不足额(每日) | 合同负责人 + 全部管理员 |
 | `PROJECT_DUE` | 项目 endDate 前 7 天 | 项目经理 + 负责人 + 管理员 |
 
 **操作**:
@@ -555,7 +560,7 @@ PLANNED ─confirm─▶ CONFIRMED ─reconcile─▶ RECONCILED
 ### 11.2 账龄(Aging)
 
 - **账龄基准切换** (顶部 Segmented):
-  - **按到期日** (默认): 以 `Invoice.dueDate` 为起点(合同约定付款日);新发票在开票审核时录入 `dueDate`,历史 ISSUED 发票按 `actualIssueDate + 30 天` 回填,未填写的发票回退到 `actualIssueDate`。
+  - **按到期日** (默认): 以 `Invoice.dueDate` 为起点(合同约定付款日);新建 / 编辑发票时可填写「到期日」(选填),未填写的发票回退到 `actualIssueDate`。
   - **按开票日**: 以 `Invoice.actualIssueDate` 为起点, 与 v0.6 之前行为一致。
 - **应收账款账龄分布**:
   - `0-30 天` / `31-60 天` / `61-90 天` / `90+ 天` 四档
