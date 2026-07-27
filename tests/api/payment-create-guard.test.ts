@@ -302,3 +302,37 @@ describe("createPayment admin force 旁路 (P2-3)", () => {
     ).rejects.toMatchObject({ errorCode: ERROR_CODES.VALIDATION_FAILED });
   }));
 });
+
+// =====================================================
+// 手工 PLANNED 堆积防呆 (P1): 创建预检把手工 PLANNED 计入累计,
+// 但排除开票时系统预建的 -PLANNED 后缀记录 (否则已有预建记录的发票死锁)
+// =====================================================
+describe("createPayment 手工 PLANNED 堆积防呆 (P1)", () => {
+  it("系统预建 PLANNED(-PLANNED 后缀) 不计入预检: 发票全额仍可手工登记", guard(async () => {
+    const c = await mkContract("1000.00", "PLANNED-AUTO");
+    const inv = await mkInvoice(c.id, 50, "AUTO", true); // issue 自动预建 50 的 PLANNED
+    const p = await createPayment(buildAdmin(), { contractId: c.id, invoiceId: inv.id, amount: 50, receivedAt: new Date().toISOString(), method: "BANK_TRANSFER" });
+    expect(p.status).toBe("PLANNED");
+    createdPaymentIds.push(p.id);
+  }));
+
+  it("已有手工 PLANNED 时加本笔超发票额 → PAYMENT_OVER_INVOICE 且提示待确认", guard(async () => {
+    const c = await mkContract("1000.00", "PLANNED-STACK");
+    const inv = await mkInvoice(c.id, 50, "STACK", true);
+    const p1 = await createPayment(buildAdmin(), { contractId: c.id, invoiceId: inv.id, amount: 30, receivedAt: new Date().toISOString(), method: "BANK_TRANSFER" });
+    createdPaymentIds.push(p1.id);
+    const err = await createPayment(buildAdmin(), { contractId: c.id, invoiceId: inv.id, amount: 30, receivedAt: new Date().toISOString(), method: "BANK_TRANSFER" })
+      .then(() => null, (e: unknown) => e);
+    expect(err).toMatchObject({ errorCode: ERROR_CODES.PAYMENT_OVER_INVOICE });
+    expect(String((err as Error).message)).toContain("待确认");
+  }));
+
+  it("合同级: 手工 PLANNED 累计 + 本笔超合同总额 → PAYMENT_OVER_CONTRACT", guard(async () => {
+    const c = await mkContract("100.00", "PLANNED-CT");
+    const p1 = await createPayment(buildAdmin(), { contractId: c.id, amount: 80, receivedAt: new Date().toISOString(), method: "BANK_TRANSFER" });
+    createdPaymentIds.push(p1.id);
+    await expect(
+      createPayment(buildAdmin(), { contractId: c.id, amount: 30, receivedAt: new Date().toISOString(), method: "BANK_TRANSFER" })
+    ).rejects.toMatchObject({ errorCode: ERROR_CODES.PAYMENT_OVER_CONTRACT });
+  }));
+});

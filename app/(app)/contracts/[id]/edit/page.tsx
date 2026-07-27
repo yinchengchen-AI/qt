@@ -134,6 +134,9 @@ export default function EditContractPage() {
               // 合同结构化交付物 (deliverables) 已下线; 实际交付文件走 Attachment.isDeliverable
               attachments: merged
             };
+            // 非 admin 不提交 ownerUserId (字段未渲染; initialValues 里的值也要剥掉),
+            // 服务端对非 admin 变更负责人会 422
+            if (!isAdmin) delete (payload as Record<string, unknown>).ownerUserId;
             const res = await fetch(`/api/contracts/${id}`, {
               method: "PATCH",
               headers: { "Content-Type": "application/json" },
@@ -197,31 +200,39 @@ export default function EditContractPage() {
                 rules={[{ required: true, message: "请选择付款方式（必填）" }]}
                 fieldProps={{ size: "large" }}
               />
-              <ProFormSelect
-                name="ownerUserId"
-                label="负责人"
-                placeholder="按姓名 / 工号搜索员工"
-                tooltip="管理员可改为任意在职员工，业务上等同于把合同转交给对方"
-                showSearch
-                rules={[{ required: true, message: "请选择合同负责人（必填）" }]}
-                fieldProps={{
-                  size: "large",
-                  optionFilterProp: "label"
-                }}
-                request={async (params: { keyWords?: string }) => {
-                  const qs = new URLSearchParams();
-                  qs.set("pageSize", "100");
-                  qs.set("status", "ACTIVE");
-                  qs.set("keyword", params.keyWords ?? "");
-                  const r = await fetch(`/api/users?${qs}`, { credentials: "include" });
-                  const j = await r.json();
-                  if (j.code !== 0) return [];
-                  return (j.data.list as Array<{ id: string; name: string; employeeNo: string }>).map((u) => ({
-                    value: u.id,
-                    label: `${u.name} (${u.employeeNo})`
-                  }));
-                }}
-              />
+              {isAdmin ? (
+                <ProFormSelect
+                  name="ownerUserId"
+                  label="负责人"
+                  placeholder="按姓名 / 工号搜索员工"
+                  tooltip="管理员可改为任意在职员工，业务上等同于把合同转交给对方"
+                  showSearch
+                  rules={[{ required: true, message: "请选择合同负责人（必填）" }]}
+                  fieldProps={{
+                    size: "large",
+                    optionFilterProp: "label"
+                  }}
+                  request={async (params: { keyWords?: string }) => {
+                    const qs = new URLSearchParams();
+                    qs.set("pageSize", "100");
+                    qs.set("status", "ACTIVE");
+                    qs.set("keyword", params.keyWords ?? "");
+                    const r = await fetch(`/api/users?${qs}`, { credentials: "include" });
+                    const j = await r.json();
+                    if (j.code !== 0) return [];
+                    return (j.data.list as Array<{ id: string; name: string; employeeNo: string }>).map((u) => ({
+                      value: u.id,
+                      label: `${u.name} (${u.employeeNo})`
+                    }));
+                  }}
+                />
+              ) : (
+                // 非 admin 不可变更负责人 (服务端 422), 只读展示
+                <div>
+                  <Text type="secondary" style={{ fontSize: 12 }}>负责人：</Text>
+                  <Text>{data.ownerName || "—"}</Text>
+                </div>
+              )}
             </FormGrid>
           </FormSection>
 

@@ -64,11 +64,6 @@ export const contractUpdateSchema = contractCreateSchema
     attachments: z.array(attachment).optional()
   });
 
-export const reviewActionSchema = z.object({
-  action: z.enum(["SUBMIT", "APPROVE", "REJECT", "WITHDRAW"]),
-  comment: z.string().max(500).optional()
-});
-
 /**
  * 合同 reopen (admin 重新打开已完结合同) 请求体.
  * 跟 server/services/contract/reopen.ts 的 ContractReopenReason 保持同步.
@@ -89,7 +84,6 @@ export type ContractCreateInput = z.infer<typeof contractCreateSchema>;
 export type ContractUpdateInput = z.infer<typeof contractUpdateSchema>;
 // 旧: 合同结构化交付物条目; 现已下线, 类型保留仅作占位以避免老 import 编译报错
 export type DeliverableInput = { id: string; name: string };
-export type ReviewActionInput = z.infer<typeof reviewActionSchema>;
 
 // 合同列表 query:导出供 use-list-request 反射出 KNOWN_KEYS, 也供 app/api/contracts/route.ts 用
 export const contractListQuerySchema = z.object({

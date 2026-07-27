@@ -6,6 +6,7 @@ import { requirePermission, RESOURCE, ACTION } from "@/lib/permissions";
 import type {InvoiceActionInput} from "@/lib/validators/invoice";
 import { Prisma } from "@prisma/client";
 import { nextBusinessNo } from "@/lib/sequence";
+import { audit } from "@/server/audit";
 
 import {ownerViaContract} from "@/lib/ownership";
 import { runTransitionInTx } from "@/lib/status-machine";
@@ -20,13 +21,16 @@ async function assertWithinContractLimit(
   tx: Prisma.TransactionClient,
   inv: { id: string; contractId: string }
 ): Promise<void> {
-  const [contract, issued] = await Promise.all([
-    tx.contract.findUniqueOrThrow({ where: { id: inv.contractId }, select: { totalAmount: true, contractNo: true } }),
-    tx.invoice.aggregate({
-      where: { contractId: inv.contractId, status: { in: [...INVOICE_LIMIT_COUNTED_STATUSES] }, deletedAt: null },
-      _sum: { amount: true }
-    })
-  ]);
+  // 先锁合同行 (FOR UPDATE), 序列化同一合同的并发 submit/issue 复检——
+  // 外层事务默认 ReadCommitted, 只 aggregate 不锁会让两张 DRAFT 并发 submit 双双通过
+  const contracts = await tx.$queryRaw<Array<{ totalAmount: Prisma.Decimal; contractNo: string }>>`
+    SELECT "totalAmount", "contractNo" FROM "Contract" WHERE id = ${inv.contractId} FOR UPDATE`;
+  const contract = contracts[0];
+  if (!contract) throw new ApiError(ERROR_CODES.NOT_FOUND, "合同不存在", 404);
+  const issued = await tx.invoice.aggregate({
+    where: { contractId: inv.contractId, status: { in: [...INVOICE_LIMIT_COUNTED_STATUSES] }, deletedAt: null },
+    _sum: { amount: true }
+  });
   const issuedAmt = new Prisma.Decimal(issued._sum.amount?.toString() ?? "0");
   const contractTotal = new Prisma.Decimal(contract.totalAmount.toString());
   // 本票已在口径内, 无需再加; 只校验当前累计未超额
@@ -36,6 +40,47 @@ async function assertWithinContractLimit(
       `累计开票 ¥${issuedAmt.toFixed(2)} 已超过合同总额 ¥${contract.totalAmount}，不可继续`,
       422
     );
+  }
+}
+
+// 红冲票 (负数票) 判定: amount < 0, 或存在其它发票的 linkedInvoiceId 指向它 (原票红冲后互指)。
+// 红冲票不可再作废/再红冲, 否则净额自洽被破坏 (原票 RED_FLUSHED 计 +A、负票 VOIDED 不计 → 虚增)。
+async function assertNotRedFlushTicket(
+  tx: Prisma.TransactionClient,
+  inv: { id: string; amount: Prisma.Decimal },
+  verb: string
+): Promise<void> {
+  const linked = await tx.invoice.findFirst({ where: { linkedInvoiceId: inv.id }, select: { id: true } });
+  if (new Prisma.Decimal(inv.amount.toString()).lessThan(0) || linked) {
+    throw new ApiError(ERROR_CODES.FORBIDDEN, `红冲票不可${verb}`, 403);
+  }
+}
+
+// 发票作废/红冲时批量取消该发票的 PLANNED 回款:
+// 逐笔写 OperationLog (此前 updateMany 无审计), 并过滤 deletedAt。
+async function cancelPlannedPayments(
+  tx: Prisma.TransactionClient,
+  invoiceId: string,
+  actorId: string
+): Promise<void> {
+  const planned = await tx.payment.findMany({
+    where: { invoiceId, status: "PLANNED", deletedAt: null },
+    select: { id: true }
+  });
+  if (planned.length === 0) return;
+  await tx.payment.updateMany({
+    where: { id: { in: planned.map((p) => p.id) } },
+    data: { status: "CANCELLED", updatedById: actorId }
+  });
+  for (const p of planned) {
+    await audit(tx, {
+      actorId,
+      action: "PAYMENT_CANCEL",
+      entity: "Payment",
+      entityId: p.id,
+      before: { status: "PLANNED" },
+      after: { status: "CANCELLED" }
+    });
   }
 }
 
@@ -74,6 +119,9 @@ export async function invoiceAction(user: SessionUser, id: string, input: Invoic
       if ((inv.invoiceType === "VAT_ELECTRONIC" || inv.invoiceType === "ELEC_NORMAL") && !/^\d{20}$/.test(invoiceNo)) {
         throw new ApiError(ERROR_CODES.INVOICE_INFO_INVALID, "电子发票号必须 20 位数字", 422);
       }
+      if (inv.titleType === "COMPANY" && !(inv.taxNo ?? "").trim()) {
+        throw new ApiError(ERROR_CODES.INVOICE_INFO_INVALID, "公司抬头必须填写税号", 422);
+      }
 
       const data: Record<string, unknown> = {
         actualIssueDate: input.actualIssueDate ? new Date(input.actualIssueDate) : new Date(),
@@ -81,6 +129,9 @@ export async function invoiceAction(user: SessionUser, id: string, input: Invoic
         reviewComment: input.reason ?? null,
       };
       if (input.invoiceNo && input.invoiceNo !== inv.invoiceNo) {
+        // 改票号前做唯一性预校验 (排除自身); DB @unique 覆盖软删行, 同口径查全量
+        const dup = await tx.invoice.findFirst({ where: { invoiceNo: input.invoiceNo, NOT: { id: inv.id } } });
+        if (dup) throw new ApiError(ERROR_CODES.VALIDATION_FAILED, `发票号 ${input.invoiceNo} 已被使用`, 422);
         data.invoiceNo = input.invoiceNo;
       }
       const before = { status: inv.status, invoiceNo: inv.invoiceNo };
@@ -92,6 +143,12 @@ export async function invoiceAction(user: SessionUser, id: string, input: Invoic
         precondition: (current, t) => assertWithinContractLimit(t, current),
         extraData: () => data,
         audit: () => ({ actorId: user.id, action: "INVOICE_ISSUE", before, after: { status: "ISSUED", invoiceNo } }),
+        // 站内信通知申请人: 发票已开具
+        event: async (current) => ({
+          type: "INVOICE_ISSUED",
+          payload: { invoiceId: current.id, invoiceNo, amount: Number(current.amount) },
+          receivers: [current.applicantUserId],
+        }),
         mismatchError: { ...mismatch, message: (_c, to) => `仅 PENDING_FINANCE 可开票(目标: ${to})` },
       });
       if (result.result === "DONE") {
@@ -125,6 +182,12 @@ export async function invoiceAction(user: SessionUser, id: string, input: Invoic
         to: "REJECTED",
         extraData: () => ({ financeUserId: user.id, reviewComment: input.reason ?? null }),
         audit: () => ({ actorId: user.id, action: "INVOICE_REJECT", before: { status: "PENDING_FINANCE" }, after: { status: "REJECTED" } }),
+        // 站内信通知申请人: 发票被驳回 (含原因)
+        event: async (current) => ({
+          type: "INVOICE_REJECTED",
+          payload: { invoiceId: current.id, invoiceNo: current.invoiceNo, reason: input.reason ?? null },
+          receivers: [current.applicantUserId],
+        }),
         mismatchError: { ...mismatch, message: (_c, to) => `仅 PENDING_FINANCE 可驳回(目标: ${to})` },
       });
       return result.updated;
@@ -134,6 +197,7 @@ export async function invoiceAction(user: SessionUser, id: string, input: Invoic
       requireFinance();
       const inv = await commonLoad(tx);
       if (!inv) throw new ApiError(ERROR_CODES.NOT_FOUND, "发票不存在", 404);
+      await assertNotRedFlushTicket(tx, inv, "作废");
       const today = new Date();
       const issueDate = inv.actualIssueDate ?? today;
       if (today.getTime() - new Date(issueDate).getTime() > 24 * 60 * 60 * 1000) {
@@ -152,8 +216,8 @@ export async function invoiceAction(user: SessionUser, id: string, input: Invoic
         mismatchError: { ...mismatch, message: (_c, to) => `仅 ISSUED 可作废(目标: ${to})` },
       });
       if (result.result === "DONE") {
-        // 取消 PLANNED Payment
-        await tx.payment.updateMany({ where: { invoiceId: id, status: "PLANNED" }, data: { status: "CANCELLED" } });
+        // 取消 PLANNED Payment (逐笔审计)
+        await cancelPlannedPayments(tx, id, user.id);
         // 自动退款: CONFIRMED / RECONCILED → REFUNDED
         const confirmed = await tx.payment.findMany({
           where: { invoiceId: id, status: { in: ["CONFIRMED", "RECONCILED"] }, deletedAt: null },
@@ -169,6 +233,7 @@ export async function invoiceAction(user: SessionUser, id: string, input: Invoic
       requireFinance();
       const inv = await commonLoad(tx);
       if (!inv) throw new ApiError(ERROR_CODES.NOT_FOUND, "发票不存在", 404);
+      await assertNotRedFlushTicket(tx, inv, "再红冲");
       // P1-3: 红冲需填 reason
       const reason = (input.reason ?? "").trim();
       if (!reason) throw new ApiError(ERROR_CODES.VALIDATION_FAILED, "红冲发票需填写原因", 400);
@@ -212,8 +277,8 @@ export async function invoiceAction(user: SessionUser, id: string, input: Invoic
         mismatchError: { ...mismatch, message: (_c, to) => `仅 ISSUED 可红冲(目标: ${to})` },
       });
       if (result.result === "DONE") {
-        // 取消原 PLANNED Payment
-        await tx.payment.updateMany({ where: { invoiceId: inv.id, status: "PLANNED" }, data: { status: "CANCELLED" } });
+        // 取消原 PLANNED Payment (逐笔审计)
+        await cancelPlannedPayments(tx, inv.id, user.id);
         // P1-3: 自动退款已 CONFIRMED/RECONCILED 的回款
         const confirmed = await tx.payment.findMany({
           where: { invoiceId: inv.id, status: { in: ["CONFIRMED", "RECONCILED"] }, deletedAt: null },

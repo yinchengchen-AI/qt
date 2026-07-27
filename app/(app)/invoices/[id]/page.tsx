@@ -59,6 +59,8 @@ export default function InvoiceDetailPage() {
   // 与 server/services/invoice/crud.ts:130 的状态机门控保持一致: 非 admin 仅 DRAFT 可改, admin 任意态
   const canUpdate = hasPermission(roleCode, RESOURCE.INVOICE, ACTION.UPDATE);
   const status = invoice?.status;
+  // 红冲票 (负数票) 服务端禁止作废/再红冲, 前端同步隐藏按钮
+  const isRedFlushTicket = Number(invoice.amount) < 0;
 
   const handleIssue = async () => {
     if (!invoiceNo) { message.warning("请先填写 20 位电子发票号"); throw new Error("empty invoiceNo"); }
@@ -97,16 +99,16 @@ export default function InvoiceDetailPage() {
             {canUpdate && (isAdmin || status === "DRAFT") && (
               <Button key="edit" icon={<EditOutlined />} onClick={() => router.push(`/invoices/${id}/edit`)}>编辑</Button>
             )}
-            {status === "DRAFT" && isFinance && <Button type="primary" onClick={() => run("submit")}>提交</Button>}
+            {status === "DRAFT" && canUpdate && <Button type="primary" onClick={() => run("submit")}>提交</Button>}
             {status === "PENDING_FINANCE" && isFinance && (
               <>
                 <Button danger onClick={() => openModal("reject")}>驳回</Button>
                 <Button type="primary" onClick={() => openModal("issue")}>开票</Button>
               </>
             )}
-            {status === "ISSUED" && isFinance && (
+            {status === "ISSUED" && isFinance && !isRedFlushTicket && (
               <>
-                <Button onClick={() => openModal("void")}>作废(当日)</Button>
+                <Button onClick={() => openModal("void")}>作废(开票后24小时内)</Button>
                 <Button danger onClick={() => openModal("redFlush")}>红冲</Button>
               </>
             )}
@@ -124,6 +126,7 @@ export default function InvoiceDetailPage() {
           { title: "税率", dataIndex: "taxRate", render: (v) => <PercentCell value={v as string} /> },
           { title: "申请日", dataIndex: "applyDate", render: (v) => <DateTimeCell value={v as string} /> },
           { title: "实际开票日", dataIndex: "actualIssueDate", render: (v) => <DateTimeCell value={v as string} /> },
+          { title: "到期日", dataIndex: "dueDate", render: (v) => <DateTimeCell value={v as string} /> },
           { title: "抬头类型", dataIndex: "titleType", render: (v) => TITLE_TYPE_MAP[v as string] ?? v },
           { title: "抬头名称", dataIndex: "titleName" },
           { title: "税号", dataIndex: "taxNo" },
@@ -175,7 +178,7 @@ export default function InvoiceDetailPage() {
         <Input.TextArea rows={3} value={reason} onChange={(e) => setReason(e.target.value)} placeholder="请填写驳回原因，业务员可见" />
       </Modal>
       <Modal
-        title="确认作废该发票？（仅当日有效）"
+        title="确认作废该发票？（仅开票后 24 小时内可作废）"
         open={modalOpen === "void"}
         onOk={handleVoid}
         onCancel={closeModal}

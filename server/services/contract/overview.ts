@@ -97,10 +97,11 @@ export async function getContractOverview(
   // 总数(与 server/services/statistics.ts:18-30 语义一致):
   //   invoicedAmount = sum(Invoice.amount)  where status IN (ISSUED,RED_FLUSHED)  (红冲对 +A/−A 净 0)
   //   paidAmount     = sum(Payment.amount)  where status IN (CONFIRMED,RECONCILED)
-  let invoicedAmount = 0;
-  for (const inv of invoices) if ((INVOICE_ISSUED_AMOUNT_STATUSES as readonly string[]).includes(inv.status)) invoicedAmount += Number(inv.amount);
-  let paidAmount = 0;
-  for (const p of payments) if (p.status === "CONFIRMED" || p.status === "RECONCILED") paidAmount += Number(p.amount);
+  // 累加走 Prisma.Decimal 再转 number, 避免 JS number 浮点漂移 (与项目金额口径一致)
+  let invoicedAmount = new Prisma.Decimal(0);
+  for (const inv of invoices) if ((INVOICE_ISSUED_AMOUNT_STATUSES as readonly string[]).includes(inv.status)) invoicedAmount = invoicedAmount.plus(inv.amount.toString());
+  let paidAmount = new Prisma.Decimal(0);
+  for (const p of payments) if (p.status === "CONFIRMED" || p.status === "RECONCILED") paidAmount = paidAmount.plus(p.amount.toString());
 
   // 交付物附件扁平列表 (按 uploadedAt 倒序)
   const deliverableAttachmentList: Array<{ id: string; name: string; mimeType: string; size: number; uploadedBy: string; uploadedAt: string }> = deliverableAttachments.map((a) => ({
@@ -143,10 +144,10 @@ export async function getContractOverview(
       invoiceCount: invoices.length,
       paymentCount: payments.length,
       totalAmount: Number(c.totalAmount),
-      invoicedAmount,
-      paidAmount,
-      billingStatus: getBillingStatus(invoicedAmount, Number(c.totalAmount)),
-      paymentStatus: getPaymentStatus(paidAmount, Number(c.totalAmount))
+      invoicedAmount: invoicedAmount.toNumber(),
+      paidAmount: paidAmount.toNumber(),
+      billingStatus: getBillingStatus(invoicedAmount.toNumber(), Number(c.totalAmount)),
+      paymentStatus: getPaymentStatus(paidAmount.toNumber(), Number(c.totalAmount))
     }
   };
 }

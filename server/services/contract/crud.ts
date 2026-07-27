@@ -14,6 +14,7 @@ import { MONEY_TOLERANCE } from "@/lib/money-tolerance";
 import { INVOICE_LIMIT_COUNTED_STATUSES, INVOICE_ISSUED_AMOUNT_STATUSES } from "@/lib/invoice-amounts";
 import { resolveAttachmentSnapshots } from "@/lib/attachment-snapshot";
 import { softDelete } from "@/lib/soft-delete";
+import { audit } from "@/server/audit";
 import { tryAutoPublish } from "./status";
 
 function assertDateOrder(start?: string | Date | null, end?: string | Date | null, label = "服务"): void {
@@ -73,7 +74,7 @@ export async function listContracts(
   const [list, total] = await Promise.all([
     prisma.contract.findMany({
       where,
-      orderBy: { signDate: "desc" },
+      orderBy: [{ signDate: "desc" }, { id: "desc" }],
       skip: (page - 1) * pageSize,
       take: pageSize,
       // 带上客户省/市/区/镇街, 列表"客户区域"列与导出用; 一次 join 查询, 无 N+1
@@ -207,12 +208,32 @@ async function assertActiveUser(userId: string, label: string): Promise<void> {
   }
 }
 
+// Dictionary 兜底: 防止 zod 放行后写入任意 serviceType (create/update 共用)
+async function assertServiceTypeInDict(code: string): Promise<void> {
+  const st = await prisma.dictionary.findUnique({ where: { category_code: { category: "SERVICE_TYPE", code } } });
+  if (!st) throw new ApiError(ERROR_CODES.VALIDATION_FAILED, `serviceType ${code} not in dictionary`, 400);
+}
+
+// updateContract 审计 diff 的对比字段 (与事务内 locked select 对齐;
+// status 迁移有专门审计 / attachments 快照噪声大, 均不在此 diff)
+const CONTRACT_AUDIT_DIFF_FIELDS = [
+  "contractNo", "title", "serviceType", "signDate", "startDate", "endDate",
+  "totalAmount", "taxRate", "taxAmount", "amountExcludingTax",
+  "paymentMethod", "ownerUserId", "remark", "installmentPlan"
+] as const;
+
+// 审计载荷的 JSON 归一化: Decimal → 字符串, Date → ISO 字符串.
+// 不经过这一步, audit() 的 redact 会把 Decimal/Date 当普通对象拆内部字段,
+// Prisma 序列化 diff 时报 "could not serialize" 或存成失真的 {}.
+function toAuditJson<T>(v: T): unknown {
+  return JSON.parse(JSON.stringify(v));
+}
+
 
 export async function createContract(user: SessionUser, input: ContractCreateInput) {
   requirePermission(user.roleCode, RESOURCE.CONTRACT, ACTION.CREATE);
   // Dictionary 兜底: 防止 zod 放行后写入任意 serviceType
-  const st = await prisma.dictionary.findUnique({ where: { category_code: { category: "SERVICE_TYPE", code: input.serviceType } } });
-  if (!st) throw new ApiError(ERROR_CODES.VALIDATION_FAILED, `serviceType ${input.serviceType} not in dictionary`, 400);
+  await assertServiceTypeInDict(input.serviceType);
   // (R-03 已删:客户无 status 概念, 不再校验"客户状态必须是 NEGOTIATING/SIGNED 才能建合同")
   const customer = await prisma.customer.findFirst({ where: { id: input.customerId, deletedAt: null } });
   if (!customer) throw new ApiError(ERROR_CODES.NOT_FOUND, "客户不存在", 404);
@@ -220,11 +241,15 @@ export async function createContract(user: SessionUser, input: ContractCreateInp
   const signerId = input.signerId ?? user.id;
   await assertActiveUser(signerId, "签订人");
   // 校验负责人:
-  //   - 前端显式传入 → 用前端值,但要目标用户 ACTIVE (防止传错 id 落到停用员工头上)
+  //   - 仅 ADMIN 可显式指定他人为负责人 (代录/转交); 非 admin 显式传入与自己不同的
+  //     ownerUserId 直接 422, 防止越权把合同挂到别人头上 (传入=自己等同默认, 放行)
   //   - 前端未传 → SALES/EXPERT 等"自然 owner = 创建人"角色: 默认 = 当前 user
-  //                  ADMIN: 默认沿用客户业务负责人 (customer.ownerUserId), 保留历史语义
+  //                ADMIN: 默认沿用客户业务负责人 (customer.ownerUserId), 保留历史语义
   //   之前的"所有角色都沿用 customer.ownerUserId"会让 SALES-B 在别人的客户上建合同时,
   //   合同 owner 自动变成 SALES-A, 违反"合同 owner = 创建人"的直觉.
+  if (input.ownerUserId !== undefined && user.roleCode !== "ADMIN" && input.ownerUserId !== user.id) {
+    throw new ApiError(ERROR_CODES.VALIDATION_FAILED, "仅管理员可指定其他员工作为合同负责人", 422);
+  }
   const ownerUserId = input.ownerUserId
     ?? (user.roleCode === "ADMIN" ? customer.ownerUserId : user.id);
   await assertActiveUser(ownerUserId, "负责人");
@@ -278,7 +303,24 @@ export async function createContract(user: SessionUser, input: ContractCreateInp
       await tx.contract.update({ where: { id: created.id }, data: { attachments } });
     }
     // 自动化: 字段完整 + 至少 1 附件 → DRAFT 自动升 ACTIVE (在事务内, 失败时回滚)
-    await tryAutoPublish(tx, created.id);
+    const publishResult = await tryAutoPublish(tx, created.id);
+    // 审计: 记录创建动作与关键字段快照 (auto-publish 自身另有 CONTRACT_AUTO_PUBLISH 审计)
+    await audit(tx, {
+      actorId: user.id,
+      action: "CONTRACT_CREATE",
+      entity: "Contract",
+      entityId: created.id,
+      after: toAuditJson({
+        contractNo: created.contractNo,
+        title: created.title,
+        customerId: created.customerId,
+        totalAmount: created.totalAmount,
+        taxRate: created.taxRate,
+        status: publishResult === "PUBLISHED" ? "ACTIVE" : created.status,
+        ownerUserId: created.ownerUserId,
+        signerId: created.signerId
+      })
+    });
     return { id: created.id };
   }).then(async ({ id }) => prisma.contract.findUnique({ where: { id } }));
 }
@@ -299,8 +341,18 @@ export async function updateContract(user: SessionUser, id: string, input: Contr
   delete safeInput.signerId;
   delete safeInput.status;
 
-  // 负责人变更时, 校验目标用户存在且 ACTIVE
+  // Dictionary 兜底 (与 create 同口径): PATCH 改 serviceType 时同样校验
+  if (input.serviceType !== undefined) {
+    await assertServiceTypeInDict(input.serviceType);
+  }
+  // 负责人变更:
+  //   - 仅 ADMIN 可把负责人变更为他人 (转交); 非 admin 显式传入与现值不同的
+  //     ownerUserId 直接 422, 防止越权转交 (传入=现值是无害 no-op, 放行)
+  //   - admin 变更时校验目标用户存在且 ACTIVE
   if (input.ownerUserId !== undefined && input.ownerUserId !== existing.ownerUserId) {
+    if (user.roleCode !== "ADMIN") {
+      throw new ApiError(ERROR_CODES.VALIDATION_FAILED, "仅管理员可变更合同负责人", 422);
+    }
     await assertActiveUser(input.ownerUserId, "负责人");
   }
   // 日期顺序校验(与编辑页一致:止期必须晚于起期)
@@ -314,16 +366,6 @@ export async function updateContract(user: SessionUser, id: string, input: Contr
       throw new ApiError(ERROR_CODES.VALIDATION_FAILED, `合同编号 ${input.contractNo} 已被使用`, 422);
     }
   }
-  // 重算总额
-  let taxAmount = existing.taxAmount;
-  let amountExcludingTax = existing.amountExcludingTax;
-  if (input.totalAmount !== undefined || input.taxRate !== undefined) {
-    const ta = input.totalAmount ?? existing.totalAmount;
-    const tr = input.taxRate ?? existing.taxRate;
-    const r = calcTaxBreakdown(ta, tr);
-    taxAmount = r.taxAmount;
-    amountExcludingTax = r.amountExcludingTax;
-  }
   const wasDraft = existing.status === "DRAFT";
   return prisma.$transaction(async (tx) => {
     // 用 UPDATE 先锁住合同行并重新读取当前值, 序列化并发总额调整,
@@ -331,10 +373,28 @@ export async function updateContract(user: SessionUser, id: string, input: Contr
     const locked = await tx.contract.update({
       where: { id, deletedAt: null },
       data: { updatedAt: new Date() },
-      select: { id: true, status: true, totalAmount: true },
+      select: {
+        id: true, status: true, contractNo: true, title: true, serviceType: true,
+        signDate: true, startDate: true, endDate: true,
+        totalAmount: true, taxRate: true, taxAmount: true, amountExcludingTax: true,
+        paymentMethod: true, ownerUserId: true, remark: true, installmentPlan: true,
+      },
     });
     if (user.roleCode !== "ADMIN" && locked.status !== "DRAFT") {
       throw new ApiError(ERROR_CODES.ENTITY_IMMUTABLE, "当前状态不可修改", 403);
+    }
+
+    // 税额重算必须以事务内 locked 行为基准: 并发 PATCH (A 改总额 / B 改税率) 时,
+    // 事务外 existing 快照会让 totalAmount/taxRate/taxAmount/amountExcludingTax
+    // 四者落库不一致
+    let taxAmount = locked.taxAmount;
+    let amountExcludingTax = locked.amountExcludingTax;
+    if (input.totalAmount !== undefined || input.taxRate !== undefined) {
+      const ta = input.totalAmount ?? locked.totalAmount;
+      const tr = input.taxRate ?? locked.taxRate;
+      const r = calcTaxBreakdown(ta, tr);
+      taxAmount = r.taxAmount;
+      amountExcludingTax = r.amountExcludingTax;
     }
 
     const attachments = input.attachments
@@ -384,6 +444,28 @@ export async function updateContract(user: SessionUser, id: string, input: Contr
           updatedById: user.id
         }
       });
+      // 审计: before/after 只含本次实际变更的字段 (以 locked 行为 before 基准,
+      // 与写入同事务快照; 状态迁移另有 CONTRACT_AUTO_PUBLISH 等专门审计, 不在此 diff)
+      const diffBefore: Record<string, unknown> = {};
+      const diffAfter: Record<string, unknown> = {};
+      for (const f of CONTRACT_AUDIT_DIFF_FIELDS) {
+        const b = locked[f] as unknown;
+        const a = updated[f] as unknown;
+        if (JSON.stringify(b ?? null) !== JSON.stringify(a ?? null)) {
+          diffBefore[f] = toAuditJson(b ?? null);
+          diffAfter[f] = toAuditJson(a ?? null);
+        }
+      }
+      if (Object.keys(diffAfter).length > 0) {
+        await audit(tx, {
+          actorId: user.id,
+          action: "CONTRACT_UPDATE",
+          entity: "Contract",
+          entityId: id,
+          before: diffBefore,
+          after: diffAfter
+        });
+      }
       // 自动化: PATCH 一次性补齐字段/附件时, DRAFT 也可能升 ACTIVE
       const publishResult = wasDraft ? await tryAutoPublish(tx, id) : ("SKIPPED" as const);
       return { updated, publishResult };

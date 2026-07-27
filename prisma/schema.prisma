@@ -45,8 +45,13 @@ enum MessageType {
   CONTRACT_AUTO_OVERDUE_TERMINATED
   // 合同过期未结清提醒 (endDate<now 但钱没收齐, tickStaleContracts 触发)
   CONTRACT_EXPIRED_UNPAID
+  // 回款已足额但开票不足额提醒 (tickStaleContracts 触发, 催补开发票)
+  CONTRACT_PAID_INVOICE_PENDING
   // 证书 N 天内到期 (30/15/7 三档阈值各发一次)
   CERTIFICATE_EXPIRING
+  // 发票开具/驳回结果通知申请人 (invoiceAction issue/reject 触发)
+  INVOICE_ISSUED
+  INVOICE_REJECTED
   // 客户状态机自动化: 系统自动写状态 (§1.2 / §3.1)
   CUSTOMER_STATUS_AUTO_APPLIED
   CUSTOMER_STATUS_AUTO_REVERTED
@@ -432,7 +437,7 @@ model ContractReviewLog {
   contractId String
   contract   Contract @relation(fields: [contractId], references: [id])
   reviewerId String
-  action     String // SUBMIT | APPROVE | REJECT | WITHDRAW
+  action     String // AUTO_PUBLISH | MANUAL_PUBLISH | AUTO_CLOSE_* | MANUAL_CLOSE | MANUAL_REOPEN
   comment    String?
   at         DateTime @default(now()) @db.Timestamptz(6)
 

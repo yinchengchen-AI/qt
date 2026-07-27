@@ -19,6 +19,7 @@ import type { ContractCreateInput } from "@/lib/validators/contract";
 let dbReachable = false;
 const TAG = `TEST-CONTRACT-NEW-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 let adminUser: SessionUser | null = null;
+let salesUser: SessionUser | null = null;
 let disabledUser: { id: string } | null = null;
 let negotiatingCustomerId: string | null = null;
 const createdContractIds: string[] = [];
@@ -36,8 +37,13 @@ beforeAll(async () => {
     where: { role: { code: "ADMIN" }, deletedAt: null, status: "ACTIVE" },
     select: { id: true, employeeNo: true, name: true, email: true }
   });
-  if (!adminRow) return;
+  const salesRow = await prisma.user.findFirst({
+    where: { role: { code: "SALES" }, deletedAt: null, status: "ACTIVE" },
+    select: { id: true, employeeNo: true, name: true, email: true }
+  });
+  if (!adminRow || !salesRow) return;
   adminUser = { ...adminRow, roleCode: "ADMIN", permissions: [] };
+  salesUser = { ...salesRow, roleCode: "SALES", permissions: [] };
 
   disabledUser = await prisma.user.create({
     data: {
@@ -74,6 +80,9 @@ afterAll(async () => {
       await prisma.attachment.deleteMany({ where: { id: { in: createdAttachmentIds } } });
     }
     if (createdContractIds.length > 0) {
+      await prisma.operationLog.deleteMany({
+        where: { entity: "Contract", entityId: { in: createdContractIds } }
+      });
       await prisma.contractReviewLog.deleteMany({ where: { contractId: { in: createdContractIds } } });
       await prisma.contract.deleteMany({ where: { id: { in: createdContractIds } } });
     }
@@ -137,6 +146,27 @@ describe("createContract 服务层校验", () => {
         ownerUserId: disabledUser!.id
       })
     ).rejects.toMatchObject({ errorCode: ERROR_CODES.VALIDATION_FAILED });
+  }));
+
+  it("非 admin 显式指定他人为负责人 → 422 (仅 admin 可指定)", guard(async () => {
+    if (!salesUser) return;
+    await expect(
+      createContract(salesUser, {
+        ...baseInput(`${TAG}-OWNER-FORBIDDEN`),
+        ownerUserId: adminUser!.id
+      })
+    ).rejects.toMatchObject({ errorCode: ERROR_CODES.VALIDATION_FAILED, status: 422 });
+  }));
+
+  it("非 admin 显式传 ownerUserId = 自己 → 放行 (等同默认)", guard(async () => {
+    if (!salesUser) return;
+    const c = await createContract(salesUser, {
+      ...baseInput(`${TAG}-OWNER-SELF`),
+      ownerUserId: salesUser.id
+    });
+    if (!c) throw new Error("createContract returned null");
+    createdContractIds.push(c.id);
+    expect(c.ownerUserId).toBe(salesUser.id);
   }));
 
   it("合同编号重复 → 422 VALIDATION_FAILED", guard(async () => {

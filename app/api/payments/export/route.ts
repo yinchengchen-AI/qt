@@ -30,9 +30,11 @@ export async function GET(req: Request) {
         pageSize: exportMaxRows(),
         ...params,
       });
+      // 展平关联发票号到行顶层, 供 exportToXlsx 按 key: "invoiceNo" 取值
+      const rows = list.map((r) => ({ ...r, invoiceNo: r.invoice?.invoiceNo ?? "" }));
       const ts = exportFileTimestamp();
       const buf = await exportToXlsx(
-        list as unknown as Record<string, unknown>[],
+        rows as unknown as Record<string, unknown>[],
         [
           { header: "回款号", key: "paymentNo", width: 22 },
           {

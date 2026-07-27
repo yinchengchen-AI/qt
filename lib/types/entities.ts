@@ -55,6 +55,8 @@ export type Contract = {
   // (useCanManageContractDeliverables: admin / 签订人 / 负责人 三者之一)
   signerId: string;
   ownerUserId: string;
+  // 完结开票阈值 (行级, Decimal 序列化为字符串; getContract 全行透出)
+  completionInvoiceRatio?: string | null;
   reviewComment: string | null;
   reviewerId: string | null;
   reviewAt: string | null;
@@ -88,6 +90,7 @@ export type Invoice = {
   applyDate: string;
   expectedIssueDate: string | null;
   actualIssueDate: string | null;
+  dueDate: string | null;
   titleType: string;
   titleName: string;
   taxNo: string | null;

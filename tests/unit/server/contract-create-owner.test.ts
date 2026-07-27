@@ -1,9 +1,10 @@
 // createContract 的 ownerUserId 默认值规则回归
-// 关键业务规则 (P1-1 修复):
+// 关键业务规则 (P1-1 修复 + 后续收紧):
 //   - 前端不传 ownerUserId:
 //       SALES / EXPERT: 默认 = user.id   (合同 owner = 创建人)
 //       ADMIN:         默认 = customer.ownerUserId (代理创建场景, 沿用客户 owner)
-//   - 前端显式传 ownerUserId: 用前端值, 但走 assertActiveUser 校验
+//   - 仅 ADMIN 可显式指定他人为负责人; 非 admin 显式传入与自己不同的 ownerUserId → 422
+//     (传入 = 自己等同默认, 放行)
 //
 // 不连真实 DB, 用 vi.mock 拦截 prisma, 在 assertActiveUser 内抓 user.findFirst 的
 // where 来反推 ownerUserId 默认值. 6 个 case 覆盖完整矩阵.
@@ -125,9 +126,10 @@ describe("createContract - ownerUserId 默认值规则 (P1-1)", () => {
     expect(getResolvedOwnerId()).toBe(CUSTOMER_OWNER);
   });
 
-  it("SALES 显式传 ownerUserId → 用前端值, 不退回 customer owner", async () => {
-    await createContract(SALES, { ...baseInput(), ownerUserId: "u-override" });
-    expect(getResolvedOwnerId()).toBe("u-override");
+  it("SALES 显式传 ownerUserId = 他人 → 422 (仅 admin 可指定负责人)", async () => {
+    await expect(
+      createContract(SALES, { ...baseInput(), ownerUserId: "u-override" })
+    ).rejects.toMatchObject({ status: 422 });
   });
 
   it("ADMIN 显式传 ownerUserId → 用前端值, 不退回 customer owner", async () => {
