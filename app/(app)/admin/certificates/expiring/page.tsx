@@ -3,6 +3,7 @@ import { ProCard, ProTable, type ProColumns } from "@ant-design/pro-components";
 import { Tag } from "antd";
 import { useRouter } from "next/navigation";
 import { useGoBack } from "@/lib/navigation";
+import { useResponsive } from "@/lib/use-breakpoint";
 import { Page } from "@/components/page";
 import { PageHeader } from "@/components/page-header";
 import { useSession } from "next-auth/react";
@@ -22,6 +23,7 @@ type Row = {
 export default function ExpiringCertificatesPage() {
   const router = useRouter();
   const goBack = useGoBack("/admin/certificates");
+  const { isMobile } = useResponsive();
   const { data: session } = useSession();
   const roleCode = (session?.user as { roleCode?: string } | undefined)?.roleCode;
   const isAdmin = roleCode === "ADMIN";
@@ -73,6 +75,8 @@ export default function ExpiringCertificatesPage() {
           rowKey="certificateId"
           columns={columns}
           search={false}
+          scroll={{ x: "max-content" }}
+          sticky={isMobile}
           request={async () => {
             const r = await fetch("/api/certificates/expiring?days=60", { credentials: "include" });
             const j = await r.json();
@@ -82,7 +86,7 @@ export default function ExpiringCertificatesPage() {
             const list = j.data?.data ?? [];
             return { data: list, success: j.code === 0, total: list.length };
           }}
-          pagination={{ pageSize: 20 }}
+          pagination={{ defaultPageSize: 20, showSizeChanger: !isMobile, size: isMobile ? "small" : undefined }}
         />
       </ProCard>
     </Page>

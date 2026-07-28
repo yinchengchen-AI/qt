@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { App as AntdApp, Form, Input, InputNumber, Modal, Select } from "antd";
+import { useResponsive } from "@/lib/use-breakpoint";
 import {
   ALLOWED_DICTIONARY_CATEGORIES,
   DICTIONARY_CATEGORY_LABEL
@@ -15,6 +16,7 @@ type Props = {
 export function CreateDictModal({ open, onClose, onSaved, defaultCategory }: Props) {
   const { message } = AntdApp.useApp();
   const [form] = Form.useForm();
+  const { isMobile } = useResponsive();
   // 当前选中的 category:用于过滤 parentCode 选项
   const category = Form.useWatch("category", form);
   // 拉取同 category 下所有字典项 (含父级引用)
@@ -72,7 +74,7 @@ export function CreateDictModal({ open, onClose, onSaved, defaultCategory }: Pro
       onOk={onSubmit}
       okText="保存"
       cancelText="取消"
-      width={520}
+      width={isMobile ? "100%" : 520}
     >
       <Form layout="vertical" form={form} initialValues={{ category: defaultCategory, sort: 0 }}>
         <Form.Item name="category" label="分类" rules={[{ required: true }]}>

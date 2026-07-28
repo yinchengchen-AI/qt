@@ -11,6 +11,8 @@ import { ErrorBox } from "@/components/callout";
 import { DateCell } from "@/components/table-cells";
 import { PermissionMatrix, type Permission } from "@/components/admin/permission-matrix";
 
+const DESC_COL = { xs: 1, sm: 1, md: 2, lg: 2, xl: 3 } as const;
+
 type Role = {
   id: string;
   code: string;
@@ -72,7 +74,7 @@ export default function RoleDetailPage() {
       />
       <ProCard>
         <ProDescriptions<Role>
-          column={2}
+          column={DESC_COL}
           dataSource={data}
           columns={[
             { title: "代码", dataIndex: "code" },

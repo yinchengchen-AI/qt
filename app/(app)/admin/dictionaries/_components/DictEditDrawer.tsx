@@ -1,6 +1,7 @@
 "use client";
 import { App as AntdApp, Alert, Button, Drawer, Form, Input, InputNumber, Space, Switch, Tag } from "antd";
 import { useEffect, useState } from "react";
+import { useResponsive } from "@/lib/use-breakpoint";
 import { DICT_META } from "@/lib/dict-domain";
 import type { DictRow } from "./DictTableView";
 
@@ -15,6 +16,7 @@ export function DictEditDrawer({ open, dict, onClose, onSaved }: Props) {
   const { message } = AntdApp.useApp();
   const [form] = Form.useForm();
   const [submitting, setSubmitting] = useState(false);
+  const { isMobile } = useResponsive();
 
   useEffect(() => {
     if (dict) {
@@ -69,7 +71,7 @@ export function DictEditDrawer({ open, dict, onClose, onSaved }: Props) {
       title={dict ? `编辑 ${dict.code}` : "编辑"}
       open={open}
       onClose={onClose}
-      size={480}
+      styles={{ wrapper: isMobile ? { width: "100%", maxWidth: 480 } : { width: 480 } }}
       extra={
         <Space>
           <Button onClick={onClose}>取消</Button>

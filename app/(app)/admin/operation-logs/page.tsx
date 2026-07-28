@@ -399,7 +399,7 @@ export default function OperationLogsPage() {
         title="操作日志"
         subtitle="按时间倒序记录所有状态机迁移与关键修改；支持按对象 / 动作 / 操作人 / IP / 状态 / 时间区间过滤；点击行查看字段级 before/after 差异。"
         actions={
-          <Space>
+          <Space wrap>
             {/* 快速时间区间 */}
             <Space.Compact>
               {(Object.keys(QUICK_LABELS) as QuickRange[]).map((r) => (

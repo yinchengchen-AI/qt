@@ -38,7 +38,7 @@ const RANGE_OPTIONS: { value: RangePreset; label: string }[] = [
 ];
 
 export default function DashboardPage() {
-  const { isMobile } = useResponsive();
+  const { isMobile, isPhone } = useResponsive();
   const [range, setRange] = useState<RangePreset>("month");
   const [data, setData] = useState<DashboardData | null>(null);
   const [loading, setLoading] = useState(true);
@@ -179,7 +179,9 @@ export default function DashboardPage() {
           {rangeTo ? formatDate(rangeTo) : "—"}
         </Text>
         {rangeMatchesPreset ? <Tag color="blue" style={{ marginInlineStart: 4 }}>{rangeTagLabel}</Tag> : null}
-        <Text type="secondary" style={{ fontSize: 12, marginInlineStart: "auto" }}>{permHint}</Text>
+        {!isPhone && (
+          <Text type="secondary" style={{ fontSize: 12 }}>{permHint}</Text>
+        )}
       </HintBox>
 
       <section style={{ marginBottom: 24 }}>

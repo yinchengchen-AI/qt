@@ -3,6 +3,7 @@ import { ProCard, ProDescriptions, ProTable, type ProColumns } from "@ant-design
 import { Button, Space, Tag, Typography } from "antd";
 import { useParams, useRouter } from "next/navigation";
 import { useGoBack } from "@/lib/navigation";
+import { useResponsive } from "@/lib/use-breakpoint";
 import useSWR from "swr";
 import { Page } from "@/components/page";
 import { PageHeader } from "@/components/page-header";
@@ -25,6 +26,8 @@ type Dept = {
   updatedAt: string;
 };
 
+const DESC_COL = { xs: 1, sm: 1, md: 2, lg: 2, xl: 3 } as const;
+
 type User = {
   id: string;
   employeeNo: string;
@@ -39,6 +42,7 @@ export default function DepartmentDetailPage() {
   const id = String(params.id);
   const router = useRouter();
   const goBack = useGoBack("/admin/departments");
+  const { isMobile } = useResponsive();
   const { data, error, isLoading, mutate } = useSWR<Dept>(`/api/departments/${id}`);
   const { data: membersData } = useSWR<{ list: User[]; total: number }>(
     data ? `/api/users?pageSize=50&departmentId=${id}` : null
@@ -99,7 +103,7 @@ export default function DepartmentDetailPage() {
       />
       <ProCard>
         <ProDescriptions<Dept>
-          column={3}
+          column={DESC_COL}
           dataSource={data}
           columns={[
             { title: "代码", dataIndex: "code" },
@@ -119,7 +123,9 @@ export default function DepartmentDetailPage() {
         rowKey="id"
         search={false}
         loading={!membersData}
-        pagination={{ defaultPageSize: 50, total: membersData?.total ?? 0, showSizeChanger: false }}
+        scroll={{ x: "max-content" }}
+        sticky={isMobile}
+        pagination={{ defaultPageSize: 20, total: membersData?.total ?? 0, showSizeChanger: !isMobile, size: isMobile ? "small" : undefined }}
         dataSource={membersData?.list ?? []}
         columns={memberColumns}
       />

@@ -68,10 +68,10 @@ export default function NewRolePage() {
 
           <Card size="small" style={{ marginBottom: 16, background: "var(--qt-bg-subtle)" }}>
             <Text strong>从模板复制（可选）</Text>
-            <div style={{ marginTop: 8 }}>
+            <div style={{ marginTop: 8, maxWidth: 320 }}>
               <Select
                 defaultValue="EMPTY"
-                style={{ width: 320 }}
+                style={{ width: "100%" }}
                 options={TEMPLATE_OPTIONS}
                 onChange={(v) => {
                   if (v === "EMPTY") {

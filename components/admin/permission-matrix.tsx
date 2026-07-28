@@ -1,5 +1,6 @@
 "use client";
 import { Checkbox, Space, Table, Tag, Typography } from "antd";
+import { useResponsive } from "@/lib/use-breakpoint";
 import { RESOURCE, ACTION } from "@/lib/permissions";
 
 const { Text } = Typography;
@@ -36,6 +37,7 @@ type Props = {
 };
 
 export function PermissionMatrix({ value, onChange, readOnly }: Props) {
+  const { isMobile } = useResponsive();
   // 归一化: 兼容 undefined / null / 非数组
   const safeValue = Array.isArray(value) ? value : [];
   const byRes = new Map<string, Set<string>>();
@@ -87,19 +89,21 @@ export function PermissionMatrix({ value, onChange, readOnly }: Props) {
     {
       title: "资源",
       dataIndex: "label",
-      width: 160,
+      width: isMobile ? 120 : 160,
       fixed: "left" as const,
       render: (label: string, row: { value: string; group?: string }) => (
         <Space size={6}>
           <Text strong>{label}</Text>
-          <Text type="secondary" style={{ fontSize: 11 }}>{row.value}</Text>
+          {!isMobile ? (
+            <Text type="secondary" style={{ fontSize: 11 }}>{row.value}</Text>
+          ) : null}
         </Space>
       )
     },
     ...ACTION_LIST.map((a) => ({
       title: a.label,
       dataIndex: a.value,
-      width: 80,
+      width: isMobile ? 64 : 80,
       align: "center" as const,
       render: (_: unknown, row: { value: string }) => {
         const cur = byRes.get(row.value);
@@ -114,23 +118,26 @@ export function PermissionMatrix({ value, onChange, readOnly }: Props) {
         );
       }
     })),
-    {
-      title: "操作",
-      width: 120,
-      fixed: "right" as const,
-      render: (_: unknown, row: { value: string }) => {
-        if (readOnly) return null;
-        const cur = byRes.get(row.value);
-        const allChecked = ACTION_LIST.every((a) => cur?.has(a.value));
-        return allChecked ? (
-          <a onClick={() => clearForResource(row.value)}>清空</a>
-        ) : (
-          <a onClick={() => selectAllForResource(row.value, ACTION_LIST.map((a) => a.value))}>
-            全选
-          </a>
-        );
-      }
-    }
+    ...(!readOnly
+      ? [
+          {
+            title: "操作",
+            width: isMobile ? 80 : 120,
+            fixed: "right" as const,
+            render: (_: unknown, row: { value: string }) => {
+              const cur = byRes.get(row.value);
+              const allChecked = ACTION_LIST.every((a) => cur?.has(a.value));
+              return allChecked ? (
+                <a onClick={() => clearForResource(row.value)}>清空</a>
+              ) : (
+                <a onClick={() => selectAllForResource(row.value, ACTION_LIST.map((a) => a.value))}>
+                  全选
+                </a>
+              );
+            }
+          }
+        ]
+      : [])
   ];
 
   return (
@@ -140,7 +147,7 @@ export function PermissionMatrix({ value, onChange, readOnly }: Props) {
       pagination={false}
       columns={columns}
       dataSource={RESOURCE_LIST}
-      scroll={{ x: 720 }}
+      scroll={{ x: "max-content" }}
     />
   );
 }

@@ -3,6 +3,7 @@ import { useMemo, useState } from "react";
 import { Empty, Skeleton, Tree, Tag, Input, Space, Button } from "antd";
 import type { DataNode } from "antd/es/tree";
 import { PlusOutlined, SearchOutlined } from "@ant-design/icons";
+import { useResponsive } from "@/lib/use-breakpoint";
 
 export type DictTreeNode = {
   id: string;
@@ -81,6 +82,7 @@ function filterTree(nodes: DataNode[], keyword: string): DataNode[] {
 
 export function DictTreeView({ rows, loading, keyword, onKeywordChange, onSelect, onAddChild, renderActions }: Props) {
   const [expandedKeys, setExpandedKeys] = useState<React.Key[]>([]);
+  const { isMobile } = useResponsive();
   const tree = useMemo(() => buildTree(rows), [rows]);
   const filtered = useMemo(() => filterTree(tree, keyword), [tree, keyword]);
 
@@ -97,7 +99,7 @@ export function DictTreeView({ rows, loading, keyword, onKeywordChange, onSelect
           placeholder="搜索 code 或 label"
           value={keyword}
           onChange={(e) => onKeywordChange(e.target.value)}
-          style={{ width: 240 }}
+          style={{ width: isMobile ? "100%" : 240 }}
         />
       </Space>
       {filtered.length === 0 ? (

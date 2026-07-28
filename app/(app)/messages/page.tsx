@@ -100,6 +100,7 @@ export default function MessagesPage() {
     {
       title: t("messages.column.content"),
       dataIndex: "content",
+      hideInTable: isMobile,
       ellipsis: true,
       render: (_, r) => (
         <Text type="secondary" style={{ fontSize: 13 }}>
@@ -242,10 +243,12 @@ export default function MessagesPage() {
         search={false}
         pagination={{
           defaultPageSize: 20,
-          showSizeChanger: true,
+          showSizeChanger: !isMobile,
           size: isMobile ? "small" : undefined
         }}
         cardBordered={false}
+        scroll={{ x: "max-content" }}
+        sticky={isMobile}
         locale={{
           emptyText: (
             <Empty

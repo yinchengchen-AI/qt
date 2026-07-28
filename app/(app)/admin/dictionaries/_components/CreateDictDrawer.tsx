@@ -1,6 +1,7 @@
 "use client";
 import { useEffect, useState } from "react";
 import { App as AntdApp, Alert, Button, Drawer, Form, Input, InputNumber, Select, Space } from "antd";
+import { useResponsive } from "@/lib/use-breakpoint";
 import { ALLOWED_DICTIONARY_CATEGORIES, DICTIONARY_CATEGORY_LABEL } from "@/lib/dictionary-categories";
 import { DICT_META, isSystemCategory } from "@/lib/dict-domain";
 
@@ -26,6 +27,7 @@ export function CreateDictDrawer({ open, onClose, onSaved, defaultCategory, defa
   const { message } = AntdApp.useApp();
   const [form] = Form.useForm<FormValues>();
   const category = Form.useWatch("category", form);
+  const { isMobile } = useResponsive();
   // 拉取同 category 下所有字典项 (含父级引用, 树形类用)
   const [parentOptions, setParentOptions] = useState<{ code: string; label: string; parentCode: string | null }[]>([]);
   const [parentLoading, setParentLoading] = useState(false);
@@ -106,7 +108,7 @@ export function CreateDictDrawer({ open, onClose, onSaved, defaultCategory, defa
         form.resetFields();
         onClose();
       }}
-      size={480}
+      styles={{ wrapper: isMobile ? { width: "100%", maxWidth: 480 } : { width: 480 } }}
       extra={
         <Space>
           <Button onClick={onClose}>取消</Button>

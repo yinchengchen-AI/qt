@@ -10,6 +10,7 @@ import { Page } from "@/components/page";
 import { PageHeader } from "@/components/page-header";
 import { FormSection, FormGrid, FormCard } from "@/components/form";
 import { DepartmentTreeSelect } from "@/components/admin/department-tree-select";
+import { useResponsive } from "@/lib/use-breakpoint";
 
 const { Text } = Typography;
 
@@ -20,6 +21,7 @@ export default function NewUserPage() {
   const goBack = useGoBack("/admin/users");
   const { message, modal } = AntdApp.useApp();
   const { token } = theme.useToken();
+  const { isMobile } = useResponsive();
   const { data: rolesResp } = useSWR<{ list: Role[] }>("/api/roles?pageSize=100");
   const roleOptions = (rolesResp?.list ?? []).map((r) => ({
     value: r.id,
@@ -36,7 +38,7 @@ export default function NewUserPage() {
     Modal.info({
       icon: <KeyOutlined style={{ color: token.colorPrimary }} />,
       title: "账号已创建,初始密码如下(只显示一次)",
-      width: 480,
+      width: isMobile ? "100%" : 480,
       content: (
         <div style={{ paddingTop: 8 }}>
           <Alert

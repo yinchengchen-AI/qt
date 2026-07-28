@@ -19,6 +19,7 @@ import { PlusOutlined, EditOutlined, DeleteOutlined } from "@ant-design/icons";
 import { Page } from "@/components/page";
 import { PageHeader } from "@/components/page-header";
 import { makeListRequest } from "@/lib/use-list-request";
+import { useResponsive } from "@/lib/use-breakpoint";
 import { DateTimeCell } from "@/components/table-cells";
 import { FormCard } from "@/components/form";
 import { useT } from "@/lib/i18n";
@@ -45,6 +46,7 @@ type FormValues = {
 
 export default function ReleasesAdminPage() {
   const t = useT();
+  const { isMobile } = useResponsive();
   const { message, modal } = AntdApp.useApp();
   const actionRef = useRef<ActionType>(undefined);
   const [form] = ProForm.useForm<FormValues>();
@@ -224,7 +226,14 @@ export default function ReleasesAdminPage() {
         rowKey="id"
         search={false}
         actionRef={actionRef}
-        pagination={{ defaultPageSize: 20, showSizeChanger: true }}
+        scroll={{ x: "max-content" }}
+        sticky={isMobile}
+        options={{
+          reload: () => actionRef.current?.reload?.(),
+          density: !isMobile,
+          fullScreen: !isMobile,
+        }}
+        pagination={{ defaultPageSize: 20, showSizeChanger: !isMobile, size: isMobile ? "small" : undefined }}
         request={makeListRequest<AppRelease>("/api/app-releases")}
         cardBordered={false}
         columns={columns}
@@ -235,7 +244,7 @@ export default function ReleasesAdminPage() {
         open={modalOpen}
         onCancel={closeModal}
         destroyOnHidden
-        width={760}
+        width={isMobile ? "100%" : 760}
         footer={
           <Space>
             <Button onClick={closeModal}>{t("releases.cancel")}</Button>

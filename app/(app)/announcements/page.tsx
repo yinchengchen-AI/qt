@@ -22,6 +22,7 @@ import { DateTimeCell } from "@/components/table-cells";
 import { FormCard, FormSection, FormGrid } from "@/components/form";
 import { useT } from "@/lib/i18n";
 import { formatDate } from "@/lib/format";
+import { useResponsive } from "@/lib/use-breakpoint";
 
 type Announcement = {
   id: string;
@@ -48,6 +49,7 @@ export default function AnnouncementsPage() {
   const [modalOpen, setModalOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const { isMobile } = useResponsive();
 
   const closeModal = () => {
     setModalOpen(false);
@@ -215,7 +217,14 @@ export default function AnnouncementsPage() {
         rowKey="id"
         search={false}
         actionRef={actionRef}
-        pagination={{ defaultPageSize: 20, showSizeChanger: true }}
+        pagination={{
+          defaultPageSize: 20,
+          showSizeChanger: !isMobile,
+          size: isMobile ? "small" : undefined
+        }}
+        scroll={{ x: "max-content" }}
+        sticky={isMobile}
+        options={{ density: !isMobile, fullScreen: !isMobile }}
         request={makeListRequest<Announcement>("/api/announcements")}
         cardBordered={false}
         columns={columns}
@@ -226,7 +235,7 @@ export default function AnnouncementsPage() {
         open={modalOpen}
         onCancel={closeModal}
         destroyOnHidden
-        width={760}
+        width={isMobile ? "100%" : 760}
         footer={
           <Space>
             <Button onClick={closeModal}>{t("announcements.cancel")}</Button>

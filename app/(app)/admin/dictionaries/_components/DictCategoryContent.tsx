@@ -1,6 +1,7 @@
 "use client";
 import { Button, Input, Segmented, Space, Tag } from "antd";
 import { LockOutlined, PlusOutlined, ReloadOutlined } from "@ant-design/icons";
+import { useResponsive } from "@/lib/use-breakpoint";
 import { DICT_META } from "@/lib/dict-domain";
 
 type Props = {
@@ -41,6 +42,7 @@ export function DictCategoryContent({
   children
 }: Props) {
   const meta = DICT_META[category];
+  const { isMobile } = useResponsive();
   return (
     <div style={{ display: "flex", flexDirection: "column", height: "100%" }}>
       {/* 类目头 */}
@@ -74,7 +76,7 @@ export function DictCategoryContent({
           placeholder="搜索 code 或 label"
           value={keyword}
           onChange={(e) => onKeywordChange(e.target.value)}
-          style={{ width: 240 }}
+          style={{ width: isMobile ? "100%" : 240 }}
         />
         <Segmented
           size="small"
