@@ -25,6 +25,20 @@
 
 ## 详细变更
 
+### v0.13.5(2026-07-29) 工作台视觉 + 布局改版
+
+> Dashboard 首屏信息层级重排:风险信号前置、图表不再独占整行、KPI 图形化。纯前端改动,数据全部来自现有 `/api/dashboard/summary` + `/api/statistics/aging/dunning/summary`。
+
+- **头部**: 月/季/年 `Segmented` 移入 `PageHeader` actions;区间日期 + 本月/季/年 Tag 收成一行,权限提示收进 ⓘ Tooltip(原独立 HintBox 行删除)。
+- **KPI 区**: 4 卡加图标(客户/合同/开票/回款),开票率与回款率加卡片底部细进度条;`StatGrid` 的 `StatItem` 新增可选 `icon` / `progress` 属性(其它使用方零影响)。
+- **待办预警条(新)**: 待开票(PENDING_FINANCE)、90+ 账龄金额、催收中合计、法务介入,仅非零项渲染,色块左边框 + 点击跳 `/invoices` / `/statistics/aging`。
+- **布局**: 镇街柱状图 24 栏 420px → 16 栏 320px(移动端 260px);合同状态由文字行改 `@ant-design/charts` Pie donut(8 栏,状态语义配色,总数入副标题);开票/回款概况 12/12 分栏,每个状态下加金额占比细条;Top 5 客户行内加合同额占比条形背景(以第一名为 100%)。
+- **账龄**: 90+ 卡片金额 >0 时红框红底 + 左红边强化。
+
+**版本号**: `0.13.4` → `0.13.5` (patch bump)
+
+**部署说明**:无 schema 变更、无新 migration、无 API 变更,`deploy.sh` 常规流程。
+
 ### 部署脚本改进(未发版,随下次部署生效)
 
 > 以下为纯 `scripts/prod/deploy.sh` 运维改动,不改应用行为、不带版本号,随下一次 `deploy.sh` 的 `git pull` 生效(re-exec 护栏保证新脚本完整执行)。

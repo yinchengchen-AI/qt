@@ -2,7 +2,7 @@
 
 > 客户 / 合同 / 开票 / 回款 一体化管理，附件走 MinIO presigned 直传。
 >
-> **当前版本: v0.13.4**（2026-07-29）
+> **当前版本: v0.13.5**（2026-07-29）
 >
 > 项目文档地图见 [docs/README.md](docs/README.md)，详细设计见 [docs/architecture/DESIGN-v3.md](docs/architecture/DESIGN-v3.md)，用户手册见 [docs/user/USER_MANUAL.md](docs/user/USER_MANUAL.md)。
 
@@ -216,6 +216,10 @@ nginx 反代下上游异常时，由 `public/502.html` 静态页和 `app/502/pag
 ## 最近更新
 
 完整 changelog 见 [CHANGELOG.md](CHANGELOG.md)。
+
+### v0.13.5（2026-07-29）工作台视觉 + 布局改版
+
+Dashboard 改版：月/季/年切换移入页头右侧，区间与权限提示收成一行；KPI 卡加图标与开票率/回款率底部细进度条（`StatGrid` 新增可选 `icon`/`progress`，其它使用方零影响）；新增「待办预警」条（待开票 / 90+ 账龄 / 催收中 / 法务介入，仅非零显示、点击直达）；镇街分布降为 16 栏，合同状态改 donut 环图，开票/回款概况 12/12 分栏加金额占比细条，Top 客户加占比条形背景，账龄 90+ 红框强化。数据获取与 API 不变，无 schema 变更。
 
 ### v0.13.4（2026-07-29）更新日志列表取消重要置顶
 
