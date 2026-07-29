@@ -54,6 +54,9 @@ export const env = createEnv({
     CONTRACT_COMPLETION_INVOICE_RATIO: process.env.CONTRACT_COMPLETION_INVOICE_RATIO,
     CONTRACT_OVERDUE_GRACE_DAYS: process.env.CONTRACT_OVERDUE_GRACE_DAYS,
   },
+  // Docker 镜像构建期(next build 收集页面数据时会 import 路由模块)没有真实环境变量,
+  // 构建阶段设 SKIP_ENV_VALIDATION=1 跳过校验;运行时(含容器)不设,保持 fail-fast。
+  skipValidation: !!process.env.SKIP_ENV_VALIDATION,
   emptyStringAsUndefined: true
 });
 
@@ -62,17 +65,20 @@ export const env = createEnv({
 let _startupChecked = false;
 // 模块加载时立即执行一次生产环境校验;失败即抛错,防止部署到生产时仍带占位密钥运行
 // (旧版只在首次 getPublicBaseUrl() 才检查,但首页/登录页等路径可能不调用它,占位值会一直存活)
-try {
-  assertProductionConfig();
-} catch (e) {
-  // 仅在生产环境重抛;开发/测试时打印警告以免影响本地启 dev
-  if (env.NODE_ENV === "production") throw e;
-  console.warn("[env] 非生产环境,跳过启动期配置校验:", e instanceof Error ? e.message : e);
+if (!process.env.SKIP_ENV_VALIDATION) {
+  try {
+    assertProductionConfig();
+  } catch (e) {
+    // 仅在生产环境重抛;开发/测试时打印警告以免影响本地启 dev
+    if (env.NODE_ENV === "production") throw e;
+    console.warn("[env] 非生产环境,跳过启动期配置校验:", e instanceof Error ? e.message : e);
+  }
 }
 
 export function assertProductionConfig(): void {
   if (_startupChecked) return;
   _startupChecked = true;
+  if (process.env.SKIP_ENV_VALIDATION) return;
   if (env.NODE_ENV !== "production") return;
   const missing: string[] = [];
   if (!env.APP_PUBLIC_URL) missing.push("APP_PUBLIC_URL");

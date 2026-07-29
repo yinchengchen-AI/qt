@@ -6,18 +6,23 @@
 
 | 文件 | 安装位置 | 用途 |
 |------|---------|------|
-| `qt-app.service`   | `/etc/systemd/system/qt-app.service` | Next.js 服务单元 |
+| `qt-app.service`   | `/etc/systemd/system/qt-app.service` | **(legacy, v0.13.2 起停用)** 应用已容器化(qt-app docker 容器,host 网络,`docker compose -f docker-compose.prod.yml up -d app` 管理);此单元仅留作容器化前的回滚备份 |
 | `qt-jobs.cron`     | `/etc/cron.d/qt-jobs`                | 定时任务 (job runner + backup + audit + cert-check) |
+
+## 应用容器化 (v0.13.2 起)
+
+- 应用镜像由根目录 `Dockerfile` 多阶段构建(standalone 产物 + 全局 tsx/prisma CLI),`docker-compose.prod.yml` 的 `app` 服务以 **host 网络**运行,`.env` 里的 `127.0.0.1:5432/9000` 零改动可用。
+- 日常部署仍是 `scripts/prod/deploy.sh` 一条命令,内部变为:git pull → `docker build` → 一次性容器跑 `prisma migrate deploy` 与 `release:publish` → `docker compose up -d app`。
+- 回滚:`docker tag qt-app:<旧版本> qt-app:latest && docker compose -f docker-compose.prod.yml up -d app`(镜像 tag 保留最近 3 个版本)。
+- 宿主机 nginx 不动,上游仍是 `127.0.0.1:3000`;cron 的 curl 目标也不变。
+- 容器日志:`docker logs -f qt-app`(替代 `journalctl -u qt-app`)。
 
 ## 安装步骤 (Aliyun ECS 单主机, 用户 `qt`, 工作目录 `/opt/qt`)
 
 ```bash
-# 1) systemd 服务
-sudo cp ops/qt-app.service /etc/systemd/system/
-sudo systemctl daemon-reload
-sudo systemctl enable --now qt-app
-sudo systemctl status qt-app          # 应为 active (running)
-journalctl -u qt-app -f               # 实时日志
+# 1) 应用(Docker)
+docker compose -f docker-compose.prod.yml up -d app
+docker logs -f qt-app                  # 实时日志
 
 # 2) 定时任务 (安装前请确认 .env 里已设置 CRON_SECRET, 与 NextAuth / 内部 API 鉴权一致)
 sudo cp ops/qt-jobs.cron /etc/cron.d/qt-jobs

@@ -37,6 +37,9 @@ const appVersion = computeAppVersion();
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   reactStrictMode: true,
+  // standalone: 输出自包含的 .next/standalone(server.js + 按 trace 裁剪的 node_modules),
+  // 供 Docker 镜像使用;对现有 native systemd 部署无副作用(多一份产物目录而已)。
+  output: 'standalone',
   // Pin the workspace root so Next.js/Turbopack stops inferring it from
   // stray lockfiles in ancestor directories.
   turbopack: {

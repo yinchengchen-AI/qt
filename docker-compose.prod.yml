@@ -5,6 +5,26 @@
 #       export MINIO_ROOT_PASSWORD="$MINIO_SECRET_KEY"
 #       docker compose -f docker-compose.prod.yml up -d
 services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        # 登录页版本 chip;deploy.sh 传入 <version>+<short-sha>
+        APP_VERSION: ${APP_VERSION:-unknown}
+    image: qt-app:latest
+    container_name: qt-app
+    restart: unless-stopped
+    # host 网络:容器内 127.0.0.1 即宿主机 127.0.0.1 — .env 里的
+    # DATABASE_URL/MINIO_ENDPOINT(127.0.0.1:5432/9000)零改动可用,
+    # 无 bridge NAT 开销,cron/nginx 地址全部不变。
+    network_mode: host
+    env_file: .env
+    environment:
+      # 灰度时可用 APP_PORT=3001 起第二个实例与 native/旧容器并行
+      PORT: ${APP_PORT:-3000}
+      HOSTNAME: 127.0.0.1
+
   postgres:
     image: postgres:16-alpine
     container_name: qt-postgres

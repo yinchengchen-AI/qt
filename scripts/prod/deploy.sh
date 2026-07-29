@@ -1,6 +1,13 @@
 #!/usr/bin/env bash
-# 日常更新部署: git pull + install + migrate + build + restart + smoke
+# 日常更新部署(Docker 版): git pull + docker build + migrate + release:publish + compose up + smoke
 # 用法: 在 /opt/qt 目录下, sudo -E ./scripts/prod/deploy.sh
+#
+# v0.13.2 起应用(qt-app)也容器化:
+#   - 镜像在服务器本地构建 (Dockerfile 多阶段, standalone 产物)
+#   - qt-app 用 host 网络, .env 里的 127.0.0.1 地址 (PG/MinIO) 零改动可用
+#   - migrate deploy / release:publish 用 docker run --rm 一次性容器执行
+#   - 宿主机 nginx 不动, 上游仍是 127.0.0.1:3000; native systemd qt-app 已退役
+#   - 回滚: docker tag qt-app:<旧版本> qt-app:latest && docker compose -f docker-compose.prod.yml up -d app
 
 # 自我改写护栏 (2026-07-29 v0.13.2 部署实证): 本脚本第 1 步就是 git pull,
 # 若 deploy.sh 自身在 pull 中被更新, bash 会按旧字节偏移继续读新文件,
@@ -18,35 +25,92 @@ fi
 set -euo pipefail
 cd "${QT_DEPLOY_ROOT:?QT_DEPLOY_ROOT 未设置, 请勿直接 source 本脚本}"
 
+COMPOSE="docker compose -f docker-compose.prod.yml"
+
 echo "==> git pull"
 git pull --ff-only
 
-echo "==> pnpm install --frozen-lockfile"
-pnpm install --frozen-lockfile
-
-echo "==> source .env (for DATABASE_URL / MIGRATION_DATABASE_URL)"
+echo "==> source .env (for DATABASE_URL / MIGRATION_DATABASE_URL / MINIO_*)"
 set -a; . ./.env; set +a
-echo "==> prisma migrate deploy (用 MIGRATION_DATABASE_URL 走降权账号,只 apply 不改 schema)"
+# compose 里 postgres/minio 服务需要的变量
+export POSTGRES_SUPER_PASSWORD=$(echo "$MIGRATION_DATABASE_URL" | sed -E "s|.*://qitai:([^@]+)@.*|\1|")
+export MINIO_ROOT_USER="$MINIO_ACCESS_KEY"
+export MINIO_ROOT_PASSWORD="$MINIO_SECRET_KEY"
 
+VERSION="v$(sed -n 's/^  "version": *"\([^"]*\)".*/\1/p' package.json | head -1)"
+APP_VERSION="${VERSION}+$(git rev-parse --short HEAD)"
+echo "==> 版本: $APP_VERSION"
+
+# 内存兜底 (2026-07-08 v0.9.7 / 2026-07-18 v0.10.3 部署教训): 3.5GB 机器上
+# Turbopack 编译 RSS 可超 2GB, docker build 与 native build 内存需求相同,
+# Docker 不省内存。build 前停 qt-app 容器 (~300MB) 腾内存; MemAvailable < 2200MB
+# 时再停 PG/MinIO (build 不依赖 DB), build 结束无论成败都拉起。
+# 只动 qt 自己的容器; mysql-fineui 属其它项目, 不自动停。
+STOPPED_CONTAINERS=""
+if command -v docker >/dev/null 2>&1; then
+  if [ "$(docker inspect -f '{{.State.Running}}' qt-app 2>/dev/null)" = "true" ]; then
+    echo "==> 构建前停止 qt-app 容器腾内存 (~300MB)"
+    docker stop qt-app >/dev/null
+    STOPPED_CONTAINERS="qt-app"
+  fi
+  AVAIL_MEM_MB=$(awk '/^MemAvailable:/ {print int($2/1024)}' /proc/meminfo 2>/dev/null || echo 0)
+  if [ "${AVAIL_MEM_MB:-0}" -gt 0 ] && [ "$AVAIL_MEM_MB" -lt 2200 ]; then
+    for c in qt-postgres qt-minio; do
+      if [ "$(docker inspect -f '{{.State.Running}}' "$c" 2>/dev/null)" = "true" ]; then
+        echo "==> MemAvailable=${AVAIL_MEM_MB}MB < 2200MB, 临时停止 $c 腾编译内存"
+        docker stop "$c" >/dev/null
+        STOPPED_CONTAINERS="$STOPPED_CONTAINERS $c"
+      fi
+    done
+  fi
+fi
+
+echo "==> docker build qt-app:${VERSION} (APP_VERSION=${APP_VERSION})"
+set +e
+NEXT_TELEMETRY_DISABLED=1 docker build \
+  --build-arg APP_VERSION="$APP_VERSION" \
+  -t "qt-app:${VERSION}" \
+  -t qt-app:latest \
+  .
+BUILD_EXIT=$?
+set -e
+if [ -n "$STOPPED_CONTAINERS" ]; then
+  echo "==> 拉起临时停止的容器:$STOPPED_CONTAINERS"
+  # shellcheck disable=SC2086 -- 需要按空格拆成多个参数
+  docker start $STOPPED_CONTAINERS >/dev/null
+fi
+if [ "$BUILD_EXIT" -ne 0 ]; then
+  echo "[ERR] docker build 失败 (exit=$BUILD_EXIT)" >&2
+  if [ "$BUILD_EXIT" -eq 137 ]; then
+    echo "      exit=137 = OOM Kill; 内存仍不足可手动 docker stop mysql-fineui (其它项目, 356MB) 后重跑" >&2
+  fi
+  exit "$BUILD_EXIT"
+fi
+
+echo "==> 确保基础设施容器在跑 (postgres / minio)"
+$COMPOSE up -d postgres minio
+
+echo "==> prisma migrate deploy (一次性容器, 用 MIGRATION_DATABASE_URL 走降权账号)"
+run_migrate() {
+  docker run --rm --network host --env-file .env \
+    -e DATABASE_URL="$MIGRATION_DATABASE_URL" \
+    qt-app:latest npx prisma migrate deploy
+}
 # 已知问题兜底: 20260630_message_type_enum_index 想 CREATE TYPE MessageType,
 # 但 20260627_message_type_enum_bootstrap 已经预创建了 (含全部 12 个值),
 # 在 fresh DB 上按时间序 deploy 会撞 "type already exists".
-# 跟 ci.yml 的 fallback 同步: 检测到该 migration 失败时, 手工修 schema +
-# resolve --applied 跳过, 然后再 deploy 一次.
+# 检测到该 migration 失败时, 手工修 schema + resolve --applied 跳过, 然后再 deploy 一次.
 set +e
-DATABASE_URL="$MIGRATION_DATABASE_URL" npm run prisma:deploy 2>&1 | tee /tmp/migrate.log
+run_migrate 2>&1 | tee /tmp/migrate.log
 EXIT1=${PIPESTATUS[0]}
 set -e
 if [ $EXIT1 -eq 0 ]; then
   echo "==> prisma deploy 一次过, 无需 fallback"
 elif grep -q "20260630_message_type_enum_index" /tmp/migrate.log; then
   echo "::warning::20260630_message_type_enum_index 撞 MessageType already exists, 走 enum fallback"
-  # 用生产 DB 的 admin 账号 (MIGRATION_DATABASE_URL 是降权账号, 不能 ALTER TYPE)
-  # 借用 .env 里的 DATABASE_URL (qt_app, BYPASSRLS) 是 admin 角色
   ADMIN_URL="${DATABASE_URL:-}"
   if [ -z "$ADMIN_URL" ]; then
     echo "[ERR] 20260630 enum fallback 需要 DATABASE_URL (admin 角色), 但 .env 里没设"
-    echo "      手动跑: psql \$DATABASE_URL -c 'ALTER TABLE \"Message\" ALTER COLUMN \"type\" TYPE \"MessageType\" USING \"type\"::\"MessageType\";' -c 'CREATE INDEX \"Message_type_receiverUserId_createdAt_idx\" ON \"Message\"(\"type\", \"receiverUserId\", \"createdAt\");' && npx prisma migrate resolve --applied 20260630_message_type_enum_index && npx prisma migrate deploy"
     exit 1
   fi
   # .env 里的 DATABASE_URL 含 ?schema=public, psql 不认, 去掉
@@ -55,16 +119,16 @@ elif grep -q "20260630_message_type_enum_index" /tmp/migrate.log; then
     -c 'ALTER TABLE "Message" ALTER COLUMN "type" TYPE "MessageType" USING "type"::"MessageType";' \
     -c 'DROP INDEX IF EXISTS "Message_type_idx";' \
     -c 'CREATE INDEX "Message_type_receiverUserId_createdAt_idx" ON "Message"("type", "receiverUserId", "createdAt");'
-  # resolve --applied 跳过 20260630
   set +e
-  DATABASE_URL="$MIGRATION_DATABASE_URL" npx prisma migrate resolve --applied 20260630_message_type_enum_index
+  docker run --rm --network host --env-file .env \
+    -e DATABASE_URL="$MIGRATION_DATABASE_URL" \
+    qt-app:latest npx prisma migrate resolve --applied 20260630_message_type_enum_index
   RESOLVE_EXIT=$?
   set -e
   if [ $RESOLVE_EXIT -ne 0 ]; then
     echo "::warning::prisma resolve --applied 返回 $RESOLVE_EXIT (可能 migration 不在 failed 状态, 继续)"
   fi
-  # 再 deploy 一次
-  DATABASE_URL="$MIGRATION_DATABASE_URL" npm run prisma:deploy
+  run_migrate
   echo "==> fallback 成功"
 else
   echo "[ERR] prisma deploy 失败但不是已知 20260630 enum 冲突, 不走 fallback"
@@ -72,101 +136,31 @@ else
   exit $EXIT1
 fi
 
-echo "==> prisma generate (sync client to current schema; postinstall only runs patch-package)"
-npx --no-install prisma generate
-
-# V8 堆大小按机器总内存自适应分档, 也可用 NODE_MAX_OLD_SPACE 显式覆盖:
-#   <  4 GB RAM  → 1536 MB  (Next.js 16 Turbopack 静态分析在 3.5 GB 机器需要降堆)
-#   4–8 GB RAM  → 2048 MB  (默认档位)
-#   ≥  8 GB RAM  → 4096 MB  (大内存机器, 配合 BUILD_WORKERS=$(nproc) 多 worker 加速)
-#
-# 历史教训 (2026-07-08 部署 v0.9.7): 3.5 GB 机器 + Turbopack 静态分析阶段 RSS 涨过 2 GB,
-# NODE_MAX_OLD_SPACE=2048 仍被 OOM Killed (global_oom, 旧 v0.9.6 qt-app 同时在跑占 374 MB);
-# 降到 1536 + 先 systemctl stop qt-app 释放 374 MB 后通过 (总停机 ~3-4 分钟)。
-# 顺带: BUILD_WORKERS=1 也是收敛 RSS 的关键, 多 worker 在小内存机器上加剧争抢。
-#
-# 调度 telemetry: 关闭 Next.js 上报, 与构建内存无关, 借本脚本一并设上, 保持幂等.
-# /proc/meminfo 读取提到 if 外面, 即便用户显式覆盖 NODE_MAX_OLD_SPACE 也能打日志,
-# 也避免 set -u 下 TOTAL_MEM_GB unbound-variable 退出 (回归 v0.9.7 部署脚本).
-# meminfo 读不到 (非 Linux / 容器受限) 时 fallback 到 unknown, 自适应档位保守走 1536 MB.
-TOTAL_MEM_KB=$(awk '/^MemTotal:/ {print $2}' /proc/meminfo 2>/dev/null || echo 0)
-if [ "$TOTAL_MEM_KB" -gt 0 ]; then
-  TOTAL_MEM_GB=$((TOTAL_MEM_KB / 1024 / 1024))
-else
-  TOTAL_MEM_GB="unknown"
-fi
-if [ -z "${NODE_MAX_OLD_SPACE:-}" ]; then
-  if [ "$TOTAL_MEM_GB" = "unknown" ] || [ "$TOTAL_MEM_GB" -lt 4 ]; then
-    NODE_MAX_OLD_SPACE=1536
-  elif [ "$TOTAL_MEM_GB" -ge 8 ]; then
-    NODE_MAX_OLD_SPACE=4096
-  else
-    NODE_MAX_OLD_SPACE=2048
-  fi
-fi
-BUILD_WORKERS="${BUILD_WORKERS:-1}"
-
-# 低内存兜底 (2026-07-18 v0.10.3 部署教训): Turbopack 编译的原生 (Rust) 内存 ~2.1GB,
-# 与 --max-old-space-size 无关 (压 V8 堆无效, exit=137 全局 OOM); 本机被其它租户进程挤占时
-# (mysql-fineui 356MB / hermes-agent 375MB), 3.5GB 机器编译必被杀。
-# 编译不依赖 DB/对象存储 (页面全 dynamic), 可用内存不足时先停本项目容器腾内存,
-# build 结束无论成败都拉起。只动 qt 自己的容器; mysql-fineui 属其它项目, 不自动停,
-# 需要时手动 docker stop (先例见 docs/ops/deploy-ecs.md §4.6.3)。
-STOPPED_QT_CONTAINERS=""
-if command -v docker >/dev/null 2>&1; then
-  AVAIL_MEM_MB=$(awk '/^MemAvailable:/ {print int($2/1024)}' /proc/meminfo 2>/dev/null || echo 0)
-  if [ "${AVAIL_MEM_MB:-0}" -gt 0 ] && [ "$AVAIL_MEM_MB" -lt 2200 ]; then
-    for c in qt-postgres qt-minio; do
-      if [ "$(docker inspect -f '{{.State.Running}}' "$c" 2>/dev/null)" = "true" ]; then
-        echo "==> MemAvailable=${AVAIL_MEM_MB}MB < 2200MB, 临时停止 $c 腾编译内存"
-        docker stop "$c" >/dev/null
-        STOPPED_QT_CONTAINERS="$STOPPED_QT_CONTAINERS $c"
-      fi
-    done
-  fi
-fi
-
-echo "==> pnpm build (BUILD_WORKERS=$BUILD_WORKERS, NODE_MAX_OLD_SPACE=${NODE_MAX_OLD_SPACE}MB, MEM_TOTAL=${TOTAL_MEM_GB}GB)"
-set +e
-NODE_OPTIONS="--max-old-space-size=${NODE_MAX_OLD_SPACE}" \
-  NEXT_TELEMETRY_DISABLED=1 \
-  NEXT_BUILD_WORKERS="$BUILD_WORKERS" \
-  pnpm build
-BUILD_EXIT=$?
-set -e
-if [ -n "$STOPPED_QT_CONTAINERS" ]; then
-  echo "==> 拉起临时停止的容器:$STOPPED_QT_CONTAINERS"
-  # shellcheck disable=SC2086 -- 需要按空格拆成多个参数
-  docker start $STOPPED_QT_CONTAINERS >/dev/null
-fi
-if [ "$BUILD_EXIT" -ne 0 ]; then
-  echo "[ERR] pnpm build 失败 (exit=$BUILD_EXIT)" >&2
-  if [ "$BUILD_EXIT" -eq 137 ]; then
-    echo "      exit=137 = OOM Kill; 内存仍不足可手动 docker stop mysql-fineui (其它项目, 356MB) 后重跑" >&2
-  fi
-  exit "$BUILD_EXIT"
-fi
-
 echo "==> release:publish (自动发布更新日志; 同版本已存在则幂等跳过)"
-# 放在 build 成功之后: 确保临时停止的 qt-postgres 已拉起 (build 低内存兜底会停容器),
-# 且 prisma generate 已在本脚本前面跑过 (脚本依赖 @prisma/client)。
-# 失败只告警不阻断: 发布日志失败不应拖垮发版, 可稍后手动 npm run release:publish
-# 或在 /admin/releases 手工发布。
+# 失败只告警不阻断: 发布日志失败不应拖垮发版, 可稍后手动补:
+#   cd /opt/qt && docker run --rm --network host --env-file .env -v /opt/qt/.git:/app/.git:ro qt-app:latest npx tsx scripts/release/publish.ts
+# 注: .git 只读挂载进容器, git log 只读历史不写 worktree; package.json 用镜像内的(与 pull 后的 commit 一致)
 set +e
-npm run release:publish
+docker run --rm --network host --env-file .env \
+  -v "$QT_DEPLOY_ROOT/.git:/app/.git:ro" \
+  qt-app:latest npx tsx scripts/release/publish.ts
 PUBLISH_EXIT=$?
 set -e
 if [ "$PUBLISH_EXIT" -ne 0 ]; then
   echo "[WARN] release:publish 失败 (exit=$PUBLISH_EXIT) — 部署继续;" >&2
-  echo "       稍后手动补: cd /opt/qt && set -a && . ./.env && set +a && npm run release:publish" >&2
+  echo "       稍后手动补: cd /opt/qt && docker run --rm --network host --env-file .env qt-app:latest tsx scripts/release/publish.ts" >&2
 fi
-# 生产日常更新不再 seed: roles/dicts/depts/workflow templates 已在首次部署时落地,
-# 重复跑 pnpm seed 会 (1) 浪费时间 (9 份 workflow template × 5 阶段 × N 任务 = 几百次 DB 写),
-# (2) 即使 idempotent, 也有微弱的角色权限/部门字段被 update 覆盖风险。
-# 新机器/灾备恢复/重置环境部署时, 手动跑: cd /opt/qt && pnpm seed
 
-echo "==> systemctl restart qt-app"
-systemctl restart qt-app
+echo "==> docker compose up -d app (滚动替换 qt-app 容器)"
+$COMPOSE up -d app
+
+echo "==> 清理悬空镜像 (保留最近 3 个 qt-app 版本 tag)"
+docker image prune -f >/dev/null
+KEEP=3
+# shellcheck disable=SC2012
+for tag in $(docker images qt-app --format '{{.Tag}}' | grep '^v' | sort -rV | tail -n +$((KEEP + 1))); do
+  docker rmi "qt-app:$tag" >/dev/null 2>&1 || true
+done
 
 echo "==> smoke test (waiting 3s for app boot)"
 sleep 3
