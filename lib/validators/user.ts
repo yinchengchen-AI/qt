@@ -85,7 +85,7 @@ export const userWithProfileUpdateSchema = z.object({
   emergencyContacts: z.array(z.object({
     name: z.string().min(1).max(50),
     relationship: z.enum(["父母", "配偶", "兄弟姐妹", "子女", "其他"]),
-    phone: z.string().regex(/^1[3-9]\d{9}$/),
+    phone: z.string().regex(/^(1[3-9]\d{9}|0\d{2,3}-?\d{7,8})$/, "电话格式不正确(手机号或座机)"),
     remark: z.string().max(500).optional().nullable()
   })).optional(),
   // 并发检测(PR3):客户端上次 GET 拿到的 updatedAt

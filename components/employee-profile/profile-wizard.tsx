@@ -1,15 +1,16 @@
 "use client";
 import { StepsForm, ProFormText, ProFormSelect, ProFormDatePicker, ProFormDigit, ProFormTextArea, ProFormUploadButton, ProCard } from "@ant-design/pro-components";
-import { App as AntdApp, Form, Alert, Space, Tag, Typography } from "antd";
+import { App as AntdApp, Button, Form, Alert, Space, Tag, Typography } from "antd";
 import { UserOutlined, IdcardOutlined, BankOutlined, BookOutlined, FileProtectOutlined } from "@ant-design/icons";
 import { useRouter } from "next/navigation";
-import { useRef } from "react";
+import { useRef, useState } from "react";
 import { ProvinceCityDistrict } from "./province-city-district";
 import { SubtableEditor } from "./subtable-editor";
 import { useDict } from "@/lib/dict-client";
 import { uploadFileToMinIO } from "@/lib/upload-client";
 import { FormSection, FormGrid } from "@/components/form";
 import { toIsoDateTime } from "@/lib/format";
+import { useResponsive } from "@/lib/use-breakpoint";
 import type { FullEmployeeProfileDto } from "@/lib/types/employee-profile";
 
 const { Text, Title } = Typography;
@@ -58,6 +59,7 @@ const STEPS = [
 export function ProfileWizard({ userId, initial, isAdmin }: Props) {
   const router = useRouter();
   const { message, modal } = AntdApp.useApp();
+  const { isMobile } = useResponsive();
   const formRef = useRef<unknown>(null);
   const educationDict = useDict("EDUCATION_LEVEL");
   const contractTypeDict = useDict("CONTRACT_TYPE");
@@ -76,7 +78,13 @@ export function ProfileWizard({ userId, initial, isAdmin }: Props) {
   }
 
   const initialValues = {
-    profile: initial?.profile ?? {},
+    profile: {
+      ...(initial?.profile ?? {}),
+      // 已有头像回显为 upload 列表项,删除该列表项即表示清除头像
+      avatarUpload: initial?.avatar
+        ? [{ uid: String(initial.avatar.id), name: initial.avatar.name || "当前头像", status: "done", url: initial.avatar.url, response: { id: String(initial.avatar.id) } }]
+        : []
+    },
     educations: initial?.educations ?? [],
     workExperiences: initial?.workExperiences ?? [],
     certificates: (initial?.certificates ?? []).map((c) => {
@@ -92,88 +100,156 @@ export function ProfileWizard({ userId, initial, isAdmin }: Props) {
     emergencyContacts: initial?.emergencyContacts ?? []
   };
 
+  const [savingStep, setSavingStep] = useState<number | null>(null);
+  // 乐观锁基线:每次保存成功后用响应里的最新 updatedAt 更新
+  const baselineRef = useRef<string | undefined>(initial?.profile.updatedAt);
+
+  // 每一步对应的保存切片:profile 只发本步字段,子表只发本步数组(后端缺省 = 不动)
+  const STEP_SLICES: { profile: string[]; tables: ("emergencyContacts" | "workExperiences" | "educations" | "skills" | "certificates")[] }[] = [
+    { profile: ["gender", "birthday", "idCard", "education", "entryDate", "province", "city", "district", "addressDetail", "avatarAttachmentId"], tables: ["emergencyContacts"] },
+    { profile: ["position", "jobLevel", "employmentType", "probationEndDate", "formalDate", "resignationDate", "contractType", "contractStartDate", "contractEndDate"], tables: [] },
+    ...(isAdmin ? [{ profile: ["salary", "bankAccount", "bankName", "socialSecurityAccount", "providentFundAccount"], tables: [] as ("emergencyContacts" | "workExperiences" | "educations" | "skills" | "certificates")[] }] : []),
+    { profile: ["remark"], tables: ["workExperiences", "educations", "skills"] },
+    { profile: [], tables: ["certificates"] }
+  ];
+
+  /** 表单原始值 → 规范化全量 body(头像/证书附件映射 + 日期转 ISO) */
+  function normalizeValues(values: Record<string, unknown>) {
+    const profile = { ...((values.profile as Record<string, unknown> | undefined) ?? {}) };
+
+    // zod 的 optionalString/optionalDate 不接受 null,统一剔除(放弃"清空"语义,与后端现状一致):
+    // - getFieldsValue(true) 会带出服务端 profile 的 null 初值(如 probationEndDate)
+    // - 直辖市两级级联时 handleAddressChange 会写入 district: null
+    // 注意 avatarAttachmentId=null 是显式清空头像,在下方头像逻辑里单独设置,不受此影响
+    for (const k of Object.keys(profile)) {
+      if (profile[k] === null) delete profile[k];
+    }
+
+    // 把 avatar 上传后写入 profile.avatarAttachmentId
+    const avatarList = profile.avatarUpload as Array<{ id?: string }> | undefined;
+    if (Array.isArray(avatarList) && avatarList[0]?.id) {
+      profile.avatarAttachmentId = avatarList[0].id;
+    } else if (Array.isArray(avatarList) && avatarList.length === 0 && initial?.avatar) {
+      // 用户删除了已有头像 → 显式清空(后端 validator 接受 null)
+      profile.avatarAttachmentId = null;
+    }
+    delete profile.avatarUpload;
+
+    // 把证书附件 upload 转换为 attachmentId(保留已有未上传的)
+    const certs = ((values.certificates as Array<Record<string, unknown>> | undefined) ?? []).map((c) => ({ ...c }));
+    for (const c of certs) {
+      const uploadList = c.attachmentUpload as Array<{ response?: { id?: string }; id?: string }> | undefined;
+      if (Array.isArray(uploadList) && uploadList.length > 0) {
+        const item = uploadList[0];
+        const id = item?.response?.id ?? item?.id;
+        if (id) {
+          c.attachmentId = id;
+        }
+      }
+      delete c.attachmentUpload;
+    }
+
+    // 日期字段(来自 ProFormDatePicker 的 dayjs 对象)统一转 ISO 字符串
+    for (const key of [
+      "birthday",
+      "entryDate",
+      "probationEndDate",
+      "formalDate",
+      "resignationDate",
+      "contractStartDate",
+      "contractEndDate"
+    ]) {
+      const iso = toIsoDateTime(profile[key]);
+      if (iso !== undefined) profile[key] = iso;
+      else if (profile[key] === undefined || profile[key] === "") delete profile[key];
+    }
+
+    return {
+      profile,
+      educations: (values.educations as unknown[] | undefined) ?? [],
+      workExperiences: (values.workExperiences as unknown[] | undefined) ?? [],
+      certificates: certs,
+      skills: (values.skills as unknown[] | undefined) ?? [],
+      emergencyContacts: (values.emergencyContacts as unknown[] | undefined) ?? []
+    };
+  }
+
+  /** 统一提交:带乐观锁基线,409 时弹覆盖确认;成功后刷新基线 */
+  async function submitBody(body: Record<string, unknown>, opts: { successText: string; navigate?: boolean }): Promise<boolean> {
+    const r = await fetch(`/api/users/${userId}/with-profile`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      credentials: "include",
+      body: JSON.stringify(body)
+    });
+    const j = await r.json();
+    if (j.code !== 0) {
+      if (j.errorCode === "CONFLICT" || j.code === 409) {
+        modal.confirm({
+          title: "档案已被他人修改",
+          content: "是否覆盖?(覆盖会丢失他人的修改)",
+          okText: "覆盖保存",
+          cancelText: "取消",
+          onOk: async () => {
+            const r2 = await fetch(`/api/users/${userId}/with-profile`, {
+              method: "PATCH",
+              headers: { "Content-Type": "application/json" },
+              credentials: "include",
+              body: JSON.stringify({ ...body, expectedUpdatedAt: undefined })
+            });
+            const j2 = await r2.json();
+            if (j2.code !== 0) return message.error(j2.message);
+            baselineRef.current = j2.data?.profile?.updatedAt ?? baselineRef.current;
+            message.success("已覆盖保存");
+            if (opts.navigate) router.push(`/admin/users/${userId}`);
+          }
+        });
+        return false;
+      }
+      message.error(j.message);
+      return false;
+    }
+    baselineRef.current = j.data?.profile?.updatedAt ?? baselineRef.current;
+    message.success(opts.successText);
+    if (opts.navigate) router.push(`/admin/users/${userId}`);
+    return true;
+  }
+
+  /** 最后一步统一提交:全量 body + 保存后返回详情页 */
   async function handleFinish(values: Record<string, unknown>) {
     try {
-      // 把 avatar 上传后写入 profile.avatarAttachmentId
-      const avatarList = values.profile && (values.profile as Record<string, unknown>).avatarUpload as Array<{ id?: string }> | undefined;
-      if (Array.isArray(avatarList) && avatarList[0]?.id) {
-        (values.profile as Record<string, unknown>).avatarAttachmentId = avatarList[0].id;
-      }
-      delete (values.profile as Record<string, unknown>)?.avatarUpload;
-
-      // 把证书附件 upload 转换为 attachmentId(保留已有未上传的)
-      const certs = (values.certificates as Array<Record<string, unknown>> | undefined) ?? [];
-      for (const c of certs) {
-        const uploadList = c.attachmentUpload as Array<{ response?: { id?: string }; id?: string }> | undefined;
-        if (Array.isArray(uploadList) && uploadList.length > 0) {
-          const item = uploadList[0];
-          const id = item?.response?.id ?? item?.id;
-          if (id) {
-            c.attachmentId = id;
-          }
-        }
-        delete c.attachmentUpload;
-      }
-
-      // 日期字段(来自 ProFormDatePicker 的 dayjs 对象)统一转 ISO 字符串
-      const profile = values.profile as Record<string, unknown> | undefined;
-      if (profile) {
-        for (const key of [
-          "birthday",
-          "entryDate",
-          "probationEndDate",
-          "formalDate",
-          "resignationDate",
-          "contractStartDate",
-          "contractEndDate"
-        ]) {
-          const iso = toIsoDateTime(profile[key]);
-          if (iso !== undefined) profile[key] = iso;
-          else if (profile[key] === undefined || profile[key] === "") delete profile[key];
-        }
-      }
-
-      const body = {
-        ...values,
-        expectedUpdatedAt: initial?.profile.updatedAt
-      };
-
-      const r = await fetch(`/api/users/${userId}/with-profile`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include",
-        body: JSON.stringify(body)
-      });
-      const j = await r.json();
-      if (j.code !== 0) {
-        if (j.errorCode === "CONFLICT" || j.code === 409) {
-          modal.confirm({
-            title: "档案已被他人修改",
-            content: "是否覆盖?(覆盖会丢失他人的修改)",
-            okText: "覆盖保存",
-            cancelText: "取消",
-            onOk: async () => {
-              const r2 = await fetch(`/api/users/${userId}/with-profile`, {
-                method: "PATCH",
-                headers: { "Content-Type": "application/json" },
-                credentials: "include",
-                body: JSON.stringify({ ...body, expectedUpdatedAt: undefined })
-              });
-              const j2 = await r2.json();
-              if (j2.code !== 0) return message.error(j2.message);
-              message.success("已覆盖保存");
-              router.push(`/admin/users/${userId}`);
-            }
-          });
-          return;
-        }
-        message.error(j.message);
-        return;
-      }
-      message.success("档案已保存");
-      router.push(`/admin/users/${userId}`);
+      const body = { ...normalizeValues(values), expectedUpdatedAt: baselineRef.current };
+      await submitBody(body, { successText: "档案已保存", navigate: true });
     } catch (e) {
       message.error((e as Error).message);
+    }
+  }
+
+  /** 每步独立保存:只校验并提交当前步的切片,停留在当前页 */
+  async function saveStep(step: number, form: { validateFields: () => Promise<unknown>; getFieldsValue: (all: boolean) => Record<string, unknown> } | undefined) {
+    if (!form) return;
+    const slice = STEP_SLICES[step];
+    if (!slice) return;
+    try {
+      await form.validateFields();
+    } catch {
+      return; // 校验失败,antd 已在字段上提示
+    }
+    try {
+      const full = normalizeValues(form.getFieldsValue(true));
+      const profile: Record<string, unknown> = {};
+      for (const k of slice.profile) {
+        if (full.profile[k] !== undefined) profile[k] = full.profile[k];
+      }
+      const body: Record<string, unknown> = { expectedUpdatedAt: baselineRef.current };
+      if (Object.keys(profile).length > 0) body.profile = profile;
+      for (const t of slice.tables) body[t] = full[t];
+      setSavingStep(step);
+      await submitBody(body, { successText: "本步已保存" });
+    } catch (e) {
+      message.error((e as Error).message);
+    } finally {
+      setSavingStep(null);
     }
   }
 
@@ -186,7 +262,7 @@ export function ProfileWizard({ userId, initial, isAdmin }: Props) {
         <Space orientation="vertical" size={4} style={{ width: "100%" }}>
           <Title level={4} style={{ margin: 0 }}>员工档案向导</Title>
           <Text type="secondary" style={{ fontSize: 13 }}>
-            按以下 5 步填写完整档案,可随时点击步骤标题返回修改;每步可单独保存。
+            按以下 5 步填写完整档案;每步可点「保存本步」单独保存,也可在最后一步「提交」统一保存。
           </Text>
         </Space>
         <Space size={6} wrap style={{ marginTop: 12 }}>
@@ -206,6 +282,24 @@ export function ProfileWizard({ userId, initial, isAdmin }: Props) {
       <StepsForm
         formRef={formRef as never}
         onFinish={handleFinish}
+        submitter={{
+          render: (props, doms) => {
+            const step = (props.step as number | undefined) ?? 0;
+            // 默认按钮([上一步] 下一步/提交)保持不动,"保存本步"插到主按钮前。
+            // 注:此处依赖 StepsForm 当前 buttons 构成(最后一个元素必为主按钮),
+            // pro-components 升级后若按钮构成变化需同步调整。
+            const saveBtn = (
+              <Button
+                key="save-step"
+                loading={savingStep === step}
+                onClick={() => void saveStep(step, props.form)}
+              >
+                保存本步
+              </Button>
+            );
+            return [...doms.slice(0, -1), saveBtn, doms[doms.length - 1]];
+          }
+        }}
         stepsFormRender={(dom, submitter) => (
           <ProCard>
             {dom}
@@ -223,7 +317,7 @@ export function ProfileWizard({ userId, initial, isAdmin }: Props) {
             description="头像 / 性别 / 生日 / 身份证 / 学历 / 入职"
             icon={<UserOutlined />}
           >
-            <div className="profile-wizard-hero" style={{ display: "grid", gridTemplateColumns: "minmax(160px, 200px) 1fr", gap: 24, alignItems: "flex-start" }}>
+            <div className="profile-wizard-hero" style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "minmax(160px, 200px) 1fr", gap: 24, alignItems: "flex-start" }}>
               <div>
                 <ProFormUploadButton
                   name={["profile", "avatarUpload"]}
@@ -245,7 +339,12 @@ export function ProfileWizard({ userId, initial, isAdmin }: Props) {
               <FormGrid columns={2}>
                 <ProFormSelect name={["profile", "gender"]} label="性别" options={GENDER} width="md" />
                 <ProFormDatePicker name={["profile", "birthday"]} label="生日" width="md" />
-                <ProFormText name={["profile", "idCard"]} label="身份证号" width="md" />
+                <ProFormText
+                  name={["profile", "idCard"]}
+                  label="身份证号"
+                  width="md"
+                  rules={[{ pattern: /^[0-9]{17}[0-9Xx]$/, message: "身份证号格式不正确(18 位)" }]}
+                />
                 <ProFormSelect
                   name={["profile", "education"]}
                   label="最高学历"
@@ -265,14 +364,7 @@ export function ProfileWizard({ userId, initial, isAdmin }: Props) {
           >
             <FormGrid columns={2}>
               <Form.Item label="省/市/区">
-                <ProvinceCityDistrict
-                  value={{
-                    province: initial?.profile.province ?? undefined,
-                    city: initial?.profile.city ?? undefined,
-                    district: initial?.profile.district ?? undefined
-                  }}
-                  onChange={handleAddressChange}
-                />
+                <AddressCascader onChange={handleAddressChange} />
               </Form.Item>
               <ProFormText name={["profile", "addressDetail"]} label="详细地址" width="md" />
             </FormGrid>
@@ -291,7 +383,7 @@ export function ProfileWizard({ userId, initial, isAdmin }: Props) {
               fields={[
                 { name: "name", label: "姓名", valueType: "text", required: true },
                 { name: "relationship", label: "关系", valueType: "select", options: RELATIONSHIPS, required: true },
-                { name: "phone", label: "电话", valueType: "text", required: true },
+                { name: "phone", label: "电话", valueType: "text", required: true, pattern: { regex: /^1[3-9][0-9]{9}$|^0[0-9]{2,3}-?[0-9]{7,8}$/, message: "电话格式不正确" } },
                 { name: "remark", label: "备注", valueType: "textarea" }
               ]}
             />
@@ -342,7 +434,12 @@ export function ProfileWizard({ userId, initial, isAdmin }: Props) {
             </FormSection>
             <FormSection title="银行与账户" icon={<BankOutlined />} gap={0}>
               <FormGrid columns={2}>
-                <ProFormText name={["profile", "bankAccount"]} label="银行卡号" width="md" />
+                <ProFormText
+                  name={["profile", "bankAccount"]}
+                  label="银行卡号"
+                  width="md"
+                  rules={[{ pattern: /^[0-9]{8,19}$/, message: "银行卡号应为 8~19 位数字" }]}
+                />
                 <ProFormText name={["profile", "bankName"]} label="开户行" width="md" />
                 <ProFormText name={["profile", "socialSecurityAccount"]} label="社保账号" width="md" />
                 <ProFormText name={["profile", "providentFundAccount"]} label="公积金账号" width="md" />
@@ -438,5 +535,22 @@ export function ProfileWizard({ userId, initial, isAdmin }: Props) {
         </StepsForm.StepForm>
       </StepsForm>
     </>
+  );
+}
+
+/** 省市区级联:从表单 store 取当前值回显,保证切换步骤/重新选择后显示始终正确 */
+function AddressCascader({ onChange }: { onChange: (v: { province?: string; city?: string; district?: string }) => void }) {
+  const province = Form.useWatch(["profile", "province"]);
+  const city = Form.useWatch(["profile", "city"]);
+  const district = Form.useWatch(["profile", "district"]);
+  return (
+    <ProvinceCityDistrict
+      value={{
+        province: (province as string | null | undefined) ?? undefined,
+        city: (city as string | null | undefined) ?? undefined,
+        district: (district as string | null | undefined) ?? undefined
+      }}
+      onChange={onChange}
+    />
   );
 }

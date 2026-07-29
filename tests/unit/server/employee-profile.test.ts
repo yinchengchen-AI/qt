@@ -253,4 +253,28 @@ describe("updateUserFullProfile (PR3)", () => {
     // 旧的(若有)被替换
     expect(updated.educations.filter((e) => e.school !== "PR3-School")).toEqual([]);
   });
+
+  itDb("每步独立保存:仅子表(无 profile 字段)→ 过期基线 409;连续两次保存不冲突", async () => {
+    if (!adminUser) return;
+    const out = await getUserFullProfile(getAdminActor(), adminUser.id);
+    if (!out) return;
+    // 过期基线 → 409(子表单保存也走乐观锁)
+    await expect(updateUserFullProfile(getAdminActor(), adminUser.id, {
+      expectedUpdatedAt: "2000-01-01T00:00:00Z",
+      skills: [{ name: "PR3-SubOnly", level: "BEGINNER" }]
+    })).rejects.toMatchObject({ status: 409, errorCode: ERROR_CODES.CONFLICT });
+    // 当前基线 → 成功
+    const first = await updateUserFullProfile(getAdminActor(), adminUser.id, {
+      expectedUpdatedAt: out.profile.updatedAt,
+      skills: [{ name: "PR3-SubOnly", level: "BEGINNER" }]
+    });
+    expect(first.skills.find((s) => s.name === "PR3-SubOnly")).toBeTruthy();
+    // 用响应里的新基线立刻再存一次(模拟连续点"保存本步")→ 不 409,且全删全插语义保持
+    const second = await updateUserFullProfile(getAdminActor(), adminUser.id, {
+      expectedUpdatedAt: first.profile.updatedAt,
+      skills: [{ name: "PR3-SubOnly-2", level: "ADVANCED" }]
+    });
+    expect(second.skills.find((s) => s.name === "PR3-SubOnly-2")).toBeTruthy();
+    expect(second.skills.find((s) => s.name === "PR3-SubOnly")).toBeFalsy();
+  });
 });

@@ -322,13 +322,24 @@ export async function updateUserFullProfile(
     if (input.user && Object.keys(input.user).length > 0) {
       await tx.user.update({ where: { id: userId }, data: input.user });
     }
-    // P1-2: 条件 update 拿真原子 409 保护
-    if (!isNewProfile && Object.keys(profileData).length > 0) {
+    // P1-2: 条件 update 拿真原子 409 保护。
+    // 每步独立保存时 payload 可能只含子表(profileData 为空),
+    // 只要带了 expectedUpdatedAt 且有任一变更,也走条件 updateMany 占位:
+    // profile 字段为空时显式 touch updatedAt,影响行数 = 0 即并发覆盖。
+    const hasSubtableChange =
+      input.educations !== undefined ||
+      input.workExperiences !== undefined ||
+      input.certificates !== undefined ||
+      input.skills !== undefined ||
+      input.emergencyContacts !== undefined;
+    const hasProfileChange = Object.keys(profileData).length > 0;
+    if (!isNewProfile && (hasProfileChange || (input.expectedUpdatedAt && hasSubtableChange))) {
       const where: { id: string; updatedAt?: Date } = { id: profileId };
       if (input.expectedUpdatedAt) {
         where.updatedAt = new Date(input.expectedUpdatedAt);
       }
-      const result = await tx.employeeProfile.updateMany({ where, data: profileData });
+      const data = hasProfileChange ? profileData : { updatedAt: new Date() };
+      const result = await tx.employeeProfile.updateMany({ where, data });
       if (result.count === 0) {
         throw new ApiError(
           ERROR_CODES.CONFLICT,
