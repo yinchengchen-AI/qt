@@ -25,6 +25,13 @@
 
 ## 详细变更
 
+### 部署脚本改进(未发版,随下次部署生效)
+
+> 以下为纯 `scripts/prod/deploy.sh` 运维改动,不改应用行为、不带版本号,随下一次 `deploy.sh` 的 `git pull` 生效(re-exec 护栏保证新脚本完整执行)。
+
+- **构建零停机首选**(`227e2f9e`):内存兜底从"无条件停 qt-app"改为首选全部容器在线构建,仅当构建被 OOM Kill(exit=137)才停 qt-app(不够再停 PG/MinIO)重试一次。此前每次部署都有整个 build 时长(~4 min)的停机(v0.13.4 部署实证)。
+- **自我改写护栏**(`3635c8ec`):脚本在任何动作前复制自身到 /tmp 并 re-exec 稳定副本,防止 `git pull` 中途更新 deploy.sh 自身导致 bash 按旧字节偏移续读、静默跳过步骤(v0.13.2 部署实证,release:publish 段曾被整段跳过)。
+
 ### v0.13.4(2026-07-29) 更新日志列表取消重要置顶
 
 > `/releases` 列表排序从 `important desc, publishedAt desc` 改为纯 `publishedAt desc`,重要更新不再置顶;`important` 仅保留弹窗视觉权重与未读首条选择(`getLatestUnreadRelease` 排序不变)。回归测试改为「旧且重要 vs 新且普通」断言不置顶。
