@@ -122,6 +122,10 @@ const messages: Record<Locale, Record<string, string>> = {
     "releases.column.summary": "概要",
     "releases.column.publishedAt": "发布时间",
     "releases.column.actions": "操作",
+    "releases.column.source": "来源",
+    "releases.sourceAuto": "自动生成",
+    "releases.sourceManual": "手动",
+    "releases.sourceAutoHint": "部署时从 git commits 自动生成,基于 {n} 条提交",
 
     "releases.field.version": "版本号",
     "releases.field.version.placeholder": "如 v0.7.0",
@@ -425,6 +429,10 @@ const messages: Record<Locale, Record<string, string>> = {
     "releases.column.summary": "Summary",
     "releases.column.publishedAt": "Published at",
     "releases.column.actions": "Actions",
+    "releases.column.source": "Source",
+    "releases.sourceAuto": "Auto-generated",
+    "releases.sourceManual": "Manual",
+    "releases.sourceAutoHint": "Auto-generated from git commits at deploy time, based on {n} commits",
 
     "releases.field.version": "Version",
     "releases.field.version.placeholder": "e.g. v0.7.0",

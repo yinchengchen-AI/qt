@@ -132,6 +132,20 @@ if [ "$BUILD_EXIT" -ne 0 ]; then
   fi
   exit "$BUILD_EXIT"
 fi
+
+echo "==> release:publish (自动发布更新日志; 同版本已存在则幂等跳过)"
+# 放在 build 成功之后: 确保临时停止的 qt-postgres 已拉起 (build 低内存兜底会停容器),
+# 且 prisma generate 已在本脚本前面跑过 (脚本依赖 @prisma/client)。
+# 失败只告警不阻断: 发布日志失败不应拖垮发版, 可稍后手动 npm run release:publish
+# 或在 /admin/releases 手工发布。
+set +e
+npm run release:publish
+PUBLISH_EXIT=$?
+set -e
+if [ "$PUBLISH_EXIT" -ne 0 ]; then
+  echo "[WARN] release:publish 失败 (exit=$PUBLISH_EXIT) — 部署继续;" >&2
+  echo "       稍后手动补: cd /opt/qt && set -a && . ./.env && set +a && npm run release:publish" >&2
+fi
 # 生产日常更新不再 seed: roles/dicts/depts/workflow templates 已在首次部署时落地,
 # 重复跑 pnpm seed 会 (1) 浪费时间 (9 份 workflow template × 5 阶段 × N 任务 = 几百次 DB 写),
 # (2) 即使 idempotent, 也有微弱的角色权限/部门字段被 update 覆盖风险。

@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 // AppRelease 管理页:
 //   - 列表:publishedAt 倒序,important 优先;每行展示 version / title / summary / publishedAt
 //   - 单一 Modal:发布/编辑走同一个表单;表单顶部一颗"从 git 自动填充"
@@ -14,7 +14,7 @@ import {
   type ProColumns,
   type ActionType
 } from "@ant-design/pro-components";
-import { App as AntdApp, Button, Modal, Space, Tag, Typography } from "antd";
+import { App as AntdApp, Button, Modal, Space, Tag, Tooltip, Typography } from "antd";
 import { PlusOutlined, EditOutlined, DeleteOutlined } from "@ant-design/icons";
 import { Page } from "@/components/page";
 import { PageHeader } from "@/components/page-header";
@@ -34,6 +34,8 @@ type AppRelease = {
   content: string;
   important: boolean;
   publishedAt: string;
+  source: string; // MANUAL | GIT_COMMITS
+  gitCommitCount: number | null;
 };
 
 type FormValues = {
@@ -186,6 +188,25 @@ export default function ReleasesAdminPage() {
       dataIndex: "summary",
       width: 360,
       ellipsis: true
+    },
+    {
+      title: t("releases.column.source"),
+      dataIndex: "source",
+      width: 110,
+      render: (_, r) =>
+        r.source === "GIT_COMMITS" ? (
+          <Tooltip
+            title={
+              r.gitCommitCount != null
+                ? t("releases.sourceAutoHint").replace("{n}", String(r.gitCommitCount))
+                : undefined
+            }
+          >
+            <Tag color="blue">{t("releases.sourceAuto")}</Tag>
+          </Tooltip>
+        ) : (
+          <Tag>{t("releases.sourceManual")}</Tag>
+        )
     },
     {
       title: t("releases.column.publishedAt"),

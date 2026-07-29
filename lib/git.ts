@@ -130,19 +130,23 @@ export function parseCommitSubject(subject: string): { type: string | null; scop
   };
 }
 
-/** 取最近的 release tag(形如 v1.2.3 / v0.7.0-rc1);用于 "since last release" */
-export function getLastReleaseTag(opts: { cwd?: string } = {}): string | null {
+/** 列出全部 release tag(形如 v1.2.3 / v0.7.0-rc1),按创建时间新→旧;git 不可用时返回 [] */
+export function listReleaseTags(opts: { cwd?: string } = {}): string[] {
   try {
     const out = execFileSync(
       "git",
       ["tag", "--sort=-creatordate", "--list", "v*"],
       { cwd: opts.cwd ?? process.cwd(), encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] }
     );
-    const first = out.split("\n").find((l) => l.trim());
-    return first?.trim() || null;
+    return out.split("\n").map((l) => l.trim()).filter(Boolean);
   } catch {
-    return null;
+    return [];
   }
+}
+
+/** 取最近的 release tag(形如 v1.2.3 / v0.7.0-rc1);用于 "since last release" */
+export function getLastReleaseTag(opts: { cwd?: string } = {}): string | null {
+  return listReleaseTags(opts)[0] ?? null;
 }
 
 /** 取当前 HEAD 的完整 SHA(用于 --to 缺省) */
