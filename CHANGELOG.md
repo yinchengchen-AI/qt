@@ -25,6 +25,19 @@
 
 ## 详细变更
 
+### v0.13.6(2026-07-29) 统计分析 4 页视觉 + 布局改版
+
+> 与 v0.13.5 dashboard 改版同一语言:KPI 图形化(icon + progress)、风险/核心信息前置、删重复内容。纯前端,数据获取与 API 不变。
+
+- **overview**: 移除「客户区域分布」section(与 dashboard 完全重复);「合同/开票/回款趋势」提为唯一主图;`StatGrid columns={5}`(仅 4 项)修为 4;KPI 加 icon/progress;修 `prefix:"¥"` + `formatCurrency` 双 ¥ 折行。
+- **by-region**: 删除常驻 `Alert`(默认本年度说明并入 subtitle);KPI 加 icon/progress;图表/明细表/Top N 不动。
+- **aging**: `QueryFilter` 改默认折叠(原 6 字段常驻展开,移动端占满首屏);`AgingSummary` 同步去双 ¥。
+- **performance**: 4 个同构柱状图(合同额/已开票/已回款/合同数)合并为单图 + `Segmented` 切换,员工固定配色(employeeColorMap)原样保留;窄屏卡片标题去指标名防换行;KPI 加 icon/progress;明细抽屉不动。
+
+**版本号**: `0.13.5` → `0.13.6` (patch bump)
+
+**部署说明**:无 schema 变更、无新 migration、无 API 变更,`deploy.sh` 常规流程。
+
 ### v0.13.5(2026-07-29) 工作台视觉 + 布局改版
 
 > Dashboard 首屏信息层级重排:风险信号前置、图表不再独占整行、KPI 图形化。纯前端改动,数据全部来自现有 `/api/dashboard/summary` + `/api/statistics/aging/dunning/summary`。

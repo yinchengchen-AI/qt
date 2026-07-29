@@ -2,7 +2,7 @@
 
 > 客户 / 合同 / 开票 / 回款 一体化管理，附件走 MinIO presigned 直传。
 >
-> **当前版本: v0.13.5**（2026-07-29）
+> **当前版本: v0.13.6**（2026-07-29）
 >
 > 项目文档地图见 [docs/README.md](docs/README.md)，详细设计见 [docs/architecture/DESIGN-v3.md](docs/architecture/DESIGN-v3.md)，用户手册见 [docs/user/USER_MANUAL.md](docs/user/USER_MANUAL.md)。
 
@@ -216,6 +216,10 @@ nginx 反代下上游异常时，由 `public/502.html` 静态页和 `app/502/pag
 ## 最近更新
 
 完整 changelog 见 [CHANGELOG.md](CHANGELOG.md)。
+
+### v0.13.6（2026-07-29）统计分析 4 页视觉 + 布局改版
+
+统计分析模块与 dashboard 同款改版：综合看板移除与工作台重复的区域分布图（趋势图提为唯一主图，修 `columns=5` 网格错位）；区域统计删除常驻 Alert;KPI 全面接入图标与开票率/回款率进度条；账龄分析筛选卡默认折叠；员工业绩 4 个同构柱状图合并为单图 + Segmented 切换指标（员工固定配色保留）；顺手修复 KPI 双 `¥` 折行。无 API / schema 变更。
 
 ### v0.13.5（2026-07-29）工作台视觉 + 布局改版
 
