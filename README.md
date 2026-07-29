@@ -2,7 +2,7 @@
 
 > 客户 / 合同 / 开票 / 回款 一体化管理，附件走 MinIO presigned 直传。
 >
-> **当前版本: v0.13.3**（2026-07-29）
+> **当前版本: v0.13.4**（2026-07-29）
 >
 > 项目文档地图见 [docs/README.md](docs/README.md)，详细设计见 [docs/architecture/DESIGN-v3.md](docs/architecture/DESIGN-v3.md)，用户手册见 [docs/user/USER_MANUAL.md](docs/user/USER_MANUAL.md)。
 
@@ -216,6 +216,10 @@ nginx 反代下上游异常时，由 `public/502.html` 静态页和 `app/502/pag
 ## 最近更新
 
 完整 changelog 见 [CHANGELOG.md](CHANGELOG.md)。
+
+### v0.13.4（2026-07-29）更新日志列表取消重要置顶
+
+`/releases` 更新日志列表从「important 优先 + 时间倒序」改为纯时间倒序，重要更新不再置顶。`important` 标记只保留两个作用：登录弹窗的视觉权重（红色 header、不可点遮罩关闭）与未读首条的选择优先级。无 schema 变更，无 API 契约变更。
 
 ### v0.13.3（2026-07-29）更新日志完全自动发布 + 应用全 Docker 化
 

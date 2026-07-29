@@ -25,6 +25,14 @@
 
 ## 详细变更
 
+### v0.13.4(2026-07-29) 更新日志列表取消重要置顶
+
+> `/releases` 列表排序从 `important desc, publishedAt desc` 改为纯 `publishedAt desc`,重要更新不再置顶;`important` 仅保留弹窗视觉权重与未读首条选择(`getLatestUnreadRelease` 排序不变)。回归测试改为「旧且重要 vs 新且普通」断言不置顶。
+
+**版本号**: `0.13.3` → `0.13.4` (patch bump)
+
+**部署说明**:无 schema 变更、无新 migration,`deploy.sh` 常规流程。
+
 ### v0.13.3(2026-07-29) 更新日志完全自动发布 + 应用全 Docker 化
 
 > 两件事:(1) 更新日志取消手工"发布更新"功能,完全自动发布;(2) 应用从 native systemd 迁移到全 Docker 部署。
