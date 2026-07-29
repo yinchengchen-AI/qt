@@ -170,13 +170,18 @@ fi
 echo "==> docker compose up -d app (滚动替换 qt-app 容器)"
 $COMPOSE up -d app
 
-echo "==> 清理悬空镜像 (保留最近 3 个 qt-app 版本 tag)"
+echo "==> 磁盘清理 (2026-07-29 v0.13.6 部署教训: build cache 累计 15.8GB 把 49G 盘写满)"
+# 1) 悬空镜像
 docker image prune -f >/dev/null
-KEEP=3
+# 2) qt-app 版本 tag 只留最近 2 个(latest 指向最新;1 个旧版本作回滚,单镜像 ~1.5GB)
+KEEP=2
 # shellcheck disable=SC2012
 for tag in $(docker images qt-app --format '{{.Tag}}' | grep '^v' | sort -rV | tail -n +$((KEEP + 1))); do
   docker rmi "qt-app:$tag" >/dev/null 2>&1 || true
 done
+# 3) build cache 上限 4GB:多阶段全量 node_modules 每层 ~1.5GB,
+#    不限额会在 5-6 次部署后吃满磁盘;4GB 保住最常用的 deps 层缓存
+docker builder prune -f --keep-storage 4GB >/dev/null 2>&1 || true
 
 echo "==> smoke test (waiting 3s for app boot)"
 sleep 3
