@@ -60,25 +60,31 @@ export function DashboardAgingMini({ buckets, dunningByStatus }: Props) {
       }
     >
       <Row gutter={[12, 12]}>
-        {(Object.keys(safe) as (keyof AgingBuckets)[]).map((b) => (
-          <Col key={b} xs={12} sm={6}>
-            <div
-              style={{
-                padding: 12,
-                border: "1px solid rgba(0,0,0,0.06)",
-                borderRadius: 6
-              }}
-            >
-              <Text type="secondary" style={{ fontSize: 12 }}>{b} 天</Text>
-              <div style={{ fontSize: 18, fontWeight: 600, color: BUCKET_COLORS[b], marginTop: 4 }}>
-                {formatCurrency(safe[b])}
+        {(Object.keys(safe) as (keyof AgingBuckets)[]).map((b) => {
+          // 90+ 账龄是最高风险段:金额 >0 时用红框红底强化预警
+          const isDanger = b === "90+" && safe[b] > 0;
+          return (
+            <Col key={b} xs={12} sm={6}>
+              <div
+                style={{
+                  padding: 12,
+                  border: `1px solid ${isDanger ? "#ff4d4f66" : "rgba(0,0,0,0.06)"}`,
+                  borderLeft: isDanger ? "3px solid #ff4d4f" : "1px solid rgba(0,0,0,0.06)",
+                  background: isDanger ? "#ff4d4f0d" : undefined,
+                  borderRadius: 6
+                }}
+              >
+                <Text type="secondary" style={{ fontSize: 12 }}>{b} 天</Text>
+                <div style={{ fontSize: 18, fontWeight: 600, color: BUCKET_COLORS[b], marginTop: 4 }}>
+                  {formatCurrency(safe[b])}
+                </div>
+                <Text type="secondary" style={{ fontSize: 12 }}>
+                  {((safe[b] / total) * 100).toFixed(1)}%
+                </Text>
               </div>
-              <Text type="secondary" style={{ fontSize: 12 }}>
-                {((safe[b] / total) * 100).toFixed(1)}%
-              </Text>
-            </div>
-          </Col>
-        ))}
+            </Col>
+          );
+        })}
       </Row>
       {dunningByStatus ? (
         <div style={{ marginTop: 12, display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>

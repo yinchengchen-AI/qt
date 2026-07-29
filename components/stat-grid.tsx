@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { Card, Col, Row, Skeleton, Tooltip, Typography } from "antd";
+import { Card, Col, Progress, Row, Skeleton, Tooltip, Typography } from "antd";
 import { InfoCircleOutlined } from "@ant-design/icons";
 import { useResponsive } from "@/lib/use-breakpoint";
 
@@ -14,6 +14,10 @@ export type StatItem = {
   delta?: { value: ReactNode; direction?: "up" | "down" | "flat" };
   /** 鼠标悬停 label 旁的 ⓘ 图标时显示，用于说明该 KPI 的统计口径（时间范围 / 状态过滤 / 权限范围）。 */
   tooltip?: ReactNode;
+  /** label 行左侧的图标(主色渲染),增强卡片辨识度 */
+  icon?: ReactNode;
+  /** 0-100,卡片底部细进度条(无文字),用于比率类 KPI(如开票率/回款率) */
+  progress?: number;
 };
 
 type Props = {
@@ -56,6 +60,11 @@ export function StatGrid({ items, columns = 4, loading, className }: Props) {
               ) : (
                 <>
                   <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+                    {it.icon ? (
+                      <span style={{ color: "#1677ff", fontSize: 15, display: "inline-flex", marginRight: 2 }}>
+                        {it.icon}
+                      </span>
+                    ) : null}
                     <Text type="secondary" style={{ fontSize: 13 }}>
                       {it.label}
                     </Text>
@@ -89,6 +98,14 @@ export function StatGrid({ items, columns = 4, loading, className }: Props) {
                     <Text style={{ fontSize: 12, color: deltaColor, display: "block", marginTop: 4 }}>
                       {it.delta.value}
                     </Text>
+                  ) : null}
+                  {typeof it.progress === "number" ? (
+                    <Progress
+                      percent={Math.min(100, Math.max(0, it.progress))}
+                      size={{ height: 4 }}
+                      showInfo={false}
+                      style={{ marginTop: 8, marginBottom: -4 }}
+                    />
                   ) : null}
                 </>
               )}
