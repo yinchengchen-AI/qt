@@ -2,7 +2,7 @@
 
 > 客户 / 合同 / 开票 / 回款 一体化管理，附件走 MinIO presigned 直传。
 >
-> **当前版本: v0.13.2**（2026-07-29）
+> **当前版本: v0.13.3**（2026-07-29）
 >
 > 项目文档地图见 [docs/README.md](docs/README.md)，详细设计见 [docs/architecture/DESIGN-v3.md](docs/architecture/DESIGN-v3.md)，用户手册见 [docs/user/USER_MANUAL.md](docs/user/USER_MANUAL.md)。
 
@@ -216,6 +216,10 @@ nginx 反代下上游异常时，由 `public/502.html` 静态页和 `app/502/pag
 ## 最近更新
 
 完整 changelog 见 [CHANGELOG.md](CHANGELOG.md)。
+
+### v0.13.3（2026-07-29）更新日志完全自动发布 + 应用全 Docker 化
+
+更新日志移除手工发布入口：`/admin/releases` 管理页、「发布更新」菜单、`POST/PATCH/DELETE` 写 API 与 `preview-from-git` 全部删除，API 只保留只读（list/detail/latest/read)，写入唯一路径是部署时的 `scripts/release/publish.ts`。同版本应用完成全 Docker 化：根目录新增多阶段 `Dockerfile`,`qt-app` 容器（host 网络）取代 native systemd 服务，`deploy.sh` 改为镜像构建 + 一次性容器跑迁移与发布，镜像 tag 保留最近 3 版本支持秒级回滚；`lib/env.ts` 新增 `SKIP_ENV_VALIDATION`（仅构建期）。无 schema 变更，写 API 移除属破坏性变更（前端入口已同步删除）。
 
 ### v0.13.2（2026-07-29）更新日志随部署自动发布
 

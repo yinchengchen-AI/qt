@@ -39,7 +39,7 @@ Node `>=20.9.0`. Use `npm`; `pnpm-lock.yaml` is kept in sync.
 - One logical change per commit; squash WIP locally before pushing.
 - PRs cover motivation, change summary, and validation (commands run, screenshots for UI). Link the issue or `docs/` runbook. Call out schema/migration, auth, and storage-affecting changes explicitly.
 - Never commit `.env`, `docker-data/`, `backups/`, or `docs/*部署记录*.md` (see `.gitignore`).
-- **发布版本**: 用 `npm version patch|minor|major`(自动 bump + commit + tag),不要手动改 `package.json:version` 之后忘记 tag。Commit message 风格 `chore(release): bump to vX.Y.Z`。当前 base 与 README 同步在 `0.13.2`;登录页右上 chip 由 `next.config.mjs#computeAppVersion()` 自动派生为 `<base>+<git short sha>.<MMDD>`,commit → dev/build 重启即可看到新版本号;CI 容器无 `.git` 时回落到 `NEXT_PUBLIC_APP_VERSION` env 或 `"v2.0"`。
+- **发布版本**: 用 `npm version patch|minor|major`(自动 bump + commit + tag),不要手动改 `package.json:version` 之后忘记 tag。Commit message 风格 `chore(release): bump to vX.Y.Z`。当前 base 与 README 同步在 `0.13.3`;登录页右上 chip 由 `next.config.mjs#computeAppVersion()` 自动派生为 `<base>+<git short sha>.<MMDD>`,commit → dev/build 重启即可看到新版本号;CI 容器无 `.git` 时回落到 `NEXT_PUBLIC_APP_VERSION` env 或 `"v2.0"`。
 - **更新日志全自动发布**: `scripts/prod/deploy.sh` 在镜像构建成功后自动跑 `release:publish`(一次性容器内执行 `npx tsx scripts/release/publish.ts`,`.git` 只读挂载):读 `package.json` 版本 → 取上一个 release tag 到 HEAD 的 commits(过滤 `chore(release)`/`docs(release)` 噪音)→ 幂等写入 AppRelease(`source=GIT_COMMITS`)。同版本已存在则跳过;想重新生成先在 DB 软删旧记录再重跑。发布人默认工号 `admin`,可用 env `RELEASE_PUBLISHER_EMPLOYEE_NO` 覆盖。该步失败只告警不阻断部署,可手动补跑。**手工发布入口已移除**(无 /admin/releases 页面、无写 API),API 只读(list/detail/latest/read),写入唯一路径是 publish.ts。
 
 ## Security & Configuration Tips

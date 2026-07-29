@@ -25,6 +25,29 @@
 
 ## 详细变更
 
+### v0.13.3(2026-07-29) 更新日志完全自动发布 + 应用全 Docker 化
+
+> 两件事:(1) 更新日志取消手工"发布更新"功能,完全自动发布;(2) 应用从 native systemd 迁移到全 Docker 部署。
+
+**更新日志:移除手工发布入口(feat,破坏性)**
+
+- 删除 `/admin/releases` 管理页、「发布更新」菜单项、`POST /api/app-releases`(创建)、`PATCH/DELETE /api/app-releases/[id]`、`/api/app-releases/preview-from-git`。
+- API 只保留只读:`GET` 列表/详情/`latest` + `POST [id]/read`;service 移除 `createRelease/updateRelease/softDeleteRelease`,写入唯一路径是 `scripts/release/publish.ts`(部署时一次性容器直写 Prisma)。
+- 删除 `lib/validators/app-release.ts` 及其 schema 测试;i18n 清掉 admin 专用 `releases.*` key(保留用户时间线 `history.*` / `tag.important` / `release.popup.*`)。
+- 想重新生成某版本更新日志:DB 软删旧记录后重跑 `release:publish`(幂等跳过逻辑不变)。
+
+**部署:应用全 Docker 化(feat)**
+
+- 根目录新增多阶段 `Dockerfile`(node:22-alpine:deps → build standalone → runner);runner 含全量 node_modules + scripts/lib/server 源码 + git,`migrate deploy` 与 `release:publish` 以一次性容器执行(`.git` 只读挂载)。
+- `next.config.mjs` 加 `output: 'standalone'`;`lib/env.ts` 加 `SKIP_ENV_VALIDATION`(仅构建期跳过 fail-fast,运行时不变)。
+- `docker-compose.prod.yml` 新增 `app` 服务(host 网络,`.env` 127.0.0.1 地址零改动);`deploy.sh` 改为:git pull → docker build → 容器内 migrate + release:publish → `compose up -d app`;镜像 tag 保留最近 3 版本,回滚秒级。
+- `package-lock.json` 重新生成(原锁文件与 package.json 不同步);`npm ci --legacy-peer-deps` 对齐 pnpm 实际安装树。
+- 灰度验证:服务器构建镜像 → 3001 并行烟测(含 cron run-all / release:publish 幂等)→ 切流 3000,native systemd qt-app 已 stop+disable(留作回滚)。
+
+**版本号**: `0.13.2` → `0.13.3` (patch bump)
+
+**部署说明**:无 schema 变更、无新 migration。本次部署首次走新 Docker 版 `deploy.sh` 全流程(自身即灰度验证后的正式路径)。
+
 ### v0.13.2(2026-07-29) 更新日志随部署自动发布
 
 > 更新日志(AppRelease)此前全靠管理员在 `/admin/releases` 手敲发布;schema 里的 `source/gitFrom/gitTo/gitCommitCount` 字段和 `scripts/release/generate.ts` 是从未落地的遗留设计。本次重新设计为随部署自动发布:版本 bump → push → 服务器 `deploy.sh` 时自动生成并发布更新日志,用户登录即弹窗,零人工操作。
