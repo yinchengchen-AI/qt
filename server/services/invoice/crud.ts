@@ -36,10 +36,13 @@ export async function listInvoices(
 export async function getInvoice(user: SessionUser, id: string) {
   requirePermission(user.roleCode, RESOURCE.INVOICE, ACTION.READ);
   const inv = await prisma.invoice.findFirst({
-    where: { id, deletedAt: null, ...(ownerViaContract(user) as Prisma.InvoiceWhereInput) }
+    where: { id, deletedAt: null, ...(ownerViaContract(user) as Prisma.InvoiceWhereInput) },
+    include: { contract: { select: { contractNo: true } } }
   });
   if (!inv) throw new ApiError(ERROR_CODES.NOT_FOUND, "发票不存在", 404);
-  return inv;
+  // 平铺合同编号:Invoice 表只有 contractId,前端编辑页"合同编号"需要 contractNo 展示
+  const { contract, ...rest } = inv;
+  return { ...rest, contractNo: contract.contractNo };
 }
 
 
