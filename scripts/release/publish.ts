@@ -56,7 +56,8 @@ async function resolvePublisherId(): Promise<{ id: string; employeeNo: string }>
 async function main(): Promise<void> {
   const version = `v${readPackageVersion()}`;
 
-  // 幂等:同 version 已发布(含人工发布)则跳过;想重新生成请先在 /admin/releases 删除旧的
+  // 幂等:同 version 已发布则跳过(保护既有内容);
+  // 想重新生成需先在 DB 里软删旧记录(UPDATE "AppRelease" SET "deletedAt"=now() ...),再重跑本脚本
   const existing = await prisma.appRelease.findFirst({
     where: { version, deletedAt: null },
     select: { id: true, source: true }

@@ -138,7 +138,6 @@ const MENU: MenuItem[] = [
     icon: <SettingOutlined />,
     children: [
       { path: "/admin/dictionaries", name: "数据字典", permission: { resource: RESOURCE.DICTIONARY, action: ACTION.CREATE } },
-      { path: "/admin/releases", name: "发布更新", permission: { resource: RESOURCE.APP_RELEASE, action: ACTION.CREATE } },
       { path: "/admin/operation-logs", name: "操作日志", permission: { resource: RESOURCE.OPERATION_LOG, action: ACTION.READ } },
       // /admin/trash 走 trash 服务, 仅 ADMIN 可看全部; 用 ROLE.CREATE 代理(仅 ADMIN)
       { path: "/admin/trash", name: "回收站", permission: { resource: RESOURCE.ROLE, action: ACTION.CREATE } }
