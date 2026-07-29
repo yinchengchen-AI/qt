@@ -257,7 +257,7 @@ export default function AgingPage() {
       {/* 筛选卡片 — 与其它页(ProTable search form)样式一致的 QueryFilter */}
       <ProCard size="small" style={{ marginBottom: 16 }} styles={{ body: { padding: isMobile ? 8 : 16 } }}>
         <QueryFilter
-          defaultCollapsed={false}
+          defaultCollapsed={true}
           split={false}
           labelWidth={isMobile ? 0 : "auto"}
           layout={isMobile ? "vertical" : "horizontal"}

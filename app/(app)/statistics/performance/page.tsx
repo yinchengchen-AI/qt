@@ -2,8 +2,8 @@
 import { ProCard } from "@ant-design/pro-components";
 import { Column } from "@ant-design/charts";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Button, Col, DatePicker, Row, Space, App as AntdApp, Typography, Tag, Drawer, Spin, Descriptions } from "antd";
-import { DownloadOutlined, FilePdfOutlined } from "@ant-design/icons";
+import { Button, Col, DatePicker, Row, Segmented, Space, App as AntdApp, Typography, Tag, Drawer, Spin, Descriptions } from "antd";
+import { DownloadOutlined, FilePdfOutlined, FileTextOutlined, AuditOutlined, MoneyCollectOutlined, TeamOutlined } from "@ant-design/icons";
 import dayjs from "dayjs";
 import { Page } from "@/components/page";
 import { PageHeader } from "@/components/page-header";
@@ -154,11 +154,13 @@ export default function PerformancePage() {
     count: rows.reduce((s, r) => s + r.contractCount, 0),
   }), [rows]);
 
+  const invRateTotal = totals.contract > 0 ? (totals.invoice / totals.contract) * 100 : 0;
+  const payRateTotal = totals.invoice > 0 ? (totals.payment / totals.invoice) * 100 : 0;
   const kpis: StatItem[] = [
-    { label: "合同总额", value: formatCompact(totals.contract), suffix: "", description: `共 ${totals.count} 份` },
-    { label: "已开票总额", value: formatCompact(totals.invoice), suffix: "", description: `开票率 ${totals.contract > 0 ? ((totals.invoice / totals.contract) * 100).toFixed(1) : 0}%` },
-    { label: "已回款总额", value: formatCompact(totals.payment), suffix: "", description: `回款率 ${totals.invoice > 0 ? ((totals.payment / totals.invoice) * 100).toFixed(1) : 0}%` },
-    { label: "员工人数", value: rows.length, suffix: "人", description: `人均 ${formatCompact(totals.contract / Math.max(rows.length, 1))} 元` },
+    { label: "合同总额", icon: <FileTextOutlined />, value: formatCompact(totals.contract), suffix: "", description: `共 ${totals.count} 份` },
+    { label: "已开票总额", icon: <AuditOutlined />, value: formatCompact(totals.invoice), suffix: "", description: `开票率 ${invRateTotal.toFixed(1)}%`, progress: invRateTotal },
+    { label: "已回款总额", icon: <MoneyCollectOutlined />, value: formatCompact(totals.payment), suffix: "", description: `回款率 ${payRateTotal.toFixed(1)}%`, progress: payRateTotal },
+    { label: "员工人数", icon: <TeamOutlined />, value: rows.length, suffix: "人", description: `人均 ${formatCompact(totals.contract / Math.max(rows.length, 1))} 元` },
   ];
 
   // 按员工名字母顺序分配稳定颜色，保证同一员工在四个桶柱图中颜色一致
@@ -171,11 +173,27 @@ export default function PerformancePage() {
     return map;
   }, [rows]);
 
-  // 图表用 Top N 数据，每个员工绑定固定颜色
-  const contractChartData = visibleRows.map(r => ({ name: r.name, value: r.contractAmount, color: employeeColorMap.get(r.name) ?? EMPLOYEE_CATEGORICAL_COLORS[0] }));
-  const invoiceChartData = visibleRows.map(r => ({ name: r.name, value: r.invoiceAmount, color: employeeColorMap.get(r.name) ?? EMPLOYEE_CATEGORICAL_COLORS[0] }));
-  const paymentChartData = visibleRows.map(r => ({ name: r.name, value: r.paymentAmount, color: employeeColorMap.get(r.name) ?? EMPLOYEE_CATEGORICAL_COLORS[0] }));
-  const contractCountChartData = visibleRows.map(r => ({ name: r.name, value: r.contractCount, color: employeeColorMap.get(r.name) ?? EMPLOYEE_CATEGORICAL_COLORS[0] }));
+  // 图表用 Top N 数据,每个员工绑定固定颜色;
+  // 4 个指标(合同额/已开票/已回款/合同数)共用一张图,Segmented 切换 — 同一批员工同一配色,只是 y 不同
+  type MetricKey = "contract" | "invoice" | "payment" | "count";
+  const [metric, setMetric] = useState<MetricKey>("contract");
+  const METRIC_OPTIONS: { value: MetricKey; label: string }[] = [
+    { value: "contract", label: "合同额" },
+    { value: "invoice", label: "已开票" },
+    { value: "payment", label: "已回款" },
+    { value: "count", label: "合同数" }
+  ];
+  const metricValue = (r: Row): number =>
+    metric === "contract" ? r.contractAmount
+    : metric === "invoice" ? r.invoiceAmount
+    : metric === "payment" ? r.paymentAmount
+    : r.contractCount;
+  const metricLabel = METRIC_OPTIONS.find((o) => o.value === metric)?.label ?? "";
+  const chartData = visibleRows.map(r => ({
+    name: r.name,
+    value: metricValue(r),
+    color: employeeColorMap.get(r.name) ?? EMPLOYEE_CATEGORICAL_COLORS[0]
+  }));
 
   return (
     <Page>
@@ -202,45 +220,22 @@ export default function PerformancePage() {
           <StatGrid items={kpis} columns={4} loading={loading && rows.length === 0} />
 
           <Row gutter={[16, 16]} style={{ marginTop: 24 }}>
-            <Col xs={24} lg={12}>
-              <ProCard title="合同额排行">
-                {contractChartData.length > 0 ? (
-                  <Column data={contractChartData} xField="name" yField="value" colorField="color" height={chartHeight} autoFit legend={false}
-                    tooltip={{ title: (d: Record<string, unknown>) => String(d.name), items: [(d: Record<string, unknown>) => ({ name: "合同额", value: d.value })] }}
-                    label={{ text: (d: Record<string, unknown>) => formatCompact(d.value as number), style: { fontSize: 10 } }}
+            <Col xs={24}>
+              <ProCard
+                title={isMobile ? "员工业绩排行" : `员工业绩排行（${metricLabel}）`}
+                extra={
+                  <Segmented<MetricKey>
+                    options={METRIC_OPTIONS}
+                    value={metric}
+                    onChange={(v) => setMetric(v)}
+                    size="small"
                   />
-                ) : <EmptyState empty title="暂无员工业绩" description="当前时间范围内尚无合同、开票或回款记录" height={chartHeight} />}
-              </ProCard>
-            </Col>
-            <Col xs={24} lg={12}>
-              <ProCard title="已开票排行">
-                {invoiceChartData.length > 0 ? (
-                  <Column data={invoiceChartData} xField="name" yField="value" colorField="color" height={chartHeight} autoFit legend={false}
-                    tooltip={{ title: (d: Record<string, unknown>) => String(d.name), items: [(d: Record<string, unknown>) => ({ name: "已开票", value: d.value })] }}
-                    label={{ text: (d: Record<string, unknown>) => formatCompact(d.value as number), style: { fontSize: 10 } }}
-                  />
-                ) : <EmptyState empty title="暂无员工业绩" description="当前时间范围内尚无合同、开票或回款记录" height={chartHeight} />}
-              </ProCard>
-            </Col>
-          </Row>
-
-          <Row gutter={[16, 16]} style={{ marginTop: 16 }}>
-            <Col xs={24} lg={12}>
-              <ProCard title="已回款排行">
-                {paymentChartData.length > 0 ? (
-                  <Column data={paymentChartData} xField="name" yField="value" colorField="color" height={chartHeight} autoFit legend={false}
-                    tooltip={{ title: (d: Record<string, unknown>) => String(d.name), items: [(d: Record<string, unknown>) => ({ name: "已回款", value: d.value })] }}
-                    label={{ text: (d: Record<string, unknown>) => formatCompact(d.value as number), style: { fontSize: 10 } }}
-                  />
-                ) : <EmptyState empty title="暂无员工业绩" description="当前时间范围内尚无合同、开票或回款记录" height={chartHeight} />}
-              </ProCard>
-            </Col>
-            <Col xs={24} lg={12}>
-              <ProCard title="合同数量排行">
-                {rows.length > 0 ? (
-                  <Column data={contractCountChartData} xField="name" yField="value" colorField="color" height={chartHeight} autoFit legend={false}
-                    tooltip={{ title: (d: Record<string, unknown>) => String(d.name), items: [(d: Record<string, unknown>) => ({ name: "合同数量", value: d.value })] }}
-                    label={{ text: (d: Record<string, unknown>) => String(d.value), style: { fontSize: 10 } }}
+                }
+              >
+                {chartData.length > 0 ? (
+                  <Column data={chartData} xField="name" yField="value" colorField="color" height={chartHeight} autoFit legend={false}
+                    tooltip={{ title: (d: Record<string, unknown>) => String(d.name), items: [(d: Record<string, unknown>) => ({ name: metricLabel, value: d.value })] }}
+                    label={{ text: (d: Record<string, unknown>) => metric === "count" ? String(d.value) : formatCompact(d.value as number), style: { fontSize: 10 } }}
                   />
                 ) : <EmptyState empty title="暂无员工业绩" description="当前时间范围内尚无合同、开票或回款记录" height={chartHeight} />}
               </ProCard>

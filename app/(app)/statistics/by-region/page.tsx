@@ -3,8 +3,8 @@ import { ProCard } from "@ant-design/pro-components";
 import { Column } from "@ant-design/charts";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Alert, Button, Col, DatePicker, Row, Space, App as AntdApp, Typography, Tag, theme } from "antd";
-import { DownloadOutlined } from "@ant-design/icons";
+import { Button, Col, DatePicker, Row, Space, App as AntdApp, Typography, Tag, theme } from "antd";
+import { DownloadOutlined, FileTextOutlined, AuditOutlined, MoneyCollectOutlined, EnvironmentOutlined } from "@ant-design/icons";
 import dayjs from "dayjs";
 import { Page } from "@/components/page";
 import { PageHeader } from "@/components/page-header";
@@ -97,11 +97,13 @@ export default function ByRegionPage() {
     customerTotal: realRows.reduce((s, r) => s + r.customerCount, 0)
   }), [realRows]);
 
+  const invRateTotal = totals.contract > 0 ? (totals.invoice / totals.contract) * 100 : 0;
+  const payRateTotal = totals.invoice > 0 ? (totals.payment / totals.invoice) * 100 : 0;
   const kpis: StatItem[] = [
-    { label: "合同总额", value: formatCompact(totals.contract), suffix: "", description: `共 ${totals.count} 份` },
-    { label: "已开票总额", value: formatCompact(totals.invoice), suffix: "", description: `开票率 ${totals.contract > 0 ? ((totals.invoice / totals.contract) * 100).toFixed(1) : 0}%` },
-    { label: "已回款总额", value: formatCompact(totals.payment), suffix: "", description: `回款率 ${totals.invoice > 0 ? ((totals.payment / totals.invoice) * 100).toFixed(1) : 0}%` },
-    { label: "已分类区域数", value: realRows.length, suffix: "个", description: `覆盖 ${totals.customerTotal} 位客户` + (unfilledCount > 0 ? ` / 另有 ${unfilledCount} 位未填写` : "") }
+    { label: "合同总额", icon: <FileTextOutlined />, value: formatCompact(totals.contract), suffix: "", description: `共 ${totals.count} 份` },
+    { label: "已开票总额", icon: <AuditOutlined />, value: formatCompact(totals.invoice), suffix: "", description: `开票率 ${invRateTotal.toFixed(1)}%`, progress: invRateTotal },
+    { label: "已回款总额", icon: <MoneyCollectOutlined />, value: formatCompact(totals.payment), suffix: "", description: `回款率 ${payRateTotal.toFixed(1)}%`, progress: payRateTotal },
+    { label: "已分类区域数", icon: <EnvironmentOutlined />, value: realRows.length, suffix: "个", description: `覆盖 ${totals.customerTotal} 位客户` + (unfilledCount > 0 ? ` / 另有 ${unfilledCount} 位未填写` : "") }
   ];
 
   // 分组柱状图数据:每个区域 2 条记录(合同额 / 已回款),用 colorField 区分颜色
@@ -121,7 +123,7 @@ export default function ByRegionPage() {
     <Page>
       <PageHeader
         title="区域统计"
-        subtitle="按客户所在镇街汇总合同、开票、回款(业务人员仅看自己负责的合同);支持时间范围筛选"
+        subtitle="按客户所在镇街汇总合同、开票、回款(业务人员仅看自己负责的合同);默认本年度,可用时间选择器调整或清空"
         actions={
           <Space wrap>
             <DatePicker.RangePicker
@@ -138,12 +140,6 @@ export default function ByRegionPage() {
         <EmptyState error={{ message: error, onRetry: load }} title="加载失败" />
       ) : (
         <>
-          <Alert
-            type="info"
-            showIcon
-            title="默认范围为本年度（1 月 1 日 00:00 ~ 当前时刻），可使用上方时间选择器调整或清空"
-            style={{ marginBottom: 16 }}
-          />
           <StatGrid items={kpis} columns={4} loading={loading && rows.length === 0} />
 
           <Row gutter={[16, 16]} style={{ marginTop: 24 }}>

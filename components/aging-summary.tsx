@@ -53,22 +53,20 @@ export function AgingSummary({ buckets, summary, basisUsed, invoiceCount, column
   const kpiItems: StatItem[] = [
     {
       label: t("aging.kpi.total"),
+      // formatCurrency 已含 ¥,不再加 prefix(避免双 ¥ 折行)
       value: formatCurrency(summary.totalReceivable),
-      prefix: "¥",
       description: `${invoiceCount} 张发票 / ${summary.customerCount} 个客户`,
       tooltip: basisUsed === "due" ? "按到期日计算" : "按开票日计算"
     },
     {
       label: t("aging.kpi.over90"),
       value: formatCurrency(summary.over90Amount),
-      prefix: "¥",
       description: `占比 ${summary.over90Ratio.toFixed(1)}%`,
       delta: { value: summary.over90Amount > 0 ? "高风险" : "—", direction: summary.over90Amount > 0 ? "down" : "up" }
     },
     {
       label: t("aging.kpi.maxInvoice"),
       value: summary.largestInvoice ? formatCurrency(summary.largestInvoice.remaining) : "—",
-      prefix: "¥",
       description: summary.largestInvoice ? (
         <Link href={`/invoices/${summary.largestInvoice.invoiceId}`} style={{ fontSize: 12 }}>
           {summary.largestInvoice.invoiceNo}

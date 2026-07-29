@@ -1,9 +1,9 @@
 "use client";
 import { ProCard } from "@ant-design/pro-components";
 import { Button, Space, DatePicker, App as AntdApp } from "antd";
-import { Line, Column } from "@ant-design/charts";
+import { Line } from "@ant-design/charts";
 import { useCallback, useEffect, useState } from "react";
-import { DownloadOutlined } from "@ant-design/icons";
+import { DownloadOutlined, TeamOutlined, FileTextOutlined, AuditOutlined, MoneyCollectOutlined } from "@ant-design/icons";
 import dayjs from "dayjs";
 import { Page } from "@/components/page";
 import { PageHeader } from "@/components/page-header";
@@ -37,7 +37,6 @@ export default function OverviewPage() {
 
   // 图表高度在窄屏上压缩,避免单屏只能看到一根柱子
   const chartHeight = isMobile ? 240 : 320;
-  const townChartHeight = isMobile ? 280 : 320;
 
   const load = useCallback(async () => {
     setLoading(true); setError(null);
@@ -81,17 +80,18 @@ export default function OverviewPage() {
   ]);
 
   const kpis: StatItem[] = [
-    { label: "客户总数", value: cust?.total ?? 0, suffix: "家", description: `${cust?.newInRange ?? 0} 家新增` },
-    { label: "合同额", value: formatCurrency(o?.contractAmount ?? 0), prefix: "¥", description: `共 ${o?.contractCount ?? 0} 份` },
-    { label: "已开票额", value: formatCurrency(o?.invoiceAmount ?? 0), prefix: "¥", description: `开票率 ${o?.invoiceRate ?? 0}%` },
-    { label: "已回款额", value: formatCurrency(o?.paymentAmount ?? 0), prefix: "¥", description: `回款率 ${o?.paymentRate ?? 0}%` }
+    { label: "客户总数", icon: <TeamOutlined />, value: cust?.total ?? 0, suffix: "家", description: `${cust?.newInRange ?? 0} 家新增` },
+    // formatCurrency 已含 ¥ 符号,不再加 prefix(旧写法 "¥" prefix + formatCurrency 会双 ¥ 且折行)
+    { label: "合同额", icon: <FileTextOutlined />, value: formatCurrency(o?.contractAmount ?? 0), description: `共 ${o?.contractCount ?? 0} 份` },
+    { label: "已开票额", icon: <AuditOutlined />, value: formatCurrency(o?.invoiceAmount ?? 0), description: `开票率 ${o?.invoiceRate ?? 0}%`, progress: o?.invoiceRate },
+    { label: "已回款额", icon: <MoneyCollectOutlined />, value: formatCurrency(o?.paymentAmount ?? 0), description: `回款率 ${o?.paymentRate ?? 0}%`, progress: o?.paymentRate }
   ];
 
   return (
     <Page>
       <PageHeader
         title="统计分析"
-        subtitle="客户、合同、开票、回款 4 维度综合看板"
+        subtitle="客户、合同、开票、回款 4 维度综合看板;区域维度见「区域统计」"
         actions={
           <Space wrap>
             <DatePicker.RangePicker value={range} onChange={(v) => setRange(v as [dayjs.Dayjs, dayjs.Dayjs] | null)} />
@@ -103,22 +103,9 @@ export default function OverviewPage() {
         <EmptyState error={{ message: error, onRetry: load }} title="加载失败" />
       ) : (
         <>
-          <StatGrid items={kpis} columns={5} loading={loading && !data} />
+          <StatGrid items={kpis} columns={4} loading={loading && !data} />
 
           <div style={{ marginTop: 24 }}>
-            <PageHeader level="section" title="客户区域分布" subtitle="按镇街分组（仅显示已录入镇街的客户）" />
-            <ProCard>
-              {data && data.townDistribution && data.townDistribution.length > 0 ? (
-                <Column data={data.townDistribution} xField="town" yField="count" height={townChartHeight} colorField="town"
-                  autoFit
-                  label={{ text: (d: Record<string, unknown>) => String(d.count), style: { fontSize: 11 } }}
-                  xAxis={{ label: { autoRotate: true, autoHide: false } }}
-                />
-              ) : <EmptyState empty title="暂无区域分布数据" description="客户所在地尚未录入镇街信息；请在客户档案中补充所在镇街" height={townChartHeight} />}
-            </ProCard>
-          </div>
-
-          <div style={{ marginTop: 32 }}>
             <PageHeader level="section" title="合同/开票/回款趋势" subtitle="按月统计合同额、已开票额、已回款额" />
             <ProCard>
               {lineData.length > 0 ? (
