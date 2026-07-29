@@ -2,7 +2,7 @@
 
 > 客户 / 合同 / 开票 / 回款 一体化管理，附件走 MinIO presigned 直传。
 >
-> **当前版本: v0.13.1**（2026-07-29）
+> **当前版本: v0.13.2**（2026-07-29）
 >
 > 项目文档地图见 [docs/README.md](docs/README.md)，详细设计见 [docs/architecture/DESIGN-v3.md](docs/architecture/DESIGN-v3.md)，用户手册见 [docs/user/USER_MANUAL.md](docs/user/USER_MANUAL.md)。
 
@@ -216,6 +216,10 @@ nginx 反代下上游异常时，由 `public/502.html` 静态页和 `app/502/pag
 ## 最近更新
 
 完整 changelog 见 [CHANGELOG.md](CHANGELOG.md)。
+
+### v0.13.2（2026-07-29）更新日志随部署自动发布
+
+更新日志（AppRelease）重新设计为自动发布：`deploy.sh` 在 build 成功后自动执行 `npm run release:publish`（`scripts/release/publish.ts`），读取 `package.json` 版本，取上一个 release tag 到 HEAD 的 git commits（过滤 `chore(release)` / `docs(release)` 发版噪音），复用 `lib/git-format.ts` 生成中文条目，幂等写入 AppRelease（`source=GIT_COMMITS`，补齐 `gitFrom` / `gitTo` / `gitCommitCount`，带 `!` 的 breaking commit 自动标记重要）。同版本已存在则跳过，保护人工编辑；发布失败只告警不阻断部署。管理页列表新增「来源」列区分自动生成 / 手动。无 schema 变更，无 API 契约变更。
 
 ### v0.13.1（2026-07-29）编辑开票页合同编号显示修复
 

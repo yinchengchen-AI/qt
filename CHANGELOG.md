@@ -25,6 +25,24 @@
 
 ## 详细变更
 
+### v0.13.2(2026-07-29) 更新日志随部署自动发布
+
+> 更新日志(AppRelease)此前全靠管理员在 `/admin/releases` 手敲发布;schema 里的 `source/gitFrom/gitTo/gitCommitCount` 字段和 `scripts/release/generate.ts` 是从未落地的遗留设计。本次重新设计为随部署自动发布:版本 bump → push → 服务器 `deploy.sh` 时自动生成并发布更新日志,用户登录即弹窗,零人工操作。
+
+**自动发布链路(feat)**
+
+- 新增 `scripts/release/publish.ts`:读 `package.json` 版本 → `git log <上一 release tag>..HEAD` → 过滤 `chore(release)`/`docs(release)` 发版噪音 commit → `lib/git-format.ts` 生成 title/summary/content → 幂等写 AppRelease(`source=GIT_COMMITS`,git 元数据补齐;任一 commit 带 breaking `!` 标记自动标重要)+ audit。发布人默认工号 `admin`,env `RELEASE_PUBLISHER_EMPLOYEE_NO` 可覆盖,回落第一个 ACTIVE ADMIN。
+- `scripts/prod/deploy.sh` 在 build 成功后、restart 前自动执行 `npm run release:publish`;失败只 `[WARN]` 不阻断部署,可手动补跑。同版本已存在(含人工发布)则幂等跳过;想重新生成先在 `/admin/releases` 删除旧记录。
+- 新增 `lib/release-plan.ts` 纯函数(噪音过滤 / important 判定 / tag 区间选择)+ `lib/git.ts#listReleaseTags()`;9 条新单测。
+
+**管理页(feat)**
+
+- `/admin/releases` 列表新增「来源」列:蓝色 Tag「自动生成」(tooltip 显示基于 N 条提交)/「手动」,i18n 中英镜像。手工发布 / 编辑 / 删除入口保留作兜底。
+
+**版本号**: `0.13.1` → `0.13.2` (patch bump)
+
+**部署说明**:无 schema 变更、无新 migration,`deploy.sh` 常规流程即可;部署后 v0.13.2 的更新日志由新链路自动发布(首个自动发布的版本)。
+
 ### v0.13.1(2026-07-29) 编辑开票页合同编号显示修复
 
 > 编辑开票页「合同编号」显示的是 contractId(cuid)而非合同编号:`getInvoice` 只返回 Invoice 标量,而 Invoice 表无 `contractNo` 字段,前端 `contractNo ?? contractId` 兜底落空。查询 include 合同 `contractNo` 并平铺返回。无 schema 变更,无 API 契约变更(响应仅新增字段)。
