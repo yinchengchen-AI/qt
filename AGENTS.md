@@ -35,6 +35,7 @@ Node `>=20.9.0`. Use `npm`; `pnpm-lock.yaml` is kept in sync.
 
 ## Commit & Pull Request Guidelines
 
+- **代码改动闭环**: 每次修改/更新代码后,先跑测试验证(`npm run typecheck` + `npm run lint` + `npm test`)通过,然后完成服务器部署(`scripts/prod/deploy.sh`),不要停在 commit/push。纯文档/注释类改动可不部署,随下次部署顺带上线。
 - Conventional Commits: `feat(scope): …`, `fix(scope): …`, `chore(scope): …`, `refactor(scope): …`, `docs(scope): …`. Common scopes: `workflow`, `deploy`, `i18n`, `layout`, `payment`, `statistics`. Bodies may be in Chinese.
 - One logical change per commit; squash WIP locally before pushing.
 - PRs cover motivation, change summary, and validation (commands run, screenshots for UI). Link the issue or `docs/` runbook. Call out schema/migration, auth, and storage-affecting changes explicitly.
