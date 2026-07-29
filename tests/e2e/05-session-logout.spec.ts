@@ -6,9 +6,10 @@ test.describe.serial("场景 5: 会话生命周期", () => {
   test("05.1 登出后再访问 dashboard 应跳回登录", async ({ page }) => {
     // 登录
     await page.goto("/login");
-    await page.getByPlaceholder("请输入工号").fill("admin");
-    await page.getByPlaceholder("请输入密码").fill(DEV_PASSWORD);
-    await page.getByText("登 录", { exact: true }).first().click();
+    await page.waitForLoadState("networkidle");
+    await page.getByPlaceholder("工号", { exact: true }).fill("admin");
+    await page.getByPlaceholder("密码", { exact: true }).fill(DEV_PASSWORD);
+    await page.getByRole("button", { name: "登 录", exact: true }).click();
     await page.waitForURL(/dashboard/, { timeout: 10000 });
 
     // 找登出按钮（右上角下拉）
@@ -32,9 +33,10 @@ test.describe.serial("场景 5: 会话生命周期", () => {
     await context.clearCookies();
     // admin 登录
     await page.goto("/login");
-    await page.getByPlaceholder("请输入工号").fill("admin");
-    await page.getByPlaceholder("请输入密码").fill(DEV_PASSWORD);
-    await page.getByText("登 录", { exact: true }).first().click();
+    await page.waitForLoadState("networkidle");
+    await page.getByPlaceholder("工号", { exact: true }).fill("admin");
+    await page.getByPlaceholder("密码", { exact: true }).fill(DEV_PASSWORD);
+    await page.getByRole("button", { name: "登 录", exact: true }).click();
     await page.waitForURL(/dashboard/, { timeout: 10000 });
     // 退出
     await page.goto("/api/auth/signout");
@@ -45,9 +47,10 @@ test.describe.serial("场景 5: 会话生命周期", () => {
     await page.waitForTimeout(500);
     // sales 登录
     await page.goto("/login");
-    await page.getByPlaceholder("请输入工号").fill("sales");
-    await page.getByPlaceholder("请输入密码").fill(DEV_PASSWORD);
-    await page.getByText("登 录", { exact: true }).first().click();
+    await page.waitForLoadState("networkidle");
+    await page.getByPlaceholder("工号", { exact: true }).fill("sales");
+    await page.getByPlaceholder("密码", { exact: true }).fill(DEV_PASSWORD);
+    await page.getByRole("button", { name: "登 录", exact: true }).click();
     await page.waitForURL(/dashboard/, { timeout: 10000 });
   });
 });

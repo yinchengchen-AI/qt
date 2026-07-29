@@ -12,9 +12,10 @@ test.describe("场景 12: 员工档案向导与详情", () => {
   test("admin 完整链路:登录 → 新建 → 5 步向导 → 详情 Anchor → cron", async ({ page }) => {
     // 1. 登录 admin
     await page.goto("/login");
-    await page.getByPlaceholder("请输入工号").fill("admin");
-    await page.getByPlaceholder("请输入密码").fill(DEV_PASSWORD);
-    await page.getByText("登 录", { exact: true }).first().click();
+    await page.waitForLoadState("networkidle");
+    await page.getByPlaceholder("工号", { exact: true }).fill("admin");
+    await page.getByPlaceholder("密码", { exact: true }).fill(DEV_PASSWORD);
+    await page.getByRole("button", { name: "登 录", exact: true }).click();
     await page.waitForURL(/dashboard/, { timeout: 10000 });
     await expect(page).toHaveURL(/dashboard/);
 
@@ -96,6 +97,9 @@ test.describe("场景 12: 员工档案向导与详情", () => {
     await page.getByLabel("电话").last().click(); // 关闭 select 下拉
     await page.getByLabel("电话").last().fill("13800138000");
     await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
+    // 每步独立保存:Step 1 先单独保存(profile 字段 + 紧急联系人)
+    await page.getByRole("button", { name: "保存本步" }).click();
+    await expect(page.getByText("本步已保存").last()).toBeVisible({ timeout: 8000 });
     await page.getByText("下一步", { exact: true }).first().click();
 
     // Step 2: 岗位合同
@@ -115,7 +119,7 @@ test.describe("场景 12: 员工档案向导与详情", () => {
 
     // Step 3: 敏感(仅 ADMIN)
     await expect(page.getByText("本页仅管理员可见")).toBeVisible({ timeout: 5000 });
-    await page.getByLabel("薪资").fill("15000");
+    await page.getByLabel("月薪(税前)").fill("15000");
     await page.getByLabel("银行卡号").fill("6222021234567890123");
     await page.getByLabel("开户行").fill("工商银行杭州支行");
     await page.getByLabel("社保账号").fill("3301001234");
@@ -144,6 +148,9 @@ test.describe("场景 12: 员工档案向导与详情", () => {
     await page.locator(".ant-select-dropdown").last().locator(".ant-select-item-option", { hasText: "高级" }).click();
     await page.getByLabel("技能名").last().click(); // 关闭 select 下拉
 
+    // 每步独立保存:Step 4 仅子表(履历),走后端子表单乐观锁分支;后续全量提交不应弹 409
+    await page.getByRole("button", { name: "保存本步" }).click();
+    await expect(page.getByText("本步已保存").last()).toBeVisible({ timeout: 8000 });
     await page.getByRole("button", { name: "下一步" }).click();
 
     // Step 5: 证书与附件
@@ -177,7 +184,7 @@ test.describe("场景 12: 员工档案向导与详情", () => {
 
     await expect(page.getByText(userName).first()).toBeVisible();
     await expect(page.getByText("测试工程师")).toBeVisible();
-    await expect(page.getByText("P5")).toBeVisible();
+    await expect(page.getByText("P5", { exact: true })).toBeVisible();
     await expect(page.getByText("PMP 项目管理")).toBeVisible();
     await expect(page.getByText("Playwright")).toBeVisible();
 

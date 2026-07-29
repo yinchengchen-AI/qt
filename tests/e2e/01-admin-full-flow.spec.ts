@@ -13,26 +13,29 @@ const _projectName = `E2E项目-${stamp}`;
 test.describe.serial("场景 1: admin 完整主链路", () => {
   test("01.1 登录页正常加载", async ({ page }) => {
     await page.goto("/login");
+    await page.waitForLoadState("networkidle");
     await expect(page).toHaveTitle(/杭州企泰/);
-    await expect(page.getByText("杭州企泰安全科技").first()).toBeVisible();
-    await expect(page.getByPlaceholder("请输入工号")).toBeVisible();
-    await expect(page.getByPlaceholder("请输入密码")).toBeVisible();
+    await expect(page.getByRole("heading", { name: "欢迎登录" })).toBeVisible();
+    await expect(page.getByPlaceholder("工号", { exact: true })).toBeVisible();
+    await expect(page.getByPlaceholder("密码", { exact: true })).toBeVisible();
   });
 
   test("01.2 登录失败显示错误", async ({ page }) => {
     await page.goto("/login");
-    await page.getByPlaceholder("请输入工号").fill("admin");
-    await page.getByPlaceholder("请输入密码").fill("wrongpassword");
-    await page.getByText("登 录", { exact: true }).first().click();
+    await page.waitForLoadState("networkidle");
+    await page.getByPlaceholder("工号", { exact: true }).fill("admin");
+    await page.getByPlaceholder("密码", { exact: true }).fill("wrongpassword");
+    await page.getByRole("button", { name: "登 录", exact: true }).click();
     // 设计系统:错误展示在 form 内的 role="alert" 块
     await expect(page.getByRole("alert").first()).toBeVisible({ timeout: 8000 });
   });
 
   test("01.3 admin 登录成功进入工作台", async ({ page }) => {
     await page.goto("/login");
-    await page.getByPlaceholder("请输入工号").fill("admin");
-    await page.getByPlaceholder("请输入密码").fill(DEV_PASSWORD);
-    await page.getByText("登 录", { exact: true }).first().click();
+    await page.waitForLoadState("networkidle");
+    await page.getByPlaceholder("工号", { exact: true }).fill("admin");
+    await page.getByPlaceholder("密码", { exact: true }).fill(DEV_PASSWORD);
+    await page.getByRole("button", { name: "登 录", exact: true }).click();
     await page.waitForURL(/dashboard/, { timeout: 10000 });
     await expect(page).toHaveURL(/dashboard/);
   });

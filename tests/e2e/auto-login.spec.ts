@@ -55,8 +55,9 @@ async function decryptSessionToken(jwe: string): Promise<JwtPayload> {
 
 async function login(page: Page, opts: { uncheckRemember: boolean }) {
   await page.goto("/login");
-  await page.getByPlaceholder("工号").fill(ADMIN.employeeNo);
-  await page.getByPlaceholder("密码").fill(ADMIN.password);
+  await page.waitForLoadState("networkidle");
+  await page.getByPlaceholder("工号", { exact: true }).fill(ADMIN.employeeNo);
+  await page.getByPlaceholder("密码", { exact: true }).fill(ADMIN.password);
   if (opts.uncheckRemember) {
     await page.getByRole("checkbox", { name: "保持登录" }).uncheck();
   }

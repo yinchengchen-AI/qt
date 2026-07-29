@@ -17,10 +17,11 @@ async function ensureLoggedIn(page: Page, employeeNo: string, password: string) 
   if (page.url().includes("/dashboard")) return;
   if (!page.url().includes("/login")) {
     await page.goto("/login");
+    await page.waitForLoadState("networkidle");
   }
-  await page.getByPlaceholder("请输入工号").fill(employeeNo);
-  await page.getByPlaceholder("请输入密码").fill(password);
-  await page.getByText("登 录", { exact: true }).first().click();
+  await page.getByPlaceholder("工号", { exact: true }).fill(employeeNo);
+  await page.getByPlaceholder("密码", { exact: true }).fill(password);
+  await page.getByRole("button", { name: "登 录", exact: true }).click();
   await page.waitForURL(/dashboard/, { timeout: 10000 });
 }
 

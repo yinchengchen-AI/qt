@@ -13,9 +13,9 @@ async function ensureLoggedIn(page: import("@playwright/test").Page, employeeNo:
   await page.goto("/dashboard");
   await page.waitForLoadState("networkidle");
   if (page.url().includes("/login")) {
-    await page.getByPlaceholder("请输入工号").fill(employeeNo);
-    await page.getByPlaceholder("请输入密码").fill(password);
-    await page.getByText("登 录", { exact: true }).first().click();
+    await page.getByPlaceholder("工号", { exact: true }).fill(employeeNo);
+    await page.getByPlaceholder("密码", { exact: true }).fill(password);
+    await page.getByRole("button", { name: "登 录", exact: true }).click();
     await page.waitForURL(/dashboard/, { timeout: 10000 });
   }
 }

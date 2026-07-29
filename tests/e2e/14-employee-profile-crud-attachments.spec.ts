@@ -28,12 +28,13 @@ test.beforeAll(async ({ browser }) => {
   const fs = await import("node:fs");
   fs.mkdirSync("tests/e2e/.auth", { recursive: true });
   if (fs.existsSync(STORAGE_STATE_PATH)) return; // 已登录过, 跳过
-  const ctx = await browser.newContext();
+  const ctx = await browser.newContext({ storageState: { cookies: [], origins: [] } });
   const page = await ctx.newPage();
   await page.goto("/login");
-  await page.getByPlaceholder("请输入工号").fill("admin");
-  await page.getByPlaceholder("请输入密码").fill(DEV_PASSWORD);
-  await page.getByText("登 录", { exact: true }).first().click();
+  await page.waitForLoadState("networkidle");
+  await page.getByPlaceholder("工号", { exact: true }).fill("admin");
+  await page.getByPlaceholder("密码", { exact: true }).fill(DEV_PASSWORD);
+  await page.getByRole("button", { name: "登 录", exact: true }).click();
   await page.waitForURL(/dashboard/, { timeout: 20000 });
   await ctx.storageState({ path: STORAGE_STATE_PATH });
   await ctx.close();
@@ -131,7 +132,7 @@ test.describe.serial("14 - 员工档案 CRUD + 附件上传", () => {
 
     // Step 3: 敏感
     await expect(page.getByText("本页仅管理员可见").first()).toBeVisible({ timeout: 5000 });
-    await page.getByLabel("薪资").fill("15000");
+    await page.getByLabel("月薪(税前)").fill("15000");
     await page.getByLabel("银行卡号").fill("6222021234567890123");
     await page.getByLabel("开户行").fill("工商银行 E2E14 支行");
     await page.getByRole("button", { name: "下一步" }).click();
@@ -220,7 +221,7 @@ test.describe.serial("14 - 员工档案 CRUD + 附件上传", () => {
 
     // Step 3 改薪资
     await expect(page.getByText("本页仅管理员可见").first()).toBeVisible({ timeout: 5000 });
-    await page.getByLabel("薪资").fill("22500");
+    await page.getByLabel("月薪(税前)").fill("22500");
     await page.getByRole("button", { name: "下一步" }).click();
     await page.waitForTimeout(500);
 
