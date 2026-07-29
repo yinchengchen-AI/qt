@@ -25,6 +25,14 @@
 
 ## 详细变更
 
+### v0.13.1(2026-07-29) 编辑开票页合同编号显示修复
+
+> 编辑开票页「合同编号」显示的是 contractId(cuid)而非合同编号:`getInvoice` 只返回 Invoice 标量,而 Invoice 表无 `contractNo` 字段,前端 `contractNo ?? contractId` 兜底落空。查询 include 合同 `contractNo` 并平铺返回。无 schema 变更,无 API 契约变更(响应仅新增字段)。
+
+**版本号**: `0.13.0` → `0.13.1` (patch bump)
+
+**部署说明**:无 schema 变更、无新 migration,`deploy.sh` 常规流程即可。
+
 ### v0.13.0(2026-07-29) 员工档案每步独立保存 + 前端修复 + 开票税号放宽
 
 > 员工档案向导支持每步独立保存(部分提交 + 乐观锁);修复一批档案前端真实 bug;确认开票移除"公司抬头必填税号"拦截;e2e 套件对齐登录页改版。无 schema 变更,无 API 契约变更(请求语义向后兼容)。

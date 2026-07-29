@@ -2,7 +2,7 @@
 
 > 客户 / 合同 / 开票 / 回款 一体化管理，附件走 MinIO presigned 直传。
 >
-> **当前版本: v0.13.0**（2026-07-29）
+> **当前版本: v0.13.1**（2026-07-29）
 >
 > 项目文档地图见 [docs/README.md](docs/README.md)，详细设计见 [docs/architecture/DESIGN-v3.md](docs/architecture/DESIGN-v3.md)，用户手册见 [docs/user/USER_MANUAL.md](docs/user/USER_MANUAL.md)。
 
@@ -216,6 +216,10 @@ nginx 反代下上游异常时，由 `public/502.html` 静态页和 `app/502/pag
 ## 最近更新
 
 完整 changelog 见 [CHANGELOG.md](CHANGELOG.md)。
+
+### v0.13.1（2026-07-29）编辑开票页合同编号显示修复
+
+编辑开票页「合同编号」误显示 contractId(cuid):`getInvoice` 平铺返回合同 `contractNo` 修复。无 schema 变更，无 API 契约变更。
 
 ### v0.13.0（2026-07-29）员工档案每步独立保存 + 前端修复 + 开票税号放宽
 
