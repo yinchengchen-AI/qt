@@ -25,6 +25,41 @@
 
 ## 详细变更
 
+### v0.13.0(2026-07-29) 员工档案每步独立保存 + 前端修复 + 开票税号放宽
+
+> 员工档案向导支持每步独立保存(部分提交 + 乐观锁);修复一批档案前端真实 bug;确认开票移除"公司抬头必填税号"拦截;e2e 套件对齐登录页改版。无 schema 变更,无 API 契约变更(请求语义向后兼容)。
+
+**员工档案:每步独立保存(feat)**
+
+- 向导每步新增「保存本步」按钮:只校验并提交当前步切片(profile 字段按步切分,子表数组按步整体替换),保存后停留本页;最后一步「提交」仍是全量保存并返回详情页。
+- 每次保存成功用响应里的最新 `updatedAt` 刷新乐观锁基线,连续分步保存不误报 409;409 覆盖确认弹窗在分步保存场景不跳转。
+- 后端 `updateUserFullProfile` 乐观锁覆盖子表单保存:payload 只含子表(profile 字段为空)且带 `expectedUpdatedAt` 时,用条件 `updateMany` 显式 touch `updatedAt`,并发覆盖仍返回 409。
+- 紧急联系人电话后端放行座机(`0xx-xxxxxxxx`),与前端校验对齐。
+
+**员工档案:前端 bug 修复(fix)**
+
+- 省市区级联受控失效:`Cascader` value 只由 initial 推导导致选择被回退;改内部 state + 按最深一级找回显路径,向导内用 `Form.useWatch` 取值,直辖市两级树回显正确。
+- 详情页「重置密码」按钮从空实现接通完整 Modal(复用列表页 `POST /api/users/:id/reset-password`);HeroHeader 显示已上传头像;禁用/启用改 `message` + SWR `mutate`(去掉整页 reload)。
+- 编辑向导头像回显:已有头像映射为 upload 列表项,删除列表项即清空头像(`avatarAttachmentId: null`)。
+- `normalizeValues` 统一剔除 profile 的 null 值(服务端 null 初值 / 直辖市 `district: null` 会被 zod 拒绝,原路径保存必 400)。
+- 新增身份证 / 紧急联系人电话 / 银行卡号格式校验;子表删除加 Popconfirm;向导头部移动端单列。
+
+**开票(fix)**
+
+- 确认开票(`→ ISSUED`)移除"公司抬头必须填写税号"的 422 拦截;R-09 现仅保留"电子发票号必须 20 位数字"。税号在新建/编辑表单本为选填,红冲 / PDF / 导出均按可空展示。
+
+**e2e 套件修复(test)**
+
+- 登录页改版后 16 个 spec 共 57 处过时选择器全部替换(placeholder `工号`/`密码` exact;按钮 accessible name 为带空格的「登 录」)。
+- 修复 WebKit 水合竞态(`goto("/login")` 后补 `networkidle` 等待)、14 号 spec beforeAll 的 storageState ENOENT、3 处过时业务断言(「薪资」→「月薪(税前)」、「P5」exact、01.1 品牌断言改「欢迎登录」)。
+- spec 12 新增「保存本步」断言(Step 1 / Step 4 分步保存 + 全量提交不弹 409)。
+
+**测试**: Vitest 622/622(新增 7 用例:validator 6 + 乐观锁子表分支 1);e2e 01.1 / 12 / 14 三项目(chromium / iPad / iPhone)全绿;typecheck / ESLint 0 error。
+
+**版本号**: `0.12.0` → `0.13.0` (minor bump, 每步独立保存新功能)
+
+**部署说明**:无 schema 变更、无新 migration,`deploy.sh` 常规流程即可。
+
 ### v0.12.0(2026-07-28) 前端移动端适配强化
 
 > 基于最新 UI 审查,对管理后台多个页面进行移动端/窄屏适配,覆盖详情、列表、弹窗、抽屉、搜索区、权限矩阵等场景,提升小屏设备可用性。无 schema 变更,无 API 契约变更。

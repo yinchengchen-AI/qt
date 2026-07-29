@@ -2,7 +2,7 @@
 
 > 客户 / 合同 / 开票 / 回款 一体化管理，附件走 MinIO presigned 直传。
 >
-> **当前版本: v0.12.0**（2026-07-28）
+> **当前版本: v0.13.0**（2026-07-29）
 >
 > 项目文档地图见 [docs/README.md](docs/README.md)，详细设计见 [docs/architecture/DESIGN-v3.md](docs/architecture/DESIGN-v3.md)，用户手册见 [docs/user/USER_MANUAL.md](docs/user/USER_MANUAL.md)。
 
@@ -202,20 +202,24 @@ nginx 反代下上游异常时，由 `public/502.html` 静态页和 `app/502/pag
 
 ## 质量基线
 
-基线刷新于 **v0.12.0（2026-07-28）**。
+基线刷新于 **v0.13.0（2026-07-29）**。
 
 | 项 | 状态 |
 |---|---|
 | `npm run typecheck` | 0 errors |
 | `npm run lint` | 0 errors / 0 warnings |
-| `npm test` | 80 个 .test.ts 文件，615 用例全绿 |
-| `npm run test:e2e` | 未在本地运行（需启动 dev server） |
+| `npm test` | 81 个 .test.ts 文件，622 用例全绿 |
+| `npm run test:e2e` | 部分运行：01.1 / 12 / 14 三项目（chromium / iPad / iPhone）全绿 |
 | `prisma generate` + `migrate deploy` | 42/42 migrations，client v7.8.0 |
 | `npm run build` | 本地因 `docker-data/postgres` 目录权限未通过验证（环境限制，非代码错误） |
 
 ## 最近更新
 
 完整 changelog 见 [CHANGELOG.md](CHANGELOG.md)。
+
+### v0.13.0（2026-07-29）员工档案每步独立保存 + 前端修复 + 开票税号放宽
+
+员工档案向导每步可「保存本步」单独提交（profile 按步切片、子表按步替换），后端乐观锁覆盖子表单保存，连续保存不误报 409；修复省市区级联受控失效、详情页重置密码空实现、头像不回显、null 泄漏必 400 等一批档案前端 bug；确认开票移除「公司抬头必填税号」拦截（R-09 仅保留电子发票号 20 位）；e2e 套件对齐登录页改版（16 个 spec 57 处选择器）。无 schema 变更，无 API 契约变更。
 
 ### v0.12.0（2026-07-28）前端移动端适配强化
 
