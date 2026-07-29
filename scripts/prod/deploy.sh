@@ -1,8 +1,22 @@
 #!/usr/bin/env bash
 # 日常更新部署: git pull + install + migrate + build + restart + smoke
 # 用法: 在 /opt/qt 目录下, sudo -E ./scripts/prod/deploy.sh
+
+# 自我改写护栏 (2026-07-29 v0.13.2 部署实证): 本脚本第 1 步就是 git pull,
+# 若 deploy.sh 自身在 pull 中被更新, bash 会按旧字节偏移继续读新文件,
+# 静默跳过/错乱后续步骤 (本次新插入的 release:publish 段被整段跳过)。
+# 因此在做任何事之前, 先把脚本复制到临时文件并 re-exec 该稳定副本。
+# 注意: re-exec 后 $0 指向 /tmp 副本, 仓库根目录必须先解析成绝对路径传过去。
+if [ -z "${QT_DEPLOY_REEXEC:-}" ]; then
+  export QT_DEPLOY_ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
+  STABLE_COPY="$(mktemp /tmp/qt-deploy.XXXXXX.sh)"
+  cp "$0" "$STABLE_COPY"
+  export QT_DEPLOY_REEXEC=1
+  exec bash "$STABLE_COPY" "$@"
+fi
+
 set -euo pipefail
-cd "$(dirname "$0")/../.."
+cd "${QT_DEPLOY_ROOT:?QT_DEPLOY_ROOT 未设置, 请勿直接 source 本脚本}"
 
 echo "==> git pull"
 git pull --ff-only
