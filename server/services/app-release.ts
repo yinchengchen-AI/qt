@@ -44,7 +44,8 @@ export async function listReleases(
   const [list, total] = await Promise.all([
     prisma.appRelease.findMany({
       where,
-      orderBy: [{ important: "desc" }, { publishedAt: "desc" }],
+      // 纯时间倒序:important 只影响弹窗视觉与未读首条选择,不在列表页置顶
+      orderBy: [{ publishedAt: "desc" }],
       skip: (page - 1) * pageSize,
       take: pageSize
     }),

@@ -109,20 +109,20 @@ describe("AppRelease 只读流程", () => {
     await expect(getRelease(buildSales(), r.id)).rejects.toMatchObject({ status: 404 });
   }));
 
-  it("listReleases 默认按 publishedAt desc, important 排前;软删不可见", guard(async () => {
-    const older = await seedRelease({
-      version: "vTEST-older",
-      title: "older",
-      summary: "旧",
+  it("listReleases 纯 publishedAt 倒序(important 不置顶);软删不可见", guard(async () => {
+    const olderImportant = await seedRelease({
+      version: "vTEST-older-important",
+      title: "older important",
+      summary: "旧但重要",
       content: "x",
+      important: true,
       publishedAt: new Date(Date.now() - 60_000)
     });
     const newer = await seedRelease({
-      version: "vTEST-newer-important",
-      title: "newer important",
-      summary: "新且重要",
-      content: "x",
-      important: true
+      version: "vTEST-newer",
+      title: "newer",
+      summary: "新但普通",
+      content: "x"
     });
     const deleted = await seedRelease({
       version: "vTEST-deleted",
@@ -134,9 +134,9 @@ describe("AppRelease 只读流程", () => {
     const list = await listReleases(buildSales(), { page: 1, pageSize: 100 });
     const found = list.list.filter((x) => createdIds.includes(x.id));
     expect(found.length).toBeGreaterThanOrEqual(2);
-    // newer.important=true 排在 older 前
+    // important 不置顶:较新的普通记录排在较旧的重要记录前
     const ids = found.map((x) => x.id);
-    expect(ids.indexOf(newer.id)).toBeLessThan(ids.indexOf(older.id));
+    expect(ids.indexOf(newer.id)).toBeLessThan(ids.indexOf(olderImportant.id));
     // 软删记录不出现在列表
     expect(ids).not.toContain(deleted.id);
   }));
