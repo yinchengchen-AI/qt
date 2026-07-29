@@ -114,13 +114,10 @@ export async function invoiceAction(user: SessionUser, id: string, input: Invoic
       requireFinance();
       const inv = await commonLoad(tx);
       if (!inv) throw new ApiError(ERROR_CODES.NOT_FOUND, "发票不存在", 404);
-      // R-09: 电子发票号 20 位 / 公司抬头需税号
+      // R-09: 电子发票号 20 位
       const invoiceNo = input.invoiceNo || inv.invoiceNo;
       if ((inv.invoiceType === "VAT_ELECTRONIC" || inv.invoiceType === "ELEC_NORMAL") && !/^\d{20}$/.test(invoiceNo)) {
         throw new ApiError(ERROR_CODES.INVOICE_INFO_INVALID, "电子发票号必须 20 位数字", 422);
-      }
-      if (inv.titleType === "COMPANY" && !(inv.taxNo ?? "").trim()) {
-        throw new ApiError(ERROR_CODES.INVOICE_INFO_INVALID, "公司抬头必须填写税号", 422);
       }
 
       const data: Record<string, unknown> = {
