@@ -41,15 +41,16 @@ VERSION="v$(sed -n 's/^  "version": *"\([^"]*\)".*/\1/p' package.json | head -1)
 APP_VERSION="${VERSION}+$(git rev-parse --short HEAD)"
 echo "==> 版本: $APP_VERSION"
 
-# 内存兜底 (2026-07-08 v0.9.7 / 2026-07-18 v0.10.3 部署教训): 3.5GB 机器上
-# Turbopack 编译 RSS 可超 2GB, docker build 与 native build 内存需求相同,
-# Docker 不省内存。build 前停 qt-app 容器 (~300MB) 腾内存; MemAvailable < 2200MB
-# 时再停 PG/MinIO (build 不依赖 DB), build 结束无论成败都拉起。
+# 内存兜底 (2026-07-08 v0.9.7 / 2026-07-18 v0.10.3 / 2026-07-29 v0.13.4 部署教训):
+# 3.5GB 机器上 Turbopack 编译 RSS 可超 2GB, docker build 与 native build 内存需求相同。
+# 策略: 首选零停机构建 (qt-app/PG/MinIO 全部在线, 缓存命中时内存压力小);
+# 仅在构建被 OOM (exit=137) 时才停容器重试一次 — v0.13.4 之前是无条件停 qt-app,
+# 每次部署都有整个 build 时长 (~3-4 min) 的停机, 得不偿失。
 # 只动 qt 自己的容器; mysql-fineui 属其它项目, 不自动停。
 STOPPED_CONTAINERS=""
-if command -v docker >/dev/null 2>&1; then
+stop_for_build() {
   if [ "$(docker inspect -f '{{.State.Running}}' qt-app 2>/dev/null)" = "true" ]; then
-    echo "==> 构建前停止 qt-app 容器腾内存 (~300MB)"
+    echo "==> OOM 重试: 停止 qt-app 容器腾内存 (~340MB)"
     docker stop qt-app >/dev/null
     STOPPED_CONTAINERS="qt-app"
   fi
@@ -57,15 +58,22 @@ if command -v docker >/dev/null 2>&1; then
   if [ "${AVAIL_MEM_MB:-0}" -gt 0 ] && [ "$AVAIL_MEM_MB" -lt 2200 ]; then
     for c in qt-postgres qt-minio; do
       if [ "$(docker inspect -f '{{.State.Running}}' "$c" 2>/dev/null)" = "true" ]; then
-        echo "==> MemAvailable=${AVAIL_MEM_MB}MB < 2200MB, 临时停止 $c 腾编译内存"
+        echo "==> OOM 重试: MemAvailable=${AVAIL_MEM_MB}MB < 2200MB, 临时停止 $c"
         docker stop "$c" >/dev/null
         STOPPED_CONTAINERS="$STOPPED_CONTAINERS $c"
       fi
     done
   fi
-fi
+}
+restart_stopped() {
+  if [ -n "$STOPPED_CONTAINERS" ]; then
+    echo "==> 拉起临时停止的容器:$STOPPED_CONTAINERS"
+    # shellcheck disable=SC2086 -- 需要按空格拆成多个参数
+    docker start $STOPPED_CONTAINERS >/dev/null
+  fi
+}
 
-echo "==> docker build qt-app:${VERSION} (APP_VERSION=${APP_VERSION})"
+echo "==> docker build qt-app:${VERSION} (APP_VERSION=${APP_VERSION}, 零停机首选)"
 set +e
 NEXT_TELEMETRY_DISABLED=1 docker build \
   --build-arg APP_VERSION="$APP_VERSION" \
@@ -74,11 +82,19 @@ NEXT_TELEMETRY_DISABLED=1 docker build \
   .
 BUILD_EXIT=$?
 set -e
-if [ -n "$STOPPED_CONTAINERS" ]; then
-  echo "==> 拉起临时停止的容器:$STOPPED_CONTAINERS"
-  # shellcheck disable=SC2086 -- 需要按空格拆成多个参数
-  docker start $STOPPED_CONTAINERS >/dev/null
+if [ "$BUILD_EXIT" -eq 137 ] && command -v docker >/dev/null 2>&1; then
+  echo "::warning::构建被 OOM Kill (exit=137), 停容器后重试一次"
+  stop_for_build
+  set +e
+  NEXT_TELEMETRY_DISABLED=1 docker build \
+    --build-arg APP_VERSION="$APP_VERSION" \
+    -t "qt-app:${VERSION}" \
+    -t qt-app:latest \
+    .
+  BUILD_EXIT=$?
+  set -e
 fi
+restart_stopped
 if [ "$BUILD_EXIT" -ne 0 ]; then
   echo "[ERR] docker build 失败 (exit=$BUILD_EXIT)" >&2
   if [ "$BUILD_EXIT" -eq 137 ]; then
