@@ -1,6 +1,6 @@
 "use client";
 import { ProFormList, ProFormText, ProFormDatePicker, ProFormSelect, ProFormTextArea, ProFormSwitch, ProFormDigit, ProFormUploadButton } from "@ant-design/pro-components";
-import { Button, Card, Space, Tag, Typography } from "antd";
+import { Button, Card, Popconfirm, Space, Tag, Typography } from "antd";
 import { DeleteOutlined, PlusOutlined } from "@ant-design/icons";
 import { uploadFileToMinIO } from "@/lib/upload-client";
 
@@ -12,6 +12,8 @@ type Field = {
   valueType: "text" | "date" | "select" | "digit" | "switch" | "textarea" | "upload";
   options?: { value: string; label: string }[];
   required?: boolean;
+  /** 仅 text 类型有效:格式校验(填了才校验) */
+  pattern?: { regex: RegExp; message: string };
   /** 仅 upload 类型有效:附件分类 */
   uploadCategory?: "GENERAL" | "AVATAR" | "ID_CARD_FRONT" | "ID_CARD_BACK" | "CERTIFICATE";
 };
@@ -74,16 +76,23 @@ export function SubtableEditor({ name, label, fields, initialValue, hint, itemLa
                   </Text>
                 ) : null}
               </Space>
-              <Button
-                type="text"
-                size="small"
-                danger
-                icon={<DeleteOutlined />}
-                onClick={() => a.remove?.(record.key)}
-                aria-label={`删除${label}`}
+              <Popconfirm
+                title={`确定删除该条${label}?`}
+                okText="删除"
+                cancelText="取消"
+                okButtonProps={{ danger: true }}
+                onConfirm={() => a.remove?.(record.key)}
               >
-                删除
-              </Button>
+                <Button
+                  type="text"
+                  size="small"
+                  danger
+                  icon={<DeleteOutlined />}
+                  aria-label={`删除${label}`}
+                >
+                  删除
+                </Button>
+              </Popconfirm>
             </div>
             {listDom}
           </Card>
@@ -107,13 +116,17 @@ export function SubtableEditor({ name, label, fields, initialValue, hint, itemLa
               ? { gridColumn: "1 / -1" }
               : {};
             if (f.valueType === "text") {
+              const rules = [
+                ...(f.required ? [{ required: true, message: `${f.label}必填` }] : []),
+                ...(f.pattern ? [{ pattern: f.pattern.regex, message: f.pattern.message }] : [])
+              ];
               return (
                 <div key={f.name} style={wrapStyle}>
                   <ProFormText
                     name={f.name}
                     label={f.label}
                     width="md"
-                    rules={f.required ? [{ required: true, message: `${f.label}必填` }] : []}
+                    rules={rules}
                   />
                 </div>
               );

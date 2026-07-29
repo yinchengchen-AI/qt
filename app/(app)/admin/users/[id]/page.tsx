@@ -1,8 +1,9 @@
 "use client";
-import { Avatar, Space, Tag, Button, Typography, Card, Row, Col, Divider, Empty } from "antd";
+import { Avatar, Space, Tag, Button, Typography, Card, Row, Col, Divider, Empty, Modal, Form, Input, App as AntdApp } from "antd";
 import { ProCard, ProDescriptions } from "@ant-design/pro-components";
 import { EditOutlined, KeyOutlined, StopOutlined, CheckCircleOutlined, IdcardOutlined, BankOutlined, BookOutlined, FileProtectOutlined, ApartmentOutlined, UserOutlined, PhoneOutlined, CalendarOutlined, EnvironmentOutlined } from "@ant-design/icons";
 import { useParams, useRouter } from "next/navigation";
+import { useState } from "react";
 import { useGoBack } from "@/lib/navigation";
 import { useSession } from "next-auth/react";
 import useSWR from "swr";
@@ -49,7 +50,7 @@ export default function UserDetailPage() {
   const { data, error, isLoading, mutate } = useSWR<{ data: FullEmployeeProfileDto | null }>(
     `/api/users/${id}/with-profile`
   );
-  const { data: userResp, error: userError } = useSWR<User>(`/api/users/${id}`);
+  const { data: userResp, error: userError, mutate: mutateUser } = useSWR<User>(`/api/users/${id}`);
   const educationDict = useDict("EDUCATION_LEVEL");
   const contractTypeDict = useDict("CONTRACT_TYPE");
 
@@ -101,6 +102,7 @@ export default function UserDetailPage() {
           isAdmin={isAdmin}
           id={id}
           onEditProfile={() => router.push(`/admin/users/${id}/edit-profile`)}
+          onRefresh={() => { mutate(); mutateUser(); }}
         />
         <ProCard style={{ marginTop: 8 }}>
           <EmptyState
@@ -150,7 +152,9 @@ export default function UserDetailPage() {
         user={user}
         isAdmin={isAdmin}
         id={id}
+        avatarUrl={avatar?.url}
         onEditProfile={() => router.push(`/admin/users/${id}/edit-profile`)}
+        onRefresh={() => { mutate(); mutateUser(); }}
       />
 
       <AnchorNav sections={sections} onJump={scrollTo} compact={isMobile} />
@@ -520,13 +524,44 @@ function HeroHeader({
   user,
   isAdmin,
   id,
-  onEditProfile
+  avatarUrl,
+  onEditProfile,
+  onRefresh
 }: {
   user: User;
   isAdmin: boolean;
   id: string;
+  avatarUrl?: string;
   onEditProfile: () => void;
+  onRefresh: () => void;
 }) {
+  const router = useRouter();
+  const { message } = AntdApp.useApp();
+  const [resetOpen, setResetOpen] = useState(false);
+  const [resetSubmitting, setResetSubmitting] = useState(false);
+  const [resetForm] = Form.useForm();
+
+  async function handleToggleStatus() {
+    const next = user.status === "ACTIVE" ? "DISABLED" : "ACTIVE";
+    try {
+      const r = await fetch(`/api/users/${id}/toggle-status`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ status: next })
+      });
+      const j = await r.json();
+      if (j.code !== 0) {
+        message.error(j.message);
+        return;
+      }
+      message.success(next === "ACTIVE" ? "已启用" : "已禁用");
+      onRefresh();
+    } catch (e) {
+      message.error((e as Error).message);
+    }
+  }
+
   return (
     <ProCard
       style={{ marginBottom: 16 }}
@@ -534,6 +569,7 @@ function HeroHeader({
     >
       <div style={{ display: "flex", flexWrap: "wrap", alignItems: "flex-start", gap: 16 }}>
         <Avatar
+          src={avatarUrl}
           size={72}
           style={{ backgroundColor: "var(--qt-processing)", fontSize: 28, fontWeight: 600, flexShrink: 0 }}
         >
@@ -556,29 +592,16 @@ function HeroHeader({
         </div>
         {isAdmin ? (
           <Space wrap style={{ flexShrink: 0 }}>
-            <Button
-              icon={<KeyOutlined />}
-              onClick={() => {/* 与详情页 actions 保持一致,跳到重置页 */}}
-            >
+            <Button icon={<KeyOutlined />} onClick={() => setResetOpen(true)}>
               重置密码
             </Button>
             <Button
               icon={user.status === "ACTIVE" ? <StopOutlined /> : <CheckCircleOutlined />}
-              onClick={async () => {
-                const next = user.status === "ACTIVE" ? "DISABLED" : "ACTIVE";
-                const r = await fetch(`/api/users/${id}/toggle-status`, {
-                  method: "POST",
-                  headers: { "Content-Type": "application/json" },
-                  credentials: "include",
-                  body: JSON.stringify({ status: next })
-                });
-                const j = await r.json();
-                if (j.code === 0) window.location.reload();
-              }}
+              onClick={handleToggleStatus}
             >
               {user.status === "ACTIVE" ? "禁用" : "启用"}
             </Button>
-            <Button icon={<EditOutlined />} onClick={() => window.location.assign(`/admin/users/${id}/edit`)}>
+            <Button icon={<EditOutlined />} onClick={() => router.push(`/admin/users/${id}/edit`)}>
               编辑账号
             </Button>
             <Button type="primary" icon={<EditOutlined />} onClick={onEditProfile}>
@@ -587,6 +610,60 @@ function HeroHeader({
           </Space>
         ) : null}
       </div>
+
+      <Modal
+        open={resetOpen}
+        title={`重置 ${user.name} 的登录密码`}
+        okText="确认重置"
+        cancelText="取消"
+        okButtonProps={{ danger: true, loading: resetSubmitting }}
+        destroyOnHidden
+        maskClosable={false}
+        onCancel={() => { if (resetSubmitting) return; setResetOpen(false); }}
+        onOk={async () => {
+          try {
+            const values = await resetForm.validateFields();
+            setResetSubmitting(true);
+            const r = await fetch(`/api/users/${id}/reset-password`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              credentials: "include",
+              body: JSON.stringify({ password: values.password })
+            });
+            const j = await r.json();
+            if (j.code !== 0) { message.error(j.message); return; }
+            message.success(`已重置 ${user.name} 的登录密码`);
+            setResetOpen(false);
+          } catch (e) {
+            if (e && typeof e === "object" && "errorFields" in e) return;
+            message.error(e instanceof Error ? e.message : "重置失败");
+          } finally { setResetSubmitting(false); }
+        }}
+      >
+        <p style={{ marginBottom: 12, color: "var(--qt-text-muted)" }}>
+          请输入新的登录密码。设置后旧密码立即失效,已登录会话会要求重新登录。
+        </p>
+        <Form form={resetForm} layout="vertical" preserve={false} requiredMark={false}>
+          <Form.Item name="password" label="新密码" rules={[
+            { required: true, message: "请输入新密码（8 ～ 72 个字符）" },
+            { min: 8, message: "密码至少需要 8 个字符" },
+            { max: 72, message: "密码不能超过 72 个字符" }
+          ]}>
+            <Input.Password autoFocus placeholder="8 ～ 72 个字符，建议使用密码管理器生成" size="large" maxLength={72} />
+          </Form.Item>
+          <Form.Item name="confirm" label="确认新密码" dependencies={["password"]} rules={[
+            { required: true, message: "请再次输入新密码以确认" },
+            ({ getFieldValue }) => ({
+              validator(_, value) {
+                if (!value || getFieldValue("password") === value) return Promise.resolve();
+                return Promise.reject(new Error("两次输入的密码不一致"));
+              }
+            })
+          ]}>
+            <Input.Password placeholder="再次输入新密码" size="large" />
+          </Form.Item>
+        </Form>
+      </Modal>
     </ProCard>
   );
 }
