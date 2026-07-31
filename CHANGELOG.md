@@ -70,7 +70,7 @@
 - **apk 换阿里云源** (deps/build/runner 三阶段): `dl-cdn.alpinelinux.org` → `mirrors.aliyun.com`, 服务器实测 16 包 5.6s (原 ~250s)。
 - **npm 换 npmmirror CDN**: `npm ci --registry=https://registry.npmmirror.com --no-audit --no-fund`, 实测 99 包 6.4s (官方源 8KB/s); 整项目 `npm ci` 预计 387s → 1-2min。
 - **BuildKit npm 缓存挂载** (`--mount=type=cache,target=/root/.npm`): lockfile 变化时只下载增量 tarball, npm 缓存不再随镜像层作废。
-- **docker registry mirror**: 公共 mirror (1panel/rat.dev) 实测不可用, 暂保留 daocloud; 后续换阿里云个人加速器(需控制台取地址)。基础镜像仅 digest 变化时重拉, 影响偶发。
+- **docker registry mirror**: 公共 mirror (1panel/rat.dev) 实测不可用; 已配阿里云个人加速器 `2yeh01gi.mirror.aliyuncs.com` 为首选 (daemon.json, reload 生效), daocloud 兜底; 实测 alpine 拉取 ~2.5x 提速。基础镜像仅 digest 变化时重拉, 影响偶发。
 
 ### 部署脚本改进(未发版,随下次部署生效)
 
