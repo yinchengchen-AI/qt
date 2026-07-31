@@ -219,7 +219,7 @@ async function assertServiceTypeInDict(code: string): Promise<void> {
 const CONTRACT_AUDIT_DIFF_FIELDS = [
   "contractNo", "title", "serviceType", "signDate", "startDate", "endDate",
   "totalAmount", "taxRate", "taxAmount", "amountExcludingTax",
-  "paymentMethod", "ownerUserId", "remark", "installmentPlan"
+  "paymentMethod", "ownerUserId", "signerId", "remark", "installmentPlan"
 ] as const;
 
 // 审计载荷的 JSON 归一化: Decimal → 字符串, Date → ISO 字符串.
@@ -334,11 +334,10 @@ export async function updateContract(user: SessionUser, id: string, input: Contr
   if (user.roleCode !== "ADMIN" && existing.status !== "DRAFT") {
     throw new ApiError(ERROR_CODES.ENTITY_IMMUTABLE, "当前状态不可修改", 403);
   }
-  // 防御: 即使调用方通过某种方式传了 customerId / signerId / status,service 层也显式丢弃,
-  // 防止 spread 时把这些字段写进 DB
+  // 防御: 即使调用方通过某种方式传了 customerId / status,service 层也显式丢弃,
+  // 防止 spread 时把这些字段写进 DB (signerId 不再丢弃: admin 可在编辑页变更签订人)
   const safeInput = { ...input } as Record<string, unknown>;
   delete safeInput.customerId;
-  delete safeInput.signerId;
   delete safeInput.status;
 
   // Dictionary 兜底 (与 create 同口径): PATCH 改 serviceType 时同样校验
@@ -354,6 +353,14 @@ export async function updateContract(user: SessionUser, id: string, input: Contr
       throw new ApiError(ERROR_CODES.VALIDATION_FAILED, "仅管理员可变更合同负责人", 422);
     }
     await assertActiveUser(input.ownerUserId, "负责人");
+  }
+  // 签订人变更: 与负责人同口径 — 仅 ADMIN 可改为他人 (代录修正);
+  // 非 admin 传入与现值不同的 signerId 直接 422 (传入=现值是无害 no-op, 放行)
+  if (input.signerId !== undefined && input.signerId !== existing.signerId) {
+    if (user.roleCode !== "ADMIN") {
+      throw new ApiError(ERROR_CODES.VALIDATION_FAILED, "仅管理员可变更合同签订人", 422);
+    }
+    await assertActiveUser(input.signerId, "签订人");
   }
   // 日期顺序校验(与编辑页一致:止期必须晚于起期)
   assertDateOrder(input.startDate ?? existing.startDate, input.endDate ?? existing.endDate);
@@ -377,7 +384,7 @@ export async function updateContract(user: SessionUser, id: string, input: Contr
         id: true, status: true, contractNo: true, title: true, serviceType: true,
         signDate: true, startDate: true, endDate: true,
         totalAmount: true, taxRate: true, taxAmount: true, amountExcludingTax: true,
-        paymentMethod: true, ownerUserId: true, remark: true, installmentPlan: true,
+        paymentMethod: true, ownerUserId: true, signerId: true, remark: true, installmentPlan: true,
       },
     });
     if (user.roleCode !== "ADMIN" && locked.status !== "DRAFT") {

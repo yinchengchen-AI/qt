@@ -57,8 +57,9 @@ export const contractCreateSchema = z.object({
   attachments: z.array(attachment).default([])
 });
 
+// 更新时客户不可更换;签订人允许改 (仅 admin,service 层对非 admin 变更 422)
 export const contractUpdateSchema = contractCreateSchema
-  .omit({ customerId: true, signerId: true })
+  .omit({ customerId: true })
   .partial()
   .extend({
     attachments: z.array(attachment).optional()

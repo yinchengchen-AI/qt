@@ -17,6 +17,7 @@ import useSWR from "swr";
 import { useDict, groupDictByLegacy } from "@/lib/dict-client";
 import { useContractTitleAutofill } from "@/lib/use-contract-title-autofill";
 import { toIsoDateTime } from "@/lib/format";
+import { useUserName } from "@/lib/user-lookup";
 import { Page } from "@/components/page";
 import { PageHeader } from "@/components/page-header";
 import { FormSection, FormGrid, FormCard, SubmitBar, AmountTaxFields } from "@/components/form";
@@ -47,6 +48,8 @@ export default function EditContractPage() {
   const formRef = useRef<any>(null);
   const { data, isLoading } = // eslint-disable-next-line @typescript-eslint/no-explicit-any -- edit page reads many dynamic fields
   useSWR<any>(`/api/contracts/${id}`);
+  // 非 admin 的签订人只读展示用 (admin 走下拉选择); hook 必须在 early return 之前调用
+  const signerName = useUserName((data as { signerId?: string } | undefined)?.signerId);
   const serviceType = useDict("SERVICE_TYPE");
   const serviceTypeOptions = useMemo(() => groupDictByLegacy(serviceType), [serviceType]);
   const { tryAutoFill, syncFromInitial } = useContractTitleAutofill({
@@ -109,6 +112,7 @@ export default function EditContractPage() {
             title: data.title,
             serviceType: data.serviceType,
             paymentMethod: data.paymentMethod,
+            signerId: data.signerId,
             ownerUserId: data.ownerUserId,
             remark: data.remark ?? undefined,
             signDate: data.signDate ? new Date(data.signDate) : undefined,
@@ -134,9 +138,12 @@ export default function EditContractPage() {
               // 合同结构化交付物 (deliverables) 已下线; 实际交付文件走 Attachment.isDeliverable
               attachments: merged
             };
-            // 非 admin 不提交 ownerUserId (字段未渲染; initialValues 里的值也要剥掉),
-            // 服务端对非 admin 变更负责人会 422
-            if (!isAdmin) delete (payload as Record<string, unknown>).ownerUserId;
+            // 非 admin 不提交 ownerUserId / signerId (字段未渲染; initialValues 里的值也要剥掉),
+            // 服务端对非 admin 变更负责人/签订人会 422
+            if (!isAdmin) {
+              delete (payload as Record<string, unknown>).ownerUserId;
+              delete (payload as Record<string, unknown>).signerId;
+            }
             const res = await fetch(`/api/contracts/${id}`, {
               method: "PATCH",
               headers: { "Content-Type": "application/json" },
@@ -200,6 +207,39 @@ export default function EditContractPage() {
                 rules={[{ required: true, message: "请选择付款方式（必填）" }]}
                 fieldProps={{ size: "large" }}
               />
+              {isAdmin ? (
+                <ProFormSelect
+                  name="signerId"
+                  label="签订人"
+                  placeholder="按姓名 / 工号搜索员工"
+                  tooltip="管理员可改为任意在职员工，用于代录修正"
+                  showSearch
+                  rules={[{ required: true, message: "请选择合同签订人（必填）" }]}
+                  fieldProps={{
+                    size: "large",
+                    optionFilterProp: "label"
+                  }}
+                  request={async (params: { keyWords?: string }) => {
+                    const qs = new URLSearchParams();
+                    qs.set("pageSize", "100");
+                    qs.set("status", "ACTIVE");
+                    qs.set("keyword", params.keyWords ?? "");
+                    const r = await fetch(`/api/users?${qs}`, { credentials: "include" });
+                    const j = await r.json();
+                    if (j.code !== 0) return [];
+                    return (j.data.list as Array<{ id: string; name: string; employeeNo: string }>).map((u) => ({
+                      value: u.id,
+                      label: `${u.name} (${u.employeeNo})`
+                    }));
+                  }}
+                />
+              ) : (
+                // 非 admin 不可变更签订人 (服务端 422), 只读展示
+                <div>
+                  <Text type="secondary" style={{ fontSize: 12 }}>签订人：</Text>
+                  <Text>{signerName}</Text>
+                </div>
+              )}
               {isAdmin ? (
                 <ProFormSelect
                   name="ownerUserId"

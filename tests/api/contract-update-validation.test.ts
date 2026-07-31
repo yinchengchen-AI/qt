@@ -2,11 +2,11 @@
 //
 // 覆盖:
 //   1) 非 admin 编辑 ACTIVE 合同 → 403 ENTITY_IMMUTABLE
-//   2) updateSchema 已剔除 customerId / signerId,service 层应忽略它们
+//   2) customerId 仍被 service 层忽略;签订人不再剔除 — admin 可变更,非 admin 422
 //   3) 止期 <= 起期 → 400 VALIDATION_FAILED
 //   4) 合同编号改重 → 422 VALIDATION_FAILED
-//   5) 负责人改成 DISABLED 员工 → 400 VALIDATION_FAILED
-//   6) 非 admin 变更负责人为他人 → 422 (仅 admin 可转交); 传现值放行
+//   5) 负责人/签订人改成 DISABLED 员工 → 400 VALIDATION_FAILED
+//   6) 非 admin 变更负责人/签订人为他人 → 422 (仅 admin 可转交); 传现值放行
 //
 // DB 不可达时整组 skip. 数据带唯一 TAG 前缀,跑完自清理.
 
@@ -135,12 +135,8 @@ describe("updateContract 服务层校验", () => {
     ).rejects.toMatchObject({ errorCode: ERROR_CODES.ENTITY_IMMUTABLE });
   }));
 
-  it("customerId / signerId 被 schema 剔除,不会更换客户或签订人", guard(async () => {
+  it("customerId 被 service 层忽略;admin 可同时变更签订人", guard(async () => {
     const c = await mkContract("DRAFT", "NO-PIVOT");
-    const otherAdmin = await prisma.user.findFirst({
-      where: { role: { code: "ADMIN" }, deletedAt: null, status: "ACTIVE", NOT: { id: adminUser!.id } },
-      select: { id: true }
-    });
     const otherCustomer = await prisma.customer.create({
       data: {
         code: `${TAG}-OTHER-CUST`,
@@ -158,12 +154,14 @@ describe("updateContract 服务层校验", () => {
       const input = {
         title: `${TAG}-pivot-checked`,
         customerId: otherCustomer.id,
-        signerId: otherAdmin?.id ?? adminUser!.id
+        signerId: salesUser!.id
       } as unknown as Parameters<typeof updateContract>[2];
       await updateContract(adminUser!, c.id, input);
       const reloaded = await prisma.contract.findUnique({ where: { id: c.id } });
+      // 客户不可更换 (service 层显式丢弃 customerId)
       expect(reloaded?.customerId).toBe(testCustomerId);
-      expect(reloaded?.signerId).toBe(c.signerId);
+      // 签订人不再剔除: admin 变更生效 (mkContract 默认 signer = adminUser)
+      expect(reloaded?.signerId).toBe(salesUser!.id);
       expect(reloaded?.title).toBe(`${TAG}-pivot-checked`);
     } finally {
       await prisma.customer.deleteMany({ where: { id: otherCustomer.id } });
@@ -211,5 +209,37 @@ describe("updateContract 服务层校验", () => {
     });
     expect(updated.title).toBe(`${TAG}-owner-same`);
     expect(updated.ownerUserId).toBe(salesUser!.id);
+  }));
+
+  it("admin 变更签订人 → 生效并落库", guard(async () => {
+    // mkContract 由 admin 创建且未传 signerId, 默认 signer = adminUser
+    const c = await mkContract("DRAFT", "SIGNER-CHANGE");
+    const updated = await updateContract(adminUser!, c.id, { signerId: salesUser!.id });
+    expect(updated.signerId).toBe(salesUser!.id);
+  }));
+
+  it("签订人改为 DISABLED 员工 → 400 VALIDATION_FAILED", guard(async () => {
+    const c = await mkContract("DRAFT", "SIGNER-DISABLED");
+    await expect(
+      updateContract(adminUser!, c.id, { signerId: disabledUser!.id })
+    ).rejects.toMatchObject({ errorCode: ERROR_CODES.VALIDATION_FAILED });
+  }));
+
+  it("非 admin 变更签订人为他人 → 422 (仅 admin 可变更)", guard(async () => {
+    // mkContract 默认 signer = adminUser; salesUser 是合同 owner, 能编辑但不能改签订人
+    const c = await mkContract("DRAFT", "SIGNER-TRANSFER");
+    await expect(
+      updateContract(salesUser!, c.id, { signerId: salesUser!.id })
+    ).rejects.toMatchObject({ errorCode: ERROR_CODES.VALIDATION_FAILED, status: 422 });
+  }));
+
+  it("非 admin 传 signerId = 现值 → 无害 no-op, 放行", guard(async () => {
+    const c = await mkContract("DRAFT", "SIGNER-SAME");
+    const updated = await updateContract(salesUser!, c.id, {
+      signerId: adminUser!.id,
+      title: `${TAG}-signer-same`
+    });
+    expect(updated.title).toBe(`${TAG}-signer-same`);
+    expect(updated.signerId).toBe(adminUser!.id);
   }));
 });
