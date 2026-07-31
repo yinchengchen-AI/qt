@@ -12,15 +12,22 @@
 
 FROM node:22-alpine AS deps
 WORKDIR /app
-RUN apk add --no-cache libc6-compat
+# apk 走阿里云源 (dl-cdn.alpinelinux.org 从 ECS 实测 ~250s, 换源后 ~10s)
+RUN sed -i 's/dl-cdn.alpinelinux.org/mirrors.aliyun.com/g' /etc/apk/repositories && \
+    apk add --no-cache libc6-compat
 COPY package.json package-lock.json ./
 COPY patches ./patches
 COPY prisma ./prisma
-RUN npm ci --legacy-peer-deps && npx prisma generate
+# npm 走 npmmirror CDN (官方源从 ECS 实测 8KB/s, CDN ~3.4MB/s);
+# BuildKit 缓存挂载: lockfile 变化时只下载增量 tarball, 不随镜像层作废
+RUN --mount=type=cache,target=/root/.npm \
+    npm ci --legacy-peer-deps --no-audit --no-fund --registry=https://registry.npmmirror.com && \
+    npx prisma generate
 
 FROM node:22-alpine AS build
 WORKDIR /app
-RUN apk add --no-cache libc6-compat
+RUN sed -i 's/dl-cdn.alpinelinux.org/mirrors.aliyun.com/g' /etc/apk/repositories && \
+    apk add --no-cache libc6-compat
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 ARG APP_VERSION
@@ -36,7 +43,8 @@ FROM node:22-alpine AS runner
 WORKDIR /app
 # git: release:publish 需要跑 git log(.git 由 deploy.sh 以只读挂载注入);
 # safe.directory: 挂载的 .git 属主与容器用户不同时 git 拒绝操作
-RUN apk add --no-cache libc6-compat curl git && \
+RUN sed -i 's/dl-cdn.alpinelinux.org/mirrors.aliyun.com/g' /etc/apk/repositories && \
+    apk add --no-cache libc6-compat curl git && \
     git config --system --add safe.directory /app
 ENV NODE_ENV=production \
     NEXT_TELEMETRY_DISABLED=1 \
