@@ -24,6 +24,8 @@ const config = [
       "playwright-report/**",
       "test-results/**",
       "coverage/**",
+      "docker-data/**",
+      "docker-data.bak-*/**",
       "prisma/migrations/**",
       "next-env.d.ts",
       "shoot.mjs",
