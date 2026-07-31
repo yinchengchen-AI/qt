@@ -2,7 +2,7 @@
 
 > 客户 / 合同 / 开票 / 回款 一体化管理，附件走 MinIO presigned 直传。
 >
-> **当前版本: v0.13.6**（2026-07-29）
+> **当前版本: v0.13.7**（2026-07-31）
 >
 > 项目文档地图见 [docs/README.md](docs/README.md)，详细设计见 [docs/architecture/DESIGN-v3.md](docs/architecture/DESIGN-v3.md)，用户手册见 [docs/user/USER_MANUAL.md](docs/user/USER_MANUAL.md)。
 
