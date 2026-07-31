@@ -190,6 +190,8 @@ npm run seed       # 此时找到 ADMIN，写入工作流模板
 
 详见 [docs/ops/deploy-ecs.md](docs/ops/deploy-ecs.md) 和 [ops/](ops/)。
 
+日常更新：`ssh root@<服务器> 'cd /opt/qt && ./scripts/prod/deploy.sh'`(git pull + 镜像构建 + migrate + release:publish + 滚动替换 + smoke 全自动）。构建已做国内源提速（apk 阿里云源 / npm npmmirror + BuildKit 缓存挂载 / 阿里云个人镜像加速器），普通部署 ~3 分钟，依赖升级类 ~9 分钟，详见 CHANGELOG「部署提速」段。
+
 ### 备份与定时任务
 
 - **本地 cron**：`bash scripts/prod/backup.sh` + crontab `0 2 * * *`
@@ -202,15 +204,15 @@ nginx 反代下上游异常时，由 `public/502.html` 静态页和 `app/502/pag
 
 ## 质量基线
 
-基线刷新于 **v0.13.0（2026-07-29）**。
+基线刷新于 **v0.13.7（2026-07-31）**。
 
 | 项 | 状态 |
 |---|---|
 | `npm run typecheck` | 0 errors |
 | `npm run lint` | 0 errors / 0 warnings |
-| `npm test` | 81 个 .test.ts 文件，622 用例全绿 |
+| `npm test` | 81 个 .test.ts 文件，623 用例全绿 |
 | `npm run test:e2e` | 部分运行：01.1 / 12 / 14 三项目（chromium / iPad / iPhone）全绿 |
-| `prisma generate` + `migrate deploy` | 42/42 migrations，client v7.8.0 |
+| `prisma generate` + `migrate deploy` | 42/42 migrations，client v7.9.1 |
 | `npm run build` | 本地因 `docker-data/postgres` 目录权限未通过验证（环境限制，非代码错误） |
 
 ## 最近更新
