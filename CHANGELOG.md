@@ -25,6 +25,17 @@
 
 ## 详细变更
 
+### v0.13.7(2026-07-31) 合同编辑支持管理员变更签订人 + 依赖升级
+
+- **合同编辑页新增「签订人」字段**: 管理员可搜索改为任意在职员工 (代录修正场景); 非 admin 只读展示, 提交时剥离该字段。服务端与负责人变更同口径: 非 admin 改为他人 422, 目标员工非 ACTIVE 400, 传现值无害放行; 变更纳入 `CONTRACT_UPDATE` 审计 diff (`server/services/contract/crud.ts`)。
+- **校验 schema**: `contractUpdateSchema` 不再剔除 `signerId`; `customerId` 仍不可更换 (service 层显式丢弃)。
+- **依赖升级**: next 16.2.7→16.2.12 / prisma 7.8.0→7.9.1 / eslint 9.18→9.39.5 / next-auth 4.24.14→4.24.15 / tsx 4.23.1 等; 新增 `overrides` 加固 (brace-expansion / nodemailer / postcss / sharp / exceljs→uuid); eslint 忽略 `docker-data/`。
+- **测试**: `contract-update-validation` 改写原"signerId 剔除"用例, 新增 4 例 — admin 变更生效 / DISABLED 员工 400 / 非 admin 422 / 传现值放行 (全套 623 tests 通过)。
+
+**版本号**: `0.13.6` → `0.13.7` (patch bump)
+
+**部署说明**: 无 schema 变更、无新 migration,`deploy.sh` 常规流程。
+
 ### v0.13.6(2026-07-29) 统计分析 4 页视觉 + 布局改版
 
 > 与 v0.13.5 dashboard 改版同一语言:KPI 图形化(icon + progress)、风险/核心信息前置、删重复内容。纯前端,数据获取与 API 不变。
