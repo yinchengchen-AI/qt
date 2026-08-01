@@ -61,7 +61,7 @@ OPS 保留写权限域:部门 CRUD、公告 CRUD(行政本职);合同/发票/回
 
 ### §2.1 枚举约束类只读化(防误导,核心)
 
-经核实,16 类白名单中以下 **8 类** 的 code 被硬编码约束(zod `z.enum` / 状态机 / `lib/enum-maps.ts` label map),字典页修改不生效或被后端拒绝:
+经核实,16 类白名单中以下 **9 类** 的 code 被硬编码约束(zod `z.enum` / 状态机 / `lib/enum-maps.ts` label map),字典页修改不生效或被后端拒绝:
 
 - 状态机类:CONTRACT_STATUS、INVOICE_STATUS、PAYMENT_STATUS
 - zod 枚举类:CONTRACT_PAYMENT_METHOD(`lib/validators/contract.ts:35`)、INVOICE_TYPE(`invoice.ts:21`)、PAYMENT_RECEIVE_METHOD(`payment.ts:7`)、CUSTOMER_TYPE(`customer.ts:13`)、CUSTOMER_SCALE(`customer.ts:15`)
@@ -71,7 +71,7 @@ OPS 保留写权限域:部门 CRUD、公告 CRUD(行政本职);合同/发票/回
 
 实现(复用现有 `DICT_META.readonly` 机制,目前仅 REGION 使用):
 
-1. `lib/dict-domain.ts`:上述 8 类 `readonly: true`,description 注明"由代码枚举/状态机约束"。**注意**:`BUSINESS_CATEGORIES`(`dict-domain.ts:97`)当前按 `readonly !== true` 过滤,翻转 8 类后会从 16 类缩到 7 类——必须把它改为直接派生自 `ALLOWED_DICTIONARY_CATEGORIES`(其注释本就承诺与白名单一致),保证前端类目列表/新增下拉的类目全集不变,只读只是禁写。
+1. `lib/dict-domain.ts`:上述 9 类 `readonly: true`,description 注明"由代码枚举/状态机约束"。**注意**:`BUSINESS_CATEGORIES`(`dict-domain.ts:97`)当前按 `readonly !== true` 过滤,翻转 9 类后会从 16 类缩到 7 类——必须把它改为直接派生自 `ALLOWED_DICTIONARY_CATEGORIES`(其注释本就承诺与白名单一致),保证前端类目列表/新增下拉的类目全集不变,只读只是禁写。
 2. 前端字典页:readonly 类目沿用锁图标;新增/编辑/启停/批量按钮禁用;类目头显示说明横幅"此类目由系统枚举/状态机控制,仅供查看,调整需改代码"。表格行的启用 Switch 对 readonly 类目禁用。
 3. 后端兜底:`server/services/dictionary.ts` 的 create/update/softDisable/reorder 对 readonly 类目抛 403(扩展 `assertAllowedCategory` 或新增 `assertWritableCategory`),不只靠前端藏按钮。`lib/dict-domain.ts` 在 server 端 import 无客户端依赖,可直接复用 `DICT_META`。
 
@@ -102,7 +102,7 @@ OPS 保留写权限域:部门 CRUD、公告 CRUD(行政本职);合同/发票/回
 
 ### §2.6 文档同步
 
-- `docs/ops/dictionary-maintenance.md`:类目表更正(删 PROJECT_STATUS、补 EDUCATION_LEVEL/CONTRACT_TYPE)、标注 8 类只读及原因、缓存限制说明、"加新类目需改 N 处"清单更新(种子已合一)。
+- `docs/ops/dictionary-maintenance.md`:类目表更正(删 PROJECT_STATUS、补 EDUCATION_LEVEL/CONTRACT_TYPE)、标注 9 类只读及原因、缓存限制说明、"加新类目需改 N 处"清单更新(种子已合一)。
 - `docs/user/USER_MANUAL.md` §12.4:说明只读类目行为。
 - `server/services/dictionary.ts` 与 `lib/dict-domain.ts` 顶部注释更新。
 
@@ -116,7 +116,7 @@ OPS 保留写权限域:部门 CRUD、公告 CRUD(行政本职);合同/发票/回
 
 - `npm run typecheck` + `npm run lint` + `npm test` 全绿;
 - `npm run test:e2e` 重点跑 04-ops-flow 及权限相关 spec;
-- 手动:admin 字典页确认 8 类只读(锁+横幅+按钮禁用)、7 类可改且改完其他页面下拉即时刷新;EXPERT/OPS 账号登录验证收窄后的菜单与按钮。
+- 手动:admin 字典页确认 9 类只读(锁+横幅+按钮禁用)、7 类可改且改完其他页面下拉即时刷新;EXPERT/OPS 账号登录验证收窄后的菜单与按钮。
 
 ## 发布
 
