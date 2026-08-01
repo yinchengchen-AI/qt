@@ -156,7 +156,9 @@ smoke_test() {
       "api/customers=401"; do
     local path="${spec%=*}"; local want="${spec#*=}"
     local got
-    got=$(curl -fsS -o /dev/null -w "%{http_code}" --max-time 5 "${base}/${path}" 2>/dev/null || echo "000")
+    # 不要用 -f, 4xx/5xx 会让 curl exit 非零; 改成无 -f + 兜底空值
+    got=$(curl -sS -o /dev/null -w "%{http_code}" --max-time 5 "${base}/${path}" 2>/dev/null)
+    got=${got:-000}
     if [ "$got" = "$want" ]; then
       log_ok "  ${path}: ${got} (匹配预期 ${want})"
     else
