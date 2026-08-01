@@ -56,7 +56,9 @@ export function AgingSummary({ buckets, summary, basisUsed, invoiceCount, column
       // formatCurrency 已含 ¥,不再加 prefix(避免双 ¥ 折行)
       value: formatCurrency(summary.totalReceivable),
       description: `${invoiceCount} 张发票 / ${summary.customerCount} 个客户`,
-      tooltip: basisUsed === "due" ? "按到期日计算" : "按开票日计算"
+      tooltip: basisUsed === "due"
+        ? <>基准日 = 到期日(<code>dueDate</code>);缺到期日时 fallback 到开票日(<code>actualIssueDate</code>)。<br/>应收 = 发票金额 − 已回款(&gt;0.01 元才计入),超期 = 今天 − 基准日。<br/>按到期日更能反映合同违约风险。</>
+        : <>基准日 = 开票日(<code>actualIssueDate</code>)。<br/>应收 = 发票金额 − 已回款(&gt;0.01 元才计入),超期 = 今天 − 基准日。<br/>按开票日更能反映发票账龄流转速度。</>
     },
     {
       label: t("aging.kpi.over90"),
