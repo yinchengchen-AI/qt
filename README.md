@@ -256,6 +256,19 @@ nginx 反代下上游异常时,由 `public/502.html` 静态页与 `app/502/page.
 
 最近 5 个版本,完整历史见 [CHANGELOG.md](CHANGELOG.md)。
 
+### v0.16.0(2026-08-02)部署提速:native systemd 主路径,14min → 秒级
+
+**单次部署从 ~14 分钟压到 30s–2min**,架构变化:
+
+- **App 切 native systemd**:qt-app 走 `qt-app.service`(`node node_modules/next/dist/bin/next start`),不再每部署 docker build
+- **关键加速**: `.next/cache` 持久化后 Turbopack 增量复用,改动小秒级,大改 1–2min;`npm ci` 仅在 lockfile/patches/prisma 变化时跑(常规部署 0s)
+- **postgres / minio 仍 docker**:数据卷( `/opt/qt/docker-data/` )继续走容器,不重 init
+- **`scripts/prod/switch-to-native.sh`** 一键从 docker qt-app 切到 native:停容器 → enable systemd → smoke test → 备份原 compose
+- **`scripts/prod/rollback.sh --docker`** 应急:systemd 炸了用 `qt-app:latest`(保留最近 1 版 docker 镜像做兜底)
+- **AGENTS.md / docs/ops/deploy-current.md** 重写 deploy 流程说明
+
+为什么换:3.5GB ECS 内存吃紧,dockerd 自占 1.7GB + hermes 0.5GB,build 阶段可用只剩 ~425MB,`next build` 直接 swap,14min。native 拿回 dockerd 占的 1.7GB + .next/cache 增量 ≈ 10× 提升。
+
 ### v0.15.0(2026-08-01)强制单点登录:不允许同账号多设备同时在线
 
 - **User 加 `sessionVersion` 字段** + 登录时 +1, JWT 携带; **新登录踢掉所有旧设备**(同账号无法同时多端登录)

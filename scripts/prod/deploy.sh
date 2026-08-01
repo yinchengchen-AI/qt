@@ -1,25 +1,32 @@
 #!/usr/bin/env bash
-# 日常更新部署(Docker 版): preflight + git pull + docker build + migrate + release:publish + compose up + smoke
+# 日常更新部署 (v0.16.0+): native systemd 主路径, pg/minio/data 走 docker
 #
 # 用法: 在 /opt/qt 目录下, sudo -E ./scripts/prod/deploy.sh
 #
 # 关键设计 (历史经验都浓缩在 _lib.sh 里):
 #   1. self-rewrite 护栏: 把脚本+_lib.sh 复制到 /tmp 稳定副本再 exec
 #      (避免 git pull 改到 deploy.sh 自身时, bash 按旧字节偏移继续读新文件)
-#   2. preflight: .env 完整性 / git 干净 / 磁盘 > 3G / 内存预警 / 容器健康
+#   2. preflight: .env 完整性 / git 干净 / 磁盘 > 3G / 内存预警 /
+#      qt-app.service 已启用 (防 native 启不来)
 #      (防止 v0.13.6 那种"磁盘写满"事故重演)
-#   3. OOM 兜底: 仅在被 kill (exit=137) 时才停 qt-app/PG/MinIO 重试
-#      (v0.13.4 之前每次部署都停 qt-app, 3-4min 停机得不偿失)
-#   4. release:publish 失败不阻断部署, 仅告警 (跟历史行为兼容)
-#   5. smoke test + cron 健康自检兜底 (防止 2025-09~2026-06 cron 静默失败 9 个月的重演)
+#   3. native build: 跳过 docker build (3.5GB 机器 docker build ~14min,
+#      native 30s-2min). .next/cache 持久化 → Turbopack 增量复用;
+#      npm ci 仅在 lockfile 变化时跑 (常规部署 0s).
+#   4. pg / minio 仍在 docker: docker-data 卷已挂, 数据不动.
+#      只 docker compose up -d postgres minio, app 不再 compose.
+#   5. prisma migrate deploy / release:publish 也都走 native (不再 docker run --rm),
+#      .git 直接读, MIGRATION_DATABASE_URL 从 .env 拿.
+#   6. systemctl restart qt-app.service: 毫秒级, 与 docker 滚动替换等价;
+#      build 期间旧进程继续服务 (只要 <PORT> 没占).
+#   7. release:publish 失败不阻断部署 (跟历史行为兼容).
+#   8. smoke test + cron 健康自检兜底 (防止 2025-09~2026-06 cron 静默失败 9 个月).
 #
-# 回滚: scripts/prod/rollback.sh (列 qt-app:v* tags, 一键切回上一版)
+# 回滚: scripts/prod/rollback.sh (默认切上一版本; .next/cache 增量 = 秒级).
+# Docker 应急: rollback.sh --docker (systemd 真炸且不想排查时一键).
 #
-# 远端触发: scripts/prod/remote-deploy.sh (本地 Mac 用 QT.pem 触发, 不必手动 ssh)
+# 远端触发: scripts/prod/remote-deploy.sh (本地 Mac 用 QT.pem 触发, 不必手动 ssh).
 
 # ---- self-rewrite 护栏 ----
-# 把 deploy.sh 和 _lib.sh 都复制到 /tmp 稳定副本, 后续在副本上执行。
-# 这样即便 git pull 把 deploy.sh 改了, 我们也跑的是 pull 之前的稳定副本。
 if [ -z "${QT_DEPLOY_REEXEC:-}" ]; then
   export QT_DEPLOY_ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
   STABLE_DIR="$(mktemp -d /tmp/qt-deploy.XXXXXX)"
@@ -34,15 +41,12 @@ fi
 set -euo pipefail
 cd "${QT_DEPLOY_ROOT:?QT_DEPLOY_ROOT 未设置, 请勿直接 source 本脚本}"
 
-# 加载公共函数
 # shellcheck source=/dev/null
 source "${QT_DEPLOY_LIB:?QT_DEPLOY_LIB 未设置, self-rewrite 路径异常}"
 
 require_root_or_docker
 
-COMPOSE="docker compose -f docker-compose.prod.yml"
-
-# ---- preflight: 任何写操作前先检查 .env / 磁盘 / 内存 / 容器 ----
+# ---- preflight ----
 preflight_check
 
 # ---- git pull ----
@@ -52,7 +56,18 @@ git pull --ff-only
 # ---- 重新跑 preflight (pull 之后版本/branch 可能变) ----
 preflight_check
 
-# ---- 加载 .env, derive compose 需要的 env ----
+# ---- 检查 native 服务可用性 (防脚本正常运行但 systemd 没启) ----
+if ! systemctl cat qt-app.service >/dev/null 2>&1; then
+  log_err "qt-app.service unit 不存在;首次切 native 需先 sudo cp ops/qt-app.service /etc/systemd/system/ && sudo systemctl daemon-reload && sudo systemctl enable qt-app.service"
+  log_err "           如果要走 docker fallback (临时) 设 QT_FORCE_DOCKER=1 后重跑"
+  exit 1
+fi
+if ! systemctl is-enabled --quiet qt-app.service; then
+  log "==> qt-app.service 未启用;现在 enable (不会立即 start, 等 systemctl restart 时起)"
+  systemctl enable qt-app.service
+fi
+
+# ---- 加载 .env, derive compose 需要的 env (pg/minio 仍在 docker) ----
 set -a; . ./.env; set +a
 export POSTGRES_SUPER_PASSWORD=$(echo "$MIGRATION_DATABASE_URL" | sed -E "s|.*://qitai:([^@]+)@.*|\1|")
 export MINIO_ROOT_USER="$MINIO_ACCESS_KEY"
@@ -62,82 +77,54 @@ VERSION="v$(sed -n 's/^  "version": *"\([^"]*\)".*/\1/p' package.json | head -1)
 APP_VERSION="${VERSION}+$(git rev-parse --short HEAD)"
 log "==> 版本: $APP_VERSION"
 
-# ---- OOM 兜底 ----
-# 3.5GB 机器上 Turbopack 编译 RSS 可超 2GB。首选零停机(缓存命中时内存压力小);
-# 仅在被 OOM (exit=137) 时才停 qt-app 容器重试, 严重不足再停 qt-postgres/qt-minio。
-STOPPED_CONTAINERS=""
-stop_for_build() {
-  if [ "$(docker inspect -f '{{.State.Running}}' qt-app 2>/dev/null)" = "true" ]; then
-    log "==> OOM 重试: 停止 qt-app 容器腾内存 (~340MB)"
-    docker stop qt-app >/dev/null
-    STOPPED_CONTAINERS="qt-app"
-  fi
-  AVAIL_MEM_MB=$(awk '/^MemAvailable:/ {print int($2/1024)}' /proc/meminfo 2>/dev/null || echo 0)
-  if [ "${AVAIL_MEM_MB:-0}" -gt 0 ] && [ "$AVAIL_MEM_MB" -lt 2200 ]; then
-    for c in qt-postgres qt-minio; do
-      if [ "$(docker inspect -f '{{.State.Running}}' "$c" 2>/dev/null)" = "true" ]; then
-        log "==> OOM 重试: MemAvailable=${AVAIL_MEM_MB}MB < 2200MB, 临时停止 $c"
-        docker stop "$c" >/dev/null
-        STOPPED_CONTAINERS="$STOPPED_CONTAINERS $c"
-      fi
-    done
-  fi
-}
-restart_stopped() {
-  if [ -n "$STOPPED_CONTAINERS" ]; then
-    log "==> 拉起临时停止的容器:$STOPPED_CONTAINERS"
-    # shellcheck disable=SC2086 -- 需要按空格拆成多个参数
-    docker start $STOPPED_CONTAINERS >/dev/null
-  fi
-}
-
-# ---- docker build ----
-log "==> docker build qt-app:${VERSION} (APP_VERSION=${APP_VERSION}, 零停机首选)"
-set +e
-NEXT_TELEMETRY_DISABLED=1 docker build \
-  --build-arg APP_VERSION="$APP_VERSION" \
-  -t "qt-app:${VERSION}" \
-  -t qt-app:latest \
-  .
-BUILD_EXIT=$?
-set -e
-if [ "$BUILD_EXIT" -eq 137 ] && command -v docker >/dev/null 2>&1; then
-  log_warn "构建被 OOM Kill (exit=137), 停容器后重试一次"
-  stop_for_build
+# ---- native build (跳过 docker build) ----
+# 三个加速点:
+#   (a) .next/cache 跨部署持久 → Turbopack 增量复用, 改动小秒级
+#   (b) npm ci 仅在 lockfile/patches/prisma/schema 变化时跑 → 常规部署 0s
+#   (c) 没有 docker layer cache 失效, 源代码变只重编变化模块
+log "==> native build (npm ci + prisma generate + next build)"
+NEED_FULL_CI=0
+if git diff --name-only HEAD@{1} HEAD -- package.json package-lock.json patches/ prisma/ 2>/dev/null | grep -q .; then
+  NEED_FULL_CI=1
+fi
+if [ "$NEED_FULL_CI" -eq 1 ]; then
+  log "  lockfile/patches/prisma 变了 → npm ci"
   set +e
-  NEXT_TELEMETRY_DISABLED=1 docker build \
-    --build-arg APP_VERSION="$APP_VERSION" \
-    -t "qt-app:${VERSION}" \
-    -t qt-app:latest \
-    .
-  BUILD_EXIT=$?
+  npm ci --legacy-peer-deps --no-audit --no-fund --registry=https://registry.npmmirror.com
+  CI_EXIT=$?
   set -e
-fi
-restart_stopped
-if [ "$BUILD_EXIT" -ne 0 ]; then
-  log_err "docker build 失败 (exit=$BUILD_EXIT)"
-  if [ "$BUILD_EXIT" -eq 137 ]; then
-    log_err "exit=137 = OOM Kill; 内存仍不足可手动 docker stop mysql-fineui (其它项目, 356MB) 后重跑"
+  if [ "$CI_EXIT" -ne 0 ]; then
+    log_err "npm ci 失败 (exit=$CI_EXIT); 检查 npmmirror 或 lockfile 漂移"
+    exit "$CI_EXIT"
   fi
-  exit "$BUILD_EXIT"
+else
+  log "  lockfile 稳定 → 跳过 npm ci (node_modules 复用)"
 fi
 
-# ---- 基础设施 ----
-log "==> docker compose up -d postgres minio"
+# prisma generate 总是跑 (client 漂移修复; 跟 schema 是否变无关, 几十秒)
+log "==> prisma generate"
+npx prisma generate
+
+# next build: 复用 .next/cache 走增量
+log "==> next build (.next/cache 复用, 增量编译)"
+# 把 .env 关键项透给 build (页面 force-dynamic 但仍是 source-time read)
+APP_VERSION="$APP_VERSION" \
+NEXT_PUBLIC_APP_VERSION="$APP_VERSION" \
+SKIP_ENV_VALIDATION=1 \
+NEXT_TELEMETRY_DISABLED=1 \
+npx next build
+
+# ---- 基础设施 (pg / minio 仍在 docker) ----
+COMPOSE="docker compose -f docker-compose.prod.yml"
+log "==> $COMPOSE up -d postgres minio"
 $COMPOSE up -d postgres minio
 
-# ---- prisma migrate deploy ----
-log "==> prisma migrate deploy (一次性容器, 用 MIGRATION_DATABASE_URL 走降权账号)"
-run_migrate() {
-  docker run --rm --network host --env-file .env \
-    -e DATABASE_URL="$MIGRATION_DATABASE_URL" \
-    qt-app:latest npx prisma migrate deploy
-}
+# ---- prisma migrate deploy (native, 降权账号) ----
+log "==> prisma migrate deploy (native, MIGRATION_DATABASE_URL)"
 # 已知问题兜底: 20260630_message_type_enum_index 想 CREATE TYPE MessageType,
-# 但 20260627_message_type_enum_bootstrap 已经预创建了 (含全部 12 个值),
-# 在 fresh DB 上按时间序 deploy 会撞 "type already exists".
+# 但 20260627_message_type_enum_bootstrap 已经预创建, fresh DB 撞 "type already exists".
 set +e
-run_migrate 2>&1 | tee /tmp/migrate.log
+npx prisma migrate deploy 2>&1 | tee /tmp/migrate.log
 EXIT1=${PIPESTATUS[0]}
 set -e
 if [ $EXIT1 -eq 0 ]; then
@@ -155,15 +142,13 @@ elif grep -q "20260630_message_type_enum_index" /tmp/migrate.log; then
     -c 'DROP INDEX IF EXISTS "Message_type_idx";' \
     -c 'CREATE INDEX "Message_type_receiverUserId_createdAt_idx" ON "Message"("type", "receiverUserId", "createdAt");'
   set +e
-  docker run --rm --network host --env-file .env \
-    -e DATABASE_URL="$MIGRATION_DATABASE_URL" \
-    qt-app:latest npx prisma migrate resolve --applied 20260630_message_type_enum_index
+  npx prisma migrate resolve --applied 20260630_message_type_enum_index
   RESOLVE_EXIT=$?
   set -e
   if [ $RESOLVE_EXIT -ne 0 ]; then
     log_warn "prisma resolve --applied 返回 $RESOLVE_EXIT (可能 migration 不在 failed 状态, 继续)"
   fi
-  run_migrate
+  npx prisma migrate deploy
   log_ok "fallback 成功"
 else
   log_err "prisma deploy 失败但不是已知 20260630 enum 冲突, 不走 fallback"
@@ -171,27 +156,40 @@ else
   exit $EXIT1
 fi
 
-# ---- release:publish ----
+# ---- release:publish (native, 直接读 .git) ----
 log "==> release:publish (自动发布更新日志; 同版本已存在则幂等跳过)"
 set +e
-docker run --rm --network host --env-file .env \
-  -v "$QT_DEPLOY_ROOT/.git:/app/.git:ro" \
-  qt-app:latest npx tsx scripts/release/publish.ts
+npx tsx scripts/release/publish.ts
 PUBLISH_EXIT=$?
 set -e
 if [ "$PUBLISH_EXIT" -ne 0 ]; then
   log_warn "release:publish 失败 (exit=$PUBLISH_EXIT) — 部署继续"
-  log_warn "       稍后手动补: cd /opt/qt && docker run --rm --network host --env-file .env -v /opt/qt/.git:/app/.git:ro qt-app:latest npx tsx scripts/release/publish.ts"
+  log_warn "       稍后手动补: cd /opt/qt && npx tsx scripts/release/publish.ts"
 fi
 
-# ---- compose up (滚动替换) ----
-log "==> docker compose up -d app (滚动替换 qt-app 容器)"
-$COMPOSE up -d app
+# ---- restart app (native) ----
+log "==> systemctl restart qt-app.service (native build 完毕)"
+systemctl restart qt-app.service
+# 等旧进程释放 3000 端口 (systemd 会先 SIGTERM 再 SIGKILL, 通常 <2s)
+RESTART_OK=0
+for i in 1 2 3 4 5 6 7 8 9 10; do
+  if curl -fsS -o /dev/null --max-time 1 http://127.0.0.1:3000/login 2>/dev/null; then
+    RESTART_OK=1
+    break
+  fi
+  sleep 1
+done
+if [ "$RESTART_OK" -ne 1 ]; then
+  log_warn "qt-app 在 3000 端口未应答;看 journalctl -u qt-app -n 50"
+fi
 
-# ---- 磁盘清理 (v0.13.6 教训: build cache 累计 15.8GB 把 49G 盘写满) ----
+# ---- 磁盘清理 ----
+# - qt-app docker 镜像保留最近 1 版做应急 fallback (rollback.sh --docker 用)
+# - qt-postgres / qt-minio 镜像不动 (always pinned by compose)
+# - builder cache 控上限
 log "==> 磁盘清理"
 docker image prune -f >/dev/null
-KEEP=2
+KEEP=1
 # shellcheck disable=SC2012
 for tag in $(docker images qt-app --format '{{.Tag}}' | grep '^v' | sort -rV | tail -n +$((KEEP + 1))); do
   docker rmi "qt-app:$tag" >/dev/null 2>&1 || true

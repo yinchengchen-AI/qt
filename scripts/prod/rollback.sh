@@ -1,128 +1,156 @@
 #!/usr/bin/env bash
-# scripts/prod/rollback.sh — 一键回滚 qt-app 镜像到上一版本
-#
-# 设计动机:
-#   - deploy.sh 注释里写"回滚: docker tag qt-app:<旧版本> qt-app:latest && ...", 但没脚本
-#   - 紧急回滚时容易输错 tag (qt-app:v0.13.5 vs 0.13.5), 浪费时间
-#   - 不做 smoke test 直接切会带病上线
-#
-# 设计:
-#   1. 列出所有 qt-app:v* tag, 按 semver 倒序
-#   2. 默认回滚到"上一个"版本 (latest 不算, latest 指向当前)
-#   3. 支持 --to <tag> 指定版本; --list 只列不切
-#   4. 切完跑 smoke test, 失败自动回滚到切之前的状态
+# qt-biz 回滚 (v0.16.0+: native 主路径, docker 应急副路径)
 #
 # 用法:
-#   bash scripts/prod/rollback.sh                   # 回滚到上一版
-#   bash scripts/prod/rollback.sh --list            # 只列可用版本
-#   bash scripts/prod/rollback.sh --to v0.13.6       # 指定版本
-#   bash scripts/prod/rollback.sh --to v0.13.6 --skip-smoke  # 紧急回滚不跑 smoke
+#   bash scripts/prod/rollback.sh              # 回滚到 HEAD~1 (默认)
+#   bash scripts/prod/rollback.sh --to <sha>   # 回滚到指定 commit / tag
+#   bash scripts/prod/rollback.sh --list       # 列出最近 10 个回滚候选
+#   bash scripts/prod/rollback.sh --docker     # 应急: 切回 docker qt-app
+#   bash scripts/prod/rollback.sh --skip-smoke # 紧急回滚 (跳过 smoke test)
+#
+# 设计:
+#   - 默认 native 回滚: git checkout <target> + 增量 next build (用 .next/cache)
+#     改动小时 = 秒级, 大改 = 1-2min. 不动 DB schema (schema 永远 forward).
+#   - --docker: 适用 systemd 炸了不想排查, 或本地 native 起不来.
+#     用 qt-app:latest 镜像启动容器. 注意镜像必须存在 (deploy 默认保留 1 版).
+#   - 备份当前 commit 到 .rollback-<sha>, 出问题可滚回.
+#
+# 远端触发通过 remote-deploy.sh 透传 docker 参数即可, 不另起脚本.
 
 set -euo pipefail
+cd "$(cd "$(dirname "$0")/../.." && pwd)"
 
-# ---- self-rewrite 护栏 (跟 deploy.sh 同款) ----
-if [ -z "${QT_DEPLOY_REEXEC:-}" ]; then
-  export QT_DEPLOY_ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
-  STABLE_DIR="$(mktemp -d /tmp/qt-deploy.XXXXXX)"
-  cp "$0" "$STABLE_DIR/rollback.sh"
-  cp "${QT_DEPLOY_ROOT}/scripts/prod/_lib.sh" "$STABLE_DIR/_lib.sh" 2>/dev/null || \
-    cp "$(dirname "$0")/_lib.sh" "$STABLE_DIR/_lib.sh"
-  export QT_DEPLOY_REEXEC=1
-  export QT_DEPLOY_LIB="$STABLE_DIR/_lib.sh"
-  exec bash "$STABLE_DIR/rollback.sh" "$@"
-fi
+LOG_PREFIX="[rollback]"
+log() { printf '%s %s\n' "$LOG_PREFIX" "$*"; }
+err() { printf '%s ERROR: %s\n' "$LOG_PREFIX" "$*" >&2; exit 1; }
 
-# shellcheck source=/dev/null
-source "${QT_DEPLOY_LIB:?QT_DEPLOY_LIB 未设置, self-rewrite 路径异常}"
+usage() {
+  cat <<USAGE
+用法: bash scripts/prod/rollback.sh [--to <sha>] [--list] [--docker] [--skip-smoke]
 
-require_root_or_docker
-cd "${QT_DEPLOY_ROOT:?QT_DEPLOY_ROOT 未设置, 请勿直接 source 本脚本}"
+默认 (无 flag): 回滚到 HEAD~1.
+--to <sha>    : 回滚到指定 commit/tag.
+--list        : 列出最近 10 个回滚候选 (commit + tag 标记).
+--docker      : 应急切回 docker qt-app:latest.
+--skip-smoke  : 跳过 smoke test (紧急回滚用).
+USAGE
+}
 
-LIST_ONLY=0
+TARGET=""
+LIST=0
+DOCKER=0
 SKIP_SMOKE=0
-TARGET_TAG=""
-while [[ $# -gt 0 ]]; do
+while [ $# -gt 0 ]; do
   case "$1" in
-    --list) LIST_ONLY=1; shift;;
-    --to) TARGET_TAG="${2:-}"; shift 2;;
-    --skip-smoke) SKIP_SMOKE=1; shift;;
-    -h|--help)
-      sed -n '2,30p' "$0"; exit 0;;
-    *) log_err "未知参数: $1"; exit 2;;
+    --to)        shift; TARGET="${1:?--to 需要 commit/tag}";;
+    --list)      LIST=1;;
+    --docker)    DOCKER=1;;
+    --skip-smoke) SKIP_SMOKE=1;;
+    --help|-h)   usage; exit 0;;
+    *)           err "未知 flag: $1 (用 --help 看用法)";;
   esac
+  shift
 done
 
-# ---- 列可用版本 ----
-# shellcheck disable=SC2012
-ALL_TAGS=$(docker images qt-app --format '{{.Repository}}:{{.Tag}}' | grep ':v' | sort -rV)
-if [ -z "$ALL_TAGS" ]; then
-  log_err "本地没有任何 qt-app:v* 镜像;无法回滚"
-  log_err "      修法: 镜像至少保留 2 个版本 (deploy.sh 默认 KEEP=2)"
-  exit 1
-fi
-
-# 当前 latest 指向哪个版本
-CURRENT_TAG=$(docker inspect -f '{{index .Config.Labels "org.opencontainers.image.version"}}' qt-app:latest 2>/dev/null || \
-              docker inspect -f '{{.Config.Image}}' qt-app:latest 2>/dev/null | sed 's/.*://' | sed 's/^/v/')
-# 上面的 inspect 拿不到我们注入的 version label, 改用 tag 反查:
-CURRENT_TAG=$(docker images qt-app --format '{{.Tag}}' | grep '^v' | head -1 | sed 's/^/v/' || true)
-
-# fallback: latest 镜像的 digest 对比
-if [ -z "$CURRENT_TAG" ]; then
-  CURRENT_TAG="v$(docker inspect qt-app:latest -f '{{.Id}}' 2>/dev/null | head -c 12)"
-fi
-
-log "==> 当前 latest 指向: $CURRENT_TAG"
-log "==> 本地可用版本 (按版本号倒序):"
-echo "$ALL_TAGS" | sed 's/^/    /'
-
-if [ "$LIST_ONLY" -eq 1 ]; then
+# ---- --list: 仅打印候选 ----
+if [ "$LIST" -eq 1 ]; then
+  log "最近 10 个回滚候选:"
+  git log --oneline -10
+  log
+  log "最近 chore(release) tag:"
+  git log --oneline --grep='^chore(release)' -5
   exit 0
 fi
 
-# ---- 选定目标 ----
-if [ -z "$TARGET_TAG" ]; then
-  # 默认: 切到"上一个"版本
-  # shellcheck disable=SC2012
-  PREV_TAG=$(docker images qt-app --format '{{.Tag}}' | grep '^v' | sort -rV | awk 'NR==2')
-  if [ -z "$PREV_TAG" ]; then
-    log_err "本地只有 1 个版本,无法回滚到上一个"
-    exit 1
+# ---- 备份当前位置 (出问题可滚回) ----
+BACKUP_BRANCH=".rollback-$(git rev-parse --short HEAD)"
+if ! git rev-parse --verify --quiet "$BACKUP_BRANCH" >/dev/null 2>&1; then
+  git branch "$BACKUP_BRANCH" >/dev/null 2>&1 || true
+  log "备份当前位置到 $BACKUP_BRANCH (滚回: git checkout $BACKUP_BRANCH)"
+fi
+
+# ---- --docker: 切回 docker ----
+if [ "$DOCKER" -eq 1 ]; then
+  log "应急切回 docker qt-app:latest"
+  systemctl stop qt-app.service 2>/dev/null || true
+  if ! docker inspect qt-app:latest >/dev/null 2>&1; then
+    err "qt-app:latest 镜像不存在;先用 bash scripts/prod/deploy.sh (会重建 docker 镜像) 或 docker load"
   fi
-  TARGET_TAG="v${PREV_TAG#v}"
-  log "==> 未指定 --to, 默认回滚到上一版: $TARGET_TAG"
-fi
-
-# 验证 target 存在
-if ! echo "$ALL_TAGS" | grep -q ":${TARGET_TAG}$"; then
-  log_err "目标版本 $TARGET_TAG 不在本地镜像里"
-  log_err "      修法: bash scripts/prod/rollback.sh --list 看可用版本"
-  exit 1
-fi
-
-if [ "$TARGET_TAG" = "$CURRENT_TAG" ]; then
-  log_warn "目标版本 $TARGET_TAG 就是当前 latest,无需回滚"
+  set -a; . ./.env; set +a
+  export POSTGRES_SUPER_PASSWORD=$(echo "$MIGRATION_DATABASE_URL" | sed -E "s|.*://qitai:([^@]+)@.*|\1|")
+  export MINIO_ROOT_USER="$MINIO_ACCESS_KEY"
+  export MINIO_ROOT_PASSWORD="$MINIO_SECRET_KEY"
+  docker compose -f docker-compose.prod.yml up -d app
+  if [ "$SKIP_SMOKE" -ne 1 ]; then
+    sleep 3
+    code=$(curl -sS -o /dev/null -w "%{http_code}" --max-time 5 http://127.0.0.1:3000/login || echo 000)
+    if [ "$code" != "200" ]; then
+      err "docker smoke 失败 (HTTP $code);systemd 路径仍可用"
+    fi
+  fi
+  log "[OK] 已切回 docker. qt-app.service 已停. 重新切 native: bash scripts/prod/switch-to-native.sh"
   exit 0
 fi
 
-# ---- 记录"切之前"的 latest 指向, smoke 失败时回滚 ----
-SAVED_TAG="$CURRENT_TAG"
+# ---- native 回滚 ----
+[ -z "$TARGET" ] && TARGET="HEAD~1"
+log "回滚到 $TARGET"
 
-log "==> 切回 qt-app:latest -> qt-app:$TARGET_TAG"
-docker tag "qt-app:$TARGET_TAG" qt-app:latest
+# 解析 target (commit / tag / HEAD~N 都支持)
+RESOLVED=$(git rev-parse --verify --quiet "$TARGET^{commit}" 2>/dev/null || git rev-parse --verify --quiet "$TARGET" 2>/dev/null)
+if [ -z "$RESOLVED" ]; then
+  err "找不到 commit/tag: $TARGET"
+fi
+SHORT=$(git rev-parse --short "$RESOLVED")
+log "  解析到 $SHORT ($(git log -1 --format='%s' "$RESOLVED"))"
 
-log "==> docker compose up -d app (滚动替换)"
-docker compose -f docker-compose.prod.yml up -d app
+git checkout "$RESOLVED"
+log "git checkout 完成"
 
-# ---- smoke test (默认跑) ----
-if [ "$SKIP_SMOKE" -eq 0 ]; then
-  if ! smoke_test; then
-    log_err "smoke test 失败;立刻回滚到 $SAVED_TAG"
-    docker tag "qt-app:${SAVED_TAG#v}" qt-app:latest 2>/dev/null || \
-      docker tag "qt-app:$SAVED_TAG" qt-app:latest
-    docker compose -f docker-compose.prod.yml up -d app
-    exit 1
-  fi
+# 仅在依赖变化时 npm ci (跟 deploy.sh 一样的判断)
+NEED_CI=0
+if git diff --name-only HEAD@{1} HEAD -- package.json package-lock.json patches/ 2>/dev/null | grep -q .; then
+  NEED_CI=1
+fi
+if [ "$NEED_CI" -eq 1 ]; then
+  log "lockfile/patches 变了 → npm ci"
+  npm ci --legacy-peer-deps --no-audit --no-fund --registry=https://registry.npmmirror.com
+else
+  log "lockfile 稳定 → 跳过 npm ci"
 fi
 
-log_ok "[OK] rollback to $TARGET_TAG done"
+# prisma generate + 增量 build (用 .next/cache)
+log "==> prisma generate + next build (增量, .next/cache 复用)"
+APP_VERSION="v$(sed -n 's/^  "version": *"\([^"]*\)".*/\1/p' package.json | head -1)+$SHORT" \
+NEXT_PUBLIC_APP_VERSION="$SHORT" \
+SKIP_ENV_VALIDATION=1 \
+NEXT_TELEMETRY_DISABLED=1 \
+bash -c '
+  set -e
+  npx prisma generate
+  npx next build
+'
+
+log "==> systemctl restart qt-app"
+systemctl restart qt-app.service
+for i in 1 2 3 4 5 6 7 8 9 10; do
+  if curl -fsS -o /dev/null --max-time 1 http://127.0.0.1:3000/login 2>/dev/null; then break; fi
+  sleep 1
+done
+
+if [ "$SKIP_SMOKE" -ne 1 ]; then
+  log "==> smoke test"
+  for spec in "login=200" "dashboard=307" "api/customers=401"; do
+    path="${spec%=*}"; want="${spec#*=}"
+    got=$(curl -sS -o /dev/null -w "%{http_code}" --max-time 5 "http://127.0.0.1:3000/${path}" || echo 000)
+    got=${got:-000}
+    if [ "$got" = "$want" ]; then
+      log "  ${path}: ${got} OK"
+    else
+      err "  ${path}: ${got} (期望 ${want}) — 回滚 smoke 失败. 滚回原 commit: bash scripts/prod/rollback.sh --to $BACKUP_BRANCH"
+    fi
+  done
+fi
+
+log "[OK] 回滚完成 → $SHORT"
+log "    滚回原 commit: bash scripts/prod/rollback.sh --to $BACKUP_BRANCH"

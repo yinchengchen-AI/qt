@@ -2,6 +2,38 @@
 
 本文件记录 qt-biz 每个版本的详细变更。项目快速入口请见 [README.md](README.md)。
 
+## v0.16.0(2026-08-02) 部署架构迁移 — native systemd 主路径
+
+部署耗时从 ~14 分钟压到 30s–2min,根因 3.5GB ECS 内存被 dockerd (1.7GB) + hermes-agent (0.5GB) 吃掉大头,build 阶段只能 swap。
+
+变更:
+- **`scripts/prod/deploy.sh`** 全面重写:native `next build`(复 `.next/cache/` 走 Turbopack 增量)替换 `docker build`;`systemctl restart qt-app.service` 替换 `compose up -d app`
+- **`scripts/prod/rollback.sh`** 重写:默认 native 回滚(`git checkout + 增量 build`);`--docker` flag 切回 docker 应急
+- **`scripts/prod/switch-to-native.sh`** (新增):首次切 native 的一键脚本,自动停 docker qt-app、enable systemd、smoke test、备份 `docker-compose.prod.yml.bak-pre-native`
+- **`ops/qt-app.service`** 同步:跟实际部署一致(User=root + 直接 node 启动)
+- **postgres / minio 仍留 docker**:数据卷 `/opt/qt/docker-data/` 不动
+- **`npm ci` 智能跳过**:仅在 `package.json / package-lock.json / patches/ / prisma/` 变化时跑,常规部署 0s
+- **release:publish / prisma migrate deploy** 也走 native,不再 docker run --rm
+- **`docker image prune` KEEP=1**:`qt-app:latest` 留 1 版给 `--docker` 应急用
+
+性能 vs 原架构:
+| 改动类型 | 原 docker deploy | 新 native deploy |
+|---|---|---|
+| 纯文档/注释 | ~14min | ~30s |
+| 改 lib 工具 | ~14min | ~1-2min |
+| 改 prisma schema | ~15min(需重 build) | ~2-3min(client 重生)+ migrate |
+| 改 package.json | ~15min | ~1min + npm ci |
+| Lockfile 大变 | ~15min | ~3min(npm ci) |
+
+回滚:
+- 上一版本:`bash scripts/prod/rollback.sh`(默认)
+- 任意 commit: `bash scripts/prod/rollback.sh --to <sha>`
+- 应急到 docker: `bash scripts/prod/rollback.sh --docker`
+
+详细文档: [docs/ops/deploy-current.md](docs/ops/deploy-current.md)
+
+---
+
 ## 重大里程碑
 
 - **v0.15.0(2026-08-01)**: 强制单点登录 — User 加 sessionVersion 字段,登录时 +1, jwt callback 校验不等时返 null; 旧设备的 JWT 立即失效; admin 可在员工详情页"踢出所有设备"按钮主动让某用户下线。渐进式动迁(只影响 deploy 后新登录,旧会话不受打扰)

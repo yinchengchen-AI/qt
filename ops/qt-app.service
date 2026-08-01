@@ -1,27 +1,31 @@
 # /etc/systemd/system/qt-app.service
-# Next.js 生产服务 (native Node + systemd)
-# 启用: sudo cp ops/qt-app.service /etc/systemd/system/ && sudo systemctl daemon-reload
-#        sudo systemctl enable --now qt-app
-# 查看: journalctl -u qt-app -f
+# Next.js 生产服务 (native Node + systemd, v0.16.0+ 主路径)
+# 在 server 上启用: sudo cp ops/qt-app.service /etc/systemd/system/ \
+#                    && sudo systemctl daemon-reload \
+#                    && sudo systemctl enable qt-app.service
+# 启动:  sudo systemctl start qt-app
+# 日志:  journalctl -u qt-app -f
+#
+# 历史: v0.1.0~v0.13.x 用 Pnpm+User=qt 写法; 改成 direct node + User=root 因为:
+#   - 单机部署, root 跑减少权限踩坑
+#   - /opt/qt 全部是 root:root 600/755, 用 qt 用户需先 chown (额外步骤)
+#   - systemd 启 next start 不需要 pnpm, 跳 pnpm 减少调用链
+#   - 镜像以 qt 编译后切 production 直接 node 启动, 路径一致
 
 [Unit]
-Description=qt-biz Next.js app
-After=network.target
+Description=qt-biz Next.js application
+After=network-online.target docker.service
+Wants=network-online.target
 
 [Service]
 Type=simple
-User=qt
-Group=qt
+User=root
 WorkingDirectory=/opt/qt
 EnvironmentFile=/opt/qt/.env
-ExecStart=/usr/bin/pnpm start
+ExecStart=/usr/bin/node node_modules/next/dist/bin/next start -p 3000 -H 127.0.0.1
 Restart=on-failure
-RestartSec=3
-
-# 资源
+RestartSec=5
 LimitNOFILE=65535
-
-# 日志走 journald,不要再 nohup 输出到文件
 StandardOutput=journal
 StandardError=journal
 SyslogIdentifier=qt-app

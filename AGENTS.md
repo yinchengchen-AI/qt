@@ -41,14 +41,15 @@ Node `>=20.9.0`. Use `npm`; `pnpm-lock.yaml` is kept in sync.
 - PRs cover motivation, change summary, and validation (commands run, screenshots for UI). Link the issue or `docs/` runbook. Call out schema/migration, auth, and storage-affecting changes explicitly.
 - Never commit `.env`, `docker-data/`, `backups/`, or `docs/*部署记录*.md` (see `.gitignore`).
 - **发布版本**: 用 `npm version patch|minor|major`(自动 bump + commit + tag),不要手动改 `package.json:version` 之后忘记 tag。Commit message 风格 `chore(release): bump to vX.Y.Z`。当前 base 与 README 同步在 `0.13.8`;登录页右上 chip 由 `next.config.mjs#computeAppVersion()` 自动派生为 `<base>+<git short sha>.<MMDD>`,commit → dev/build 重启即可看到新版本号;CI 容器无 `.git` 时回落到 `NEXT_PUBLIC_APP_VERSION` env 或 `"v2.0"`。
-- **更新日志全自动发布**: `scripts/prod/deploy.sh` 在镜像构建成功后自动跑 `release:publish`(一次性容器内执行 `npx tsx scripts/release/publish.ts`,`.git` 只读挂载):读 `package.json` 版本 → 取上一个 release tag 到 HEAD 的 commits(过滤 `chore(release)`/`docs(release)` 噪音)→ 幂等写入 AppRelease(`source=GIT_COMMITS`)。同版本已存在则跳过;想重新生成先在 DB 软删旧记录再重跑。发布人默认工号 `admin`,可用 env `RELEASE_PUBLISHER_EMPLOYEE_NO` 覆盖。该步失败只告警不阻断部署,可手动补跑。**手工发布入口已移除**(无 /admin/releases 页面、无写 API),API 只读(list/detail/latest/read),写入唯一路径是 publish.ts。
+- **更新日志全自动发布**: `scripts/prod/deploy.sh` 在 native build 完后自动跑 `release:publish`(本地直接 `npx tsx scripts/release/publish.ts`,v0.16.0+ 不再走 docker 一次性容器):读 `package.json` 版本 → 取上一个 release tag 到 HEAD 的 commits(过滤 `chore(release)`/`docs(release)` 噪音)→ 幂等写入 AppRelease(`source=GIT_COMMITS`)。同版本已存在则跳过;想重新生成先在 DB 软删旧记录再重跑。发布人默认工号 `admin`,可用 env `RELEASE_PUBLISHER_EMPLOYEE_NO` 覆盖。该步失败只告警不阻断部署,可手动 `cd /opt/qt && npx tsx scripts/release/publish.ts` 补跑。**手工发布入口已移除**(无 /admin/releases 页面、无写 API),API 只读(list/detail/latest/read),写入唯一路径是 publish.ts。
 
 ## Deploy Quick Reference
 
-- **日常部署** (server 上, 在 `/opt/qt`): `sudo -E ./scripts/prod/deploy.sh` — 全程自动 (`preflight` → `git pull` → `docker build` → `migrate deploy` → `release:publish` → `compose up -d` → `smoke` → `cron 健康检查`)。日志写到 `/var/log/qt-deploy.log`。
+- **日常部署** (server 上, 在 `/opt/qt`,v0.16.0+): `sudo -E ./scripts/prod/deploy.sh` — 全程自动 (`preflight` → `git pull` → **native build** (`.next/cache` 增量) → `compose up -d postgres minio` → `prisma migrate deploy` → `release:publish` → **`systemctl restart qt-app.service`** → `smoke` → `cron 健康检查`)。日志写到 `/var/log/qt-deploy.log`。日常部署 ~30s-2min (vs v0.15.x 的 ~14min)。PG/MinIO 仍在 docker。
 - **本地 Mac 触发远端** (v0.13.8+): `./scripts/prod/remote-deploy.sh` — 用 `~/Downloads/QT.pem` (或 `~/.ssh/qt_deploy.pem`) ssh 进 server, 在远端 tmux 里跑 deploy.sh, 本地断线不中断 deploy。配置在 `.deploy-target` (gitignored)。
-- **一键回滚** (server 上): `bash scripts/prod/rollback.sh` — 默认切到上一版; `--list` 看历史版本, `--to v0.13.6` 指定版本, `--skip-smoke` 紧急跳过 smoke。镜像保留最近 2 版 (`deploy.sh` 末尾的 `KEEP=2`)。
-- **shared lib**: `scripts/prod/_lib.sh` 提供 `log / preflight_check / smoke_test / require_root_or_docker`;`deploy.sh` 和 `rollback.sh` 都通过 self-rewrite 护栏复制它到 `/tmp` 再 source。
+- **一键回滚** (server 上,v0.16.0+ native): `bash scripts/prod/rollback.sh` — 默认切到 HEAD~1 (`.next/cache` 增量, 秒级到 1-2min); `--to <sha>` 任意 commit; `--list` 看候选; `--skip-smoke` 紧急跳过; `--docker` 应急切回 docker (用 `qt-app:latest`,保留最近 1 版做兜底)。当前位置自动备份到 `.rollback-<sha>` 分支。
+- **首次切 native** (一次性,v0.15.x → v0.16.0): `sudo bash scripts/prod/switch-to-native.sh` — 备份 docker-compose → 注释掉 app 块 → `systemctl enable --now qt-app` → smoke test。自动备份 `docker-compose.prod.yml.bak-pre-native` 应急。
+- **shared lib**: `scripts/prod/_lib.sh` 提供 `log / preflight_check / smoke_test / require_root_or_docker`;`deploy.sh` / `rollback.sh` / `switch-to-native.sh` 都通过 self-rewrite 护栏复制它到 `/tmp` 再 source。
 - **详细文档**: 当前部署流程见 [docs/ops/deploy-current.md](docs/ops/deploy-current.md);历史事故档案在 `docs/ops/deploy-history/` (不读也能 deploy, 只是事故复盘)。
 
 ## Security & Configuration Tips
