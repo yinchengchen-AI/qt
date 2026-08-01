@@ -4,11 +4,11 @@
 
 ## v0.17.0(2026-08-02) 去掉 docker fallback 应急回退
 
-docker qt-app 镜像 (`qt-app:latest`) 删除, 留出来的 1.49GB 不再用。
+docker qt-app 镜像 (`qt-app:latest` **DEPRECATED**) 已删, 留出来的 1.49GB 不再用。
 不再维护 docker 应急回退能力 — release 永远 forward, native 是唯一路径。
 
 变更:
-- **`docker rmi qt-app:latest`**:已删; 服务器现在只跑 postgres + minio 两个容器 (active)
+- **`docker rmi qt-app:latest`** (**DEPRECATED**): 镜像已删; 服务器现在只跑 postgres + minio 两个容器 (active)
 - **`scripts/prod/rollback.sh`**:移除 `--docker` flag; 调它现在 unknown flag 报错退出
 - **`scripts/prod/deploy.sh`**:磁盘清理段简化, 只清 dangling intermediate + builder cache; 无 KEEP=1 的 qt-app 保留逻辑
 - **`scripts/prod/switch-to-native.sh`**:标记为历史脚本 (一次性已用); docker qt-app 不再存在, 再跑会在 preflight `docker inspect qt-app` 失败退出
@@ -26,7 +26,31 @@ docker qt-app 镜像 (`qt-app:latest`) 删除, 留出来的 1.49GB 不再用。
 | 总盘 avail | 16G | **21G** |
 | Use% | 67% | **56%** |
 
-如果未来真的需要 docker rollback, 流程: (1) 拉老 commit (2) `docker build . -t qt-app:latest` (3) `docker compose up -d app`。建议: 整机升 4GB+ 再启用。
+如果未来需要复活 docker fallback, 见 v0.17.1 段。
+
+---
+
+## v0.17.1(2026-08-02) 全链路标 DEPRECATED
+
+v0.17.0 仅清理了镜像, 没改 docs/code 里的引用。v0.17.1 统一打 `DEPRECATED` 标签:
+
+- `Dockerfile` 顶部 16 行 `~~~~~~~~~~~~~~~~~~~~~~~~~~~~ DEPRECATED ~~~~~~~~~~~~~~~~~~~~~~~~~~~~` banner; 原代码保留 (应急 docker build 还能用)
+- `docker-compose.prod.yml` 顶部 banner; `app:` 块加 DEPRECATED 注释
+- `scripts/prod/deploy.sh:62` 错误信息改成 "qt-app:latest 镜像已 DEPRECATED, 不再是 fallback"
+- `scripts/prod/rollback.sh:33` 注释明确标 DEPRECATED
+- `scripts/prod/remote-deploy.sh:32` 注释里的 `[remote] ==> docker build qt-app:v0.13.8` 文档示例换成 native
+- `AGENTS.md` / `README.md` / `docs/ops/deploy-current.md` 同步加 `**DEPRECATED**` 标记
+
+历史档案 (`CHANGELOG.md` v0.16 及更早段, `docs/ops/deploy-history/*.md`) **不动** — 历史就是历史。
+
+复活 docker fallback 的 3 步 (仍在, 但 DEPRECATED):
+```
+git checkout <commit>
+docker build -t qt-app:latest .   # Dockerfile 不动, build chain 没破
+docker compose -f docker-compose.prod.yml up -d app  # 反注释 app 块
+```
+
+建议: 当前 49G / 21G 够用, 维持 native。
 
 ---
 
@@ -42,7 +66,7 @@ docker qt-app 镜像 (`qt-app:latest`) 删除, 留出来的 1.49GB 不再用。
 - **postgres / minio 仍留 docker**:数据卷 `/opt/qt/docker-data/` 不动
 - **`npm ci` 智能跳过**:仅在 `package.json / package-lock.json / patches/ / prisma/` 变化时跑,常规部署 0s
 - **release:publish / prisma migrate deploy** 也走 native,不再 docker run --rm
-- **`docker image prune` KEEP=1**:`qt-app:latest` 留 1 版给 `--docker` 应急用
+- **`docker image prune` KEEP=1** (`qt-app:latest` DEPRECATED): 留 1 版给 `--docker` 应急用
 
 性能 vs 原架构:
 | 改动类型 | 原 docker deploy | 新 native deploy |

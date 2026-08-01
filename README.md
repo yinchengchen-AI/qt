@@ -258,12 +258,12 @@ nginx 反代下上游异常时,由 `public/502.html` 静态页与 `app/502/page.
 
 ### v0.17.0(2026-08-02)去掉 docker fallback,腾 1.49GB
 
-**删除 `qt-app:latest` 镜像 + `rollback.sh --docker` 选项 + `switch-to-native.sh` 标记历史**。
+**DEPRECATED: `qt-app:latest` 镜像已删 + `rollback.sh --docker` 选项已去 + `switch-to-native.sh` 标记历史**。
 
 - 不再维护 docker 应急回退能力 — native systemd 是唯一路径
 - 服务器仅留 postgres + minio 两个 active 容器
 - 总盘从 16G 剩 → **21G 剩**
-- 未来真要 docker 回退: `docker build . -t qt-app:latest && docker compose up -d app`
+- **DEPRECATED** 路径: 真要 docker 回退 (不推荐): `docker build . -t qt-app:latest && docker compose up -d app`
 
 ### v0.16.0(2026-08-02)部署提速:native systemd 主路径,14min → 秒级
 
@@ -273,7 +273,7 @@ nginx 反代下上游异常时,由 `public/502.html` 静态页与 `app/502/page.
 - **关键加速**: `.next/cache` 持久化后 Turbopack 增量复用,改动小秒级,大改 1–2min;`npm ci` 仅在 lockfile/patches/prisma 变化时跑(常规部署 0s)
 - **postgres / minio 仍 docker**:数据卷( `/opt/qt/docker-data/` )继续走容器,不重 init
 - **`scripts/prod/switch-to-native.sh`** 一键从 docker qt-app 切到 native:停容器 → enable systemd → smoke test → 备份原 compose
-- **`scripts/prod/rollback.sh --docker`** 应急:systemd 炸了用 `qt-app:latest`(保留最近 1 版 docker 镜像做兜底)
+- **`scripts/prod/rollback.sh --docker`** (**DEPRECATED**): 应急入口已移除 — qt-app:latest 镜像已删, native 是唯一路径
 - **AGENTS.md / docs/ops/deploy-current.md** 重写 deploy 流程说明
 
 为什么换:3.5GB ECS 内存吃紧,dockerd 自占 1.7GB + hermes 0.5GB,build 阶段可用只剩 ~425MB,`next build` 直接 swap,14min。native 拿回 dockerd 占的 1.7GB + .next/cache 增量 ≈ 10× 提升。

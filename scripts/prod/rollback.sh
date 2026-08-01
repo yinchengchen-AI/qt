@@ -30,7 +30,7 @@ usage() {
 --list        : 列出最近 10 个回滚候选.
 --skip-smoke  : 跳过 smoke test (紧急回滚用).
 
-(v0.17+: 无 --docker。docker fallback 镜像已清;如需 docker 应急, 先 docker build 重生 qt-app:latest)
+(v0.17+: 无 --docker。qt-app:latest 镜像 DEPRECATED;建议维持 native, 或用 `docker build -t qt-app:latest .` 应急 — 不推荐)
 USAGE
 }
 

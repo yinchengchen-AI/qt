@@ -29,7 +29,7 @@
 #
 # 远端执行过程 (脚本会显示在本地终端):
 #   [remote] ==> git pull
-#   [remote] ==> docker build qt-app:v0.13.8 (APP_VERSION=v0.13.8+abc1234, ...)
+#   [remote] ==> native build (npm ci + prisma generate + next build, ...)
 #   ...
 
 set -euo pipefail

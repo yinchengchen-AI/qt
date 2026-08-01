@@ -1,13 +1,25 @@
 # syntax=docker/dockerfile:1
 # qt-biz 生产镜像 — 多阶段构建
 #
-# 阶段:
-#   deps   : npm ci + prisma generate(patch-package 在 postinstall 里应用 patches/)
-#   build  : next build(standalone 产物;不需要 DB,页面全 dynamic)
-#   runner : standalone + scripts 源码 + 全局 tsx/prisma CLI
-#            (migrate deploy / release:publish 以一次性容器命令跑 TS 源码)
+# ~~~~~~~~~~~~~~~~~~~~~~~~~~~~ DEPRECATED ~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+# v0.17+ qt-app:latest 镜像已弃用。生产直接跑 native systemd
+# (ops/qt-app.service),不再每部署 docker build。
 #
-# 构建(版本号注入登录页 chip,容器内无 .git,靠 build-arg):
+# 本 Dockerfile 仅留作:
+#   1. 历史参考 (deploy 14min 时代的实现)
+#   2. 应急回退: 1 次 docker build -t qt-app:latest . 即可重生镜像
+#
+# 推荐: 不要重建。让 native systemd + .next/cache 吃 deploy 时长。
+# 应急 (例如 native 整个起不来): docker build -t qt-app:latest . && docker compose up -d app
+# ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+#
+# 阶段:
+#   deps   : npm ci + prisma generate (patch-package 在 postinstall 里应用 patches/)
+#   build  : next build (standalone 产物; 不需要 DB, 页面全 dynamic)
+#   runner : standalone + scripts 源码 + 全局 tsx/prisma CLI
+#            (历史用法: migrate deploy / release:publish 以一次性容器命令跑 TS 源码)
+#
+# 构建 (DEPRECATED):
 #   docker build --build-arg APP_VERSION="$(node -p 'require("./package.json").version')+$(git rev-parse --short HEAD)" -t qt-app:latest .
 
 FROM node:22-alpine AS deps

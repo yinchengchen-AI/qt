@@ -92,7 +92,7 @@ bash /opt/qt/scripts/prod/rollback.sh --list                    # 看最近 10 �
 bash /opt/qt/scripts/prod/rollback.sh --to <sha> --skip-smoke  # 紧急回滚 (跳过 smoke)
 
 # Docker 应急 (systemd 整个炸了或 native 起不来)
-bash /opt/qt/scripts/prod/rollback.sh --docker                  # 切回 docker qt-app:latest
+# DEPRECATED: bash /opt/qt/scripts/prod/rollback.sh --docker  -- 已移除 (qt-app:latest 镜像清掉)
 ```
 
 **Native 机制**: `git checkout <target>` + 条件 npm ci + `prisma generate` + 增量 `next build` + `systemctl restart qt-app`。  
@@ -117,14 +117,15 @@ sudo bash scripts/prod/switch-to-native.sh
 3. `systemctl daemon-reload && systemctl enable --now qt-app.service`
 4. 等 native 在 3000 端口起来 (最多 15s)
 5. 跑 smoke test (`login=200` / `dashboard=307` / `api/customers=401`)
-6. 提示: docker qt-app 容器已停, 但镜像 (`qt-app:latest`) 保留 — `rollback.sh --docker` 可应急拉起
+6. 提示 (DEPRECATED): 当时 docker qt-app 容器被停, 镜像 (`qt-app:latest`) 留做应急
+   v0.17 起 qt-app:latest 已删, 不再保留 docker fallback; switch-to-native.sh 不可重跑
 
 **前置要求**:
 - 当前 server `/etc/systemd/system/qt-app.service` 已装 (v0.7 起 ops 仓里就有 unit 文件, 上一次跑该是 2026-07-29)
 - 第一次切会跑一次完整 native build (`.next` 是 2026-07-29 残留, schema 已变), 预估 2-3min
 - 之后 `.next/cache` 持久 → 增量秒级
 
-历史 docker qt-app 镜像 (`qt-app:v0.15.0`, `qt-app:latest`) 保留最近 1 版做应急回滚兜底。
+历史 docker qt-app 镜像 (`qt-app:v0.15.0`, `qt-app:latest`) 都已删除 (v0.17 DEPRECATED)。
 
 ## 五、preflight 提前拦截的事故
 
@@ -148,7 +149,7 @@ sudo bash scripts/prod/switch-to-native.sh
 |---|---|
 | `/opt/qt/.env` | 数据库/MinIO/NextAuth secret (gitignore, 手工维护) |
 | `/opt/qt/docker-compose.prod.yml` | PG + MinIO 编排 (app 服务已被 switch-to-native 注释掉, 备份在 .bak-pre-native) |
-| `/opt/qt/Dockerfile` | 应急 docker 镜像源 (deploy.sh 不再触发, 但 rollback --docker 会用 qt-app:latest) |
+| `/opt/qt/Dockerfile` | **(DEPRECATED)** 应急 docker 镜像源 — deploy.sh/rollback 都不调用, 仅留作历史参考 / 应急 `docker build -t qt-app:latest .` |
 | `/etc/systemd/system/qt-app.service` | 主路径 (来自 ops/qt-app.service), 启 native next start |
 | `/etc/cron.d/qt-jobs` | 5 个定时任务 (run-all/healthcheck/backup/audit/cert-check) |
 | `/etc/nginx/conf.d/qt-biz.conf` | 上游 127.0.0.1:3000 反代 + 502 fallback |

@@ -45,7 +45,7 @@ Node `>=20.9.0`. Use `npm`; `pnpm-lock.yaml` is kept in sync.
 
 ## Deploy Quick Reference
 
-- **日常部署** (server 上, 在 `/opt/qt`,v0.16.0+): `sudo -E ./scripts/prod/deploy.sh` — 全程自动 (`preflight` → `git pull` → **native build** (`.next/cache` 增量) → `compose up -d postgres minio` → `prisma migrate deploy` → `release:publish` → **`systemctl restart qt-app.service`** → `smoke` → `cron 健康检查`)。日志写到 `/var/log/qt-deploy.log`。日常部署 ~30s-2min (vs v0.15.x 的 ~14min)。v0.17 起 PG/MinIO 仍在 docker, qt-app 不再产镜像 (无 fallback)。
+- **日常部署** (server 上, 在 `/opt/qt`,v0.16.0+): `sudo -E ./scripts/prod/deploy.sh` — 全程自动 (`preflight` → `git pull` → **native build** (`.next/cache` 增量) → `compose up -d postgres minio` → `prisma migrate deploy` → `release:publish` → **`systemctl restart qt-app.service`** → `smoke` → `cron 健康检查`)。日志写到 `/var/log/qt-deploy.log`。日常部署 ~30s-2min (vs v0.15.x 的 ~14min)。v0.17 起 PG/MinIO 仍在 docker, qt-app 不再产镜像 (`qt-app:latest` DEPRECATED, 无 fallback)。
 - **本地 Mac 触发远端** (v0.13.8+): `./scripts/prod/remote-deploy.sh` — 用 `~/Downloads/QT.pem` (或 `~/.ssh/qt_deploy.pem`) ssh 进 server, 在远端 tmux 里跑 deploy.sh, 本地断线不中断 deploy。配置在 `.deploy-target` (gitignored)。
 - **一键回滚** (server 上,v0.17.0+ native only): `bash scripts/prod/rollback.sh` — 默认切到 HEAD~1 (`.next/cache` 增量, 秒级到 1-2min); `--to <sha>` 任意 commit; `--list` 看候选; `--skip-smoke` 紧急跳过; ~~`--docker`~~ v0.17 已移除。当前位置自动备份到 `.rollback-<sha>` 分支。
 - **首次切 native** (一次性,**v0.17+ 已禁用**): 当时是 v0.15.x → v0.16.0 切 docker qt-app → native 服务, 现在 docker qt-app 已无镜像/容器, 脚本再跑会在 preflight 失败并 exit 1。

@@ -59,7 +59,7 @@ preflight_check
 # ---- 检查 native 服务可用性 (防脚本正常运行但 systemd 没启) ----
 if ! systemctl cat qt-app.service >/dev/null 2>&1; then
   log_err "qt-app.service unit 不存在;首次切 native 需先 sudo cp ops/qt-app.service /etc/systemd/system/ && sudo systemctl daemon-reload && sudo systemctl enable qt-app.service"
-  log_err "           临时走 docker fallback: 先确保 docker qt-app 容器在跑 (docker compose up -d app), 然后用 docker 版 deploy (老版) 临时跑一次"
+  log_err "           (qt-app:latest 镜像已 DEPRECATED, 不再是 fallback; native systemd 是唯一运行路径)"
   exit 1
 fi
 if ! systemctl is-enabled --quiet qt-app.service; then

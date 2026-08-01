@@ -1,10 +1,23 @@
-# 生产部署用 compose
-# 用法: set -a; . /opt/qt/.env; set +a
+# qt-biz 生产 compose (v0.17+: qt-app 块 DEPRECATED)
+#
+# ~~~~~~~~~~~~~~~~~~~~~~~~~~~~ DEPRECATED ~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+# `app:` 块 (qt-app:latest) 已弃用: 生产跑 native systemd
+# (`ops/qt-app.service`, 由 `systemctl restart qt-app.service` 管)。
+# `docker compose up -d` 当前只会启 postgres + minio 两个 active 服务。
+#
+# 如果真的需要 docker qt-app 应急回退 (强烈不推荐, native 已足够稳):
+#   1. git checkout <commit>
+#   2. docker build -t qt-app:latest .
+#   3. 反注释下面 `app:` 块, 然后 docker compose up -d app
+# ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+#
+# 日常用法: set -a; . /opt/qt/.env; set +a
 #       export POSTGRES_SUPER_PASSWORD=$(echo "$MIGRATION_DATABASE_URL" | sed -E "s|.*://qitai:([^@]+)@.*|\1|")
 #       export MINIO_ROOT_USER="$MINIO_ACCESS_KEY"
 #       export MINIO_ROOT_PASSWORD="$MINIO_SECRET_KEY"
 #       docker compose -f docker-compose.prod.yml up -d
 services:
+  # DEPRECATED (v0.17+): app 块已弃用; 反注释 + `docker build -t qt-app:latest .` 才能用.
   app:
     build:
       context: .
