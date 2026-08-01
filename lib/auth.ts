@@ -14,7 +14,7 @@ import CredentialsProvider from "next-auth/providers/credentials";
 import bcrypt from "bcrypt";
 import { prisma } from "./prisma";
 import { encode as defaultJwtEncode, decode as defaultJwtDecode } from "next-auth/jwt";
-import { ROLE_PERMISSIONS, type Action, type Resource } from "./permissions";
+import { ROLE_PERMISSIONS, setRuntimePermissions, type Action, type Permission, type Resource } from "./permissions";
 import type { RoleCode } from "@/types/enums";
 import { env } from "./env";
 import { envBool } from "./env-bool";
@@ -118,6 +118,40 @@ async function loadActiveUser(uid: string): Promise<CachedUser | null> {
 /** 角色/状态/密码变更后调用, 清掉指定用户的缓存 */
 export function invalidateAuthCache(uid: string): void {
   userCache.delete(uid);
+}
+
+// ---- 角色权限缓存 (DB 真源, 2s TTL) ----
+// 与 userCache 同寿命: session callback 每次请求把当前 DB Role.permissions 灌进
+// lib/permissions.ts 的 runtimeCache, service 层 requirePermission 优先查那里.
+// service/role.ts#updateRole 写完新权限后, 本进程下个请求自然刷新 (DB → 缓存).
+type CachedRolePerms = { value: Permission[] };
+const ROLE_PERM_CACHE_TTL_MS = 2_000;
+const rolePermCache = new Map<string, { value: CachedRolePerms; expiresAt: number }>();
+
+/** 读某角色当前权限 (DB), 2s 内复用. DB 不可读时回退到 ROLE_PERMISSIONS 兜底. */
+export async function loadRolePermissions(roleCode: string): Promise<Permission[]> {
+  const now = Date.now();
+  const hit = rolePermCache.get(roleCode);
+  if (hit && hit.expiresAt > now) return hit.value.value;
+  let perms: Permission[];
+  try {
+    const row = await prisma.role.findUnique({
+      where: { code: roleCode },
+      select: { permissions: true }
+    });
+    perms = (row?.permissions as unknown as Permission[]) ?? ROLE_PERMISSIONS[roleCode as RoleCode] ?? [];
+  } catch (e) {
+    // DB 不可用时回退到 code matrix (降级而非抛错, 避免一个 DB 抖动让全员 500)
+    console.error("[AUTH] loadRolePermissions DB read failed, fallback to code matrix:", e);
+    perms = ROLE_PERMISSIONS[roleCode as RoleCode] ?? [];
+  }
+  rolePermCache.set(roleCode, { value: { value: perms }, expiresAt: now + ROLE_PERM_CACHE_TTL_MS });
+  return perms;
+}
+
+/** 清空角色权限缓存 (角色权限更新后调用, 让本进程下一请求重读 DB) */
+export function invalidateRolePermCache(roleCode: string): void {
+  rolePermCache.delete(roleCode);
 }
 
 const isProd = env.NODE_ENV === "production";
@@ -298,6 +332,10 @@ export const authOptions: AuthOptions = {
       return token;
     },
     async session({ session, token }) {
+      // 每次请求都从 DB 拉一次最新权限 (2s 内走 rolePermCache), 灌进 lib/permissions 的
+      // runtimeCache, 这样后续 requirePermission(roleCode, ...) 都基于 DB 真源判断.
+      const perms = await loadRolePermissions(token.roleCode);
+      setRuntimePermissions(token.roleCode, perms);
       session.user = {
         id: token.uid,
         employeeNo: token.employeeNo,
@@ -307,7 +345,7 @@ export const authOptions: AuthOptions = {
         roleVersion: token.roleVersion,
         mustChangePassword: token.mustChangePassword,
         sessionVersion: token.sessionVersion,
-        permissions: ROLE_PERMISSIONS[token.roleCode]
+        permissions: perms
       };
       return session;
     }

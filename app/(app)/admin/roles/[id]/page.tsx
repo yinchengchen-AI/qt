@@ -1,14 +1,15 @@
 "use client";
 import { ProCard, ProDescriptions } from "@ant-design/pro-components";
-import { Tag, Button } from "antd";
-import { useParams } from "next/navigation";
-import { useGoBack } from "@/lib/navigation";
+import { Tag, Button, Space } from "antd";
+import { EditOutlined } from "@ant-design/icons";
+import { useParams, useRouter } from "next/navigation";
 import useSWR from "swr";
 import { Page } from "@/components/page";
 import { PageHeader } from "@/components/page-header";
 import { DetailPageSkeleton } from "@/components/detail-page-skeleton";
 import { ErrorBox } from "@/components/callout";
 import { DateCell } from "@/components/table-cells";
+import { useGoBack } from "@/lib/navigation";
 import { PermissionMatrix, type Permission } from "@/components/admin/permission-matrix";
 
 const DESC_COL = { xs: 1, sm: 1, md: 2, lg: 2, xl: 3 } as const;
@@ -26,6 +27,7 @@ type Role = {
 
 export default function RoleDetailPage() {
   const params = useParams();
+  const router = useRouter();
   const id = String(params.id);
   const goBack = useGoBack("/admin/roles");
   const { data, error, isLoading, mutate } = useSWR<Role>(`/api/roles/${id}`);
@@ -65,6 +67,17 @@ export default function RoleDetailPage() {
         title={`${data.name}（${data.code}）`}
         subtitle={data.description ?? "—"}
         meta={data.isSystem ? <Tag color="blue">系统角色</Tag> : <Tag>自定义角色</Tag>}
+        actions={
+          <Space>
+            <Button
+              type="primary"
+              icon={<EditOutlined />}
+              onClick={() => router.push(`/admin/roles/${id}/edit`)}
+            >
+              编辑权限
+            </Button>
+          </Space>
+        }
       />
       <ProCard>
         <ProDescriptions<Role>
@@ -86,10 +99,11 @@ export default function RoleDetailPage() {
         />
       </ProCard>
 
-      <PageHeader level="section" title="权限矩阵" />
+      <PageHeader level="section" title={`权限矩阵 (${data.permissions.length} 资源)`} />
       <ProCard>
         <PermissionMatrix value={data.permissions} readOnly />
       </ProCard>
+
     </Page>
   );
 }

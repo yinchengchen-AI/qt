@@ -631,10 +631,14 @@ PLANNED ─confirm─▶ CONFIRMED ─reconcile─▶ RECONCILED
 ### 12.2 角色管理
 
 - 5 个 **系统角色**(`ADMIN / SALES / FINANCE / OPS / EXPERT`)不可删除
-- 角色权限由代码矩阵 (`lib/permissions.ts`) 定义,`/admin/roles` 页面只读展示 5 个内置角色的当前矩阵;**不支持后台编辑与自定义角色**
+- **v0.18.3 起**: admin 可在 `/admin/roles` 直接调整任意角色的权限 / 名称 / 说明(含系统角色),保存后 ≤2s 全员生效, **不再需要改代码 + 发版 + 跑 seed**。
 - 权限粒度:`{ resource, actions: ["READ", "CREATE", ...] }`
-- 调整权限需修改 `lib/permissions.ts` 并发布;发布后用 `pnpm seed-roles` 同步数据库展示副本,2s TTL + JWT `roleVersion` 校验生效
-- 历史遗留的自定义角色可删除(清理入口保留)
+- **运行时真源是 DB `Role.permissions`**:`lib/permissions.ts` 的 `ROLE_PERMISSIONS` 仅作为 seed bootstrap(`pnpm seed-roles` 写入 DB)与 DB 不可用时的兜底
+- **缓存失效链路**:`updateRole` 改权限 → `User.roleVersion + 1`(全员)→ `invalidateAuthCache(uid)` 清 2s `userCache` → `setRuntimePermissions` 立即让本进程生效
+- **ADMIN 锁死护栏**:ADMIN 角色 permissions 必须保留 `[角色] 资源的 读 + 改`,否则 `403 FORBIDDEN 锁死护栏` — 否则后续无人能调回 (含你自己)
+- **其他护栏**:空 permissions → 400;code 改名冲突 → 409;系统角色 code 改名超 RoleCode 联合 → 400
+- **未开放**: `createRole` 仍 403 — 自定义角色另行单独做, 不是本次范围
+- 历史遗留的自定义角色可删除 (清理入口保留)
 
 ### 12.3 部门管理
 

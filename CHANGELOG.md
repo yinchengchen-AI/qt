@@ -149,6 +149,68 @@ v0.18.0 部署时靠 prisma 在 node_modules 残留, 没暴露; v0.18.1 那次 `
 - 服务器手动 `unset NODE_ENV && npm ci` 后 `node_modules/.bin/prisma` 出现, `prisma generate` 通过。
 - 本机重启 `npm run typecheck / lint / test` 全绿 (86 文件 / 661 用例)。
 
+## v0.18.3(2026-08-02) ADMIN 可在 /admin/roles 直接调整角色权限 (运行时真源由代码矩阵翻到 DB)
+
+v0.18.0 / v0.18.1 把权限矩阵收紧 + 把 `/admin/roles` 改成只读, 当时的口径是「运行时真源 = lib/permissions.ts 硬编码矩阵, DB 副本仅展示」。本版本反转这个口径: **运行时真源改为 DB `Role.permissions`**, admin 可在 `/admin/roles` 直接编辑 (含系统角色), 保存后 ≤2s 内全员生效. 自定义角色 (createRole) 仍未开放, 单独再做.
+
+### 真源翻转
+
+- `lib/permissions.ts`: 顶部 `ROLE_PERMISSIONS` 改为 seed bootstrap + DB 不可用兜底, 新增 `runtimePermissions` 进程级缓存; `hasPermission` / `requirePermission` 先查缓存, 查不到回退矩阵. 导出 `setRuntimePermissions` / `clearRuntimePermissions` / `_resetRuntimePermissionsForTests` 给上层调用.
+- `lib/auth.ts`: `session` callback 每次请求 `loadRolePermissions(roleCode)` 从 DB 拉当前权限 (2s TTL rolePermCache), 灌进 `runtimePermissions` 并挂到 `session.user.permissions`. DB 不可用时 fallback 到 `ROLE_PERMISSIONS` (避免一个 DB 抖动让全员 500).
+- 现有 173 处 `requirePermission(roleCode, ...)` 调用 **零改动** — 签名不变, 行为变化是透明的.
+- `scripts/shared/seed-roles.ts` 不动: 仍然把 `ROLE_PERMISSIONS` upsert 到 DB, 兼容 fresh DB bootstrap.
+
+### `/admin/roles` 编辑入口
+
+- 列表页: 行操作加 **「编辑权限」** → `/admin/roles/[id]/edit`; Alert 文案从「运行时真源是代码矩阵」改为「运行时真源是 DB, 编辑后 ≤2s 全员生效」.
+- 详情页: 加 **「编辑权限」** 按钮跳编辑页; 副标题展示更新时间, 方便 audit 对照.
+- 新增 `/admin/roles/[id]/edit` 编辑页:
+  - 名称 / 说明: `<Input>` + `<Input.TextArea>` 受控 (覆盖范围跟现有 API 一致).
+  - 权限矩阵: 复用 `components/admin/permission-matrix.tsx` (早已支持 `onChange` / `readOnly`).
+  - ADMIN 角色: 顶部黄色 Alert 提醒 [角色] 资源的读+改必须保留, 否则保存被服务端拒; 客户端先做 disabled 兜底.
+  - dirty 检测 + 保存按钮 disabled; 保存 → `PATCH /api/roles/[id]`, 成功后 toast + 跳详情.
+
+### `updateRole` service 安全护栏
+
+- 去掉 v0.18.0/0.18.1 的「系统角色 permissions/code 不可改 → 403」拦截. 现在 admin 可改任意角色, 含 5 个系统角色.
+- **ADMIN 锁死护栏**: ADMIN 角色 permissions 必须保留 `RESOURCE.ROLE` 的 `READ + UPDATE`. 缺失任一即 `403 FORBIDDEN 锁死护栏` — 否则后续无人能调回 (含你自己).
+- **空 permissions** → `400 VALIDATION_FAILED 权限不能为空`.
+- **code 改名去重**: 改成已存在 → `409 角色代码 X 已被使用`. 系统角色 code 改成 `RoleCode` 联合外的值 → `400 系统角色代码必须是 ADMIN/SALES/FINANCE/OPS/EXPERT 之一` (避免运行时崩).
+- **等价 permissions / 仅改名** → 不触发缓存失效 (permissionsEqual 函数判定).
+
+### 缓存失效策略 (≤2s 全员生效)
+
+每次 `updateRole` 检测到 permissions 或 code 真有变化:
+1. `prisma.user.findMany({ roleId })` → 拿所有活跃用户 id.
+2. `prisma.user.updateMany` → 所有这些用户 `roleVersion + 1` (用户能感知到 epoch 变化).
+3. 对每个用户 `invalidateAuthCache(uid)` 清 2s `userCache` — 下个请求 jwt callback 重读 DB.
+4. `invalidateRolePermCache(existing.code)` + (如 code 改名) `invalidateRolePermCache(updated.code)`.
+5. `setRuntimePermissions(updated.code, newPerms)` 立即让本进程生效 — 即使其他用户的 userCache 还没失效, 他们访问的 service 也会读到新权限.
+
+`deleteRole` 同步清 `clearRuntimePermissions(code)` + `invalidateRolePermCache(code)`, 避免残余权限被后续请求看到.
+
+### 旧行为的兼容
+
+- 5 个 `dev:test` 账号 (`admin/sales/finance/ops/expert`) 登录后看到的权限与之前完全一致 — 因为 seed 把 `ROLE_PERMISSIONS` 写到了 DB, session callback 从 DB 读到的就是同一份.
+- `tests/permissions.test.ts` 10 条硬编码矩阵断言原样通过.
+- `createRole` 仍 `403 FORBIDDEN` (自定义角色另行单独做, 不是本次范围).
+
+### 测试
+
+- 新增 `tests/unit/server/role-update.test.ts` (15 条): 锁死护栏 / 空权限 / 缓存失效 / code 改名护栏 / 审计字段 / `deleteRole` 清缓存.
+- 新增 `tests/permissions-runtime.test.ts` (7 条): `setRuntimePermissions` / `clearRuntimePermissions` / `_resetRuntimePermissionsForTests` 单测, 含 DB-only 自定义角色场景.
+- 全量 `vitest run`: 88 个文件 / 683 条用例全绿.
+- E2E 通过 dev server + curl 走通: admin 登录 → PATCH SALES → 重登 sales 看新权限 → restore → ADMIN 锁死护栏 403 → 空权限 400 → code 改名冲突 409 → code 改名超联合 400 → 全链路 SALES 用户 `roleVersion` 从 2 → 3.
+
+### 影响 / 兼容性
+
+- 行为变化对用户透明: 5 个 dev 账号登录后看到的菜单/按钮与之前完全相同 (DB 与旧硬编码矩阵完全对齐).
+- admin 的「新能力」: 直接调权, 不再需要改 `lib/permissions.ts` + 发版 + 跑 seed. 风险面更广, 因此同时上了 ADMIN 锁死护栏.
+- DB schema / migrations: 无变化 (纯运行时逻辑).
+- 现有 173 处 `requirePermission` 调用零改动 (签名兼容).
+
+---
+
 ## v0.16.0(2026-08-02) 部署架构迁移 — native systemd 主路径
 
 部署耗时从 ~14 分钟压到 30s–2min,根因 3.5GB ECS 内存被 dockerd (1.7GB) + hermes-agent (0.5GB) 吃掉大头,build 阶段只能 swap。

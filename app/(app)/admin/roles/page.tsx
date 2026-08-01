@@ -1,6 +1,7 @@
 "use client";
 import { ProTable, type ActionType, type ProColumns } from "@ant-design/pro-components";
 import { App as AntdApp, Alert, Button, Tag, Space } from "antd";
+import { EditOutlined } from "@ant-design/icons";
 import { useRouter } from "next/navigation";
 import { useRef } from "react";
 import { Page } from "@/components/page";
@@ -72,10 +73,18 @@ export default function RolesPage() {
     },
     {
       title: "操作",
-      width: 220,
+      width: 260,
       fixed: "right",
       render: (_, r) => (
         <Space size="small">
+          <Button
+            type="link"
+            size="small"
+            icon={<EditOutlined />}
+            onClick={() => router.push(`/admin/roles/${r.id}/edit`)}
+          >
+            编辑权限
+          </Button>
           <Button type="link" size="small" onClick={() => router.push(`/admin/roles/${r.id}`)}>
             详情
           </Button>
@@ -97,14 +106,21 @@ export default function RolesPage() {
     <Page>
       <PageHeader
         title="角色权限"
-        subtitle="系统内置 5 个角色 · 权限由代码矩阵 (lib/permissions.ts) 定义，本页仅供查看"
+        subtitle="系统内置 5 个角色 · 运行时真源 = DB (lib/permissions.ts 仅作 seed bootstrap + DB 不可用兜底)"
       />
       <Alert
         type="info"
         showIcon
         style={{ marginBottom: 12 }}
-        title="权限的运行时真源是代码矩阵"
-        description="本页展示的是 seed 同步到数据库的副本，仅供查看。调整权限请修改 lib/permissions.ts 并发布；历史遗留的自定义角色可在此删除。"
+        title="权限的运行时真源是数据库"
+        description={
+          <span>
+            lib/permissions.ts 的 ROLE_PERMISSIONS 仅作为 seed bootstrap (scripts/shared/seed-roles.ts)
+            与 DB 不可用时的兜底。运行时所有 requirePermission 都从 DB Role.perpermissions 读取,
+            admin 可直接点 <strong>编辑权限</strong> 调整,保存后 ≤2s 内全员生效。
+            新建自定义角色仍未开放 (调整现有角色权限覆盖大部分诉求)。
+          </span>
+        }
       />
       <ProTable<Role> actionRef={actionRef}
         rowKey="id"

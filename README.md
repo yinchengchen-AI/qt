@@ -6,11 +6,11 @@
 [![TypeScript](https://img.shields.io/badge/TypeScript-6.0.3-3178c6)](https://www.typescriptlang.org/)
 [![Prisma](https://img.shields.io/badge/Prisma-7.9.1-2d3748)](https://www.prisma.io/)
 [![PostgreSQL](https://img.shields.io/badge/PostgreSQL-16-336791)](https://www.postgresql.org/)
-[![Last Release](https://img.shields.io/badge/release-v0.18.2-blue)](CHANGELOG.md)
+[![Last Release](https://img.shields.io/badge/release-v0.18.3-blue)](CHANGELOG.md)
 
 > **客户 / 合同 / 开票 / 回款** 一体化管理,附件走 MinIO presigned 直传,服务端 Server Actions + RBAC + 行级隔离。
 >
-> **当前版本: v0.18.2**(2026-08-02)。文档地图见 [docs/README.md](docs/README.md),架构与设计见 [docs/architecture/DESIGN-v3.md](docs/architecture/DESIGN-v3.md),用户手册见 [docs/user/USER_MANUAL.md](docs/user/USER_MANUAL.md)。
+> **当前版本: v0.18.3**(2026-08-02)。文档地图见 [docs/README.md](docs/README.md),架构与设计见 [docs/architecture/DESIGN-v3.md](docs/architecture/DESIGN-v3.md),用户手册见 [docs/user/USER_MANUAL.md](docs/user/USER_MANUAL.md)。
 
 ## 目录
 
@@ -241,7 +241,7 @@ nginx 反代下上游异常时,由 `public/502.html` 静态页与 `app/502/page.
 
 ## 质量基线
 
-基线刷新于 **v0.18.2(2026-08-02)**。
+基线刷新于 **v0.18.3(2026-08-02)**。
 
 | 项 | 状态 |
 |---|---|
@@ -255,6 +255,19 @@ nginx 反代下上游异常时,由 `public/502.html` 静态页与 `app/502/page.
 ## 最近更新
 
 最近 5 个版本,完整历史见 [CHANGELOG.md](CHANGELOG.md)。
+
+### v0.18.3(2026-08-02)ADMIN 可直接调整角色权限 (运行时真源翻到 DB)
+
+把运行时权限真源从 `lib/permissions.ts` 硬编码矩阵翻到 DB `Role.permissions`,admin 在 `/admin/roles` 直接编辑 (含系统角色),保存后 ≤2s 全员生效. 完整动机 / 安全护栏 / 缓存失效策略见 [CHANGELOG.md](CHANGELOG.md) v0.18.3 段.
+
+- **`lib/permissions.ts`**: 新增 `runtimePermissions` 进程级缓存; `hasPermission` / `requirePermission` 先查缓存, 兜底查 `ROLE_PERMISSIONS`. 现有 173 处调用零改动.
+- **`lib/auth.ts`**: `session` callback 每次请求 `loadRolePermissions(roleCode)` 从 DB 拉 (2s TTL), 灌进 `runtimePermissions` + `session.user.permissions`.
+- **`server/services/role.ts#updateRole`**: 放开系统角色编辑; 加 **ADMIN 锁死护栏** (ADMIN 必须保留 [角色] 资源的读+改, 否则后续无人能调回) + 空权限 400 + code 改名冲突 409 + 系统角色 code 改名超 RoleCode 联合 400.
+- **缓存失效**: `updateRole` 改权限 / code → `User.roleVersion + 1` (全员) + `invalidateAuthCache(uid)` + `setRuntimePermissions(newCode, newPerms)`.
+- **新页面** `/admin/roles/[id]/edit`: 名称/说明/权限矩阵受控编辑, dirty 检测 + ADMIN 锁死护栏前端兜底, 保存 → 详情页.
+- **测试**: `tests/unit/server/role-update.test.ts` (15 条) + `tests/permissions-runtime.test.ts` (7 条); 全量 683/683 绿; dev server + curl E2E 跑通 (admin PATCH → sales 重登看到新权限 → restore → 护栏 403).
+- **`createRole` 仍 403**: 自定义角色另行单独做, 不是本次范围.
+- **DB schema / migrations**: 无变化 (纯运行时逻辑).
 
 ### v0.18.2(2026-08-02)修复 deploy.sh 的 npm ci devDeps 漏装
 
