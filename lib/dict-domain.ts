@@ -30,6 +30,7 @@ export const DICT_DOMAINS = [
   "客户域",
   "业务域",
   "财务域",
+  "员工域",
   "状态域",
   "区域域"
 ] as const;
@@ -52,6 +53,9 @@ export const DICT_META: Record<string, DictDomainMeta> = {
   INVOICE_TYPE: { category: "INVOICE_TYPE", label: "发票类型", shape: "table", readonly: true, description: "code 由发票校验 (zod) + INVOICE_TYPE_MAP 约束, 仅供查看" },
   PAYMENT_RECEIVE_METHOD: { category: "PAYMENT_RECEIVE_METHOD", label: "收款方式", shape: "table", readonly: true, description: "code 由回款校验 (zod) 约束, 仅供查看" },
   REVIEW_ACTION: { category: "REVIEW_ACTION", label: "审批动作", shape: "table", readonly: true, description: "审批动作由代码状态机约束 (REVIEW_ACTION_MAP), 仅供查看" },
+  // 员工域
+  EDUCATION_LEVEL: { category: "EDUCATION_LEVEL", label: "最高学历", shape: "table", readonly: false, description: "员工档案学历, 字典驱动可维护" },
+  CONTRACT_TYPE: { category: "CONTRACT_TYPE", label: "合同类型", shape: "table", readonly: false, description: "员工合同类型 (劳动/劳务/实习), 字典驱动可维护" },
   // 状态域
   CONTRACT_STATUS: { category: "CONTRACT_STATUS", label: "合同状态", shape: "table", readonly: true, description: "合同状态机由代码驱动 (CONTRACT_STATUS_MAP), 仅供查看" },
   INVOICE_STATUS: { category: "INVOICE_STATUS", label: "开票状态", shape: "table", readonly: true, description: "开票状态机由代码驱动 (INVOICE_STATUS_MAP), 仅供查看" },
@@ -73,6 +77,8 @@ const CATEGORY_DOMAIN_MAP: Record<string, DictDomain> = {
   INVOICE_TYPE: "财务域",
   PAYMENT_RECEIVE_METHOD: "财务域",
   REVIEW_ACTION: "财务域",
+  EDUCATION_LEVEL: "员工域",
+  CONTRACT_TYPE: "员工域",
   CONTRACT_STATUS: "状态域",
   INVOICE_STATUS: "状态域",
   PAYMENT_STATUS: "状态域",
