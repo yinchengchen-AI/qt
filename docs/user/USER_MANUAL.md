@@ -113,17 +113,17 @@
 | `SALES`(业务人员) | 客户 / 合同 / 项目推进,**行级隔离**只看自己的数据 |
 | `FINANCE`(财务人员) | 发票 / 回款 / 对账,统计可导出 |
 | `OPS`(行政人员) | 部门 / 公告维护与发布;字典 R (v0.18.0+) — 字典写权限收归 ADMIN |
-| `EXPERT`(技术专家) | 任务执行 / 跟进 / 现场交付,**行级隔离**与 SALES 同 (见 v0.10.2);v0.18.0 起不开票、不改/删既有催收 |
+| `EXPERT`(技术专家) | 任务执行 / 跟进 / 现场交付;类似 SALES 跟进本人客户/合同(**行级隔离**),但钱相关只读(发票/回款只读+导出,催款只读) |
 
 ### 3.2 模块权限矩阵(简版)
 
 | 模块 \\ 角色 | ADMIN | SALES | FINANCE | OPS | EXPERT |
 |---|---|---|---|---|---|
-| 客户 | CRUD + 导出 | CRU + 导出 + **行级隔离** | R + 导出 | CRU + 导出 | CRU + 导出 + **行级隔离** |
+| 客户 | CRUD + 导出 | CRU + 导出 + **行级隔离** | R + 导出 | R + 导出 | CRU + 导出 + **行级隔离** |
 | 合同 | CRUD + 导出 | CRU + 导出 | R + 导出 | R + 导出 | CRU + 导出 + **行级隔离** |
 | 开票 | CRUD + 导出 | CRU + 导出 | CRUD + 导出 | R + 导出 | **R + 导出** (v0.18.0+) |
-| 回款 | CRUD + 导出 | CR + 导出 | CRUD + 导出 | R + 导出 | CR + 导出 |
-| 催收 (DUNNING, v0.18.0+) | CRUD + 导出 | **CR** | **CRUD** | R | **CR** |
+| 回款 | CRUD + 导出 | CR + 导出 | CRUD + 导出 | R + 导出 | **R + 导出** |
+| 催收 (DUNNING, v0.18.0+) | CRUD + 导出 | **CR** | **CRUD** | R | **R** |
 | 统计分析 | R + 导出 | R | R + 导出 | R | R |
 | 部门 | CRUD | R | R | CRUD | R |
 | 员工 / 角色 | CRUD(角色只读) | R | R | R | R |
@@ -630,10 +630,11 @@ PLANNED ─confirm─▶ CONFIRMED ─reconcile─▶ RECONCILED
 
 ### 12.2 角色管理
 
-- 5 个 **系统角色**(`ADMIN / SALES / FINANCE / OPS / EXPERT`)不可删除,但可改权限矩阵
-- 支持 **新建自定义角色** + 配置 **资源 × 操作** 矩阵
+- 5 个 **系统角色**(`ADMIN / SALES / FINANCE / OPS / EXPERT`)不可删除
+- 角色权限由代码矩阵 (`lib/permissions.ts`) 定义,`/admin/roles` 页面只读展示 5 个内置角色的当前矩阵;**不支持后台编辑与自定义角色**
 - 权限粒度:`{ resource, actions: ["READ", "CREATE", ...] }`
-- 修改角色权限后,2s TTL + JWT `roleVersion` 校验, ≤ 2s 内对其他在线用户生效
+- 调整权限需修改 `lib/permissions.ts` 并发布;发布后用 `pnpm seed-roles` 同步数据库展示副本,2s TTL + JWT `roleVersion` 校验生效
+- 历史遗留的自定义角色可删除(清理入口保留)
 
 ### 12.3 部门管理
 
@@ -647,7 +648,8 @@ PLANNED ─confirm─▶ CONFIRMED ─reconcile─▶ RECONCILED
 - **类别管理**:每类字典一个 `category`,如 `CUSTOMER_INDUSTRY` / `SERVICE_TYPE` / `CUSTOMER_SOURCE` 等
 - **条目管理**:每条 `{ code, label, sort, isActive }`,`code` 在同一类别内唯一
 - 字典项 **被业务数据引用时,不允许硬删除**;只能停用
-- 调整后 **全局生效**,无需重启
+- 其中 9 个类目(客户类型 / 客户规模 / 合同付款方式 / 发票类型 / 收款方式 / 审批动作 / 合同状态 / 开票状态 / 回款状态)的 code 由系统枚举或状态机约束,页面只读展示(锁标识),**不可新增/编辑/启停**;其余类目管理员可正常维护,修改后其他页面下拉即时生效(跨标签页需刷新)
+- 调整后 **全局生效**,无需重启(同标签页即时,跨标签页需刷新)
 
 ### 12.5 操作日志
 

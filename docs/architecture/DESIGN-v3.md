@@ -157,7 +157,7 @@
 | 管理员 | `ADMIN` | 全部模块读写 + 用户/角色/字典/审计 |
 | 业务人员 | `SALES` | 客户/合同/项目推进;只看自己负责的合同 |
 | 财务人员 | `FINANCE` | 开票/回款/对账/统计全权；客户/合同只读 |
-| 行政人员 | `OPS` | 客户/合同/项目基础信息维护（不触碰金额字段） |
+| 行政人员 | `OPS` | 部门/公告维护与发布;客户/合同/开票/回款**只读+导出** |
 
 ### 3.2 资源 × 操作 × 角色 矩阵
 
@@ -171,12 +171,12 @@
 | ROLE | CRUD | – | – | – | – |
 | DICTIONARY | CRUD | R | R | R | R |
 | DEPARTMENT | CRUD | R | R | CRUD | R |
-| CUSTOMER | CRUD+导出 | CRU+导出 (自己) | R+导出 | CRU+导出 (非金额) | CRU+导出 (自己) |
+| CUSTOMER | CRUD+导出 | CRU+导出 (自己) | R+导出 | **R+导出** | CRU+导出 (自己) |
 | CONTRACT | CRUD+导出 | CRU+导出 (自己) | R+导出 | R+导出 | CRU+导出 (自己) |
 | INVOICE | CRUD+导出 | CRU+导出 (自己合同) | CRUD+导出 | R+导出 | **R+导出** (v0.18.0+) |
-| PAYMENT | CRUD+导出 | CR+导出 (自己合同) | CRUD+导出 | R+导出 | CR+导出 (自己合同) |
+| PAYMENT | CRUD+导出 | CR+导出 (自己合同) | CRUD+导出 | R+导出 | **R+导出** |
 | STATISTICS | R+导出 | R (本人业绩) | R+导出 | R (无金额) | R (本人业绩) |
-| DUNNING | CRUD+导出 | **CR** (v0.18.0+) | **CRUD** (v0.18.0+) | R | **CR** (v0.18.0+) |
+| DUNNING | CRUD+导出 | **CR** (v0.18.0+) | **CRUD** (v0.18.0+) | R | **R** (v0.18.0+) |
 | MESSAGE | CRU(自己) | CRU(自己) | CRU(自己) | CRU(自己) | CRU(自己) |
 | ANNOUNCEMENT | CRUD | R | R | CRUD (改/删限发布人) | R |
 | APP_RELEASE | R | R | R | R | R |
