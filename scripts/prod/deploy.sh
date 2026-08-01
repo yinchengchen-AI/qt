@@ -89,6 +89,10 @@ if git diff --name-only HEAD@{1} HEAD -- package.json package-lock.json patches/
 fi
 if [ "$NEED_FULL_CI" -eq 1 ]; then
   log "  lockfile/patches/prisma 变了 → npm ci"
+  # .env 里 NODE_ENV=production (供 Next 运行时用), 但 npm ci 看到 production 会自动
+  # omit devDependencies → prisma / tsx / vitest 等开发工具都不装, 导致 npx prisma
+  # 临时下载 prisma@x 但找不到 prisma.config.ts 依赖. 临时清掉再装.
+  save_NODE_ENV="$NODE_ENV"; unset NODE_ENV
   set +e
   # npm 10 在 3.5GB 机器上 (memory 可用 ~1.3GB) 跑 npm ci 时,
   # bin 链接和 postinstall 顺序有 bug: postinstall 的 patch-package
@@ -114,6 +118,8 @@ else
 fi
 
 # prisma generate 总是跑 (client 漂移修复; 跟 schema 是否变无关, 几十秒)
+# 还原 NODE_ENV (后续 npx next build 与 systemd 都要 production)
+export NODE_ENV="$save_NODE_ENV"
 log "==> prisma generate"
 npx prisma generate
 
