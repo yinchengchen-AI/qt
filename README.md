@@ -6,11 +6,11 @@
 [![TypeScript](https://img.shields.io/badge/TypeScript-6.0.3-3178c6)](https://www.typescriptlang.org/)
 [![Prisma](https://img.shields.io/badge/Prisma-7.9.1-2d3748)](https://www.prisma.io/)
 [![PostgreSQL](https://img.shields.io/badge/PostgreSQL-16-336791)](https://www.postgresql.org/)
-[![Last Release](https://img.shields.io/badge/release-v0.13.9-blue)](CHANGELOG.md)
+[![Last Release](https://img.shields.io/badge/release-v0.18.1-blue)](CHANGELOG.md)
 
 > **客户 / 合同 / 开票 / 回款** 一体化管理,附件走 MinIO presigned 直传,服务端 Server Actions + RBAC + 行级隔离。
 >
-> **当前版本: v0.13.9**(2026-08-01)。文档地图见 [docs/README.md](docs/README.md),架构与设计见 [docs/architecture/DESIGN-v3.md](docs/architecture/DESIGN-v3.md),用户手册见 [docs/user/USER_MANUAL.md](docs/user/USER_MANUAL.md)。
+> **当前版本: v0.18.1**(2026-08-02)。文档地图见 [docs/README.md](docs/README.md),架构与设计见 [docs/architecture/DESIGN-v3.md](docs/architecture/DESIGN-v3.md),用户手册见 [docs/user/USER_MANUAL.md](docs/user/USER_MANUAL.md)。
 
 ## 目录
 
@@ -241,13 +241,13 @@ nginx 反代下上游异常时,由 `public/502.html` 静态页与 `app/502/page.
 
 ## 质量基线
 
-基线刷新于 **v0.13.9(2026-08-01)**。
+基线刷新于 **v0.18.1(2026-08-02)**。
 
 | 项 | 状态 |
 |---|---|
 | `npm run typecheck` | 0 errors |
 | `npm run lint` | 0 errors / 0 warnings |
-| `npm test` | 81 个 `.test.ts`,623 用例全绿 |
+| `npm test` | 86 个 `.test.ts`,661 用例全绿 |
 | `npm run test:e2e` | 部分运行:01.1 / 12 / 14 三项目(chromium / iPad / iPhone)全绿 |
 | `prisma generate` + `migrate deploy` | 42 / 42 migrations,client v7.9.1 |
 | `npm run build` | 本地因 `docker-data/postgres` 目录权限未通过验证(环境限制,非代码错误) |
@@ -255,6 +255,36 @@ nginx 反代下上游异常时,由 `public/502.html` 静态页与 `app/502/page.
 ## 最近更新
 
 最近 5 个版本,完整历史见 [CHANGELOG.md](CHANGELOG.md)。
+
+### v0.18.1(2026-08-02)权限细化 + 数据字典只读/拒写
+
+v0.18.0 权限收紧的延伸 — EXPERT/OPS 行级再细一刀, 字典 9 类枚举约束只读 + service 拒写, 修复 `refreshDict` 不生效等 4 个字典 bug, 字典种子双源并一.
+
+- **EXPERT 行级收紧**: PAYMENT `CR+导出` → `R+导出`, DUNNING `CR` → `R` (钱相关只读, 商业动作归 SALES)
+- **OPS 行级收紧**: CUSTOMER `CRU+导出` → `R+导出` (客户资料 owner 是销售)
+- **`/admin/roles` 只读化**: service 拒写系统角色, 列表页加 Alert 说明运行时真源是 `lib/permissions.ts`, 删两个编辑子页面
+- **字典 9 类只读**: CUSTOMER_TYPE/SCALE/CONTRACT_PAYMENT_METHOD/INVOICE_TYPE/PAYMENT_RECEIVE_METHOD/REVIEW_ACTION/CONTRACT_STATUS/INVOICE_STATUS/PAYMENT_STATUS 的 code 由 zod 枚举或状态机硬约束, 字典页只读展示 + service 拒写 (403)
+- **`refreshDict` 真正生效**: SWR `mutate` 替代死代码 `subs/notify`, admin 写后同标签页其他页面下拉即时刷新 (跨标签页不广播, 已知限制)
+- **字典种子双源合一**: 新增唯一定义源 `scripts/shared/dict-defs.ts`, 消除 seed.ts 与 seed-dicts.ts 的 SERVICE_TYPE label 漂移, 移除已下线的 CUSTOMER_STATUS / PROJECT_STATUS
+- **code 正则放宽**: 字典 code 允许点号 (匹配存量树形 code 如 `R2.30`)
+- **DB schema**: 无变化 (纯 role 矩阵细化 + 字典旁路拒绝 + 文档同步)
+
+### v0.18.0(2026-08-02)非 ADMIN 权限矩阵重排 + 三处 service 守门加固
+
+非 ADMIN 四个角色的权限做了重新分配, 同时 3 处 service 入口补强 (避免菜单绕过). 详见 `docs/history/security/permissions-audit-2026-08-02.md`.
+
+- DUNNING (催收): SALES / EXPERT 从 CRUD 降为 CR; FINANCE 从 CRU 升为 CRUD
+- EXPERT.INVOICE: 从 CRU+导出 降为 R+导出
+- 回收站 (trash): service 入口硬卡 ADMIN
+- 公告 (announcement): update / delete 限制发布人或 ADMIN
+
+### v0.17.1(2026-08-02)全链路标 DEPRECATED(应急 docker fallback 路径)
+
+v0.17.0 仅清掉了镜像与 `rollback.sh --docker` flag, 文档/代码里仍有引用。v0.17.1 统一补 `**DEPRECATED**` 标签, 行为不变。
+
+- `Dockerfile` / `docker-compose.prod.yml` / `deploy.sh:62` / `rollback.sh:33` / `remote-deploy.sh:32` 顶部加 `~~~~~~~~~~~~~~~~~~~~ DEPRECATED ~~~~~~~~~~~~~~~~~~~~` banner
+- `AGENTS.md` / `README.md` / `docs/ops/deploy-current.md` 同步加 `**DEPRECATED**` 标记
+- 历史档案 (`CHANGELOG.md` v0.16 及更早, `docs/ops/deploy-history/*.md`) **不动**
 
 ### v0.17.0(2026-08-02)去掉 docker fallback,腾 1.49GB
 
@@ -277,29 +307,6 @@ nginx 反代下上游异常时,由 `public/502.html` 静态页与 `app/502/page.
 - **AGENTS.md / docs/ops/deploy-current.md** 重写 deploy 流程说明
 
 为什么换:3.5GB ECS 内存吃紧,dockerd 自占 1.7GB + hermes 0.5GB,build 阶段可用只剩 ~425MB,`next build` 直接 swap,14min。native 拿回 dockerd 占的 1.7GB + .next/cache 增量 ≈ 10× 提升。
-
-### v0.15.0(2026-08-01)强制单点登录:不允许同账号多设备同时在线
-
-- **User 加 `sessionVersion` 字段** + 登录时 +1, JWT 携带; **新登录踢掉所有旧设备**(同账号无法同时多端登录)
-- **Admin 主动踢人**:员工详情页"踢出所有设备"按钮 + audit 留痕
-- **渐进式动迁**:只影响 deploy 后新登录,旧会话不受打扰
-- **前端提示**:被踢后跳到 `/login` 显示"您的账号在另一台设备登录,已自动登出"
-- **不增加 DB 请求数**:沿用现有 2s 缓存机制,多查 1 列(单 SQL)
-
-### v0.14.0(2026-08-01)消息中心全面优化:行级去重 + 归档表 + SSE 实时通知
-
-4 个 PR 一气呵成:
-
-- **PR 1 — UI 微调**:Bell badge `overflowCount={99}` 避免 4 位数压力;i18n 系统升级支持 `{n}` 占位符;toast 改用 `t("messages.toast.markedRead", { n })`
-- **PR 2 — 行级去重 + 清空已读**:Message 表加 `entityKey` + `@@unique([entityKey, receiverUserId])` + `createMany({ skipDuplicates: true })`;5 个 emit caller 显式传 entityKey;新 `clearReadMessages` + `/api/messages/read/clear` API + PageHeader"清空已读"按钮(migration 一次性 backfill 4482 条历史,zero 重复)
-- **PR 3 — 归档表 + admin 查看页**:新 `MessageArchive` 表 (append-only);`runMessageArchive` 90d cron 搬已读老消息(env `MESSAGE_ARCHIVE_AFTER_DAYS` 覆盖);`/admin/messages` ADMIN 专属只读页 + 月份过滤
-- **PR 4 — SSE 实时通知**:新 `/api/messages/stream` 端点(25s 心跳, maxDuration=3600s);进程内 hub + 5s `kick` scheduler 把通知延迟从 60s polling 压到 ≤5s;前端 `useMessageStream` EventSource hook;nginx 加 SSE location 块(`proxy_buffering off` 等);60s polling 保留作为 EventSource 失败的兜底
-
-质量基线:typecheck 0 / lint 0 / **test 83 files / 639 tests 全过**(新增 11 用例);部署注意:服务器 `sudo cp ops/nginx/qt-biz.conf /etc/nginx/conf.d/qt-biz.conf && sudo nginx -t && sudo systemctl reload nginx` 让 SSE 块生效
-
-### v0.13.9(2026-08-01)KPI 口径说明 + 全站 tooltip/subtitle 批量校正
-
-KPI 标题 ⓘ 口径与 `server/services/statistics.ts` 实际实现对齐(合同 / 开票 / 回款 / 客户的过滤条件、日期字段、状态 enum 全部注明);账龄 KPI 补 `dueDate` fallback + 应收计算公式。全站额外 9 处 tooltip/subtitle 批量校对,删除 v0.5.0 客户状态机、v0.3.0 项目/工作流模块等遗留错误描述。**纯 UI 文案,无 schema / API 契约变更**。
 
 ### v0.13.8(2026-08-01)部署链路优化:远端触发 + preflight + 一键回滚
 

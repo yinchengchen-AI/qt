@@ -84,6 +84,55 @@ docker compose -f docker-compose.prod.yml up -d app  # 反注释 app 块
 - OPS: 菜单里"部门/公告"工作流未受影响; 仅交叉用户修改他人公告 / 删合同/回收站被服务层挡住.
 - DB schema / migrations: 无变化 (纯 role 矩阵 + 入口守卫, DB 通用).
 
+## v0.18.1(2026-08-02) 权限细化 + 数据字典只读/拒写
+
+v0.18.0 权限收紧的延伸: 同主题内把 EXPERT/OPS 行级再细一刀, 干掉「编辑不生效」的假功能, 修字典的 4 个隐藏 bug, 把字典种子双源并一. 详见 `docs/superpowers/specs/2026-08-02-permissions-dictionary-redesign-design.md` 与 `docs/superpowers/plans/2026-08-02-permissions-dictionary-redesign.md`.
+
+### 权限矩阵精细化
+
+- EXPERT: PAYMENT 从 `CR+导出` 降为 `R+导出`, DUNNING 从 `CR` 降为 `R`. EXPERT 仍是客户/合同的主体 (行级隔离同 SALES), 但钱相关一刀切只读 + 商业动作 (开票/回款登记/催收记录) 归 SALES 与财务.
+- OPS: CUSTOMER 从 `CRU+导出` 降为 `R+导出`. 客户资料 owner 是销售, 行政不再代录.
+- SALES / FINANCE 不动.
+
+### `/admin/roles` 只读化
+
+- 服务层: `createRole` 一律 403 (自定义角色已停用); 系统角色 (isSystem) 的 `permissions/code` 不可改, 仅 `name/description` 可改 (展示文案).
+- 路由层: 删除 `/admin/roles/new` 与 `/admin/roles/[id]/edit` 页面; 列表页加 Alert 说明运行时真源是 `lib/permissions.ts` 的硬编码矩阵, 不是 DB.
+- `PermissionMatrix` 补齐 14 资源 (原缺 DEPARTMENT / DUNNING / APP_RELEASE).
+
+### 数据字典 9 类枚举约束只读
+
+约束来源是 `types/enums.ts` 的 zod 枚举 + 状态机代码, 字典表改 label/sort 不生效, 反误导:
+
+- `lib/dict-domain.ts` `DICT_META` 给 CUSTOMER_TYPE / CUSTOMER_SCALE / CONTRACT_PAYMENT_METHOD / INVOICE_TYPE / PAYMENT_RECEIVE_METHOD / REVIEW_ACTION / CONTRACT_STATUS / INVOICE_STATUS / PAYMENT_STATUS 翻 `readonly: true`.
+- `server/services/dictionary.ts` 加 `assertWritableCategory`, `createDict` / `updateDict` / `softDisableDict` / `reorder` 对 readonly 类目统一抛 `403 FORBIDDEN`.
+- 前端 `DictEditDrawer` / `DictTableView` / `CreateDictDrawer` 原生按 `readonly` 渲染锁标 + 禁写, 业务逻辑只需翻标记.
+
+### 字典 bug 修复
+
+- **`refreshDict` 真正失效 `useDict` 缓存**: 原 `subs/notify` 是死代码, 从不注册回调. 改用 SWR `mutate("dict-{category}")`, admin 字典页新增/编辑/启停/批量后调用 `refreshDict(category)`, 同标签页其他页面下拉即时刷新. **跨标签页不广播**(已知限制, 写入维护文档).
+- **`DictEditDrawer` 只读判断改用 `category`**: 原代码用 `code` 头字符判断与具体业务耦合, 改成读 `DICT_META[cat].readonly`.
+- **删除合同详情页幽灵 `useDict("PAYMENT_METHOD")`**: 类目不存在 (正确名 `CONTRACT_PAYMENT_METHOD`), 永远返回空数组; 改成直接用 `PAYMENT_METHOD_MAP` (覆盖全部 4 个枚举值).
+- **建字典 code 正则放宽**: `/^[A-Z][A-Z0-9_.]*$/` (允许点号), 与存量树形 code (如 `R2.30`) 对齐; 前端 `CreateDictDrawer` 的 zod 校验同步.
+
+### 字典种子双源合一
+
+- 新增唯一定义源 `scripts/shared/dict-defs.ts`, `prisma/seed.ts` 与 `scripts/shared/seed-dicts.ts` 都从它 import, 消除此前 6 条 SERVICE_TYPE label 漂移.
+- 移除已下线的 `CUSTOMER_STATUS` (v0.5.0) 与从未进白名单的 `PROJECT_STATUS`. 保留 `PERSONNEL_CERT_TYPE` (人员证书模块预留, 仅 legacy 分支可读).
+- 字典 `ALLOWED_DICTIONARY_CATEGORIES` / `BUSINESS_CATEGORIES` 加 `EDUCATION_LEVEL` (员工-最高学历) 与 `CONTRACT_TYPE` (员工-合同类型), 重新归类为业务域.
+
+### 文档同步
+
+- `docs/user/USER_MANUAL.md` §3.1/§3.2 EXPERT·OPS 矩阵、§12.2 角色页只读说明、§12.4 字典 9 类只读规则.
+- `docs/architecture/DESIGN-v3.md` §3.1 OPS、§3.2 矩阵同步 v0.18.1.
+- `docs/ops/dictionary-maintenance.md` 整体重写: 单点真源改 `dict-defs.ts`、3 处加类目清单、code 正则、`refreshDict` 已知限制.
+
+### 影响 / 兼容性
+
+- EXPERT: 不能登记回款 / 记录催收; OPS: 不能新建/编辑客户. 走现有 `Authority` 自动隐藏按钮, 但旧 IFLOW 直接命中会被 service 拒 (403).
+- 字典前端: 9 类只读类目立刻禁用所有写按钮 (历史数据不受影响).
+- DB schema / migrations: 无变化 (纯 role 矩阵细化 + 字典 schema 旁路拒绝, 与 v0.18.0 同).
+
 ## v0.16.0(2026-08-02) 部署架构迁移 — native systemd 主路径
 
 部署耗时从 ~14 分钟压到 30s–2min,根因 3.5GB ECS 内存被 dockerd (1.7GB) + hermes-agent (0.5GB) 吃掉大头,build 阶段只能 swap。
