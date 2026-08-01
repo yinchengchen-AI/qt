@@ -4,6 +4,7 @@
 
 ## 重大里程碑
 
+- **v0.15.0(2026-08-01)**: 强制单点登录 — User 加 sessionVersion 字段,登录时 +1, jwt callback 校验不等时返 null; 旧设备的 JWT 立即失效; admin 可在员工详情页"踢出所有设备"按钮主动让某用户下线。渐进式动迁(只影响 deploy 后新登录,旧会话不受打扰)
 - **v0.14.0(2026-08-01)**: 消息中心全面优化 — 行级去重(entityKey + @@unique + skipDuplicates)压 58% 增长;MessageArchive 归档表 90d cron + admin 查看页(/admin/messages);SSE 端点 + 进程内 hub + 5s kick 调度把通知延迟从 60s 压缩到 ≤5s;i18n 系统升级支持参数占位符;Bell badge overflowCount=99+ 上限;UI 新增"清空已读"批量按钮。详细见 README 「最近更新」v0.14.0 段
 - **v0.10.2(2026-07-17)**: 业务不变量与行级隔离修复 — R-08 开票上限补 PENDING_FINANCE 口径 + submit/issue 复检 + 锁合同行消竞态;EXPERT 行级隔离生效(`isRowRestricted`);账龄统计越权;红冲"已开票"口径统一(`INVOICE_ISSUED_AMOUNT_STATUSES`);raw 软删附件 404 + presign-upload 归属校验;with-profile 接入"最后 ADMIN"护栏,详见 README 「最近更新」v0.10.2 段
 - **v0.10.1(2026-07-13)**: 安全与并发修复 — 密码重置链路加固 + 文件下载代理审计/响应头 + 回款确认 FOR UPDATE + advisory lock + 合同总额调小锁行 + Zod 错误脱敏,详见 README 「最近更新」v0.10.1 段
@@ -25,6 +26,34 @@
 - **P0**:项目脚手架 + 登录 + 字典种子 + 5 角色权限
 
 ## 详细变更
+
+### v0.15.0(2026-08-01) 强制单点登录
+
+- **User 新增 `sessionVersion Int @default(0)` 字段**,migration `20260801151832_user_session_version`
+- **登录时 +1**:`authorize()` 成功后 `prisma.user.update({ data: { sessionVersion: { increment: 1 } } })`, 用新值签发 JWT
+- **JWT 携带 `sessionVersion`**:`lib/auth.ts` declare module "next-auth" JWT/Session/User 都加上
+- **jwt callback 校验**:`loadActiveUser` 缓存(2s TTL)多查 `sessionVersion` 一列,**不增加 DB 请求数**; `token.sessionVersion !== u.sessionVersion` 返 null
+  - 校验失败 → NextAuth 把 null 当无 session → 重定向到 `/login?error=SessionRequired`
+  - 缓存命中最多 2s 延迟,实际生效几乎实时
+- **前端提示**:`app/login/login-client.tsx` `useEffect` 监听 `?error=SessionRequired` 或 `?reason=session-revoked`,显示"您的账号在另一台设备登录,已自动登出。如非本人操作,请尽快修改密码"
+- **Admin 主动踢人**:
+  - service `kickUserSessions(actor, targetUserId)` (server/services/user.ts): `+1 sessionVersion` + 写 `USER_KICK_SESSIONS` audit + 调 `invalidateAuthCache` 清缓存
+  - API `POST /api/admin/users/[id]/kick-sessions` (admin 限定, USER.UPDATE 权限)
+  - UI 按钮 `/admin/users/[id]` 页面 "踢出所有设备" (DisconnectOutlined 图标, danger 风格) + 二次确认 Modal, 成功后 mutateUser 刷新
+- **不动 roleVersion** (已存在但未启用, 职责留给"角色变更失效"用)
+- **不动 mustChangePassword** (独立流)
+- **不重发事件到旧设备** (新设备 +1 时不通知旧设备, 用户下次访问自动跳登录页; 复杂度低)
+
+测试:
+- `tests/unit/lib/auth.test.ts` (新, 4 用例):
+  - `normalizeEmployeeNo` trim + toLowerCase + null/undefined
+  - `invalidateAuthCache` 不抛
+  - `prisma.user.update({ sessionVersion: { increment: 1 } })` SQL intent 验证
+  - 完整 jwt callback sessionVersion 校验在 e2e 覆盖 (tests/api/auth-*.test.ts)
+
+验证:
+- typecheck 0 / lint 0 / test **84 files / 643 tests 全过** (新增 4 个 auth 测试)
+- 渐进式动迁: 部署后只影响新登录的设备, 现有已登录用户 JWT 仍是旧 sessionVersion (default 0), 仍匹配, 不受打扰
 
 ### v0.14.0(2026-08-01) 消息中心全面优化
 

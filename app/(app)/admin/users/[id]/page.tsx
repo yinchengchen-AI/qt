@@ -1,7 +1,7 @@
 "use client";
-import { Avatar, Space, Tag, Button, Typography, Card, Row, Col, Divider, Empty, Modal, Form, Input, App as AntdApp } from "antd";
+import { Avatar, Space, Tag, Button, Typography, Card, Row, Col, Divider, Empty, Modal, Form, Input, App as AntdApp, theme } from "antd";
 import { ProCard, ProDescriptions } from "@ant-design/pro-components";
-import { EditOutlined, KeyOutlined, StopOutlined, CheckCircleOutlined, IdcardOutlined, BankOutlined, BookOutlined, FileProtectOutlined, ApartmentOutlined, UserOutlined, PhoneOutlined, CalendarOutlined, EnvironmentOutlined } from "@ant-design/icons";
+import { EditOutlined, DisconnectOutlined, KeyOutlined, StopOutlined, CheckCircleOutlined, IdcardOutlined, BankOutlined, BookOutlined, FileProtectOutlined, ApartmentOutlined, UserOutlined, PhoneOutlined, CalendarOutlined, EnvironmentOutlined } from "@ant-design/icons";
 import { useParams, useRouter } from "next/navigation";
 import { useState } from "react";
 import { useGoBack } from "@/lib/navigation";
@@ -537,7 +537,10 @@ function HeroHeader({
 }) {
   const router = useRouter();
   const { message } = AntdApp.useApp();
+  const { token } = theme.useToken();
   const [resetOpen, setResetOpen] = useState(false);
+  const [kickOpen, setKickOpen] = useState(false);
+  const [kickSubmitting, setKickSubmitting] = useState(false);
   const [resetSubmitting, setResetSubmitting] = useState(false);
   const [resetForm] = Form.useForm();
 
@@ -592,6 +595,14 @@ function HeroHeader({
         </div>
         {isAdmin ? (
           <Space wrap style={{ flexShrink: 0 }}>
+            <Button
+              icon={<DisconnectOutlined />}
+              danger
+              onClick={() => setKickOpen(true)}
+              title="强制该用户所有设备重新登录(下一次请求就会跳到登录页)"
+            >
+              踢出所有设备
+            </Button>
             <Button icon={<KeyOutlined />} onClick={() => setResetOpen(true)}>
               重置密码
             </Button>
@@ -663,6 +674,44 @@ function HeroHeader({
             <Input.Password placeholder="再次输入新密码" size="large" />
           </Form.Item>
         </Form>
+      </Modal>
+
+      <Modal
+        open={kickOpen}
+        title={`踢出 ${user.name} 的所有设备`}
+        okText="确认踢出"
+        cancelText="取消"
+        okButtonProps={{ danger: true, loading: kickSubmitting }}
+        destroyOnHidden
+        maskClosable={false}
+        onCancel={() => { if (kickSubmitting) return; setKickOpen(false); }}
+        onOk={async () => {
+          setKickSubmitting(true);
+          try {
+            const r = await fetch(`/api/admin/users/${id}/kick-sessions`, {
+              method: "POST",
+              credentials: "include"
+            });
+            const j = await r.json();
+            if (j.code === 0) {
+              message.success(`已踢出 ${user.name} 的所有设备,新 sessionVersion=${j.data.newSessionVersion}`);
+              setKickOpen(false);
+              onRefresh();
+            } else {
+              message.error(j.message ?? "踢出失败");
+            }
+          } catch {
+            message.error("网络异常");
+          } finally {
+            setKickSubmitting(false);
+          }
+        }}
+      >
+        <p>确定踢出 <b>{user.name}</b> 的所有设备?</p>
+        <p style={{ color: token.colorTextSecondary, fontSize: 13 }}>
+          该用户所有登录的设备/浏览器都会立即被踢出,下次访问会跳到登录页。
+          如果用户正被怀疑账号被盗,建议同时重置密码。
+        </p>
       </Modal>
     </ProCard>
   );

@@ -81,6 +81,9 @@ model User {
   lastFailedLoginAt  DateTime?   @db.Timestamptz(6)
   // roleVersion: 角色/权限变更时 +1, JWT 携带, 用于快速撤销缓存命中
   roleVersion        Int         @default(0)
+  // sessionVersion: 登录时 +1, JWT 携带, 用于强制单点登录
+  // (新登录踢掉所有旧设备的 JWT; admin 主动踢人也 +1)
+  sessionVersion     Int         @default(0)
   createdAt          DateTime    @default(now()) @db.Timestamptz(6)
   updatedAt          DateTime    @updatedAt @db.Timestamptz(6)
   deletedAt          DateTime?   @db.Timestamptz(6)

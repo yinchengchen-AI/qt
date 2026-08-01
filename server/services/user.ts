@@ -380,3 +380,53 @@ export async function toggleStatus(actor: SessionUser, id: string, status: "ACTI
   });
   return updated;
 }
+
+
+/**
+ * Admin 主动踢出某用户的所有设备: +1 sessionVersion, 让所有旧 JWT 立即失效
+ *
+ * 适用:
+ *   - 设备丢失 / 借用归还
+ *   - 怀疑账号被盗
+ *
+ * 不影响 user 自身 role/status, 只是强制重新登录
+ */
+export async function kickUserSessions(actor: SessionUser, targetUserId: string): Promise<{ newSessionVersion: number }> {
+  if (actor.id === targetUserId) {
+    throw new ApiError(ERROR_CODES.VALIDATION_FAILED, "请使用「我的设置」自行登出其他设备,不要踢自己", 400);
+  }
+  const target = await prisma.user.findFirst({
+    where: { id: targetUserId, deletedAt: null },
+    select: { id: true, employeeNo: true, name: true, status: true }
+  });
+  if (!target) {
+    throw new ApiError(ERROR_CODES.NOT_FOUND, "用户不存在", 404);
+  }
+  if (target.status !== "ACTIVE") {
+    throw new ApiError(ERROR_CODES.VALIDATION_FAILED, "用户非 ACTIVE 状态,无需踢设备", 400);
+  }
+
+  // +1 sessionVersion 强制旧 JWT 失效; audit 留 actor/target/newVersion
+  const updated = await prisma.user.update({
+    where: { id: targetUserId },
+    data: { sessionVersion: { increment: 1 } },
+    select: { sessionVersion: true }
+  });
+
+  // 清缓存,让 2s 内的 jwt callback 立刻看到新 sessionVersion
+  invalidateAuthCache(targetUserId);
+
+  await audit(prisma, {
+    actorId: actor.id,
+    action: "USER_KICK_SESSIONS",
+    entity: "User",
+    entityId: targetUserId,
+    after: {
+      employeeNo: target.employeeNo,
+      name: target.name,
+      newSessionVersion: updated.sessionVersion
+    }
+  });
+
+  return { newSessionVersion: updated.sessionVersion };
+}

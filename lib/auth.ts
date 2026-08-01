@@ -35,6 +35,7 @@ declare module "next-auth" {
       roleCode: RoleCode;
       roleVersion: number;
       mustChangePassword: boolean;
+      sessionVersion: number;
       permissions: { resource: Resource; actions: Action[] }[];
     };
   }
@@ -46,6 +47,9 @@ declare module "next-auth" {
     roleCode: RoleCode;
     roleVersion: number;
     mustChangePassword: boolean;
+    /** 登录时 +1 的会话版本号; JWT 校验 sessionVersion === user.sessionVersion
+     *  不等时 jwt callback 返 null, 触发前端 /login?reason=session-revoked */
+    sessionVersion: number;
     /** 登录页"7 天内自动登录"勾选状态:false 明确 8h 过期,true/缺省 走 session.maxAge (7d) */
     remember?: boolean;
   }
@@ -58,6 +62,7 @@ declare module "next-auth/jwt" {
     roleCode: RoleCode;
     roleVersion: number;
     mustChangePassword: boolean;
+    sessionVersion: number;
     remember?: boolean;
     /** 显式 exp (epoch seconds), 防止 defaultJwtEncode 拿不到 maxAge 时不出 exp */
     exp?: number;
@@ -72,6 +77,7 @@ type CachedUser = {
   roleCode: RoleCode;
   roleVersion: number;
   mustChangePassword: boolean;
+  sessionVersion: number;
 };
 const userCache = new Map<string, { value: CachedUser | null; expiresAt: number }>();
 
@@ -86,7 +92,8 @@ async function loadActiveUser(uid: string): Promise<CachedUser | null> {
       employeeNo: true,
       role: { select: { code: true } },
       roleVersion: true,
-      mustChangePassword: true
+      mustChangePassword: true,
+      sessionVersion: true
     }
   });
   const value: CachedUser | null = u
@@ -95,7 +102,8 @@ async function loadActiveUser(uid: string): Promise<CachedUser | null> {
         employeeNo: u.employeeNo,
         roleCode: u.role.code as RoleCode,
         roleVersion: u.roleVersion,
-        mustChangePassword: u.mustChangePassword
+        mustChangePassword: u.mustChangePassword,
+        sessionVersion: u.sessionVersion
       }
     : null;
   userCache.set(uid, { value, expiresAt: now + CACHE_TTL_MS });
@@ -187,7 +195,7 @@ export const authOptions: AuthOptions = {
           include: { role: true }
         });
         if (!user) {
-          
+
           await recordUserFail(employeeNo);
           await writeLoginAudit({
             action: "LOGIN_FAIL",
@@ -230,6 +238,14 @@ export const authOptions: AuthOptions = {
           reason: user.mustChangePassword ? "must_change_password" : null
         });
 
+        // 单点登录:登录时 +1, 让所有旧设备的 JWT 立即失效
+        // (jwt callback 校验 token.sessionVersion === user.sessionVersion, 不等返 null)
+        const updated = await prisma.user.update({
+          where: { id: user.id },
+          data: { sessionVersion: { increment: 1 } },
+          select: { sessionVersion: true }
+        });
+
         const remember = creds?.remember === "true";
         return {
           id: user.id,
@@ -239,6 +255,7 @@ export const authOptions: AuthOptions = {
           roleCode: user.role.code as RoleCode,
           roleVersion: user.roleVersion,
           mustChangePassword: user.mustChangePassword,
+          sessionVersion: updated.sessionVersion,
           remember
         };
       }
@@ -262,10 +279,16 @@ export const authOptions: AuthOptions = {
           // 用户被禁用/删除/软删 → 失效
           return null as unknown as typeof token;
         }
+        // 单点登录校验:新登录会让 user.sessionVersion +1, 旧 token 不等 → 失效
+        // (前端跳到 /login?reason=session-revoked, 提示用户在另一台设备登录)
+        if (typeof token.sessionVersion === "number" && token.sessionVersion !== u.sessionVersion) {
+          return null as unknown as typeof token;
+        }
         token.roleCode = u.roleCode;
         token.employeeNo = u.employeeNo;
         token.roleVersion = u.roleVersion;
         token.mustChangePassword = u.mustChangePassword;
+        token.sessionVersion = u.sessionVersion;
       }
       // P1-5: 显式写 token.exp, 防止 defaultJwtEncode 拿不到 maxAge 时不出 exp
       // (即便内部 encode 已用 setExpirationTime, 这里也作为兜底, 防止老 token 跨升级保留旧 exp)
@@ -283,6 +306,7 @@ export const authOptions: AuthOptions = {
         roleCode: token.roleCode,
         roleVersion: token.roleVersion,
         mustChangePassword: token.mustChangePassword,
+        sessionVersion: token.sessionVersion,
         permissions: ROLE_PERMISSIONS[token.roleCode]
       };
       return session;

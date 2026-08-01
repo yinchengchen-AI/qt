@@ -1,6 +1,6 @@
 "use client";
 
-import { Suspense, useState } from "react";
+import { Suspense, useEffect, useState } from "react";
 import { App as AntdApp, Button, Checkbox, Form, Input, Modal, message as antMessage } from "antd";
 import { LockOutlined, UserOutlined, FileTextOutlined, TeamOutlined, BarChartOutlined } from "@ant-design/icons";
 import { signIn } from "next-auth/react";
@@ -179,6 +179,17 @@ function LoginForm({ quickFillPassword }: { quickFillPassword: string }) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [resetOpen, setResetOpen] = useState(false);
+
+  // 单点登录:被另一台设备登录踢出时, jwt callback 返 null 触发
+  // NextAuth 重定向到 ?error=SessionRequired. 监听并显示提示.
+  useEffect(() => {
+    const reason = search.get("reason");
+    const err = search.get("error");
+    if (reason === "session-revoked" || err === "SessionRequired") {
+      setError("您的账号在另一台设备登录,已自动登出。如非本人操作,请尽快修改密码");
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   async function handleFinish(values: FormValues) {
     if (loading) return;
