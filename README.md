@@ -2,7 +2,7 @@
 
 > 客户 / 合同 / 开票 / 回款 一体化管理，附件走 MinIO presigned 直传。
 >
-> **当前版本: v0.13.7**（2026-07-31）
+> **当前版本: v0.13.8**（2026-08-01）
 >
 > 项目文档地图见 [docs/README.md](docs/README.md)，详细设计见 [docs/architecture/DESIGN-v3.md](docs/architecture/DESIGN-v3.md)，用户手册见 [docs/user/USER_MANUAL.md](docs/user/USER_MANUAL.md)。
 
@@ -204,7 +204,7 @@ nginx 反代下上游异常时，由 `public/502.html` 静态页和 `app/502/pag
 
 ## 质量基线
 
-基线刷新于 **v0.13.7（2026-07-31）**。
+基线刷新于 **v0.13.8（2026-08-01）**。
 
 | 项 | 状态 |
 |---|---|
