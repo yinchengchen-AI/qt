@@ -2,7 +2,7 @@
 
 > 客户 / 合同 / 开票 / 回款 一体化管理，附件走 MinIO presigned 直传。
 >
-> **当前版本: v0.13.8**（2026-08-01）
+> **当前版本: v0.13.9**（2026-08-01）
 >
 > 项目文档地图见 [docs/README.md](docs/README.md)，详细设计见 [docs/architecture/DESIGN-v3.md](docs/architecture/DESIGN-v3.md)，用户手册见 [docs/user/USER_MANUAL.md](docs/user/USER_MANUAL.md)。
 
@@ -204,7 +204,7 @@ nginx 反代下上游异常时，由 `public/502.html` 静态页和 `app/502/pag
 
 ## 质量基线
 
-基线刷新于 **v0.13.8（2026-08-01）**。
+基线刷新于 **v0.13.9（2026-08-01）**。
 
 | 项 | 状态 |
 |---|---|
@@ -217,6 +217,9 @@ nginx 反代下上游异常时，由 `public/502.html` 静态页和 `app/502/pag
 
 ## 最近更新
 
+### v0.13.9（2026-08-01）KPI 口径说明 + 全站 tooltip/subtitle 批量校正
+
+KPI 标题 ⓘ 口径与 statistics.ts 实际实现对齐(合同/开票/回款/客户的过滤条件、日期字段、状态 enum 全部注明);账龄 KPI 补 dueDate fallback + 应收计算公式。全站额外 9 处 tooltip/subtitle 批量校对,删除 v0.5.0 客户状态机、v0.3.0 项目/工作流模块等遗留错误描述。纯 UI 文案,无 schema / API 契约变更。
 
 ### v0.13.8（2026-08-01）部署链路优化:远端触发 + preflight + 一键回滚
 

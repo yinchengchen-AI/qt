@@ -25,6 +25,31 @@
 
 ## 详细变更
 
+### v0.13.9(2026-08-01) KPI 口径说明与全站 tooltip/subtitle 批量校正
+
+- **KPI 标题 ⓘ 口径**(dashboard/page.tsx):对照 server/services/statistics.ts + lib/invoice-amounts.ts + prisma/schema.prisma 实际实现, 4 个 KPI tooltip 描述与代码一致:
+  - 客户总数:`deletedAt IS NULL` + `本期新增按 createdAt`
+  - 合同总额:`status IN [ACTIVE, CLOSED]` + `isLegacyZeroAmount = false` + `signDate` + `totalAmount` (含税)
+  - 已开票额:口径 `INVOICE_ISSUED_AMOUNT_STATUSES = [ISSUED, RED_FLUSHED]` (v0.10.2 起统一);RED_FLUSHED 原票按 +A 计入,冲票 ISSUED 按 -A 计入,一对红冲净额归零;DRAFT/PENDING_FINANCE/REJECTED/VOIDED 不计
+  - 已回款额:`status IN [CONFIRMED, RECONCILED]` + `receivedAt`;PLANNED/REFUNDED/CANCELLED 不计
+
+- **账龄 KPI ⓘ**:补 `dueDate` 缺时 fallback 到 `actualIssueDate` + 应收 = 发票金额 − 已回款 (>0.01 元才计入) + 超期公式 + 两种基准的语义差异 (due = 合同违约;issue = 账龄流转)
+
+- **全站 tooltip/subtitle 批量修正**(9 处,详见 commit fc7aa0b2):
+  - `customers/new` subtitle:删除 v0.5.0 已硬删的 "进入洽谈中状态" 误导句
+  - `admin/users/[id]/edit` 姓名字段:删除错位的 tooltip(之前说"不可修改",但姓名字段可编辑)
+  - `invoices/new` FormSection:"已生效或执行中" → "生效中 (ACTIVE)"(合同 enum 实际只有 DRAFT/ACTIVE/CLOSED)
+  - `invoices/new` 剩余可开票额度 hint:"含草稿/待审" → "草稿/待审/已开/红冲"(INVOICE_LIMIT_COUNTED_STATUSES 实际 4 个状态)
+  - `admin/trash` subtitle:删除 v0.3.0 已删的 "项目、工作流模板"
+  - `dashboard` subtitle:加 permHint ⓘ 说明
+  - `lib/i18n aging.subtitle`:"按发票/到期日" → "按开票日/到期日"
+  - `invoices/new` subtitle:"提交后由财务审核" → "保存后可在详情页提交财务审核"(保存只是 DRAFT)
+  - `contracts/[id]/edit` subtitle:补 "止期必须晚于起期, 否则无法保存" 约束
+
+**版本号**: `0.13.8` → `0.13.9` (patch bump,纯文档/UI文案,无 schema / API 契约变更)
+
+**部署说明**: 无 migration, deploy.sh 常规流程。release:publish 自动写 AppRelease (覆盖 b53ccecd + fc7aa0b2 共 2 个 docs commit), 用户登录弹窗展示。
+
 ### v0.13.8(2026-08-01) 部署链路优化:远端触发 + preflight + 一键回滚
 
 - **抽出公共库** `scripts/prod/_lib.sh`: `log` / `log_warn` / `log_err` / `log_ok` / `preflight_check` / `smoke_test` / `require_root_or_docker`,`deploy.sh` 和 `rollback.sh` 通过 self-rewrite 护栏把它复制到 `/tmp` 再 source(避免 self-rewrite 路径丢函数)。
