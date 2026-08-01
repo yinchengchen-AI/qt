@@ -1,8 +1,10 @@
 // 角色管理服务（仅 ADMIN）
 // 护栏：
-//   - 系统角色（isSystem=true）不可删
-//   - 改 name/description/permissions 允许；改 code 允许（要校验唯一）
-//   - 删：硬删，前置检查 User 表无引用
+//   - 运行时权限真源 = lib/permissions.ts 的 ROLE_PERMISSIONS 硬编码矩阵;
+//     DB Role.permissions 只是 seed 同步的展示副本, 因此:
+//   - createRole 一律 403 (自定义角色的 code 不在 RoleCode 联合类型里, 运行时会崩)
+//   - 系统角色 (isSystem=true) 的 permissions/code 不可改 (403), name/description 可改
+//   - 系统角色不可删; 历史遗留自定义角色可删 (清理入口)
 import { prisma } from "@/lib/prisma";
 import { ApiError } from "@/lib/api";
 import { ERROR_CODES } from "@/types/errors";
@@ -61,29 +63,13 @@ export type RoleCreateInput = {
   permissions: { resource: string; actions: string[] }[];
 };
 
-export async function createRole(actor: SessionUser, input: RoleCreateInput) {
+export async function createRole(actor: SessionUser, _input: RoleCreateInput) {
   requirePermission(actor.roleCode, RESOURCE.ROLE, ACTION.CREATE);
-  const dup = await prisma.role.findUnique({ where: { code: input.code } });
-  if (dup) {
-    throw new ApiError(ERROR_CODES.VALIDATION_FAILED, `角色代码 ${input.code} 已被使用`, 409);
-  }
-  const r = await prisma.role.create({
-    data: {
-      code: input.code,
-      name: input.name,
-      description: input.description || null,
-      permissions: input.permissions as unknown as Prisma.InputJsonValue,
-      isSystem: false
-    }
-  });
-  await audit(prisma, {
-    actorId: actor.id,
-    action: "ROLE_CREATE",
-    entity: "Role",
-    entityId: r.id,
-    after: { code: r.code, name: r.name }
-  });
-  return r;
+  throw new ApiError(
+    ERROR_CODES.FORBIDDEN,
+    "自定义角色已停用：内置角色权限由代码矩阵 (lib/permissions.ts) 定义，如需调整请修改代码并发布",
+    403
+  );
 }
 
 export type RoleUpdateInput = Partial<{
@@ -97,6 +83,17 @@ export async function updateRole(actor: SessionUser, id: string, input: RoleUpda
   requirePermission(actor.roleCode, RESOURCE.ROLE, ACTION.UPDATE);
   const existing = await prisma.role.findUnique({ where: { id } });
   if (!existing) throw new ApiError(ERROR_CODES.NOT_FOUND, "角色不存在", 404);
+  // 系统角色的权限/代码由代码矩阵定义, 只允许改 name/description (展示文案)
+  if (
+    existing.isSystem &&
+    (input.permissions !== undefined || (input.code !== undefined && input.code !== existing.code))
+  ) {
+    throw new ApiError(
+      ERROR_CODES.FORBIDDEN,
+      "系统角色的权限与代码由代码矩阵 (lib/permissions.ts) 定义，不可在后台修改",
+      403
+    );
+  }
   // 改 code 时校验唯一
   if (input.code && input.code !== existing.code) {
     const dup = await prisma.role.findUnique({ where: { code: input.code } });

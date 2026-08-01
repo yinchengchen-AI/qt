@@ -1,6 +1,6 @@
 "use client";
 import { ProTable, type ActionType, type ProColumns } from "@ant-design/pro-components";
-import { App as AntdApp, Button, Tag, Space } from "antd";
+import { App as AntdApp, Alert, Button, Tag, Space } from "antd";
 import { useRouter } from "next/navigation";
 import { useRef } from "react";
 import { Page } from "@/components/page";
@@ -79,9 +79,6 @@ export default function RolesPage() {
           <Button type="link" size="small" onClick={() => router.push(`/admin/roles/${r.id}`)}>
             详情
           </Button>
-          <Button type="link" size="small" onClick={() => router.push(`/admin/roles/${r.id}/edit`)}>
-            编辑
-          </Button>
           <Button
             type="link"
             size="small"
@@ -100,12 +97,14 @@ export default function RolesPage() {
     <Page>
       <PageHeader
         title="角色权限"
-        subtitle="系统内置 4 个角色 + 自定义角色；权限矩阵覆盖 12 类资源 × 6 种操作"
-        actions={
-          <Button key="add" type="primary" onClick={() => router.push("/admin/roles/new")}>
-            新建角色
-          </Button>
-        }
+        subtitle="系统内置 5 个角色 · 权限由代码矩阵 (lib/permissions.ts) 定义，本页仅供查看"
+      />
+      <Alert
+        type="info"
+        showIcon
+        style={{ marginBottom: 12 }}
+        title="权限的运行时真源是代码矩阵"
+        description="本页展示的是 seed 同步到数据库的副本，仅供查看。调整权限请修改 lib/permissions.ts 并发布；历史遗留的自定义角色可在此删除。"
       />
       <ProTable<Role> actionRef={actionRef}
         rowKey="id"

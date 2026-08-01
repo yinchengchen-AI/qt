@@ -1,7 +1,7 @@
 "use client";
 import { ProCard, ProDescriptions } from "@ant-design/pro-components";
 import { Tag, Button } from "antd";
-import { useParams, useRouter } from "next/navigation";
+import { useParams } from "next/navigation";
 import { useGoBack } from "@/lib/navigation";
 import useSWR from "swr";
 import { Page } from "@/components/page";
@@ -27,7 +27,6 @@ type Role = {
 export default function RoleDetailPage() {
   const params = useParams();
   const id = String(params.id);
-  const router = useRouter();
   const goBack = useGoBack("/admin/roles");
   const { data, error, isLoading, mutate } = useSWR<Role>(`/api/roles/${id}`);
 
@@ -66,11 +65,6 @@ export default function RoleDetailPage() {
         title={`${data.name}（${data.code}）`}
         subtitle={data.description ?? "—"}
         meta={data.isSystem ? <Tag color="blue">系统角色</Tag> : <Tag>自定义角色</Tag>}
-        actions={
-          <Button type="primary" onClick={() => router.push(`/admin/roles/${id}/edit`)}>
-            编辑
-          </Button>
-        }
       />
       <ProCard>
         <ProDescriptions<Role>
