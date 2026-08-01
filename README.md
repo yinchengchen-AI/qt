@@ -6,11 +6,11 @@
 [![TypeScript](https://img.shields.io/badge/TypeScript-6.0.3-3178c6)](https://www.typescriptlang.org/)
 [![Prisma](https://img.shields.io/badge/Prisma-7.9.1-2d3748)](https://www.prisma.io/)
 [![PostgreSQL](https://img.shields.io/badge/PostgreSQL-16-336791)](https://www.postgresql.org/)
-[![Last Release](https://img.shields.io/badge/release-v0.18.1-blue)](CHANGELOG.md)
+[![Last Release](https://img.shields.io/badge/release-v0.18.2-blue)](CHANGELOG.md)
 
 > **客户 / 合同 / 开票 / 回款** 一体化管理,附件走 MinIO presigned 直传,服务端 Server Actions + RBAC + 行级隔离。
 >
-> **当前版本: v0.18.1**(2026-08-02)。文档地图见 [docs/README.md](docs/README.md),架构与设计见 [docs/architecture/DESIGN-v3.md](docs/architecture/DESIGN-v3.md),用户手册见 [docs/user/USER_MANUAL.md](docs/user/USER_MANUAL.md)。
+> **当前版本: v0.18.2**(2026-08-02)。文档地图见 [docs/README.md](docs/README.md),架构与设计见 [docs/architecture/DESIGN-v3.md](docs/architecture/DESIGN-v3.md),用户手册见 [docs/user/USER_MANUAL.md](docs/user/USER_MANUAL.md)。
 
 ## 目录
 
@@ -241,7 +241,7 @@ nginx 反代下上游异常时,由 `public/502.html` 静态页与 `app/502/page.
 
 ## 质量基线
 
-基线刷新于 **v0.18.1(2026-08-02)**。
+基线刷新于 **v0.18.2(2026-08-02)**。
 
 | 项 | 状态 |
 |---|---|
@@ -255,6 +255,14 @@ nginx 反代下上游异常时,由 `public/502.html` 静态页与 `app/502/page.
 ## 最近更新
 
 最近 5 个版本,完整历史见 [CHANGELOG.md](CHANGELOG.md)。
+
+### v0.18.2(2026-08-02)修复 deploy.sh 的 npm ci devDeps 漏装
+
+v0.18.1 首次部署定位与修复: 服务器 `.env` 把 `NODE_ENV=production` 注入 npm ci, npm 自动 omit=dev, prisma / tsx / vitest 等 devDeps 全跳过, `npx prisma` 临时下载又找不到 `prisma/config`。
+
+- `scripts/prod/deploy.sh`: `npm ci` 前 `unset NODE_ENV`、完后 `export` 回去, 保 Next runtime 的 production 语义
+- 不动 `.env` / `.npmrc` (NODE_ENV=production 是 Next + systemd 的运行时配置)
+- 验证: 服务器重跑 `npm ci` 后 prisma generate 通过, typecheck / lint / test 全绿
 
 ### v0.18.1(2026-08-02)权限细化 + 数据字典只读/拒写
 
@@ -285,15 +293,6 @@ v0.17.0 仅清掉了镜像与 `rollback.sh --docker` flag, 文档/代码里仍�
 - `Dockerfile` / `docker-compose.prod.yml` / `deploy.sh:62` / `rollback.sh:33` / `remote-deploy.sh:32` 顶部加 `~~~~~~~~~~~~~~~~~~~~ DEPRECATED ~~~~~~~~~~~~~~~~~~~~` banner
 - `AGENTS.md` / `README.md` / `docs/ops/deploy-current.md` 同步加 `**DEPRECATED**` 标记
 - 历史档案 (`CHANGELOG.md` v0.16 及更早, `docs/ops/deploy-history/*.md`) **不动**
-
-### v0.17.0(2026-08-02)去掉 docker fallback,腾 1.49GB
-
-**DEPRECATED: `qt-app:latest` 镜像已删 + `rollback.sh --docker` 选项已去 + `switch-to-native.sh` 标记历史**。
-
-- 不再维护 docker 应急回退能力 — native systemd 是唯一路径
-- 服务器仅留 postgres + minio 两个 active 容器
-- 总盘从 16G 剩 → **21G 剩**
-- **DEPRECATED** 路径: 真要 docker 回退 (不推荐): `docker build . -t qt-app:latest && docker compose up -d app`
 
 ### v0.16.0(2026-08-02)部署提速:native systemd 主路径,14min → 秒级
 

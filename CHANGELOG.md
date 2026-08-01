@@ -133,6 +133,22 @@ v0.18.0 权限收紧的延伸: 同主题内把 EXPERT/OPS 行级再细一刀, �
 - 字典前端: 9 类只读类目立刻禁用所有写按钮 (历史数据不受影响).
 - DB schema / migrations: 无变化 (纯 role 矩阵细化 + 字典 schema 旁路拒绝, 与 v0.18.0 同).
 
+## v0.18.2(2026-08-02) 修复 deploy.sh 的 npm ci devDeps 漏装
+
+v0.18.1 首次部署失败定位: 服务器 `.env` 设了 `NODE_ENV=production`, `deploy.sh:71 set -a; . ./.env` 会把它注入 npm ci 的环境, 而 npm 看到 production 会自动 omit=dev, 把 `prisma / tsx / vitest / eslint` 等 devDependencies 全部跳过安装。表现是 `npx prisma generate` 临时下载 prisma 找不到 `prisma/config` 模块 → `Failed to load config file`。
+
+v0.18.0 部署时靠 prisma 在 node_modules 残留, 没暴露; v0.18.1 那次 `npm ci` 把残留清掉了, 才触发。
+
+### 改动
+
+- `scripts/prod/deploy.sh` 在 `npm ci` 前 `save_NODE_ENV="$NODE_ENV"; unset NODE_ENV`, 调用完后 `export NODE_ENV="$save_NODE_ENV"` 还原 (供 `next build` 与 systemd runtime 用 production 语义)。
+- **不动 `.env` / `.npmrc`**: `NODE_ENV=production` 是运行时配置 (Next + systemd), 不能改。
+
+### 验证
+
+- 服务器手动 `unset NODE_ENV && npm ci` 后 `node_modules/.bin/prisma` 出现, `prisma generate` 通过。
+- 本机重启 `npm run typecheck / lint / test` 全绿 (86 文件 / 661 用例)。
+
 ## v0.16.0(2026-08-02) 部署架构迁移 — native systemd 主路径
 
 部署耗时从 ~14 分钟压到 30s–2min,根因 3.5GB ECS 内存被 dockerd (1.7GB) + hermes-agent (0.5GB) 吃掉大头,build 阶段只能 swap。
