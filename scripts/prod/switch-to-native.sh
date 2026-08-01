@@ -3,7 +3,7 @@
 # (v0.17+: 此脚本已被弃用 — docker qt-app 镜像已删, 不再有 docker fallback)
 #
 # 用法: 历史脚本;调用会自检失败并 exit 1 (docker qt-app 已不存在)
-#      如需重新启用 docker fallback: 先 docker build -t qt-app:latest . 再恢复此脚本
+#      应急复活 docker fallback (DEPRECATED): docker build -t qt-app:latest . 反注释 docker-compose.prod.yml 的 app: 块
 #
 # 做的事 (历史, 不可重跑):
 #   1. preflight: qt-app.service 已装且禁用, docker qt-app 还在跑
@@ -104,7 +104,7 @@ git commit -m "chore: switch qt-app from docker to native systemd (rollback.sh -
 # ---- 5. 提示 ----
 echo
 echo "[OK] 已切 native"
-echo "    docker qt-app:latest 镜像留着 (rollback.sh --docker 一键回退)"
+echo "    (DEPRECATED) docker qt-app 已无, rollback.sh --docker 已移除"
 echo "    后续日常 deploy: bash scripts/prod/deploy.sh"
 echo "    后续回滚: bash scripts/prod/rollback.sh [ --to <sha> | --docker ]"
 echo "    应急 (systemd 整个炸了): bash scripts/prod/rollback.sh --docker"
