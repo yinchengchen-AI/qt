@@ -4,6 +4,7 @@
 
 ## 重大里程碑
 
+- **v0.14.0(2026-08-01)**: 消息中心全面优化 — 行级去重(entityKey + @@unique + skipDuplicates)压 58% 增长;MessageArchive 归档表 90d cron + admin 查看页(/admin/messages);SSE 端点 + 进程内 hub + 5s kick 调度把通知延迟从 60s 压缩到 ≤5s;i18n 系统升级支持参数占位符;Bell badge overflowCount=99+ 上限;UI 新增"清空已读"批量按钮。详细见 README 「最近更新」v0.14.0 段
 - **v0.10.2(2026-07-17)**: 业务不变量与行级隔离修复 — R-08 开票上限补 PENDING_FINANCE 口径 + submit/issue 复检 + 锁合同行消竞态;EXPERT 行级隔离生效(`isRowRestricted`);账龄统计越权;红冲"已开票"口径统一(`INVOICE_ISSUED_AMOUNT_STATUSES`);raw 软删附件 404 + presign-upload 归属校验;with-profile 接入"最后 ADMIN"护栏,详见 README 「最近更新」v0.10.2 段
 - **v0.10.1(2026-07-13)**: 安全与并发修复 — 密码重置链路加固 + 文件下载代理审计/响应头 + 回款确认 FOR UPDATE + advisory lock + 合同总额调小锁行 + Zod 错误脱敏,详见 README 「最近更新」v0.10.1 段
 - **v0.10.0(2026-07-11)**: 登录安全加固 — 限速 + 失败计数锁定 + 审计日志 + 自服务密码重置 + 开放重定向 URL 白名单;新增 `User.mustChangePassword / failedLoginCount / lockedUntil / lastFailedLoginAt / roleVersion` 5 字段 + 新表 `PasswordResetToken`(migration `20260711_login_security_hardening`),详见 [docs/history/security/login-security-review-2026-07-11.md](docs/history/security/login-security-review-2026-07-11.md) 与 README 「最近更新」v0.10.0 段
@@ -24,6 +25,43 @@
 - **P0**:项目脚手架 + 登录 + 字典种子 + 5 角色权限
 
 ## 详细变更
+
+### v0.14.0(2026-08-01) 消息中心全面优化
+
+#### 行级去重 (PR 2)
+- Prisma schema: Message 新增 `entityKey String?` (业务实体键 `type:linkId`) + `@@unique([entityKey, receiverUserId])` (NULL 多行不冲突);migration `20260801132108_message_entity_key_dedupe` 一次性 backfill 4482 条历史 link.id 为 entityKey + `keep_min` 去重
+- `server/events/bus.ts`:`DomainEvent.entityKey?` 可选字段;`createMany({ data, skipDuplicates: true })` 作 @@unique 兜底
+- 5 个 emit 调用点显式传 entityKey: stale-contract × 2 / certificate-expiry-check / runner × 2 / payment
+- `server/services/message.ts`: 新增 `clearReadMessages(user)` — 批量 deleteMany + 单条 `MESSAGE_CLEAR_READ` audit
+- `app/api/messages/read/clear/route.ts`: POST 一键清空接口
+- UI: `/messages` PageHeader 加"清空已读"按钮(带二次确认);Header drawer 在 inbox 全已读时显示"清空"链接
+
+#### 归档 (PR 3)
+- 新 `MessageArchive` 表 (append-only): id, receiverUserId, type, title, content, link, entityKey, readAt, createdAt, **archivedAt**
+- migration `20260801132739_message_archive`
+- `server/jobs/message-archive.ts`: `runMessageArchive(now)` — 找 `readAt != null && readAt < (now - 90d)` 的消息(BATCH 1000)→ $transaction: `messageArchive.createMany({ skipDuplicates })` + `message.deleteMany`;env `MESSAGE_ARCHIVE_AFTER_DAYS` 覆盖默认 90
+- `server/jobs/runner.ts`: 在 `runAllJobs` 末尾注册 `message-archive` (与现有 5 个 job 同过 hourly tick)
+- `app/api/admin/messages-archive/route.ts` + `app/(app)/admin/messages/page.tsx`: ADMIN 专属只读页(月份过滤 + ProTable,列含类型/标题/内容/接收人/链接/创建/归档时间)
+- `server/services/message.ts`: `listArchivedMessages` 显式校验 `roleCode === "ADMIN"` (兜底 403)
+
+#### SSE 实时通知 (PR 4)
+- 新 `app/api/messages/stream/route.ts`: GET, runtime=nodejs, maxDuration=3600, dynamic=force-dynamic, 25s 心跳 `:keepalive`, 立即推 `event: ready`
+- 新 `server/notifications/hub.ts`: 进程内 in-memory `Map<userId, Set<Subscriber>>` + `subscribe / broadcastKick / broadcastKickAll`
+- 新 `server/notifications/scheduler.ts`: 5s setInterval `broadcastKickAll`;globalThis 哨兵防 Next.js dev hot-reload 重复启动;`interval.unref()` 不阻塞进程退出
+- 新 `lib/use-message-stream.ts`: EventSource hook, `onKick` callback;卸载自动 close
+- 新 `lib/logger.ts`: 轻量 debug/info/warn/error,无外部依赖
+- `components/dashboard-shell.tsx`: 60s polling 之后挂 `useMessageStream onKick = loadUnread + (drawerOpen ? loadMessages)`;60s polling 保留作为 EventSource 失败的兜底
+- `ops/nginx/qt-biz.conf`: 加 `/api/messages/stream` SSE 块 — `proxy_buffering off`, `proxy_cache off`, `proxy_read_timeout 1h`, `Cache-Control: no-store, no-transform`, `X-Accel-Buffering: no`
+
+#### UI 微调 (PR 1)
+- `components/dashboard-shell.tsx`: Bell badge 加 `overflowCount={99}`, 超过显示 `99+` 避免 4 位数压力
+- `lib/i18n.ts`: `format()` 占位符替换 + `getT`/`useT` 接受 `params`;加 `messages.toast.markedRead` (zh/en)
+- `app/(app)/messages/page.tsx`: 硬编码 `msg.success(\`已标记 ${n} 条消息为已读\`)` 改用 `t("messages.toast.markedRead", { n })`
+
+#### 验证
+- typecheck 0 errors / lint 0 warnings / **test 83 files / 639 tests 全过** (新增 11 用例: events-bus skipDuplicates + message clearRead + message-archive cron + notifications-hub)
+- 生产数据验证: migration 后 entityKey backfill 4482/4482 = 100% 覆盖, zero (entityKey, receiverUserId) 重复行
+- 部署注意: 服务器 `sudo cp ops/nginx/qt-biz.conf /etc/nginx/conf.d/qt-biz.conf && sudo nginx -t && sudo systemctl reload nginx` 让 SSE block 生效
 
 ### v0.13.9(2026-08-01) KPI 口径说明与全站 tooltip/subtitle 批量校正
 

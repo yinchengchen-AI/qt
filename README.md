@@ -256,6 +256,17 @@ nginx 反代下上游异常时,由 `public/502.html` 静态页与 `app/502/page.
 
 最近 5 个版本,完整历史见 [CHANGELOG.md](CHANGELOG.md)。
 
+### v0.14.0(2026-08-01)消息中心全面优化:行级去重 + 归档表 + SSE 实时通知
+
+4 个 PR 一气呵成:
+
+- **PR 1 — UI 微调**:Bell badge `overflowCount={99}` 避免 4 位数压力;i18n 系统升级支持 `{n}` 占位符;toast 改用 `t("messages.toast.markedRead", { n })`
+- **PR 2 — 行级去重 + 清空已读**:Message 表加 `entityKey` + `@@unique([entityKey, receiverUserId])` + `createMany({ skipDuplicates: true })`;5 个 emit caller 显式传 entityKey;新 `clearReadMessages` + `/api/messages/read/clear` API + PageHeader"清空已读"按钮(migration 一次性 backfill 4482 条历史,zero 重复)
+- **PR 3 — 归档表 + admin 查看页**:新 `MessageArchive` 表 (append-only);`runMessageArchive` 90d cron 搬已读老消息(env `MESSAGE_ARCHIVE_AFTER_DAYS` 覆盖);`/admin/messages` ADMIN 专属只读页 + 月份过滤
+- **PR 4 — SSE 实时通知**:新 `/api/messages/stream` 端点(25s 心跳, maxDuration=3600s);进程内 hub + 5s `kick` scheduler 把通知延迟从 60s polling 压到 ≤5s;前端 `useMessageStream` EventSource hook;nginx 加 SSE location 块(`proxy_buffering off` 等);60s polling 保留作为 EventSource 失败的兜底
+
+质量基线:typecheck 0 / lint 0 / **test 83 files / 639 tests 全过**(新增 11 用例);部署注意:服务器 `sudo cp ops/nginx/qt-biz.conf /etc/nginx/conf.d/qt-biz.conf && sudo nginx -t && sudo systemctl reload nginx` 让 SSE 块生效
+
 ### v0.13.9(2026-08-01)KPI 口径说明 + 全站 tooltip/subtitle 批量校正
 
 KPI 标题 ⓘ 口径与 `server/services/statistics.ts` 实际实现对齐(合同 / 开票 / 回款 / 客户的过滤条件、日期字段、状态 enum 全部注明);账龄 KPI 补 `dueDate` fallback + 应收计算公式。全站额外 9 处 tooltip/subtitle 批量校对,删除 v0.5.0 客户状态机、v0.3.0 项目/工作流模块等遗留错误描述。**纯 UI 文案,无 schema / API 契约变更**。
