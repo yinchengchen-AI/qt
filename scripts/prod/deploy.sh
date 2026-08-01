@@ -168,9 +168,28 @@ if [ "$PUBLISH_EXIT" -ne 0 ]; then
 fi
 
 # ---- restart app (native) ----
+# Next.js 16 + 活跃 SSE / keep-alive 连接 → SIGTERM 关闭慢; deploy.sh 容错:
+#   1. 先 SIGTERM (systemctl kill --no-block) 等 up to 30s 优雅退出
+#   2. 30s 内不退就 SIGKILL (next-server 进程组)
+#   3. systemd start 再起新进程 (RestartSec=5 兜底)
 log "==> systemctl restart qt-app.service (native build 完毕)"
-systemctl restart qt-app.service
-# 等旧进程释放 3000 端口 (systemd 会先 SIGTERM 再 SIGKILL, 通常 <2s)
+systemctl kill -s SIGTERM --kill-who=main --no-block qt-app.service 2>/dev/null || true
+GRACE_OK=0
+for i in $(seq 1 30); do
+  if ! pgrep -f "next-server" >/dev/null 2>&1; then
+    GRACE_OK=1
+    break
+  fi
+  sleep 1
+done
+if [ "$GRACE_OK" -ne 1 ]; then
+  log_warn "next-server SIGTERM 30s 内不退 (Next 16 SSE/keep-alive bug);SIGKILL 强退"
+  pkill -9 -f "next-server" 2>/dev/null || true
+  sleep 1
+fi
+# 让 systemd 重新拉起 (Restart=on-failure 在 SIGKILL 后也会拉, 但显式 start 更可控)
+systemctl start qt-app.service
+# 等新进程在 3000 端口就绪 (最快 197ms, 偶尔 2s)
 RESTART_OK=0
 for i in 1 2 3 4 5 6 7 8 9 10; do
   if curl -fsS -o /dev/null --max-time 1 http://127.0.0.1:3000/login 2>/dev/null; then
@@ -180,7 +199,7 @@ for i in 1 2 3 4 5 6 7 8 9 10; do
   sleep 1
 done
 if [ "$RESTART_OK" -ne 1 ]; then
-  log_warn "qt-app 在 3000 端口未应答;看 journalctl -u qt-app -n 50"
+  log_warn "qt-app 10s 内未在 3000 端口应答;看 journalctl -u qt-app -n 50"
 fi
 
 # ---- 磁盘清理 ----
