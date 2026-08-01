@@ -102,6 +102,10 @@ if [ "$FAIL" -gt 0 ]; then
   exit 1
 fi
 
+# ---- 4.5 commit 让 git 工作区干净 (否则 deploy.sh preflight 会拦) ----
+git add docker-compose.prod.yml
+git commit -m "chore: switch qt-app from docker to native systemd (rollback.sh --docker 应急)" --no-verify || true
+
 # ---- 5. 提示 ----
 echo
 echo "[OK] 已切 native"

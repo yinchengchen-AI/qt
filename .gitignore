@@ -117,3 +117,6 @@ docs/db-schema-snapshot.sql
 
 # AI agent 多角色配置(本地,.harness/reins/*)
 .harness/
+
+# 一键 native 备份 (switch-to-native.sh 生成;rollback-to-docker.sh 应急用)
+docker-compose.prod.yml.bak-pre-native
