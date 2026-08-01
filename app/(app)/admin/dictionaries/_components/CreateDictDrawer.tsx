@@ -8,7 +8,7 @@ import { DICT_META, isSystemCategory } from "@/lib/dict-domain";
 type Props = {
   open: boolean;
   onClose: () => void;
-  onSaved: () => void;
+  onSaved: (category: string) => void;
   /** 默认选中的 category; 上下文传入(从 Sider 当前选中) */
   defaultCategory?: string;
   /** 树形类用,预填 parentCode(从"新增子级"按钮触发) */
@@ -81,7 +81,7 @@ export function CreateDictDrawer({ open, onClose, onSaved, defaultCategory, defa
       }
       message.success("字典项已新增");
       form.resetFields();
-      onSaved();
+      onSaved(v.category);
       onClose();
     } catch {
       /* ignore */

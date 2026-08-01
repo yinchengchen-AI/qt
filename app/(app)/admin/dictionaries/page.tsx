@@ -11,6 +11,7 @@ import { DictTableView, type DictRow } from "./_components/DictTableView";
 import { DictTreeView, type DictTreeNode } from "./_components/DictTreeView";
 import { DictEditDrawer } from "./_components/DictEditDrawer";
 import { CreateDictDrawer } from "./_components/CreateDictDrawer";
+import { refreshDict } from "@/lib/dict-client";
 
 const { Sider, Content } = Layout;
 
@@ -147,6 +148,7 @@ export default function DictionariesPage() {
     const j = await r.json();
     if (j.code !== 0) return message.error(j.message);
     message.success(next ? "已启用" : "已停用，列表已刷新");
+    void refreshDict(selected);
     fetchRows();
   }
 
@@ -169,6 +171,7 @@ export default function DictionariesPage() {
     if (fail > 0) message.warning(`批量操作完成：${ok} 成功，${fail} 失败`);
     else message.success(`已${active ? "启用" : "停用"} ${ok} 条字典项`);
     setSelectedIds(new Set());
+    void refreshDict(selected);
     fetchRows();
   }
 
@@ -293,13 +296,13 @@ export default function DictionariesPage() {
         open={!!editTarget}
         dict={editTarget}
         onClose={() => setEditTarget(null)}
-        onSaved={fetchRows}
+        onSaved={(cat) => { fetchRows(); void refreshDict(cat); }}
       />
 
       <CreateDictDrawer
         open={createOpen}
         onClose={() => { setCreateOpen(false); setCreateParent(null); }}
-        onSaved={fetchRows}
+        onSaved={(cat) => { fetchRows(); void refreshDict(cat); }}
         defaultCategory={selected}
         defaultParentCode={createParent?.parentCode}
       />

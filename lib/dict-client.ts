@@ -1,10 +1,9 @@
 "use client";
 import { useEffect, useState } from "react";
-import useSWR from "swr";
+import useSWR, { mutate } from "swr";
 
 type DictItem = { code: string; label: string };
 const cache = new Map<string, DictItem[]>();
-const subs = new Map<string, Set<() => void>>();
 
 async function fetchDict(category: string): Promise<DictItem[]> {
   const res = await fetch(`/api/dictionaries?category=${encodeURIComponent(category)}`, {
@@ -22,10 +21,6 @@ async function loadDict(category: string): Promise<DictItem[]> {
   return data;
 }
 
-function notify(category: string) {
-  subs.get(category)?.forEach((fn) => fn());
-}
-
 export function useDict(category: string): DictItem[] {
   // 用 useState + useSWR 触发 fetch；初次返回 fallback，fetch 完成后通过 setState 触发重渲染
   const [data, setData] = useState<DictItem[]>(() => cache.get(category) ?? []);
@@ -39,15 +34,16 @@ export function useDict(category: string): DictItem[] {
       cache.set(category, swrData);
     }
   }, [swrData, category]);
-  if (!subs.has(category)) subs.set(category, new Set());
   return data;
 }
 
 
 export async function refreshDict(category: string) {
   cache.delete(category);
-  await loadDict(category);
-  notify(category);
+  const data = await fetchDict(category);
+  cache.set(category, data);
+  // 触发所有挂载中的 useDict(category) 用新数据重渲染 (SWR key 与 useDict 内部一致)
+  await mutate(["dict", category], data, { revalidate: false });
 }
 
 

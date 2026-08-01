@@ -9,7 +9,7 @@ type Props = {
   open: boolean;
   dict: DictRow | null;
   onClose: () => void;
-  onSaved: () => void;
+  onSaved: (category: string) => void;
 };
 
 export function DictEditDrawer({ open, dict, onClose, onSaved }: Props) {
@@ -47,7 +47,7 @@ export function DictEditDrawer({ open, dict, onClose, onSaved }: Props) {
         return;
       }
       message.success("字典项已保存");
-      onSaved();
+      onSaved(dict.category);
       onClose();
     } catch {
       /* ignore */
