@@ -2,6 +2,34 @@
 
 本文件记录 qt-biz 每个版本的详细变更。项目快速入口请见 [README.md](README.md)。
 
+## v0.17.0(2026-08-02) 去掉 docker fallback 应急回退
+
+docker qt-app 镜像 (`qt-app:latest`) 删除, 留出来的 1.49GB 不再用。
+不再维护 docker 应急回退能力 — release 永远 forward, native 是唯一路径。
+
+变更:
+- **`docker rmi qt-app:latest`**:已删; 服务器现在只跑 postgres + minio 两个容器 (active)
+- **`scripts/prod/rollback.sh`**:移除 `--docker` flag; 调它现在 unknown flag 报错退出
+- **`scripts/prod/deploy.sh`**:磁盘清理段简化, 只清 dangling intermediate + builder cache; 无 KEEP=1 的 qt-app 保留逻辑
+- **`scripts/prod/switch-to-native.sh`**:标记为历史脚本 (一次性已用); docker qt-app 不再存在, 再跑会在 preflight `docker inspect qt-app` 失败退出
+- **`docker-compose.prod.yml` `app:` 块** 保持注释; pg/minio 块正常 (数据卷 + Dockerfile 留着, 仅为文档/历史参考)
+
+回滚 (自此只有 native 路径):
+- `bash scripts/prod/rollback.sh` — 默认 HEAD~1
+- `bash scripts/prod/rollback.sh --to <sha|tag>` — 任意 commit
+- `bash scripts/prod/rollback.sh --list` — 候选
+
+磁盘影响:
+| 项 | 前 | 后 |
+|---|---|---|
+| docker images 总占用 | ~1.94GB | ~451MB |
+| 总盘 avail | 16G | **21G** |
+| Use% | 67% | **56%** |
+
+如果未来真的需要 docker rollback, 流程: (1) 拉老 commit (2) `docker build . -t qt-app:latest` (3) `docker compose up -d app`。建议: 整机升 4GB+ 再启用。
+
+---
+
 ## v0.16.0(2026-08-02) 部署架构迁移 — native systemd 主路径
 
 部署耗时从 ~14 分钟压到 30s–2min,根因 3.5GB ECS 内存被 dockerd (1.7GB) + hermes-agent (0.5GB) 吃掉大头,build 阶段只能 swap。

@@ -256,6 +256,15 @@ nginx 反代下上游异常时,由 `public/502.html` 静态页与 `app/502/page.
 
 最近 5 个版本,完整历史见 [CHANGELOG.md](CHANGELOG.md)。
 
+### v0.17.0(2026-08-02)去掉 docker fallback,腾 1.49GB
+
+**删除 `qt-app:latest` 镜像 + `rollback.sh --docker` 选项 + `switch-to-native.sh` 标记历史**。
+
+- 不再维护 docker 应急回退能力 — native systemd 是唯一路径
+- 服务器仅留 postgres + minio 两个 active 容器
+- 总盘从 16G 剩 → **21G 剩**
+- 未来真要 docker 回退: `docker build . -t qt-app:latest && docker compose up -d app`
+
 ### v0.16.0(2026-08-02)部署提速:native systemd 主路径,14min → 秒级
 
 **单次部署从 ~14 分钟压到 30s–2min**,架构变化:

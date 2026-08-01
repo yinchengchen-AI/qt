@@ -1,20 +1,15 @@
 #!/usr/bin/env bash
 # qt-biz: 一次性切换 docker qt-app → native qt-app.service
+# (v0.17+: 此脚本已被弃用 — docker qt-app 镜像已删, 不再有 docker fallback)
 #
-# 用法: cd /opt/qt && sudo bash scripts/prod/switch-to-native.sh
+# 用法: 历史脚本;调用会自检失败并 exit 1 (docker qt-app 已不存在)
+#      如需重新启用 docker fallback: 先 docker build -t qt-app:latest . 再恢复此脚本
 #
-# 后续日常 deploy 用 scripts/prod/deploy.sh 即可 (已切 native).
-#
-# 做的事:
+# 做的事 (历史, 不可重跑):
 #   1. preflight: qt-app.service 已装且禁用, docker qt-app 还在跑
 #   2. 备份 docker-compose.prod.yml (移除 app: 块, 但 pg / minio 保留)
-#      保留 docker qt-app:latest 镜像做应急 (rollback.sh --docker 用)
 #   3. systemctl enable --now qt-app.service (首次启动 native)
 #   4. 等待 native 在 3000 起, 跑 smoke test
-#   5. 提示用户:
-#      - docker qt-app 容器已停 (但镜像还在; rollback.sh --docker 可拉起)
-#      - 后续用 deploy.sh / rollback.sh
-#      - 应急回滚到 native 之前的状态: 先 git checkout vX.Y.Z + npm ci + systemctl restart
 
 set -euo pipefail
 cd "$(cd "$(dirname "$0")/../.." && pwd)"

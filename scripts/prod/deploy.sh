@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 # 日常更新部署 (v0.16.0+): native systemd 主路径, pg/minio/data 走 docker
+# (v0.17+: qt-app 不再产 docker 镜像,无 fallback; rollback.sh 去 --docker 选项)
 #
 # 用法: 在 /opt/qt 目录下, sudo -E ./scripts/prod/deploy.sh
 #
@@ -22,7 +23,6 @@
 #   8. smoke test + cron 健康自检兜底 (防止 2025-09~2026-06 cron 静默失败 9 个月).
 #
 # 回滚: scripts/prod/rollback.sh (默认切上一版本; .next/cache 增量 = 秒级).
-# Docker 应急: rollback.sh --docker (systemd 真炸且不想排查时一键).
 #
 # 远端触发: scripts/prod/remote-deploy.sh (本地 Mac 用 QT.pem 触发, 不必手动 ssh).
 
@@ -203,16 +203,10 @@ if [ "$RESTART_OK" -ne 1 ]; then
 fi
 
 # ---- 磁盘清理 ----
-# - qt-app docker 镜像保留最近 1 版做应急 fallback (rollback.sh --docker 用)
-# - qt-postgres / qt-minio 镜像不动 (always pinned by compose)
-# - builder cache 控上限
+# v0.17+ qt-app 已无 docker 镜像 (native); pg/minio 是 compose active 服务, 不动.
+# 兜底清 dangling 中间层 (一般 0B; 偶尔 stale build 中间产物会卡)
 log "==> 磁盘清理"
-docker image prune -f >/dev/null
-KEEP=1
-# shellcheck disable=SC2012
-for tag in $(docker images qt-app --format '{{.Tag}}' | grep '^v' | sort -rV | tail -n +$((KEEP + 1))); do
-  docker rmi "qt-app:$tag" >/dev/null 2>&1 || true
-done
+docker image prune -f >/dev/null || true
 docker builder prune -f --keep-storage 4GB >/dev/null 2>&1 || true
 
 # ---- smoke test ----
