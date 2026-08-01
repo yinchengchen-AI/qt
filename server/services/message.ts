@@ -74,3 +74,28 @@ export async function deleteMessage(user: SessionUser, id: string) {
   });
   return prisma.message.delete({ where: { id } });
 }
+
+/**
+ * 清空当前用户所有已读消息(硬删除),与 markAllRead 区分:
+ * - markAllRead: 仅把 readAt 从 null → now,行保留在表里
+ * - clearRead: delete * where readAt != null,真正从 inbox 删除
+ *
+ * 写一条 audit (entityId = userId,action = MESSAGE_CLEAR_READ)。
+ * 不写每条删除痕迹 (PII),与 markAllRead 对齐。
+ */
+export async function clearReadMessages(user: SessionUser) {
+  requirePermission(user.roleCode, RESOURCE.MESSAGE, ACTION.UPDATE);
+  const r = await prisma.message.deleteMany({
+    where: { receiverUserId: user.id, readAt: { not: null } }
+  });
+  if (r.count > 0) {
+    await audit(prisma, {
+      actorId: user.id,
+      action: "MESSAGE_CLEAR_READ",
+      entity: "Message",
+      entityId: user.id,
+      after: { deleted: r.count }
+    });
+  }
+  return { deleted: r.count };
+}

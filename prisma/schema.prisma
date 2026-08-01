@@ -561,11 +561,15 @@ model Message {
   link           Json?
   readAt         DateTime?   @db.Timestamptz(6)
   createdAt      DateTime    @default(now()) @db.Timestamptz(6)
+  /// 业务实体键(`type:linkId`);deprecated / 无 link 消息留空
+  /// 配合 @@unique([entityKey, receiverUserId]) + createMany(skipDuplicates) 做行级去重
+  entityKey      String?     @db.VarChar(500)
 
   @@index([receiverUserId, readAt])
   // 去重查询:`type + receiverUserId + createdAt + JSON link.id`
   // 这个复合索引把扫描收敛到"今天 + 该用户 + 该类型"的小窗口,JSON 路径再二次过滤
   @@index([type, receiverUserId, createdAt])
+  @@unique([entityKey, receiverUserId])
 }
 
 model Announcement {

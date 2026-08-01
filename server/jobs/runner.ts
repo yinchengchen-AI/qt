@@ -126,6 +126,7 @@ export async function contractExpiringJob(now: Date, admins?: { id: string }[]):
       await emit(prisma, {
         type: "CONTRACT_EXPIRING",
         payload: { contractId: c.id, contractNo: c.contractNo, endDate: c.endDate, daysLeft: days },
+        entityKey: `CONTRACT_EXPIRING:${c.id}:${days}`,
         receivers: Array.from(new Set([c.ownerUserId, ...adminIds]))
       });
       created++;
@@ -197,6 +198,7 @@ export async function invoiceOverdueJob(now: Date, admins?: { id: string }[]): P
     await emit(prisma, {
       type: "INVOICE_OVERDUE_PAYMENT",
       payload: { invoiceId: inv.id, invoiceNo: inv.invoiceNo, customerName: inv.customerName, daysOverdue, remaining: remaining.toFixed(2) },
+      entityKey: `INVOICE_OVERDUE_PAYMENT:${inv.id}`,
       receivers: Array.from(new Set([inv.contract.ownerUserId, ...adminIds, ...financeIds]))
     });
     created++;

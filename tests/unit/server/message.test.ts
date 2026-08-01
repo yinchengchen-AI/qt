@@ -73,6 +73,19 @@ vi.mock("@/lib/prisma", () => ({
         }
         return { count: updated };
       }),
+      deleteMany: vi.fn(async (args: { where: { receiverUserId?: string; readAt?: { not?: null } | null } }) => {
+        let removed = 0;
+        for (let i = mockState.messages.length - 1; i >= 0; i--) {
+          const m = mockState.messages[i]!;
+          if (args.where.receiverUserId && m.receiverUserId !== args.where.receiverUserId) continue;
+          const ra = args.where.readAt;
+          if (ra === null && m.readAt !== null) continue;                 // readAt IS null → 只删 unread (本测试不会出现)
+          if (ra && typeof ra === "object" && "not" in ra && ra.not === null && m.readAt === null) continue;  // readAt IS NOT null → 只删已读
+          mockState.messages.splice(i, 1);
+          removed++;
+        }
+        return { count: removed };
+      }),
       delete: vi.fn(async (args: { where: { id: string } }) => {
         const idx = mockState.messages.findIndex((x) => x.id === args.where.id);
         if (idx === -1) throw new Error("not found");
@@ -94,7 +107,8 @@ import {
   markRead,
   markAllRead,
   deleteMessage,
-  countUnreadMessages
+  countUnreadMessages,
+  clearReadMessages
 } from "@/server/services/message";
 
 const makeUser = (roleCode: SessionUser["roleCode"], id = "u-1"): SessionUser => ({
@@ -230,5 +244,44 @@ describe("deleteMessage", () => {
       { id: "m-1", receiverUserId: "u-2", type: "PAYMENT_RECEIVED", title: "t1", content: "c1", readAt: null, createdAt: new Date() }
     ];
     await expect(deleteMessage(makeUser("SALES", "u-1"), "m-1")).rejects.toMatchObject({ status: 404 });
+  });
+});
+
+describe("clearReadMessages", () => {
+  it("只删除当前用户的已读消息, 未读的不动", async () => {
+    mockState.messages = [
+      { id: "m-1", receiverUserId: "u-1", type: "PAYMENT_RECEIVED", title: "t1", content: "c1", readAt: null, createdAt: new Date() },
+      { id: "m-2", receiverUserId: "u-1", type: "CONTRACT_EXPIRING", title: "t2", content: "c2", readAt: new Date(), createdAt: new Date() },
+      { id: "m-3", receiverUserId: "u-1", type: "CONTRACT_EXPIRED_UNPAID", title: "t3", content: "c3", readAt: new Date(), createdAt: new Date() },
+      { id: "m-4", receiverUserId: "u-2", type: "PAYMENT_RECEIVED", title: "t4", content: "c4", readAt: new Date(), createdAt: new Date() }
+    ];
+    const r = await clearReadMessages(makeUser("SALES", "u-1"));
+    expect(r.deleted).toBe(2);
+    // 剩余: m-1(自己的 unread, 不删) + m-4(别人的, 不属于当前用户)
+    expect(mockState.messages.map((m) => m.id).sort()).toEqual(["m-1", "m-4"]);
+    expect(mockState.messages).toHaveLength(2);
+  });
+
+  it("删除有痕迹时写 MESSAGE_CLEAR_READ 审计", async () => {
+    mockState.messages = [
+      { id: "m-1", receiverUserId: "u-1", type: "PAYMENT_RECEIVED", title: "t1", content: "c1", readAt: new Date(), createdAt: new Date() }
+    ];
+    await clearReadMessages(makeUser("SALES", "u-1"));
+    expect(mockState.audits).toHaveLength(1);
+    expect(mockState.audits[0]).toMatchObject({
+      action: "MESSAGE_CLEAR_READ",
+      entity: "Message",
+      entityId: "u-1",
+      after: { deleted: 1 }
+    });
+  });
+
+  it("没有已读时不写审计 (避免噪音)", async () => {
+    mockState.messages = [
+      { id: "m-1", receiverUserId: "u-1", type: "PAYMENT_RECEIVED", title: "t1", content: "c1", readAt: null, createdAt: new Date() }
+    ];
+    const r = await clearReadMessages(makeUser("SALES", "u-1"));
+    expect(r.deleted).toBe(0);
+    expect(mockState.audits).toHaveLength(0);
   });
 });

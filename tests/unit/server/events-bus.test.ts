@@ -8,13 +8,13 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
 
 const mockState = vi.hoisted(() => ({
-  createManyCalls: [] as Array<{ data: Array<Record<string, unknown>> }>
+  createManyCalls: [] as Array<{ data: Array<Record<string, unknown>>; skipDuplicates?: boolean }>
 }));
 
 vi.mock("@/lib/prisma", () => ({
   prisma: {
     message: {
-      createMany: vi.fn(async (args: { data: Array<Record<string, unknown>> }) => {
+      createMany: vi.fn(async (args: { data: Array<Record<string, unknown>>; skipDuplicates?: boolean }) => {
         mockState.createManyCalls.push(args);
         return { count: args.data.length };
       })
@@ -67,6 +67,26 @@ describe("emit", () => {
       title: "合同 CT-2026-001 将于 7 天后到期",
       link: { kind: "contract", id: "c-1" }
     });
+  });
+
+  it("emit 显式 entityKey 会写入 data 且调用 skipDuplicates", async () => {
+    const ev: DomainEvent = {
+      ...makeEvent("PAYMENT_RECEIVED", { paymentId: "p-99", paymentNo: "PN-99", amount: 200, customerName: "客户 X" }, ["u-1", "u-2"]),
+      entityKey: "PAYMENT_RECEIVED:p-99"
+    };
+    await emit(prisma, ev);
+    expect(mockState.createManyCalls).toHaveLength(1);
+    const args = mockState.createManyCalls[0]!;
+    expect(args.skipDuplicates).toBe(true);
+    expect(args.data.every((d) => d.entityKey === "PAYMENT_RECEIVED:p-99")).toBe(true);
+  });
+
+  it("emit 不传 entityKey 时 data.entityKey 为 null (走宽松去重)", async () => {
+    await emit(prisma, makeEvent("CONTRACT_EXPIRING", {
+      contractId: "c-no-key", contractNo: "X", endDate: "2026-12-31", daysLeft: 1
+    }, ["u-1"]));
+    expect(mockState.createManyCalls[0]!.data[0]!.entityKey).toBeNull();
+    expect(mockState.createManyCalls[0]!.skipDuplicates).toBe(true);
   });
 });
 

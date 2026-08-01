@@ -16,6 +16,11 @@ export type DomainEvent = {
   payload: Record<string, unknown>;
   /** 接收人 userId 列表；调用方已确定（service 层基于 ownerUserId / roleCode） */
   receivers: string[];
+  /**
+   * 业务实体键(`{type}:{link.id}`),用于 (entityKey, receiverUserId) 行级去重。
+   * 调用方应显式提供;不传时 emit 不写 entityKey(允许 deprecated / 无 link 消息走宽松去重)。
+   */
+  entityKey?: string;
 };
 
 type TxOrClient = Prisma.TransactionClient | PrismaClient;
@@ -24,24 +29,31 @@ export async function emit(prisma: TxOrClient, ev: DomainEvent): Promise<number>
   if (!ev.receivers || ev.receivers.length === 0) return 0;
   const messages = ev.receivers.map((uid) => buildMessage(uid, ev));
   // 去重（同一人不会收两条相同 type+entityId）
+  // entityKey 由调用方提供;无 link 或 deprecated 事件可省略(null)→ 不参与 unique。
   const data = messages.map((m) => ({
     receiverUserId: m.receiverUserId,
     type: ev.type,
     title: m.title,
     content: m.content,
-    link: (m.link ?? PrismaNS.JsonNull) as Prisma.InputJsonValue
+    link: (m.link ?? PrismaNS.JsonNull) as Prisma.InputJsonValue,
+    entityKey: ev.entityKey ?? null
   }));
   // P0-2: 一次性 createMany 替代原来的 for-await prisma.message.create。
   // 项目只走 Prisma + PostgreSQL,createMany 可用;原顺序写法是 N+1 round-trip,
   // cron 跑合同到期 30/7/1 × 全部 ACTIVE × (owner+admin) 经常 100+ 条。
   // createMany 是单条 INSERT...VALUES (...),(...),事务回滚由调用方的 $transaction 保证。
   //
+  // v0.14.0: 加 skipDuplicates 兜底 @@unique([entityKey, receiverUserId]) 重复组合。
+  // 同 receiver 的相同 entityKey 行被静默跳过;caller 通常应该自己 (job 内部 in-memory)
+  // 过滤已发送记录以节省 DB 往返,这里是最后兜底。如果 entityKey 未传,unique 约束
+  // 不会触发 skipDuplicates,仍然是 N 行写入。
+  //
   // 通知统一走站内信:外部通道(email / 企微 webhook)已下线,本函数是唯一的写 Message 入口。
   // 如需恢复外部通道,需要把"已渲染的消息 + 用户联系方式"再派发到通道 handler;
   // 那个派发必须放在事务外(失败不阻塞业务),并在事务回滚时通过 message.findFirst
   // 反查避免发出"假阳性"通知。
-  await prisma.message.createMany({ data });
-  return data.length;
+  await prisma.message.createMany({ data, skipDuplicates: true });
+  return messages.length;
 }
 
 type ResolvedMessage = {

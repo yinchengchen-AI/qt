@@ -130,6 +130,7 @@ export async function tickStaleContracts(now: Date): Promise<JobResult> {
           invoicedAmount: invoiced.toFixed(2),
           remaining: total.minus(invoiced).toFixed(2)
         },
+        entityKey: `CONTRACT_PAID_INVOICE_PENDING:${c.id}`,
         receivers: Array.from(new Set([c.ownerUserId, ...admins]))
       });
       created++;
@@ -151,6 +152,7 @@ export async function tickStaleContracts(now: Date): Promise<JobResult> {
         totalAmount: total.toNumber(),
         remaining: total.minus(paid).toFixed(2)
       },
+      entityKey: `CONTRACT_EXPIRED_UNPAID:${c.id}`,
       receivers: Array.from(new Set([c.ownerUserId, ...admins]))
     });
     created++;

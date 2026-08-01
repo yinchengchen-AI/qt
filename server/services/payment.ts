@@ -319,6 +319,7 @@ export async function paymentAction(user: SessionUser, id: string, input: Paymen
           return {
             type: "PAYMENT_RECEIVED",
             payload: { paymentId: current.id, paymentNo: current.paymentNo, amount: Number(current.amount), customerName: customer.name },
+            entityKey: `PAYMENT_RECEIVED:${current.id}`,
             receivers: Array.from(new Set([ct.ownerUserId, current.recorderUserId, ...admins])),
           };
         },

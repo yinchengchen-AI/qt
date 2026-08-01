@@ -64,6 +64,7 @@ export async function runCertificateExpiryCheck(now: Date = new Date()): Promise
               expiryDate: c.expiryDate!.toISOString(),
               daysLeft
             },
+            entityKey: `CERTIFICATE_EXPIRING:${c.id}:${threshold}`,
             receivers: [userId, ...adminIds]
           });
           await tx.certificateExpiryNotice.create({
