@@ -19,9 +19,13 @@ describe("Role permissions", () => {
     expect(hasPermission("SALES", RESOURCE.STATISTICS, ACTION.EXPORT)).toBe(false);
   });
 
-  it("EXPERT 同样可以编辑 DRAFT 开票", () => {
-    expect(hasPermission("EXPERT", RESOURCE.INVOICE, ACTION.UPDATE)).toBe(true);
+  it("EXPERT 仅查看开票(只读+导出), 不创建/改/删 (商业发起归 SALES)", () => {
+    expect(hasPermission("EXPERT", RESOURCE.INVOICE, ACTION.READ)).toBe(true);
+    expect(hasPermission("EXPERT", RESOURCE.INVOICE, ACTION.CREATE)).toBe(false);
+    expect(hasPermission("EXPERT", RESOURCE.INVOICE, ACTION.UPDATE)).toBe(false);
     expect(hasPermission("EXPERT", RESOURCE.INVOICE, ACTION.DELETE)).toBe(false);
+    // 导出仍保留: 让 EXPERT 在交付完成时可拉对账视图
+    expect(hasPermission("EXPERT", RESOURCE.INVOICE, ACTION.EXPORT)).toBe(true);
   });
 
   it("OPS 不能创建/编辑开票, 只能读", () => {
@@ -39,6 +43,25 @@ describe("Role permissions", () => {
 
   it("OPS can CRUD Announcement", () => {
     expect(hasPermission("OPS", RESOURCE.ANNOUNCEMENT, ACTION.CREATE)).toBe(true);
+  });
+
+  it("DUNNING: SALES/EXPERT 可记录+查看, 不能修改+删除; FINANCE/ADMIN 拿全 CRUD; OPS 只读", () => {
+    // 业务现场 (SALES/EXPERT): 仅 CREATE+READ
+    expect(hasPermission("SALES", RESOURCE.DUNNING, ACTION.CREATE)).toBe(true);
+    expect(hasPermission("SALES", RESOURCE.DUNNING, ACTION.READ)).toBe(true);
+    expect(hasPermission("SALES", RESOURCE.DUNNING, ACTION.UPDATE)).toBe(false);
+    expect(hasPermission("SALES", RESOURCE.DUNNING, ACTION.DELETE)).toBe(false);
+    expect(hasPermission("EXPERT", RESOURCE.DUNNING, ACTION.CREATE)).toBe(true);
+    expect(hasPermission("EXPERT", RESOURCE.DUNNING, ACTION.READ)).toBe(true);
+    expect(hasPermission("EXPERT", RESOURCE.DUNNING, ACTION.UPDATE)).toBe(false);
+    expect(hasPermission("EXPERT", RESOURCE.DUNNING, ACTION.DELETE)).toBe(false);
+    // 财务对账留痕: 全 CRUD
+    expect(hasPermission("FINANCE", RESOURCE.DUNNING, ACTION.CREATE)).toBe(true);
+    expect(hasPermission("FINANCE", RESOURCE.DUNNING, ACTION.UPDATE)).toBe(true);
+    expect(hasPermission("FINANCE", RESOURCE.DUNNING, ACTION.DELETE)).toBe(true);
+    // 行政只读 (不参与催收)
+    expect(hasPermission("OPS", RESOURCE.DUNNING, ACTION.READ)).toBe(true);
+    expect(hasPermission("OPS", RESOURCE.DUNNING, ACTION.CREATE)).toBe(false);
   });
 
   it("ROLE_PERMISSIONS covers all 5 built-in roles", () => {

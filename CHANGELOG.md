@@ -54,6 +54,36 @@ docker compose -f docker-compose.prod.yml up -d app  # 反注释 app 块
 
 ---
 
+---
+
+## v0.18.0(2026-08-02) 权限矩阵梳理 + 三处 service 守门加固
+
+非 ADMIN 四个角色的权限做了重新分配, 同时 3 处 service 入口补强. 详见 docs/history/security/permissions-audit-2026-08-02.md (审计报告).
+
+### 权限矩阵调整
+
+- DUNNING (催收): SALES / EXPERT 从 CRUD 降为 CR (现场可记录/查看, 不能改既有条目); FINANCE 从 CRU 升为 CRUD (财务对账留痕, 拿全控). 此前 SALES 拿到 DELETE 可以删催收, 审计链断.
+- EXPERT.INVOICE: 从 CRU+导出 降为 R+导出 (技术专家不再开票/改票). 商业发起归 SALES. EXPERT 仍能在交付完成后导出对账数据.
+- EXPERT.DUNNING: 与 SALES 对齐改 CR.
+
+### Service 守门加固
+
+- trash 服务: getTrashList / restoreRecord 入口硬卡 roleCode === ADMIN. 此前只检 CUSTOMER.READ, 任意有读权限的角色绕过菜单都能直接 GET /api/admin/trash 拉到全公司软删清单.
+- announcement 服务: updateAnnouncement / softDeleteAnnouncement 加 publishUserId === actor.id || roleCode === ADMIN 守门. 此前 OPS 之间可互相改/删他人公告.
+- storage/presign.ts 加注明确 OPS 不在合同/发票附件白名单, 由 owner/signer/FINANCE/ADMIN 兜底; 行为不变.
+
+### 清理 / 文档
+
+- lib/permissions.ts 删 ACTION.AUDIT 死枚举 + components/admin/permission-matrix.tsx 同步去列 (原本就只有空列).
+- docs/user/USER_MANUAL.md 3.2 权限矩阵同步变更; 3.1 OPS 职责描述明确为"部门 / 公告 / 字典 R".
+- docs/architecture/DESIGN-v3.md 3.2 同步.
+
+### 影响 / 兼容性
+
+- SALES / EXPERT: 不能 update / delete 催收记录; EXPERT 不能再开票. 通过 Authority 自动隐藏按钮.
+- OPS: 菜单里"部门/公告"工作流未受影响; 仅交叉用户修改他人公告 / 删合同/回收站被服务层挡住.
+- DB schema / migrations: 无变化 (纯 role 矩阵 + 入口守卫, DB 通用).
+
 ## v0.16.0(2026-08-02) 部署架构迁移 — native systemd 主路径
 
 部署耗时从 ~14 分钟压到 30s–2min,根因 3.5GB ECS 内存被 dockerd (1.7GB) + hermes-agent (0.5GB) 吃掉大头,build 阶段只能 swap。

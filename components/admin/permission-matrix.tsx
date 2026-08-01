@@ -11,7 +11,6 @@ const ACTION_LIST: { value: string; label: string; color?: string }[] = [
   { value: ACTION.UPDATE, label: "改" },
   { value: ACTION.DELETE, label: "删" },
   { value: ACTION.EXPORT, label: "导出" },
-  { value: ACTION.AUDIT, label: "审计" }
 ];
 
 const RESOURCE_LIST: { value: string; label: string; group?: string }[] = [

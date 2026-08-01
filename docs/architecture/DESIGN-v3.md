@@ -161,24 +161,26 @@
 
 ### 3.2 资源 × 操作 × 角色 矩阵
 
-资源：`USER` `ROLE` `DICTIONARY` `CUSTOMER` `CONTRACT` `PROJECT` `INVOICE` `PAYMENT` `STATISTICS` `MESSAGE` `ANNOUNCEMENT` `OPERATION_LOG`
+资源：`USER` `ROLE` `DICTIONARY` `DEPARTMENT` `CUSTOMER` `CONTRACT` `INVOICE` `PAYMENT` `STATISTICS` `DUNNING` `MESSAGE` `ANNOUNCEMENT` `APP_RELEASE` `OPERATION_LOG`
 
-操作：`READ` `CREATE` `UPDATE` `DELETE` `EXPORT` `AUDIT`
+操作：`READ` `CREATE` `UPDATE` `DELETE` `EXPORT` (v0.18.0+; AUDIT 已移除)
 
-| 资源 \\ 角色 | ADMIN | SALES | FINANCE | OPS |
-|---|---|---|---|---|
-| USER | CRUD | R | R | R |
-| ROLE | CRUD | – | – | – |
-| DICTIONARY | CRUD | R | R | R |
-| CUSTOMER | CRUD | CRU(自己) / R(全部) | R | CRU(非金额) |
-| CONTRACT | CRUD | CRU(自己) | R | R |
-| PROJECT | CRUD | CRU(自己) | R | CRU(非金额) |
-| INVOICE | CRUD | C / R(自己合同) | CRUD | R |
-| PAYMENT | CRUD | C / R(自己合同) | CRUD | R |
-| STATISTICS | R+EXPORT | R(本人业绩) | R+EXPORT | R(无金额) |
-| MESSAGE | CRU(自己) | CRU(自己) | CRU(自己) | CRU(自己) |
-| ANNOUNCEMENT | CRUD | R | R | CRUD |
-| OPERATION_LOG | R | – | – | – |
+| 资源 \\ 角色 | ADMIN | SALES | FINANCE | OPS | EXPERT |
+|---|---|---|---|---|---|
+| USER | CRUD | R | R | R | R |
+| ROLE | CRUD | – | – | – | – |
+| DICTIONARY | CRUD | R | R | R | R |
+| DEPARTMENT | CRUD | R | R | CRUD | R |
+| CUSTOMER | CRUD+导出 | CRU+导出 (自己) | R+导出 | CRU+导出 (非金额) | CRU+导出 (自己) |
+| CONTRACT | CRUD+导出 | CRU+导出 (自己) | R+导出 | R+导出 | CRU+导出 (自己) |
+| INVOICE | CRUD+导出 | CRU+导出 (自己合同) | CRUD+导出 | R+导出 | **R+导出** (v0.18.0+) |
+| PAYMENT | CRUD+导出 | CR+导出 (自己合同) | CRUD+导出 | R+导出 | CR+导出 (自己合同) |
+| STATISTICS | R+导出 | R (本人业绩) | R+导出 | R (无金额) | R (本人业绩) |
+| DUNNING | CRUD+导出 | **CR** (v0.18.0+) | **CRUD** (v0.18.0+) | R | **CR** (v0.18.0+) |
+| MESSAGE | CRU(自己) | CRU(自己) | CRU(自己) | CRU(自己) | CRU(自己) |
+| ANNOUNCEMENT | CRUD | R | R | CRUD (改/删限发布人) | R |
+| APP_RELEASE | R | R | R | R | R |
+| OPERATION_LOG | R | – | – | – | – |
 
 > **行级隔离**：业务人员 (SALES) / 技术专家 (EXPERT) 在 Service 层注入 `ownerUserId = session.userId`；越权访问返回 404。**PG 层 RLS 兜底**（SALES 角色的行上加策略 `USING (current_setting('app.user_id', true) = owner_user_id::text)`，应用层事务开始前 `SET LOCAL app.user_id = ${session.userId}`）。
 

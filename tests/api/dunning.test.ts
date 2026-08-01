@@ -4,8 +4,8 @@
 //   1) createDunningNote: SALES 看不到他人的发票 -> 404
 //   2) createDunningNote: PROMISED 状态必须带 promisedDate -> 400
 //   3) createDunningNote: 正常流程, 写库 + 行级隔离读出
-//   4) updateDunningNote: 修改 status / promisedDate
-//   5) deleteDunningNote: SALES 看不到他人的催收 -> 404
+//   4) updateDunningNote: 修改 status / promisedDate (UPDATE 角色限定 FINANCE/ADMIN)
+//   5) deleteDunningNote: SALES 无 DELETE 矩阵权限; FINANCE/ADMIN 可删
 //   6) getDunningSummary: byStatus 计数正确
 //
 // DB 不可达时整组 skip.
@@ -214,7 +214,8 @@ describe("updateDunningNote", () => {
       channel: "PHONE"
     });
     createdNoteIds.push(created.id);
-    const updated = await updateDunningNote(buildSales(), created.id, {
+    // UPDATE 权限归财务 (新矩阵 SALES/EXPERT 不能改既有催收记录)
+    const updated = await updateDunningNote(buildFinance(), created.id, {
       status: "PROMISED",
       promisedDate: new Date(Date.now() + 14 * 86400_000).toISOString()
     });
@@ -224,8 +225,8 @@ describe("updateDunningNote", () => {
 });
 
 describe("deleteDunningNote", () => {
-  it("另一个 SALES 删除不属于自己的催收 -> 404", async () => {
-    if (!dbReachable || !adminUser || !salesUser || !otherSalesUser) return;
+  it("矩阵: SALES 无 DUNNING.DELETE 权限, 即便 owner 自己也不能删 (403)", async () => {
+    if (!dbReachable || !adminUser || !salesUser) return;
     const ctr = await makeContractFor(salesUser.id, salesUser.id, "d-1");
     const inv = await makeIssuedInvoiceFor(ctr.id, salesUser.id, 1000, "d-1");
     const created = await createDunningNote(buildSales(), {
@@ -235,10 +236,22 @@ describe("deleteDunningNote", () => {
       channel: "PHONE"
     });
     createdNoteIds.push(created.id);
-    await expect(deleteDunningNote(otherSalesUser, created.id)).rejects.toThrow(/催收记录不存在或无权限/);
-    // 但 owner 自己能删
-    await deleteDunningNote(buildSales(), created.id);
-    // 同步从 cleanup 列表去掉, 避免外层 afterAll 重复删
+    await expect(deleteDunningNote(buildSales(), created.id)).rejects.toThrow(/仅.*可.*删|无权|SALES.*DELETE/);
+  });
+
+  it("FINANCE 有 DUNNING.DELETE 权限, 可实际删除记录", async () => {
+    if (!dbReachable || !adminUser || !salesUser) return;
+    const ctr = await makeContractFor(salesUser.id, salesUser.id, "d-2");
+    const inv = await makeIssuedInvoiceFor(ctr.id, salesUser.id, 1000, "d-2");
+    const created = await createDunningNote(buildSales(), {
+      invoiceId: inv.id,
+      status: "CONTACTED",
+      lastContactAt: new Date().toISOString(),
+      channel: "PHONE"
+    });
+    createdNoteIds.push(created.id);
+    // 不抛错
+    await deleteDunningNote(buildFinance(), created.id);
     const idx = createdNoteIds.indexOf(created.id);
     if (idx >= 0) createdNoteIds.splice(idx, 1);
   });

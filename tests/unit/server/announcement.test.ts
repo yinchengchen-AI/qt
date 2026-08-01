@@ -216,11 +216,17 @@ describe("createAnnouncement", () => {
 });
 
 describe("updateAnnouncement", () => {
-  it("可清空生效期", async () => {
+  it("可清空生效期 (OPS 作为发布人)", async () => {
+    const opUser = makeUser("OPS", "u-ops");
     mockState.announcements = [
-      mkAnnouncement({ id: "a-1", effectiveFrom: yesterday, effectiveTo: tomorrow })
+      mkAnnouncement({
+        id: "a-1",
+        publishUserId: opUser.id,
+        effectiveFrom: yesterday,
+        effectiveTo: tomorrow
+      })
     ];
-    const updated = await updateAnnouncement(makeUser("OPS"), "a-1", {
+    const updated = await updateAnnouncement(opUser, "a-1", {
       effectiveFrom: null,
       effectiveTo: null
     });
@@ -230,9 +236,12 @@ describe("updateAnnouncement", () => {
 });
 
 describe("softDeleteAnnouncement", () => {
-  it("软删并记录审计", async () => {
-    mockState.announcements = [mkAnnouncement({ id: "a-1" })];
-    await softDeleteAnnouncement(makeUser("OPS"), "a-1");
+  it("软删并记录审计 (OPS 作为发布人)", async () => {
+    const opUser = makeUser("OPS", "u-ops");
+    mockState.announcements = [
+      mkAnnouncement({ id: "a-1", publishUserId: opUser.id })
+    ];
+    await softDeleteAnnouncement(opUser, "a-1");
     expect(mockState.announcements[0]!.deletedAt).not.toBeNull();
     expect(mockState.audits[0]).toMatchObject({ action: "ANNOUNCEMENT_DELETE", entity: "Announcement" });
   });

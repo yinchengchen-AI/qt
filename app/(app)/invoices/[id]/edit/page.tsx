@@ -70,7 +70,8 @@ export default function EditInvoicePage() {
 
   // 服务端 resolveAttachmentSnapshots 会按 id 回查 DB 并重写 uploadedBy / uploadedAt,
   // 这里仍然把原值带上, 与 contracts/[id]/edit 对齐, 避免 snapshot 与 DB 失同步
-  // 权限: SALES/EXPERT/FINANCE/ADMIN 都有 INVOICE UPDATE (DRAFT 或 admin), OPS 没有
+  // 权限: SALES/FINANCE/ADMIN 都有 INVOICE UPDATE (DRAFT 或 admin); EXPERT 只读+导出;
+  // OPS 没有. EXPERT 不可改开票, 见 lib/permissions.ts
   // roleCode 在 session 未就绪时为 undefined, 用 ?? 兜底, OPS 兜底成 "" 后 hasPermission 返回 false
   const roleCode = (session?.user?.roleCode ?? "") as Parameters<typeof hasPermission>[0];
   const isAdmin = roleCode === "ADMIN";

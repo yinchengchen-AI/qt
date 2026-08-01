@@ -1,6 +1,7 @@
 // 催收记录服务
 //   - 行级隔离: SALES/EXPERT 角色只看到自己 owner 的合同下发票的催收(走 isRowRestricted)
-//   - 权限: DUNNING resource (CRUD+EXPORT for ADMIN, CRU for FINANCE, R for SALES/OPS/EXPERT)
+//   - 权限: DUNNING resource (CRUD+EXPORT for ADMIN; CRUD for FINANCE;
+//             CR for SALES/EXPERT — 业务现场记录, 修改与清理交给财务; R for OPS)
 //   - 注意: 催收记录本身是 invoiceId 级(不存 customerId),所有过滤都通过 Invoice -> Contract -> owner
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";

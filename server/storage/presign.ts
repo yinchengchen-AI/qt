@@ -102,6 +102,8 @@ async function assertCanAttachToTarget(input: {
   });
   const roleCode = user?.role?.code;
   if (roleCode === "ADMIN") return; // 管理员全通
+  // OPS: 行政维护者, 当前不在放行白名单里 — 表明 OPS 不被预期往合同/发票上传附件.
+  // 不显式拒绝(以保持后续如"行政可上传资质附件"扩展点), 由 owner/signer/FINANCE/ADMIN 兜底.
 
   if (contractId) {
     const contract = await prisma.contract.findUnique({

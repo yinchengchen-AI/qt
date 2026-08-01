@@ -17,6 +17,8 @@ import {
 let dbReachable = false;
 let adminUser: SessionUser | null = null;
 let salesUser: SessionUser | null = null;
+let opsUser: SessionUser | null = null;
+let otherOpsUser: SessionUser | null = null;
 const createdAnnouncementIds: string[] = [];
 
 beforeAll(async () => {
@@ -27,13 +29,20 @@ beforeAll(async () => {
     dbReachable = false;
     return;
   }
-  const [adminRow, salesRow] = await Promise.all([
+  const [adminRow, salesRow, opsRows] = await Promise.all([
     prisma.user.findFirst({ where: { role: { code: "ADMIN" }, deletedAt: null }, select: { id: true, employeeNo: true, name: true, email: true } }),
-    prisma.user.findFirst({ where: { role: { code: "SALES" }, deletedAt: null }, select: { id: true, employeeNo: true, name: true, email: true } })
+    prisma.user.findFirst({ where: { role: { code: "SALES" }, deletedAt: null }, select: { id: true, employeeNo: true, name: true, email: true } }),
+    prisma.user.findMany({ where: { role: { code: "OPS" }, deletedAt: null, isSystem: false }, select: { id: true, employeeNo: true, name: true, email: true }, take: 2 })
   ]);
   if (!adminRow || !salesRow) return;
   adminUser = { ...adminRow, roleCode: "ADMIN", permissions: [] };
   salesUser = { ...salesRow, roleCode: "SALES", permissions: [] };
+  if (opsRows.length >= 1) {
+    opsUser = { ...opsRows[0]!, roleCode: "OPS", permissions: [] };
+  }
+  if (opsRows.length >= 2) {
+    otherOpsUser = { ...opsRows[1]!, roleCode: "OPS", permissions: [] };
+  }
 });
 
 afterAll(async () => {
@@ -95,5 +104,51 @@ describe("公告跨角色可见性", () => {
 
     const list = await listAnnouncements(salesUser!, { page: 1, pageSize: 100 });
     expect(list.list.some((x) => x.id === a.id)).toBe(false);
+  }));
+});
+
+// 公告按发文主体管理: 同一角色内非发布人不能改/删他人公告 (见 server/services/announcement.ts 护栏)
+describe("公告改删归属", () => {
+  const guard2 = (fn: () => Promise<void>) => async () => {
+    if (!dbReachable || !adminUser || !opsUser || !otherOpsUser) return;
+    await fn();
+  };
+
+  it("OPS 不能编辑他人的公告 (publishUserId != actor.id) -> 403", guard2(async () => {
+    const a = await createAnnouncement(opsUser!, {
+      title: "by ops-1",
+      content: "content",
+      targetRoles: []
+    });
+    createdAnnouncementIds.push(a.id);
+
+    const { updateAnnouncement } = await import("@/server/services/announcement");
+    await expect(
+      updateAnnouncement(otherOpsUser!, a.id, { title: "hijacked" })
+    ).rejects.toMatchObject({ status: 403 });
+  }));
+
+  it("OPS 不能删除他人的公告 -> 403", guard2(async () => {
+    const a = await createAnnouncement(opsUser!, {
+      title: "by ops-2",
+      content: "content",
+      targetRoles: []
+    });
+    createdAnnouncementIds.push(a.id);
+
+    await expect(softDeleteAnnouncement(otherOpsUser!, a.id)).rejects.toMatchObject({ status: 403 });
+  }));
+
+  it("ADMIN 可绕过归属检查, 改删任何人的公告", guard2(async () => {
+    const a = await createAnnouncement(opsUser!, {
+      title: "by ops-3",
+      content: "content",
+      targetRoles: []
+    });
+    createdAnnouncementIds.push(a.id);
+
+    const { updateAnnouncement } = await import("@/server/services/announcement");
+    const updated = await updateAnnouncement(adminUser!, a.id, { title: "by admin" });
+    expect(updated.title).toBe("by admin");
   }));
 });

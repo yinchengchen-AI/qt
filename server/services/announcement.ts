@@ -87,6 +87,10 @@ export async function updateAnnouncement(
   requirePermission(user.roleCode, RESOURCE.ANNOUNCEMENT, ACTION.UPDATE);
   const existing = await prisma.announcement.findFirst({ where: { id, deletedAt: null } });
   if (!existing) throw new ApiError(ERROR_CODES.NOT_FOUND, "公告不存在", 404);
+  // 公告按发文主体管理: 只有发布人或管理员可改/删, 避免 OPS 之间互相改对方公告.
+  if (existing.publishUserId !== user.id && user.roleCode !== "ADMIN") {
+    throw new ApiError(ERROR_CODES.FORBIDDEN, "仅公告发布人或管理员可编辑", 403);
+  }
   const a = await prisma.announcement.update({
     where: { id },
     data: {
@@ -103,6 +107,10 @@ export async function softDeleteAnnouncement(user: SessionUser, id: string) {
   requirePermission(user.roleCode, RESOURCE.ANNOUNCEMENT, ACTION.DELETE);
   const existing = await prisma.announcement.findFirst({ where: { id, deletedAt: null } });
   if (!existing) throw new ApiError(ERROR_CODES.NOT_FOUND, "公告不存在", 404);
+  // 与 update 对齐: 只有发布人或管理员可删 (见 updateAnnouncement 注释)
+  if (existing.publishUserId !== user.id && user.roleCode !== "ADMIN") {
+    throw new ApiError(ERROR_CODES.FORBIDDEN, "仅公告发布人或管理员可删除", 403);
+  }
   await prisma.announcement.update({ where: { id }, data: { deletedAt: new Date() } });
   await audit(prisma, { actorId: user.id, action: "ANNOUNCEMENT_DELETE", entity: "Announcement", entityId: id, before: { title: existing.title } });
   return { ok: true };

@@ -30,6 +30,11 @@ const ENTITY_CONFIG: Record<string, EntityConfig> = {
 };
 
 export async function getTrashList(user: SessionUser): Promise<TrashRecord[]> {
+  // 服务层硬守门: 回收站列的是全公司范围的软删记录(无行级隔离), 必须 admin only.
+  // 菜单项已用 ROLE.CREATE 限定为 admin 可见, 但 URL 可被绕过, 在 service 入口再卡一遍.
+  if (user.roleCode !== "ADMIN") {
+    throw new ApiError(ERROR_CODES.FORBIDDEN, "仅管理员可访问回收站", 403);
+  }
   requirePermission(user.roleCode, RESOURCE.CUSTOMER, ACTION.READ);
   const results: TrashRecord[] = [];
 
@@ -63,6 +68,10 @@ export async function restoreRecord(
   entityType: string,
   id: string
 ): Promise<{ restored: boolean; name: string }> {
+  // 与 getTrashList 对齐: 回收站恢复是 admin-only 操作 (见 getTrashList 注释)
+  if (user.roleCode !== "ADMIN") {
+    throw new ApiError(ERROR_CODES.FORBIDDEN, "仅管理员可恢复回收站记录", 403);
+  }
   const cfg = ENTITY_CONFIG[entityType];
   if (!cfg) throw new ApiError(ERROR_CODES.NOT_FOUND, `不支持的实体类型: ${entityType}`, 400);
 

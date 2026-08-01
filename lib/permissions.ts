@@ -26,8 +26,7 @@ export const ACTION = {
   CREATE: "CREATE",
   UPDATE: "UPDATE",
   DELETE: "DELETE",
-  EXPORT: "EXPORT",
-  AUDIT: "AUDIT"
+  EXPORT: "EXPORT"
 } as const;
 export type Action = (typeof ACTION)[keyof typeof ACTION];
 
@@ -56,7 +55,8 @@ export const ROLE_PERMISSIONS: Record<RoleCode, Permission[]> = {
     { resource: RESOURCE.INVOICE, actions: [...CRU, ACTION.EXPORT] },
     { resource: RESOURCE.PAYMENT, actions: [...CR, ACTION.EXPORT] },
     { resource: RESOURCE.STATISTICS, actions: R },
-    { resource: RESOURCE.DUNNING, actions: CRUD },
+    // 催收: 业务现场记录进度(增 / 查), 修改与清理由财务负责.
+    { resource: RESOURCE.DUNNING, actions: CR },
     { resource: RESOURCE.MESSAGE, actions: CRUD },
     { resource: RESOURCE.ANNOUNCEMENT, actions: R },
     { resource: RESOURCE.APP_RELEASE, actions: R },
@@ -70,7 +70,8 @@ export const ROLE_PERMISSIONS: Record<RoleCode, Permission[]> = {
     { resource: RESOURCE.INVOICE, actions: [...CRUD, ACTION.EXPORT] },
     { resource: RESOURCE.PAYMENT, actions: [...CRUD, ACTION.EXPORT] },
     { resource: RESOURCE.STATISTICS, actions: R_EXPORT },
-    { resource: RESOURCE.DUNNING, actions: CRU },
+    // 催收: 财务对账合规留痕, 拿全 CRUD; 业务仅可新增/查询.
+    { resource: RESOURCE.DUNNING, actions: CRUD },
     { resource: RESOURCE.MESSAGE, actions: CRUD },
     { resource: RESOURCE.ANNOUNCEMENT, actions: R },
     { resource: RESOURCE.APP_RELEASE, actions: R },
@@ -97,10 +98,13 @@ export const ROLE_PERMISSIONS: Record<RoleCode, Permission[]> = {
     { resource: RESOURCE.DICTIONARY, actions: R },
     { resource: RESOURCE.CUSTOMER, actions: [...CRU, ACTION.EXPORT] },
     { resource: RESOURCE.CONTRACT, actions: [...CRU, ACTION.EXPORT] },
-    { resource: RESOURCE.INVOICE, actions: [...CRU, ACTION.EXPORT] },
+    // EXPERT 仅查看开票以了解商务进度, 不创建/改/删; 商业发起统一走 SALES.
+    // 仍保留 EXPORT 以便交付完成后能让 EXPERT 拉对账数据.
+    { resource: RESOURCE.INVOICE, actions: [...R, ACTION.EXPORT] },
     { resource: RESOURCE.PAYMENT, actions: [...CR, ACTION.EXPORT] },
     { resource: RESOURCE.STATISTICS, actions: R },
-    { resource: RESOURCE.DUNNING, actions: CRUD },
+    // 催收: 与 SALES 同, 现场可记录 / 查看, 不修改既有条目.
+    { resource: RESOURCE.DUNNING, actions: CR },
     { resource: RESOURCE.MESSAGE, actions: CRUD },
     { resource: RESOURCE.ANNOUNCEMENT, actions: R },
     { resource: RESOURCE.APP_RELEASE, actions: R },
