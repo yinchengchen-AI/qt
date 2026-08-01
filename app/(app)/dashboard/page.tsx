@@ -268,7 +268,7 @@ export default function DashboardPage() {
     <Page>
       <PageHeader
         title="业务总览"
-        subtitle="鼠标悬停 KPI 标题旁的 ⓘ 可查看口径说明"
+        subtitle="鼠标悬停 KPI 标题旁的 ⓘ 查看口径说明;右上 ⓘ 查看数据权限"
         actions={
           <Segmented<RangePreset>
             options={RANGE_OPTIONS}

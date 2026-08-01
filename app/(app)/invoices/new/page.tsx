@@ -62,7 +62,7 @@ export default function NewInvoicePage() {
       <PageHeader
         back={goBack}
         title="新建开票"
-        subtitle="为已生效的合同申请开票，提交后由财务审核并出具发票"
+        subtitle="为生效中的合同创建开票草稿；保存后可在详情页提交财务审核"
       />
       <FormCard
         headerHint={
@@ -112,7 +112,7 @@ export default function NewInvoicePage() {
             return true;
           }}
         >
-          <FormSection title="关联合同" description="仅可选「已生效」或「执行中」状态的合同；选择合同后将自动带出客户与抬头信息">
+          <FormSection title="关联合同" description="仅可选「生效中」(ACTIVE) 状态的合同；选择合同后将自动带出客户与抬头信息">
             <ProFormSelect
               name="contractId"
               label="合同"
@@ -204,7 +204,7 @@ export default function NewInvoicePage() {
               <Text type="secondary" style={{ fontSize: 12 }}>
                 剩余可开票额度 ≈ {formatCurrency(pickedContract.totalAmount - pickedContract.occupiedAmount)}
                 （合同总额 {formatCurrency(pickedContract.totalAmount)} − 已占用{" "}
-                {formatCurrency(pickedContract.occupiedAmount)}，含草稿/待审）
+                {formatCurrency(pickedContract.occupiedAmount)}，口径 = 草稿/待审/已开/红冲, R-08 额度占用校验同源）
               </Text>
             ) : null}
           </FormSection>

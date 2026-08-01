@@ -119,7 +119,7 @@ const messages: Record<Locale, Record<string, string>> = {
     "release.popup.viewHistory": "查看完整更新记录",
 
     "aging.title": "应收账龄分析",
-    "aging.subtitle": "按发票 / 到期日监控回款风险,90+ 段重点跟进",
+    "aging.subtitle": "按开票日 / 到期日监控应收风险,90+ 段重点跟进",
     "aging.basis.issue": "按开票日",
     "aging.basis.due": "按到期日",
     "aging.bucket.0-30": "0 — 30 天",

@@ -100,7 +100,7 @@ export default function EditContractPage() {
       <PageHeader
         back={goBack}
         title="编辑合同"
-        subtitle="客户与创建人不可修改；合同编号、服务起止期可改，止期必须晚于起期"
+        subtitle="客户与创建人不可修改;合同编号、服务起止期可改;止期必须晚于起期,否则无法保存"
       />
       <FormCard headerHint="客户一旦签约不可更换，如需更换请新建合同后再迁移数据">
         <ProForm

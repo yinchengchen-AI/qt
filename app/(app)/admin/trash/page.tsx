@@ -114,7 +114,7 @@ export default function TrashPage() {
     <Page>
       <PageHeader
         title="回收站"
-        subtitle="查看和恢复已删除的数据：客户、合同、项目、发票、回款、工作流模板"
+        subtitle="查看和恢复已删除的数据：客户、合同、发票、回款、操作日志、附件等软删记录"
       />
 
       <ProTable<TrashItem>

@@ -163,7 +163,6 @@ export default function EditUserPage() {
               <ProFormText
                 name="name"
                 label="姓名"
-                tooltip="此处显示工号用于核对；该字段不可修改"
                 rules={[{ required: true, max: 40, message: "姓名必填" }]}
                 fieldProps={{ size: "large", maxLength: 40, showCount: true, prefix: <UserOutlined /> }}
               />
