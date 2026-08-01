@@ -28,7 +28,7 @@ export function DictEditDrawer({ open, dict, onClose, onSaved }: Props) {
     }
   }, [dict, form]);
 
-  const readonlyByCategory = dict ? (DICT_META[dict.code]?.readonly ?? false) : false;
+  const readonlyByCategory = dict ? (DICT_META[dict.category]?.readonly ?? false) : false;
 
   async function onSubmit() {
     try {
@@ -88,8 +88,8 @@ export function DictEditDrawer({ open, dict, onClose, onSaved }: Props) {
               type="warning"
               showIcon
               style={{ marginBottom: 16 }}
-              title="系统字典 · 不可在 UI 中编辑"
-              description="该类目由同步脚本管理，此处仅供查看。"
+              title="只读类目 · 不可在 UI 中编辑"
+              description="该类目由系统枚举/状态机或同步脚本控制，此处仅供查看。"
             />
           ) : null}
           <Form layout="vertical" form={form} disabled={readonlyByCategory}>

@@ -55,6 +55,7 @@ export default function DictionariesPage() {
           for (const n of nodes) {
             flat.push({
               id: n.id,
+              category: "REGION",
               code: n.code,
               label: n.label,
               sort: 0,
@@ -180,6 +181,7 @@ export default function DictionariesPage() {
     // 把 DictTreeNode 转 DictRow 用于编辑
     setEditTarget({
       id: node.id,
+      category: "REGION",
       code: node.code,
       label: node.label,
       sort: 0,

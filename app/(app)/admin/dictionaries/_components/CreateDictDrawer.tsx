@@ -123,14 +123,14 @@ export function CreateDictDrawer({ open, onClose, onSaved, defaultCategory, defa
           type="warning"
           showIcon
           style={{ marginBottom: 16 }}
-          title="系统字典不可在 UI 中新增"
-          description="该类目由同步脚本管理，请在对应的数据源中修改。"
+          title="只读类目不可在 UI 中新增"
+          description="该类目由系统枚举/状态机或同步脚本管理，请在对应的数据源中修改。"
         />
       ) : null}
       <Form layout="vertical" form={form} disabled={isSystem}>
         <Form.Item name="category" label="分类" rules={[{ required: true }]}>
           <Select
-            options={ALLOWED_DICTIONARY_CATEGORIES.map((c) => ({
+            options={ALLOWED_DICTIONARY_CATEGORIES.filter((c) => !isSystemCategory(c)).map((c) => ({
               value: c,
               label: DICTIONARY_CATEGORY_LABEL[c] ?? c
             }))}

@@ -6,6 +6,7 @@ import { DICT_META } from "@/lib/dict-domain";
 
 export type DictRow = {
   id: string;
+  category: string;
   code: string;
   label: string;
   sort: number;
