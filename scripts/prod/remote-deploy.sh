@@ -107,20 +107,17 @@ TMUX_SESSION="qt-deploy-$(date +%s)"
 TMUX_LOG="/tmp/qt-deploy.log"
 
 if [ "$USE_TMUX" -eq 1 ]; then
-  # 把脚本本身 (deploy.sh + _lib.sh) scp 到远端 /tmp,
-  # 在远端 tmux 会话里跑。理由: 避免 self-rewrite 护栏在 ssh 断线时丢脚本。
-  echo "[local] 拷贝 deploy.sh + _lib.sh 到远端 /tmp ..."
-  "${SSH_BASE[@]}" "$DEPLOY_USER@$DEPLOY_HOST" "mkdir -p /tmp/qt-deploy-pkg"
-  scp -i "$KEY_PATH" -P "$DEPLOY_PORT" -o BatchMode=yes -q \
-    "$REPO_ROOT/scripts/prod/deploy.sh" \
-    "$REPO_ROOT/scripts/prod/_lib.sh" \
-    "$DEPLOY_USER@$DEPLOY_HOST:/tmp/qt-deploy-pkg/"
+  # 关键: 不再 scp deploy.sh/_lib.sh 到 /opt/qt (会污染 git 工作区, 触发 deploy.sh
+  # 自己的 preflight 拦截), 改成在 server 端 git pull --ff-only 拿到最新代码
+  # (deploy.sh + _lib.sh + rollback.sh + 任何新脚本都通过 git pull 同步进来)
+  echo "[local] server 端 git pull --ff-only (同步最新 deploy.sh + _lib.sh + rollback.sh) ..."
+  if ! "${SSH_BASE[@]}" "$DEPLOY_USER@$DEPLOY_HOST" "cd '$DEPLOY_PATH' && git pull --ff-only 2>&1 | tail -5"; then
+    echo "[ERR] server 端 git pull 失败;常见原因: 本地有 uncommitted 改动 / 落后远端 / 网络问题"
+    echo "      修法: ssh 进 server 'cd /opt/qt && git status' 看具体原因"
+    exit 1
+  fi
 
-  REMOTE_CMD="export QT_DEPLOY_ROOT='$DEPLOY_PATH' && \
-              cp /tmp/qt-deploy-pkg/deploy.sh '$DEPLOY_PATH/scripts/prod/deploy.sh' && \
-              cp /tmp/qt-deploy-pkg/_lib.sh '$DEPLOY_PATH/scripts/prod/_lib.sh' && \
-              tmux new-session -d -s $TMUX_SESSION 'cd $DEPLOY_PATH && sudo -E ./scripts/prod/deploy.sh 2>&1 | tee $TMUX_LOG; echo EXIT=\$? >> $TMUX_LOG' && \
-              tmux list-sessions | grep $TMUX_SESSION"
+  REMOTE_CMD="cd '$DEPLOY_PATH' && tmux new-session -d -s $TMUX_SESSION 'sudo -E ./scripts/prod/deploy.sh 2>&1 | tee $TMUX_LOG; echo EXIT=\$? >> $TMUX_LOG' && tmux list-sessions | grep $TMUX_SESSION"
 
   echo "[local] 远端启动 tmux 会话: $TMUX_SESSION"
   "${SSH_BASE[@]}" "$DEPLOY_USER@$DEPLOY_HOST" "$REMOTE_CMD"
