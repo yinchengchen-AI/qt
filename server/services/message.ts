@@ -99,3 +99,44 @@ export async function clearReadMessages(user: SessionUser) {
   }
   return { deleted: r.count };
 }
+
+/**
+ * 列出归档消息 (MessageArchive),只读 + ADMIN 角色限定。
+ *
+ * 入参 month (YYYY-MM) 可选; 不传时返回最近 N 条; 传时只返回该月。
+ * receiverUserId 过滤可选,用于单人历史回查。
+ */
+export async function listArchivedMessages(
+  user: SessionUser,
+  params: { page: number; pageSize: number; receiverUserId?: string; month?: string }
+) {
+  // 双层守卫:Matrix 已配 ADMIN,这里再显式 throw 防止误调用
+  if (user.roleCode !== "ADMIN") {
+    throw new ApiError(ERROR_CODES.FORBIDDEN, "需要管理员权限", 403);
+  }
+  const { page, pageSize, receiverUserId, month } = params;
+
+  const where: Prisma.MessageArchiveWhereInput = {};
+  if (receiverUserId) where.receiverUserId = receiverUserId;
+  if (month) {
+    const m = /^(\d{4})-(\d{2})$/.exec(month);
+    if (m) {
+      const y = Number(m[1]);
+      const mo = Number(m[2]);
+      const from = new Date(Date.UTC(y, mo - 1, 1));
+      const to = new Date(Date.UTC(y, mo, 1));
+      where.archivedAt = { gte: from, lt: to };
+    }
+  }
+
+  const [list, total] = await Promise.all([
+    prisma.messageArchive.findMany({
+      where,
+      orderBy: { archivedAt: "desc" },
+      skip: (page - 1) * pageSize,
+      take: pageSize
+    }),
+    prisma.messageArchive.count({ where })
+  ]);
+  return { list, total, page, pageSize };
+}

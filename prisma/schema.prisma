@@ -572,6 +572,24 @@ model Message {
   @@unique([entityKey, receiverUserId])
 }
 
+/// 消息归档表 (append-only)。已读超过 90 天的 Message 会被移动到这里,
+/// 而不是直接删除,便于审计追溯与回查。原始 Message 表保持"近期活跃 inbox"的紧凑。
+model MessageArchive {
+  id             String      @id @default(cuid())
+  receiverUserId String
+  type           MessageType
+  title          String      @db.VarChar(200)
+  content        String      @db.VarChar(10000)
+  link           Json?
+  entityKey      String?     @db.VarChar(500)
+  readAt         DateTime?   @db.Timestamptz(6)
+  createdAt      DateTime    @db.Timestamptz(6)
+  archivedAt     DateTime    @default(now())  @db.Timestamptz(6)
+
+  @@index([receiverUserId, archivedAt])
+  @@index([type, receiverUserId, archivedAt])
+}
+
 model Announcement {
   id            String    @id @default(cuid())
   title         String    @db.VarChar(200)

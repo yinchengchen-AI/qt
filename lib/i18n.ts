@@ -74,6 +74,8 @@ const messages: Record<Locale, Record<string, string>> = {
     "messages.toast.markedRead": "已标记 {n} 条消息为已读",
     "messages.action.clearRead": "清空已读",
     "messages.toast.clearedRead": "已清空 {n} 条已读消息",
+    "admin.messagesArchive.title": "消息归档",
+    "admin.messagesArchive.subtitle": "已读超过 90 天的业务通知被迁移到这里，仅限管理员查看",
     "messages.clearReadConfirm.title": "清空已读消息?",
     "messages.clearReadConfirm.content": "将永久删除所有已读消息,不可恢复",
 
@@ -267,6 +269,8 @@ const messages: Record<Locale, Record<string, string>> = {
     "messages.toast.markedRead": "Marked {n} messages as read",
     "messages.action.clearRead": "Clear read",
     "messages.toast.clearedRead": "Cleared {n} read messages",
+    "admin.messagesArchive.title": "Message Archive",
+    "admin.messagesArchive.subtitle": "Read messages older than 90 days are moved here. Admin only.",
     "messages.clearReadConfirm.title": "Clear read messages?",
     "messages.clearReadConfirm.content": "Permanently delete all read messages. This cannot be recovered.",
 

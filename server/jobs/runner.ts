@@ -8,6 +8,7 @@ import { MONEY_TOLERANCE } from "@/lib/money-tolerance";
 import { tickPublishableDrafts, tickCompletionCandidates } from "@/server/jobs/contract-automation";
 import { runCertificateExpiryCheck } from "@/server/jobs/certificate-expiry-check";
 import { tickStaleContracts } from "@/server/jobs/stale-contract";
+import { runMessageArchive } from "@/server/jobs/message-archive";
 
 /**
  * 单个 job 一次执行的统计。
@@ -44,6 +45,16 @@ export async function runAllJobs(now = new Date()): Promise<JobResult[]> {
     { name: "contract-auto-publish", run: () => tickPublishableDrafts() },
     { name: "contract-auto-complete", run: () => tickCompletionCandidates(now) },
     { name: "contract-stale-notify", run: () => tickStaleContracts(now) },
+    // 03:00 hourly tick 内顺序最末:把已读超过 90 天的 inbox 搬到 MessageArchive
+    { name: "message-archive", run: async () => {
+        const r = await runMessageArchive(now);
+        return {
+          job: "message-archive",
+          created: r.archived,
+          scanned: r.batch,
+          durationMs: 0
+        };
+    } },
     // P0-11: 证书到期检查,跟 01:00 通用入口打通,便于监控和手动触发
     {
       name: "certificate-expiry-check",
