@@ -21,7 +21,6 @@ import { CurrencyCell, DateTimeCell, PercentCell } from "@/components/table-cell
 import { AttachmentList, type AttachmentItem } from "@/components/file/attachment-list";
 import { PreviewableProFormUploadButton as UploadButton } from "@/components/file/pro-form-upload-button";
 import { proCustomRequest } from "@/lib/upload-client";
-import { useDict } from "@/lib/dict-client";
 import { useUserName } from "@/lib/user-lookup";
 import { PAYMENT_METHOD_MAP, BILLING_STATUS_MAP, PAYMENT_PROGRESS_STATUS_MAP, serviceTypeLabel } from "@/lib/enum-maps";
 import { useResponsive } from "@/lib/use-breakpoint";
@@ -176,7 +175,6 @@ export default function ContractDetailPage() {
   const { data: contract, error, isLoading, mutate } = useSWR<ContractEntity>(`/api/contracts/${id}`);
   const { data: overview } = useSWR<Overview>(`/api/contracts/${id}/overview`);
   const { data: session } = useSession();
-  const paymentMethod = useDict("PAYMENT_METHOD");
   const { run } = useActionCall({ baseUrl: `/api/contracts/${id}`, reload: () => mutate() });
   const { message: msg, modal } = AntdApp.useApp();
 
@@ -425,7 +423,7 @@ const handleDelete = () => {
             { title: "税率", dataIndex: "taxRate", render: (_, r) => <PercentCell value={r.taxRate as string} /> },
             { title: "税额", dataIndex: "taxAmount", render: (_, r) => <CurrencyCell value={r.taxAmount as string} /> },
             { title: "不含税金额", dataIndex: "amountExcludingTax", render: (_, r) => <CurrencyCell value={r.amountExcludingTax as string} /> },
-            { title: "付款方式", dataIndex: "paymentMethod", render: (v) => PAYMENT_METHOD_MAP[v as string] ?? paymentMethod.find((d) => d.code === v)?.label ?? v },
+            { title: "付款方式", dataIndex: "paymentMethod", render: (v) => PAYMENT_METHOD_MAP[v as string] ?? v },
             { title: "签订人", dataIndex: "signerId", render: (_, r) => <SignerName id={r.signerId as string | null} /> },
             // 备注: 自由文本, 可能很长 -> ProDescriptions 默认会换行; 跟 reviewComment (审批意见) 区分
             { title: "备注", dataIndex: "remark", render: (v) => v || "—" },
