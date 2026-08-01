@@ -94,6 +94,14 @@ if [ "$DRY_RUN" -eq 1 ]; then
   exit 0
 fi
 
+# ---- 检测远端 tmux 可用性 (缺 tmux 自动回落到 --no-tmux, 加告警) ----
+if [ "$USE_TMUX" -eq 1 ]; then
+  if ! "${SSH_BASE[@]}" "$DEPLOY_USER@$DEPLOY_HOST" "command -v tmux >/dev/null 2>&1"; then
+    echo "[local] [WARN] 远端没装 tmux, 自动回落到 --no-tmux 模式 (ssh 断线即中断 deploy)"
+    USE_TMUX=0
+  fi
+fi
+
 # ---- tmux 会话名 (远端 hold) ----
 TMUX_SESSION="qt-deploy-$(date +%s)"
 TMUX_LOG="/tmp/qt-deploy.log"
