@@ -5,7 +5,7 @@ export const dictCategoryEnum = z.enum(ALLOWED_DICTIONARY_CATEGORIES);
 
 export const dictCreateSchema = z.object({
   category: dictCategoryEnum,
-  code: z.string().min(1, "代码必填").max(40).regex(/^[A-Z][A-Z0-9_]*$/, "代码需大写字母/数字/下划线,以大写字母开头"),
+  code: z.string().min(1, "代码必填").max(40).regex(/^[A-Z][A-Z0-9_.]*$/, "代码需以大写字母开头，仅允许大写字母/数字/下划线/点"),
   label: z.string().min(1, "标签必填").max(80),
   // 可选父级 code:用于树形字典 (如 REGION)
   // null/未传 表示顶级;同 category 内引用,跨 category 非法

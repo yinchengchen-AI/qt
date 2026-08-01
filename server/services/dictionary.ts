@@ -1,5 +1,6 @@
 // 数据字典服务
-// - 15 类白名单（不允许新建 category）
+// - 16 类白名单（不允许新建 category）
+// - 只读类目 (lib/dict-domain.ts DICT_META.readonly: 枚举/状态机约束类 + REGION) 拒写
 // - 增/改/启停/重排；删除 = 软停用 isActive=false
 // - 客户/合同等业务表 code 外键悬空风险,不允许硬删
 import { prisma } from "@/lib/prisma";
@@ -8,6 +9,7 @@ import { ERROR_CODES } from "@/types/errors";
 import type { SessionUser } from "@/lib/session";
 import { requirePermission, RESOURCE, ACTION } from "@/lib/permissions";
 import { ALLOWED_DICTIONARY_CATEGORIES } from "@/lib/dictionary-categories";
+import { DICT_META } from "@/lib/dict-domain";
 import { audit } from "@/server/audit";
 import type { Prisma } from "@prisma/client";
 
@@ -17,6 +19,16 @@ function assertAllowedCategory(cat: string) {
       ERROR_CODES.VALIDATION_FAILED,
       `不支持的 category: ${cat}`,
       400
+    );
+  }
+}
+
+function assertWritableCategory(cat: string) {
+  if (DICT_META[cat]?.readonly) {
+    throw new ApiError(
+      ERROR_CODES.FORBIDDEN,
+      `类目 ${cat} 由系统枚举/状态机控制，不可在数据字典中修改`,
+      403
     );
   }
 }
@@ -70,6 +82,7 @@ export type DictCreateInput = {
 export async function createDict(actor: SessionUser, input: DictCreateInput) {
   requirePermission(actor.roleCode, RESOURCE.DICTIONARY, ACTION.CREATE);
   assertAllowedCategory(input.category);
+  assertWritableCategory(input.category);
   const dup = await prisma.dictionary.findUnique({
     where: { category_code: { category: input.category, code: input.code } }
   });
@@ -125,6 +138,7 @@ export async function updateDict(actor: SessionUser, id: string, input: DictUpda
   requirePermission(actor.roleCode, RESOURCE.DICTIONARY, ACTION.UPDATE);
   const existing = await prisma.dictionary.findUnique({ where: { id } });
   if (!existing) throw new ApiError(ERROR_CODES.NOT_FOUND, "字典项不存在", 404);
+  assertWritableCategory(existing.category);
   const updated = await prisma.dictionary.update({
     where: { id },
     data: {
@@ -149,6 +163,7 @@ export async function softDisableDict(actor: SessionUser, id: string) {
   requirePermission(actor.roleCode, RESOURCE.DICTIONARY, ACTION.DELETE);
   const existing = await prisma.dictionary.findUnique({ where: { id } });
   if (!existing) throw new ApiError(ERROR_CODES.NOT_FOUND, "字典项不存在", 404);
+  assertWritableCategory(existing.category);
   if (!existing.isActive) return existing; // noop
   const updated = await prisma.dictionary.update({
     where: { id },
@@ -169,6 +184,11 @@ export async function reorder(
   items: { id: string; sort: number }[]
 ) {
   requirePermission(actor.roleCode, RESOURCE.DICTIONARY, ACTION.UPDATE);
+  const rows = await prisma.dictionary.findMany({
+    where: { id: { in: items.map((i) => i.id) } },
+    select: { category: true }
+  });
+  for (const r of rows) assertWritableCategory(r.category);
   // 事务内逐条 update,任一失败回滚
   await prisma.$transaction(async (tx) => {
     for (const it of items) {

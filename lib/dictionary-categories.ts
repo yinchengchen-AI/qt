@@ -1,4 +1,4 @@
-// 字典 15 类白名单 — service 校验 / 前端下拉 / seed 一致
+// 字典 16 类白名单 — service 校验 / 前端下拉 / seed 一致
 export const ALLOWED_DICTIONARY_CATEGORIES = [
   "CUSTOMER_TYPE",
   "CUSTOMER_SCALE",
