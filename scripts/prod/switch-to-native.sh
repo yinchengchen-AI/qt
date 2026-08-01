@@ -35,6 +35,12 @@ if ! docker inspect qt-app >/dev/null 2>&1; then
   exit 1
 fi
 
+# ---- 0. 停 docker qt-app (释放 3000 端口,否则 native 启不了) ----
+if docker inspect -f '{{.State.Running}}' qt-app 2>/dev/null | grep -q true; then
+  echo "==> 停 docker qt-app (释放 3000 端口给 native)"
+  docker stop qt-app
+fi
+
 # ---- 1. 备份 docker-compose.prod.yml, 移除 app: 块 ----
 if [ ! -f docker-compose.prod.yml.bak-pre-native ]; then
   cp docker-compose.prod.yml docker-compose.prod.yml.bak-pre-native
