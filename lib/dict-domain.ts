@@ -1,7 +1,9 @@
 // 字典域元数据: 按"业务域"分组, 标记每个类目的 UI 形态 / 是否只读 / 中文标签
 // 与 lib/dictionary-categories.ts 互补:
 //   - dictionary-categories.ts: 16 类白名单 + 中文 label (service 校验用)
-//   - dict-domain.ts: 类目按域分组 + UI 形态 + 只读护栏 (前端展示用)
+//   - dict-domain.ts: 类目按域分组 + UI 形态 + 只读护栏 (前端展示 + service 拒写用)
+
+import { ALLOWED_DICTIONARY_CATEGORIES } from "@/lib/dictionary-categories";
 
 export type DictShape = "table" | "tree";
 
@@ -37,8 +39,8 @@ export type DictDomain = (typeof DICT_DOMAINS)[number];
 /** 所有类目详细元数据 (16 类业务 + 1 类系统) */
 export const DICT_META: Record<string, DictDomainMeta> = {
   // 客户域
-  CUSTOMER_TYPE: { category: "CUSTOMER_TYPE", label: "客户类型", shape: "table", readonly: false, description: "客户的法律主体类型, 如企业/政府/其他" },
-  CUSTOMER_SCALE: { category: "CUSTOMER_SCALE", label: "客户规模", shape: "table", readonly: false, description: "按规模分类, 用于报表和合同模板选择" },
+  CUSTOMER_TYPE: { category: "CUSTOMER_TYPE", label: "客户类型", shape: "table", readonly: true, description: "code 由 types/enums.ts CUSTOMER_TYPE 枚举 + 客户校验 (zod) 约束, 仅供查看" },
+  CUSTOMER_SCALE: { category: "CUSTOMER_SCALE", label: "客户规模", shape: "table", readonly: true, description: "code 由 types/enums.ts CUSTOMER_SCALE 枚举 + 客户校验 (zod) 约束, 仅供查看" },
   CUSTOMER_INDUSTRY: { category: "CUSTOMER_INDUSTRY", label: "客户行业", shape: "table", readonly: false, description: "客户所属行业, 用于行业分析和销售跟进" },
   CUSTOMER_SOURCE: { category: "CUSTOMER_SOURCE", label: "客户来源", shape: "table", readonly: false, description: "客户获取渠道, 用于营销 ROI 分析" },
   // 业务域
@@ -46,14 +48,14 @@ export const DICT_META: Record<string, DictDomainMeta> = {
   FOLLOW_METHOD: { category: "FOLLOW_METHOD", label: "跟进方式", shape: "table", readonly: false, description: "客户跟进时使用的沟通方式" },
   FOLLOW_RESULT: { category: "FOLLOW_RESULT", label: "跟进结果", shape: "table", readonly: false, description: "跟进结果分类, 推进销售漏斗" },
   // 财务域
-  CONTRACT_PAYMENT_METHOD: { category: "CONTRACT_PAYMENT_METHOD", label: "合同付款方式", shape: "table", readonly: false, description: "合同付款方式: 一次性/按阶段/按月/按季" },
-  INVOICE_TYPE: { category: "INVOICE_TYPE", label: "发票类型", shape: "table", readonly: false, description: "发票种类, 影响税务处理" },
-  PAYMENT_RECEIVE_METHOD: { category: "PAYMENT_RECEIVE_METHOD", label: "收款方式", shape: "table", readonly: false, description: "回款收取方式" },
-  REVIEW_ACTION: { category: "REVIEW_ACTION", label: "审批动作", shape: "table", readonly: false, description: "工作流审批动作" },
+  CONTRACT_PAYMENT_METHOD: { category: "CONTRACT_PAYMENT_METHOD", label: "合同付款方式", shape: "table", readonly: true, description: "code 由 types/enums.ts + 合同校验 (zod) 约束, 仅供查看" },
+  INVOICE_TYPE: { category: "INVOICE_TYPE", label: "发票类型", shape: "table", readonly: true, description: "code 由发票校验 (zod) + INVOICE_TYPE_MAP 约束, 仅供查看" },
+  PAYMENT_RECEIVE_METHOD: { category: "PAYMENT_RECEIVE_METHOD", label: "收款方式", shape: "table", readonly: true, description: "code 由回款校验 (zod) 约束, 仅供查看" },
+  REVIEW_ACTION: { category: "REVIEW_ACTION", label: "审批动作", shape: "table", readonly: true, description: "审批动作由代码状态机约束 (REVIEW_ACTION_MAP), 仅供查看" },
   // 状态域
-  CONTRACT_STATUS: { category: "CONTRACT_STATUS", label: "合同状态", shape: "table", readonly: false, description: "合同状态机: 草稿/生效中/已完结" },
-  INVOICE_STATUS: { category: "INVOICE_STATUS", label: "开票状态", shape: "table", readonly: false, description: "开票状态机" },
-  PAYMENT_STATUS: { category: "PAYMENT_STATUS", label: "回款状态", shape: "table", readonly: false, description: "回款状态机" },
+  CONTRACT_STATUS: { category: "CONTRACT_STATUS", label: "合同状态", shape: "table", readonly: true, description: "合同状态机由代码驱动 (CONTRACT_STATUS_MAP), 仅供查看" },
+  INVOICE_STATUS: { category: "INVOICE_STATUS", label: "开票状态", shape: "table", readonly: true, description: "开票状态机由代码驱动 (INVOICE_STATUS_MAP), 仅供查看" },
+  PAYMENT_STATUS: { category: "PAYMENT_STATUS", label: "回款状态", shape: "table", readonly: true, description: "回款状态机由代码驱动 (PAYMENT_STATUS_MAP), 仅供查看" },
   // 区域域 (系统, 不在 16 类白名单, 由同步脚本管理)
   REGION: { category: "REGION", label: "行政区域", shape: "tree", readonly: true, description: "系统字典, 由 legacy 迁移脚本管理, UI 仅查看" }
 };
@@ -93,5 +95,6 @@ export function isSystemCategory(category: string): boolean {
   const meta = DICT_META[category]; return meta ? meta.readonly : false;
 }
 
-/** 业务类白名单 (与 ALLOWED_DICTIONARY_CATEGORIES 一致, 排除 REGION) */
-export const BUSINESS_CATEGORIES: string[] = Object.keys(DICT_META).filter((c) => DICT_META[c]?.readonly !== true);
+/** 业务类白名单 (与 ALLOWED_DICTIONARY_CATEGORIES 一致, 排除 REGION);
+ *  readonly 类目也在列 — 只读只是禁写, 类目列表/下拉的类目全集不变 */
+export const BUSINESS_CATEGORIES: string[] = [...ALLOWED_DICTIONARY_CATEGORIES];
