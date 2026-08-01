@@ -13,9 +13,11 @@ import {
   Badge,
   Drawer,
   Empty,
+  Space,
   Tag,
   Typography,
   theme,
+  App as AntdApp,
   type MenuProps
 } from "antd";
 import { buildMessageLinkHref } from "@/lib/message-link";
@@ -193,6 +195,7 @@ function toAntdMenu(items: MenuItem[]): MenuProps["items"] {
 export function DashboardShell({ user, children }: Props) {
   const t = useT();
   const router = useRouter();
+  const { modal } = AntdApp.useApp();
   const pathname = usePathname();
   const { token } = theme.useToken();
   const { isMobile, isPhone, md } = useResponsive();
@@ -543,7 +546,7 @@ export function DashboardShell({ user, children }: Props) {
           </div>
 
           <div style={{ display: "inline-flex", alignItems: "center", gap: isMobile ? 4 : 16, flexShrink: 0 }}>
-            <Badge count={unread} size="small" offset={[-2, 2]}>
+            <Badge count={unread} overflowCount={99} size="small" offset={[-2, 2]}>
               <button
                 type="button"
                 onClick={() => {
@@ -624,20 +627,48 @@ export function DashboardShell({ user, children }: Props) {
           body: { padding: isMobile ? "0 12px 12px" : undefined }
         }}
         extra={
-          <a
-            onClick={async (e) => {
-              e.preventDefault();
-              const r = await fetch("/api/messages/mark-all-read", { method: "POST", credentials: "include" });
-              const j = await r.json();
-              if (j.code === 0) {
-                setUnread(0);
-                loadMessages();
-              }
-            }}
-            style={{ color: token.colorPrimary, fontSize: 13 }}
-          >
-            {t("messages.markAllRead")}
-          </a>
+          <Space size={12}>
+            <a
+              onClick={async (e) => {
+                e.preventDefault();
+                const r = await fetch("/api/messages/mark-all-read", { method: "POST", credentials: "include" });
+                const j = await r.json();
+                if (j.code === 0) {
+                  setUnread(0);
+                  loadMessages();
+                  modal.success({ content: t("messages.toast.markedRead", { n: j.data.updated }) });
+                }
+              }}
+              style={{ color: token.colorPrimary, fontSize: 13, cursor: "pointer" }}
+            >
+              {t("messages.markAllRead")}
+            </a>
+            {messages.length > 0 && messages.every((m) => !!m.readAt) ? (
+              <a
+                onClick={(e) => {
+                  e.preventDefault();
+                  modal.confirm({
+                    title: t("messages.clearReadConfirm.title"),
+                    content: t("messages.clearReadConfirm.content"),
+                    okText: t("messages.action.clearRead"),
+                    okType: "danger",
+                    cancelText: t("announcements.cancel"),
+                    onOk: async () => {
+                      const r = await fetch("/api/messages/read/clear", { method: "POST", credentials: "include" });
+                      const j = await r.json();
+                      if (j.code === 0) {
+                        modal.success({ content: t("messages.toast.clearedRead", { n: j.data.deleted }) });
+                        loadMessages();
+                      }
+                    }
+                  });
+                }}
+                style={{ color: token.colorError, fontSize: 13, cursor: "pointer" }}
+              >
+                {t("messages.action.clearRead")}
+              </a>
+            ) : null}
+          </Space>
         }
       >
         <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>

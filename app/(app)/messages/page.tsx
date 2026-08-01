@@ -204,12 +204,36 @@ export default function MessagesPage() {
                 const r = await fetch("/api/messages/mark-all-read", { method: "POST", credentials: "include" });
                 const j = await r.json();
                 if (j.code === 0) {
-                  msg.success(`已标记 ${j.data.updated} 条消息为已读`);
+                  msg.success(t("messages.toast.markedRead", { n: j.data.updated }));
                   actionRef.current?.reloadAndRest?.();
                 } else msg.error(j.message);
               }}
             >
               {t("messages.markAllRead")}
+            </Button>
+            <Button
+              key="clear"
+              icon={<DeleteOutlined />}
+              danger
+              onClick={() => {
+                modal.confirm({
+                  title: t("messages.clearReadConfirm.title"),
+                  content: t("messages.clearReadConfirm.content"),
+                  okText: t("messages.action.clearRead"),
+                  okType: "danger",
+                  cancelText: t("announcements.cancel"),
+                  onOk: async () => {
+                    const r = await fetch("/api/messages/read/clear", { method: "POST", credentials: "include" });
+                    const j = await r.json();
+                    if (j.code === 0) {
+                      msg.success(t("messages.toast.clearedRead", { n: j.data.deleted }));
+                      actionRef.current?.reloadAndRest?.();
+                    } else msg.error(j.message);
+                  }
+                });
+              }}
+            >
+              {t("messages.action.clearRead")}
             </Button>
           </Space>
         }

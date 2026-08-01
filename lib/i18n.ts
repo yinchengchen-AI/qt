@@ -4,6 +4,15 @@
 
 export type Locale = "zh-CN" | "en-US";
 
+// 占位符替换:{name} → params["name"]。空参数原样返回。
+function format(template: string, params?: Record<string, string | number>): string {
+  if (!params) return template;
+  return template.replace(/\{(\w+)\}/g, (_, k) => {
+    const v = params[k];
+    return v === undefined ? `{${k}}` : String(v);
+  });
+}
+
 const messages: Record<Locale, Record<string, string>> = {
   "zh-CN": {
     "menu.dashboard": "工作台",
@@ -62,6 +71,11 @@ const messages: Record<Locale, Record<string, string>> = {
     "messages.action.delete": "删除",
     "messages.deleteConfirm.title": "确认删除消息？",
     "messages.deleteConfirm.content": "删除后不可恢复",
+    "messages.toast.markedRead": "已标记 {n} 条消息为已读",
+    "messages.action.clearRead": "清空已读",
+    "messages.toast.clearedRead": "已清空 {n} 条已读消息",
+    "messages.clearReadConfirm.title": "清空已读消息?",
+    "messages.clearReadConfirm.content": "将永久删除所有已读消息,不可恢复",
 
     // 公告
     "announcements.title": "公告",
@@ -250,6 +264,11 @@ const messages: Record<Locale, Record<string, string>> = {
     "messages.action.delete": "Delete",
     "messages.deleteConfirm.title": "Delete this message?",
     "messages.deleteConfirm.content": "This cannot be recovered",
+    "messages.toast.markedRead": "Marked {n} messages as read",
+    "messages.action.clearRead": "Clear read",
+    "messages.toast.clearedRead": "Cleared {n} read messages",
+    "messages.clearReadConfirm.title": "Clear read messages?",
+    "messages.clearReadConfirm.content": "Permanently delete all read messages. This cannot be recovered.",
 
     // Announcements
     "announcements.title": "Announcements",
@@ -382,12 +401,15 @@ const messages: Record<Locale, Record<string, string>> = {
 };
 
 export function getT(locale: Locale = "zh-CN") {
-  return (key: string): string => messages[locale]?.[key] ?? messages["zh-CN"][key] ?? key;
+  return (key: string, params?: Record<string, string | number>): string => {
+    const raw = messages[locale]?.[key] ?? messages["zh-CN"][key] ?? key;
+    return format(raw, params);
+  };
 }
 
 // 客户端 hook: 当前默认 zh-CN, locale 切换留给后续 zustand 接入
 // (现阶段 i18n.ts 注释提到 zustand 但还没接, 详情页先按 zh-CN 渲染)
-export function useT(): (key: string) => string {
+export function useT() {
   return getT("zh-CN");
 }
 
