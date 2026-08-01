@@ -2,6 +2,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { useMessageStream } from "@/lib/use-message-stream";
 import Link from "next/link";
 import { useRouter, usePathname } from "next/navigation";
 import { signOut } from "next-auth/react";
@@ -278,6 +279,15 @@ export function DashboardShell({ user, children }: Props) {
     const t = setInterval(loadUnread, 60000);
     return () => clearInterval(t);
   }, []);
+
+  // SSE kick 触发器:收到 kick 立即重拉 unread-count + drawer 最新 10 条
+  // (polling 仍以 60s 周期跑,SSE 是加速,失败时 polling 兜底)
+  useMessageStream({
+    onKick: () => {
+      loadUnread();
+      if (drawerOpen) loadMessages();
+    }
+  });
 
   // 拉取"未读首发"AppRelease,登录后弹窗。
   // 设计取舍:
