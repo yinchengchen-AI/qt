@@ -28,6 +28,22 @@ describe("Role permissions", () => {
     expect(hasPermission("EXPERT", RESOURCE.INVOICE, ACTION.EXPORT)).toBe(true);
   });
 
+  it("EXPERT 回款只读+导出 (登记回款归 SALES/财务)", () => {
+    expect(hasPermission("EXPERT", RESOURCE.PAYMENT, ACTION.READ)).toBe(true);
+    expect(hasPermission("EXPERT", RESOURCE.PAYMENT, ACTION.EXPORT)).toBe(true);
+    expect(hasPermission("EXPERT", RESOURCE.PAYMENT, ACTION.CREATE)).toBe(false);
+    expect(hasPermission("EXPERT", RESOURCE.PAYMENT, ACTION.UPDATE)).toBe(false);
+    expect(hasPermission("EXPERT", RESOURCE.PAYMENT, ACTION.DELETE)).toBe(false);
+  });
+
+  it("OPS 客户只读+导出 (客户资料 owner 是销售)", () => {
+    expect(hasPermission("OPS", RESOURCE.CUSTOMER, ACTION.READ)).toBe(true);
+    expect(hasPermission("OPS", RESOURCE.CUSTOMER, ACTION.EXPORT)).toBe(true);
+    expect(hasPermission("OPS", RESOURCE.CUSTOMER, ACTION.CREATE)).toBe(false);
+    expect(hasPermission("OPS", RESOURCE.CUSTOMER, ACTION.UPDATE)).toBe(false);
+    expect(hasPermission("OPS", RESOURCE.CUSTOMER, ACTION.DELETE)).toBe(false);
+  });
+
   it("OPS 不能创建/编辑开票, 只能读", () => {
     expect(hasPermission("OPS", RESOURCE.INVOICE, ACTION.READ)).toBe(true);
     expect(hasPermission("OPS", RESOURCE.INVOICE, ACTION.CREATE)).toBe(false);
@@ -45,14 +61,15 @@ describe("Role permissions", () => {
     expect(hasPermission("OPS", RESOURCE.ANNOUNCEMENT, ACTION.CREATE)).toBe(true);
   });
 
-  it("DUNNING: SALES/EXPERT 可记录+查看, 不能修改+删除; FINANCE/ADMIN 拿全 CRUD; OPS 只读", () => {
-    // 业务现场 (SALES/EXPERT): 仅 CREATE+READ
+  it("DUNNING: SALES 可记录+查看; EXPERT/OPS 只读; FINANCE/ADMIN 拿全 CRUD", () => {
+    // 业务现场 (SALES): 仅 CREATE+READ
     expect(hasPermission("SALES", RESOURCE.DUNNING, ACTION.CREATE)).toBe(true);
     expect(hasPermission("SALES", RESOURCE.DUNNING, ACTION.READ)).toBe(true);
     expect(hasPermission("SALES", RESOURCE.DUNNING, ACTION.UPDATE)).toBe(false);
     expect(hasPermission("SALES", RESOURCE.DUNNING, ACTION.DELETE)).toBe(false);
-    expect(hasPermission("EXPERT", RESOURCE.DUNNING, ACTION.CREATE)).toBe(true);
+    // 技术专家: 只读 (催款记录归 SALES/财务)
     expect(hasPermission("EXPERT", RESOURCE.DUNNING, ACTION.READ)).toBe(true);
+    expect(hasPermission("EXPERT", RESOURCE.DUNNING, ACTION.CREATE)).toBe(false);
     expect(hasPermission("EXPERT", RESOURCE.DUNNING, ACTION.UPDATE)).toBe(false);
     expect(hasPermission("EXPERT", RESOURCE.DUNNING, ACTION.DELETE)).toBe(false);
     // 财务对账留痕: 全 CRUD
