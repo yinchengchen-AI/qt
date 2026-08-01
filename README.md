@@ -217,7 +217,11 @@ nginx 反代下上游异常时，由 `public/502.html` 静态页和 `app/502/pag
 
 ## 最近更新
 
-完整 changelog 见 [CHANGELOG.md](CHANGELOG.md)。
+
+### v0.13.8（2026-08-01）部署链路优化:远端触发 + preflight + 一键回滚
+
+部署链路整合:`scripts/prod/_lib.sh` 抽出公共 `log / preflight_check / smoke_test`,`deploy.sh` 加 preflight(`.env` 8 个关键 key / git 干净 / 磁盘 ≥3G / 内存预警 / 容器健康)、持久化日志 `/var/log/qt-deploy.log`;新增 `scripts/prod/remote-deploy.sh` 用 `~/Downloads/QT.pem` 从本地 Mac 一键触发远端 deploy(远端 tmux hold + 本地 stream + 退出码回传,断线不中断);新增 `scripts/prod/rollback.sh` 默认切到上一版(`--list / --to v0.13.6 / --skip-smoke`),smoke 失败自动回滚。`deploy.sh` 内化历史教训注释(原 2077 行 `docs/ops/deploy-ecs.md` 拆为 `deploy-current.md` + `deploy-history/`)。`.gitignore` 增 `.deploy-target` / `*.pem.local`。纯部署/工具改动,无 schema / API 契约变更。
+
 
 ### v0.13.7（2026-07-31）合同编辑支持管理员变更签订人 + 依赖升级
 

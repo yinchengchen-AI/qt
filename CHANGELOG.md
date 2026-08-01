@@ -25,6 +25,18 @@
 
 ## 详细变更
 
+### v0.13.8(2026-08-01) 部署链路优化:远端触发 + preflight + 一键回滚
+
+- **抽出公共库** `scripts/prod/_lib.sh`: `log` / `log_warn` / `log_err` / `log_ok` / `preflight_check` / `smoke_test` / `require_root_or_docker`,`deploy.sh` 和 `rollback.sh` 通过 self-rewrite 护栏把它复制到 `/tmp` 再 source(避免 self-rewrite 路径丢函数)。
+- **`deploy.sh` 加 preflight**(替换原来散落的 echo): 检查 `.env` 含 8 个关键 key + git 干净 + 磁盘 ≥3G + 可用内存 ≥1500MB(warn) + `qt-postgres`/`qt-minio` 容器健康。任一硬失败即 exit 1,给出可操作修法。
+- **`deploy.sh` 持久化日志**: 每次输出同时写到 `/var/log/qt-deploy.log`(`DEPLOY_LOG=: ` 关闭);`smoke_test` 由 `_lib.sh` 提供,失败时提示跑 `rollback.sh`。
+- **新增 `scripts/prod/remote-deploy.sh`**: 本地 Mac 一键触发远端 deploy。默认读 `~/Downloads/QT.pem` (或 `~/.ssh/qt_deploy.pem`),目标主机配在 `.deploy-target` (gitignored),远端 `tmux` hold 会话跑 deploy.sh + 本地 `capture-pane` stream `[remote]` 前缀日志 + 退出码回传。`--dry-run` 只显示 ssh 配置。
+- **新增 `scripts/prod/rollback.sh`**: 默认切到上一版; `--list` 看历史, `--to v0.13.6` 指定版本, `--skip-smoke` 紧急跳过。切完跑 `smoke_test`,失败自动回滚到切之前状态。
+- **文档拆分**: 原 `docs/ops/deploy-ecs.md` (2077 行, 累计 v0.1.0~v0.13.7 所有部署记录 + 事故复盘) 移到 `docs/ops/deploy-history/v0.1.0-to-v0.13.7-deploy-records.md`;日常部署文档重写为 `docs/ops/deploy-current.md` (130 行)。`docs/README.md` 文档地图同步更新,`AGENTS.md` 加 Deploy Quick Reference 段。
+- **`.gitignore`**: 新增 `.deploy-target` / `.deploy-target.*` / `*.pem.local` (模板是 `.deploy-target.example`,已 commit)。
+- **`scripts/prod/deploy.sh` 内部清理**: 移除冗余 `echo`,历史教训注释从函数体移到 `_lib.sh` 顶部注释块(单一来源),236 → 239 行但**可读性提升**(原 50% 行是历史注释)。
+
+
 ### v0.13.7(2026-07-31) 合同编辑支持管理员变更签订人 + 依赖升级
 
 - **合同编辑页新增「签订人」字段**: 管理员可搜索改为任意在职员工 (代录修正场景); 非 admin 只读展示, 提交时剥离该字段。服务端与负责人变更同口径: 非 admin 改为他人 422, 目标员工非 ACTIVE 400, 传现值无害放行; 变更纳入 `CONTRACT_UPDATE` 审计 diff (`server/services/contract/crud.ts`)。
