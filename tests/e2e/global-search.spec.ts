@@ -43,4 +43,10 @@ test("顶栏全局搜索命中客户并跳转详情", async ({ page }) => {
   await page.getByText(customerName, { exact: false }).first().click();
   await page.waitForURL(/\/customers\//, { timeout: 10000 });
   await expect(page.getByText(customerName).first()).toBeVisible();
+  // 回归: 选中跳转后顶栏搜索框应已清空 (不再残留 hit:<cat>:<id> 内部编码)
+  const boxAfter = page.getByPlaceholder("搜客户 / 合同号 / 发票号 / 回款单");
+  if (!(await boxAfter.isVisible())) {
+    await page.getByRole("button", { name: "搜索", exact: true }).click();
+  }
+  await expect(boxAfter).toHaveValue("");
 });
