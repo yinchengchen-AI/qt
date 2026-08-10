@@ -46,7 +46,10 @@ import { ROLE_LABEL } from "@/lib/status";
 import { useT } from "@/lib/i18n";
 import { ReleasePopup, type ReleasePopupData } from "@/components/release-popup";
 import { GlobalSearch } from "@/components/global-search";
+<<<<<<< HEAD
 import { StatusTag } from "@/components/status-tag";
+=======
+>>>>>>> 55cf801 (feat(search): DashboardShell 顶栏接入 GlobalSearch)
 import { formatDate, formatDateTime } from "@/lib/format";
 
 const { Sider, Header, Content } = Layout;
@@ -586,29 +589,7 @@ export function DashboardShell({ user, children }: Props) {
           </div>
 
           <div style={{ display: "inline-flex", alignItems: "center", gap: isMobile ? 4 : 16, flexShrink: 0 }}>
-            <button
-              type="button"
-              onClick={() => setSearchOpen(true)}
-              aria-label="搜索"
-              title="搜索 (⌘K)"
-              style={{
-                background: "transparent",
-                border: "none",
-                padding: 6,
-                cursor: "pointer",
-                color: token.colorTextSecondary,
-                fontSize: 16,
-                display: "inline-flex",
-                alignItems: "center",
-                justifyContent: "center",
-                minWidth: 40,
-                minHeight: 40,
-                borderRadius: 6,
-              }}
-            >
-              <SearchOutlined />
-            </button>
-
+            <GlobalSearch />
             <Badge count={unread} overflowCount={99} size="small" offset={[-2, 2]}>
               <button
                 type="button"
