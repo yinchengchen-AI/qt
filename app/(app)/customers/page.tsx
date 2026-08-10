@@ -68,6 +68,8 @@ export default function CustomersPage() {
   // 不再自动 submit. 这个 ref 留作后续 export 时按需扩展 (如要按表单值重置导出条件).
   const formRef = useRef<ProFormInstance>(undefined);
   const search = useSearchParams();
+  // 全局搜索"查看全部"深链: ?keyword= 预填关键词表单
+  const initialKeyword = search.get("keyword") ?? undefined;
   // 从其它页面下钻过来 (e.g. /statistics/by-region) 时, 把 ?district=&town= 预填到地区级联并触发查询。
   // 双轨: (a) 写到 form 让 cascader UI 回显; (b) 存到 regionOverrideRef 供 request 回调兜底,避免 cascader
   // value 与 form state 同步时序问题导致首次查询拿不到 region 过滤条件(此前依赖 formRef.setFieldsValue
@@ -156,6 +158,7 @@ export default function CustomersPage() {
         }
       />
       <ProTable<Customer> actionRef={actionRef} formRef={formRef}
+        form={{ initialValues: { keyword: initialKeyword } }}
         rowKey="id"
         search={{ labelWidth: "auto", defaultCollapsed: isMobile, layout: isMobile ? "vertical" : undefined, collapsed: isMobile ? false : undefined }}
         // 移动端横向滚动;Pad/桌面靠列宽自适应

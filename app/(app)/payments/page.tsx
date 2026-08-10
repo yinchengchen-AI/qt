@@ -3,7 +3,7 @@ import { ProTable } from "@ant-design/pro-components";
 import { Button, App as AntdApp } from "antd";
 import { DownloadOutlined } from "@ant-design/icons";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useRef } from "react";
 import { Page } from "@/components/page";
 import { PageHeader } from "@/components/page-header";
@@ -30,6 +30,9 @@ type Row = {
 
 export default function PaymentsPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  // 全局搜索"查看全部"深链: ?keyword= 预填 ProTable 搜索表单, 首次 request 自动带上
+  const initialKeyword = searchParams.get("keyword") ?? undefined;
   const { isMobile } = useResponsive();
   const statusEnum = useStatusValueEnum("payment");
   const methodDict = useDict("PAYMENT_RECEIVE_METHOD");
@@ -69,6 +72,7 @@ export default function PaymentsPage() {
       />
       <ProTable<Row>
         rowKey="id"
+        form={{ initialValues: { keyword: initialKeyword } }}
         search={{ labelWidth: "auto", defaultCollapsed: isMobile, layout: isMobile ? "vertical" : undefined }}
         scroll={{ x: 'max-content' }}
         pagination={{ defaultPageSize: 20, showSizeChanger: !isMobile, size: isMobile ? "small" : undefined }}
