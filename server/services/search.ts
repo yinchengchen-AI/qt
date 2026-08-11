@@ -4,6 +4,7 @@
 
 import { prisma } from "@/lib/prisma";
 import { ownerEq, ownerViaContract } from "@/lib/ownership";
+import { requirePermission, RESOURCE, ACTION } from "@/lib/permissions";
 
 import type { SessionUser } from "@/lib/session";
 import type { Prisma } from "@prisma/client";
@@ -37,6 +38,12 @@ export async function globalSearch(
   user: SessionUser,
   keyword: string
 ): Promise<SearchResponse> {
+  // 守门: 任意一个资源无 READ 权限则 403 (与 list API 同口径)
+  requirePermission(user.roleCode, RESOURCE.CUSTOMER, ACTION.READ);
+  requirePermission(user.roleCode, RESOURCE.CONTRACT, ACTION.READ);
+  requirePermission(user.roleCode, RESOURCE.INVOICE, ACTION.READ);
+  requirePermission(user.roleCode, RESOURCE.PAYMENT, ACTION.READ);
+
   const q = keyword.trim();
   if (q.length < 2) {
     return { customers: [], contracts: [], invoices: [], payments: [] };

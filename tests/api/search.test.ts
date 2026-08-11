@@ -6,6 +6,7 @@ import { globalSearch } from "@/server/services/search";
 let dbReachable = false;
 let adminUser: SessionUser | null = null;
 let salesUser: SessionUser | null = null;
+let expertUser: SessionUser | null = null;
 
 beforeAll(async () => {
   try {
@@ -15,17 +16,26 @@ beforeAll(async () => {
     dbReachable = false;
     return;
   }
-  const [adminRow, salesRow] = await Promise.all([
+  const [adminRow, salesRow, expertRow] = await Promise.all([
     prisma.user.findFirst({ where: { role: { code: "ADMIN" }, deletedAt: null, isSystem: false } }),
-    prisma.user.findFirst({ where: { role: { code: "SALES" }, deletedAt: null, isSystem: false } })
+    prisma.user.findFirst({ where: { role: { code: "SALES" }, deletedAt: null, isSystem: false } }),
+    prisma.user.findFirst({ where: { role: { code: "EXPERT" }, deletedAt: null, isSystem: false } })
   ]);
   if (!adminRow || !salesRow) return;
   adminUser = { id: adminRow.id, employeeNo: adminRow.employeeNo, name: adminRow.name, email: adminRow.email, roleCode: "ADMIN", permissions: [] };
   salesUser = { id: salesRow.id, employeeNo: salesRow.employeeNo, name: salesRow.name, email: salesRow.email, roleCode: "SALES", permissions: [] };
+  if (expertRow) {
+    expertUser = { id: expertRow.id, employeeNo: expertRow.employeeNo, name: expertRow.name, email: expertRow.email, roleCode: "EXPERT", permissions: [] };
+  }
 });
 
 const guard = (fn: () => Promise<void>) => async () => {
   if (!dbReachable || !adminUser || !salesUser) return;
+  await fn();
+};
+
+const guardWithExpert = (fn: () => Promise<void>) => async () => {
+  if (!dbReachable || !adminUser || !salesUser || !expertUser) return;
   await fn();
 };
 
@@ -120,5 +130,41 @@ describe("globalSearch", () => {
       });
       expect(owns).not.toBeNull();
     }
+  }));
+
+  it("SALES user only sees own contracts", guard(async () => {
+    const result = await globalSearch(salesUser!, "test");
+    for (const contract of result.contracts) {
+      const owns = await prisma.contract.findFirst({
+        where: { id: contract.id, ownerUserId: salesUser!.id, deletedAt: null }
+      });
+      expect(owns).not.toBeNull();
+    }
+  }));
+
+  it("EXPERT user only sees own customers", guardWithExpert(async () => {
+    const result = await globalSearch(expertUser!, "test");
+    for (const customer of result.customers) {
+      const owns = await prisma.customer.findFirst({
+        where: { id: customer.id, ownerUserId: expertUser!.id, deletedAt: null }
+      });
+      expect(owns).not.toBeNull();
+    }
+  }));
+
+  it("EXPERT user only sees own contracts", guardWithExpert(async () => {
+    const result = await globalSearch(expertUser!, "test");
+    for (const contract of result.contracts) {
+      const owns = await prisma.contract.findFirst({
+        where: { id: contract.id, ownerUserId: expertUser!.id, deletedAt: null }
+      });
+      expect(owns).not.toBeNull();
+    }
+  }));
+
+  it("ADMIN user sees all customers", guard(async () => {
+    const totalCustomers = await prisma.customer.count({ where: { deletedAt: null } });
+    const result = await globalSearch(adminUser!, "test");
+    expect(result.customers.length).toBeLessThanOrEqual(totalCustomers);
   }));
 });
