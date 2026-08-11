@@ -6,7 +6,7 @@
 [![TypeScript](https://img.shields.io/badge/TypeScript-6.0.3-3178c6)](https://www.typescriptlang.org/)
 [![Prisma](https://img.shields.io/badge/Prisma-7.9.1-2d3748)](https://www.prisma.io/)
 [![PostgreSQL](https://img.shields.io/badge/PostgreSQL-16-336791)](https://www.postgresql.org/)
-[![Last Release](https://img.shields.io/badge/release-v0.18.3-blue)](CHANGELOG.md)
+[![Last Release](https://img.shields.io/badge/release-v0.18.4-blue)](CHANGELOG.md)
 
 > **客户 / 合同 / 开票 / 回款** 一体化管理,附件走 MinIO presigned 直传,服务端 Server Actions + RBAC + 行级隔离。
 >
@@ -255,6 +255,15 @@ nginx 反代下上游异常时,由 `public/502.html` 静态页与 `app/502/page.
 ## 最近更新
 
 最近 5 个版本,完整历史见 [CHANGELOG.md](CHANGELOG.md)。
+
+### v0.18.4(2026-08-11)全局搜索
+
+新增全局搜索功能，支持跨客户/合同/发票/回款快速检索。
+
+- **触发方式**:Header 右侧搜索图标 + `Cmd+K` / `Ctrl+K` 快捷键
+- **搜索范围**:客户(名称/编号/联系人/电话)、合同(合同号/标题/客户名)、发票(发票号/代码/客户名)、回款(回款号/流水号/客户名)
+- **实时搜索**:300ms 防抖，按实体类型分组展示，键盘导航(↑↓ / Enter / Esc)
+- **权限控制**:RBAC + 行级隔离(SALES/EXPERT 只能搜自己负责的数据)
 
 ### v0.18.3(2026-08-02)ADMIN 可直接调整角色权限 (运行时真源翻到 DB)
 

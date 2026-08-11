@@ -2,6 +2,26 @@
 
 本文件记录 qt-biz 每个版本的详细变更。项目快速入口请见 [README.md](README.md)。
 
+## v0.18.4(2026-08-11) 全局搜索
+
+新增全局搜索功能，支持跨客户/合同/发票/回款快速检索。
+
+变更:
+- **feat(search)**:全局搜索 — Header 右侧搜索图标 + `Cmd+K` / `Ctrl+K` 快捷键触发
+  - 搜索范围:客户(名称/编号/联系人/电话)、合同(合同号/标题/客户名)、发票(发票号/代码/客户名)、回款(回款号/流水号/客户名)
+  - 实时搜索:300ms 防抖，按实体类型分组展示，键盘导航(↑↓ 选择 / Enter 跳转 / Esc 关闭)
+  - 权限控制:RBAC + 行级隔离(SALES/EXPERT 只能搜自己负责的数据)
+  - API: `GET /api/search?q=keyword`，返回 `{ customers, contracts, invoices, payments }`
+- **test(search)**:搜索服务测试覆盖 — 11 个用例(关键词校验/各实体搜索/结果结构/行级隔离)
+
+新增文件:
+- `server/services/search.ts` — 搜索业务逻辑
+- `app/api/search/route.ts` — API 路由
+- `components/global-search.tsx` — 搜索 Modal 组件
+- `tests/api/search.test.ts` — API 测试
+
+---
+
 ## v0.17.0(2026-08-02) 去掉 docker fallback 应急回退
 
 docker qt-app 镜像 (`qt-app:latest` **DEPRECATED**) 已删, 留出来的 1.49GB 不再用。

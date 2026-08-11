@@ -35,6 +35,7 @@ import {
   AppstoreOutlined,
   AccountBookOutlined,
   IdcardOutlined,
+  SearchOutlined,
 } from "@ant-design/icons";
 import type { RoleCode } from "@/types/enums";
 import { ACTION, RESOURCE, type Action, type Resource } from "@/lib/permissions";
@@ -42,6 +43,7 @@ import { useResponsive } from "@/lib/use-breakpoint";
 import { ROLE_LABEL } from "@/lib/status";
 import { useT } from "@/lib/i18n";
 import { ReleasePopup, type ReleasePopupData } from "@/components/release-popup";
+import { GlobalSearch } from "@/components/global-search";
 import { formatDate, formatDateTime } from "@/lib/format";
 
 const { Sider, Header, Content } = Layout;
@@ -215,6 +217,7 @@ export function DashboardShell({ user, children }: Props) {
   // (release=null + open=false 表示没有未读 / 已关闭)
   const [pendingRelease, setPendingRelease] = useState<ReleasePopupData | null>(null);
   const [releasePopupOpen, setReleasePopupOpen] = useState(false);
+  const [searchOpen, setSearchOpen] = useState(false);
 
   const { key: selectedKey, open: defaultOpen } = useMemo(
     () => findSelectedKey(pathname),
@@ -312,6 +315,18 @@ export function DashboardShell({ user, children }: Props) {
     return () => {
       cancelled = true;
     };
+  }, []);
+
+  // Cmd+K / Ctrl+K 快捷键打开全局搜索
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key === "k") {
+        e.preventDefault();
+        setSearchOpen((o) => !o);
+      }
+    };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
   }, []);
 
   const userMenu: MenuProps["items"] = [
@@ -558,6 +573,29 @@ export function DashboardShell({ user, children }: Props) {
           </div>
 
           <div style={{ display: "inline-flex", alignItems: "center", gap: isMobile ? 4 : 16, flexShrink: 0 }}>
+            <button
+              type="button"
+              onClick={() => setSearchOpen(true)}
+              aria-label="搜索"
+              title="搜索 (⌘K)"
+              style={{
+                background: "transparent",
+                border: "none",
+                padding: 6,
+                cursor: "pointer",
+                color: token.colorTextSecondary,
+                fontSize: 16,
+                display: "inline-flex",
+                alignItems: "center",
+                justifyContent: "center",
+                minWidth: 40,
+                minHeight: 40,
+                borderRadius: 6,
+              }}
+            >
+              <SearchOutlined />
+            </button>
+
             <Badge count={unread} overflowCount={99} size="small" offset={[-2, 2]}>
               <button
                 type="button"
@@ -843,6 +881,8 @@ export function DashboardShell({ user, children }: Props) {
           setPendingRelease(null);
         }}
       />
+
+      <GlobalSearch open={searchOpen} onClose={() => setSearchOpen(false)} />
     </Layout>
   );
 }
