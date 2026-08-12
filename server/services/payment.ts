@@ -8,7 +8,7 @@ import type { PaymentCreateInput, PaymentActionInput } from "@/lib/validators/pa
 import { Prisma } from "@prisma/client";
 import type { Prisma as PrismaNS } from "@prisma/client";
 import { listAdminUserIds } from "@/server/events/bus";
-import { ownerEq, ownerViaContract, parseStatusList } from "@/lib/ownership";
+import { assertRecordWritable, ownerViaContract, parseStatusList } from "@/lib/ownership";
 import { runTransitionInTx } from "@/lib/status-machine";
 import { MONEY_TOLERANCE } from "@/lib/money-tolerance";
 
@@ -36,7 +36,7 @@ export async function listPayments(
           ]
         }
       : {}),
-    ...(ownerViaContract(user) as Prisma.PaymentWhereInput),
+    // 读放开: SALES/EXPERT 全量可读 (role-browse-permissions); 行级 owner 过滤仅统计/工作台口径使用
   };
   const [list, total] = await Promise.all([
     // 关联合同只带出"上下文字段"(合同号/标题/客户/服务类型/金额), 列表"合同"列渲染用;
@@ -65,7 +65,7 @@ export async function listPayments(
 export async function getPayment(user: SessionUser, id: string) {
   requirePermission(user.roleCode, RESOURCE.PAYMENT, ACTION.READ);
   const p = await prisma.payment.findFirst({
-    where: { id, deletedAt: null, ...(ownerViaContract(user) as Prisma.PaymentWhereInput) },
+    where: { id, deletedAt: null },
     include: {
       invoice: { select: { id: true, invoiceNo: true, amount: true } },
       // 合同上下文(合同号/标题/客户/服务类型/金额), 详情页"关联合同"卡展示用;
@@ -94,9 +94,11 @@ export async function createPayment(
 
   return prisma.$transaction(async (tx) => {
     const contract = await tx.contract.findFirst({
-      where: { id: input.contractId, deletedAt: null, ...ownerEq(user) }
+      where: { id: input.contractId, deletedAt: null }
     });
     if (!contract) throw new ApiError(ERROR_CODES.NOT_FOUND, "合同不存在", 404);
+    // 写守门: SALES/EXPERT 只能在自己名下的合同登记回款 (读放开后由显式断言替代行过滤)
+    assertRecordWritable(user, contract.ownerUserId, "回款");
     if (contract.status !== "ACTIVE") {
       // 旁路: admin + force + CLOSED 合同允许登记回款
       // (其它状态如 DRAFT 不允许, 防止误操作)
@@ -114,7 +116,7 @@ export async function createPayment(
     }
     let inv: Awaited<ReturnType<typeof tx.invoice.findFirst>> = null;
     if (input.invoiceId) {
-      inv = await tx.invoice.findFirst({ where: { id: input.invoiceId, deletedAt: null, ...(ownerViaContract(user) as Prisma.InvoiceWhereInput) } });
+      inv = await tx.invoice.findFirst({ where: { id: input.invoiceId, deletedAt: null } });
       if (!inv || inv.contractId !== input.contractId) {
         throw new ApiError(ERROR_CODES.NOT_FOUND, "发票不属于该合同", 404);
       }
