@@ -1,9 +1,8 @@
 // 全局搜索服务
 // 跨实体搜索: Customer / Contract / Invoice / Payment
-// 受 RBAC 权限过滤 + 行级隔离 (SALES/EXPERT)
+// 受 RBAC 权限过滤
 
 import { prisma } from "@/lib/prisma";
-import { ownerEq, ownerViaContract } from "@/lib/ownership";
 import { requirePermission, RESOURCE, ACTION } from "@/lib/permissions";
 
 import type { SessionUser } from "@/lib/session";
@@ -49,28 +48,21 @@ export async function globalSearch(
     return { customers: [], contracts: [], invoices: [], payments: [] };
   }
 
-  // 并行搜索四个模块, 各自受 RBAC + RLS 约束
+  // 并行搜索四个模块, 各自受 RBAC 约束
   const [customers, contracts, invoices, payments] = await Promise.all([
-    searchCustomers(user, q),
-    searchContracts(user, q),
-    searchInvoices(user, q),
-    searchPayments(user, q),
+    searchCustomers(q),
+    searchContracts(q),
+    searchInvoices(q),
+    searchPayments(q),
   ]);
 
   return { customers, contracts, invoices, payments };
 }
 
 /** 搜索客户: name, code, contactName, contactPhone */
-async function searchCustomers(
-  user: SessionUser,
-  q: string
-): Promise<SearchResult[]> {
-  // SALES/EXPERT 只能搜自己负责的客户
-  const rowFilter = ownerEq(user);
-
+async function searchCustomers(q: string): Promise<SearchResult[]> {
   const where: Prisma.CustomerWhereInput = {
     deletedAt: null,
-    ...rowFilter,
     OR: [
       { name: { contains: q, mode: "insensitive" } },
       { code: { contains: q, mode: "insensitive" } },
@@ -101,15 +93,9 @@ async function searchCustomers(
   }));
 }
 
-async function searchContracts(
-  user: SessionUser,
-  q: string
-): Promise<SearchResult[]> {
-  const rowFilter = ownerEq(user);
-
+async function searchContracts(q: string): Promise<SearchResult[]> {
   const where: Prisma.ContractWhereInput = {
     deletedAt: null,
-    ...rowFilter,
     OR: [
       { contractNo: { contains: q, mode: "insensitive" } },
       { title: { contains: q, mode: "insensitive" } },
@@ -140,15 +126,9 @@ async function searchContracts(
 }
 
 /** 搜索发票: invoiceNo, invoiceCode, customerName */
-async function searchInvoices(
-  user: SessionUser,
-  q: string
-): Promise<SearchResult[]> {
-  const rowFilter = ownerViaContract(user);
-
+async function searchInvoices(q: string): Promise<SearchResult[]> {
   const where: Prisma.InvoiceWhereInput = {
     deletedAt: null,
-    ...rowFilter,
     OR: [
       { invoiceNo: { contains: q, mode: "insensitive" } },
       { invoiceCode: { contains: q, mode: "insensitive" } },
@@ -178,15 +158,9 @@ async function searchInvoices(
   }));
 }
 
-async function searchPayments(
-  user: SessionUser,
-  q: string
-): Promise<SearchResult[]> {
-  const rowFilter = ownerViaContract(user);
-
+async function searchPayments(q: string): Promise<SearchResult[]> {
   const where: Prisma.PaymentWhereInput = {
     deletedAt: null,
-    ...rowFilter,
     OR: [
       { paymentNo: { contains: q, mode: "insensitive" } },
       { bankRefNo: { contains: q, mode: "insensitive" } },

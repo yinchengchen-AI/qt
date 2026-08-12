@@ -1,12 +1,18 @@
-import { describe, it, expect, beforeAll } from "vitest";
+import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { prisma } from "@/lib/prisma";
 import type { SessionUser } from "@/lib/session";
+import type { RoleCode } from "@/types/enums";
+import { ApiError } from "@/lib/api";
 import { globalSearch } from "@/server/services/search";
+import { setRuntimePermissions, clearRuntimePermissions } from "@/lib/permissions";
 
 let dbReachable = false;
 let adminUser: SessionUser | null = null;
 let salesUser: SessionUser | null = null;
 let expertUser: SessionUser | null = null;
+
+const CROSS_OWNER_KEYWORD = "CrossOwnerSearchKeyword";
+const crossOwnerIds: { customerId?: string; contractId?: string; invoiceId?: string; paymentId?: string } = {};
 
 beforeAll(async () => {
   try {
@@ -27,6 +33,88 @@ beforeAll(async () => {
   if (expertRow) {
     expertUser = { id: expertRow.id, employeeNo: expertRow.employeeNo, name: expertRow.name, email: expertRow.email, roleCode: "EXPERT", permissions: [] };
   }
+
+  const uniqueSuffix = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  const customer = await prisma.customer.create({
+    data: {
+      code: `CO-${uniqueSuffix}`,
+      name: `${CROSS_OWNER_KEYWORD} Customer`,
+      customerType: "ENTERPRISE",
+      province: "浙江",
+      city: "杭州",
+      contactPhone: "13800000000",
+      ownerUserId: adminUser.id,
+      createdById: adminUser.id,
+      updatedById: adminUser.id,
+    },
+  });
+  crossOwnerIds.customerId = customer.id;
+
+  const now = new Date();
+  const contract = await prisma.contract.create({
+    data: {
+      contractNo: `CO-${uniqueSuffix}`,
+      customerId: customer.id,
+      customerName: customer.name,
+      title: `${CROSS_OWNER_KEYWORD} Contract`,
+      serviceType: "OTHER",
+      signDate: now,
+      startDate: now,
+      endDate: new Date(now.getTime() + 86400000),
+      totalAmount: 1000,
+      taxRate: 0.06,
+      taxAmount: 56.6,
+      amountExcludingTax: 943.4,
+      paymentMethod: "LUMP_SUM",
+      status: "DRAFT",
+      ownerUserId: adminUser.id,
+      signerId: adminUser.id,
+      attachments: [],
+      createdById: adminUser.id,
+      updatedById: adminUser.id,
+    },
+  });
+  crossOwnerIds.contractId = contract.id;
+
+  const invoice = await prisma.invoice.create({
+    data: {
+      invoiceNo: `CO-${uniqueSuffix}`,
+      invoiceCode: CROSS_OWNER_KEYWORD,
+      contractId: contract.id,
+      customerId: customer.id,
+      customerName: customer.name,
+      invoiceType: "VAT_GENERAL",
+      amount: 1000,
+      taxRate: 0.06,
+      taxAmount: 56.6,
+      amountExcludingTax: 943.4,
+      applyDate: now,
+      titleType: "COMPANY",
+      titleName: customer.name,
+      status: "DRAFT",
+      applicantUserId: adminUser.id,
+      createdById: adminUser.id,
+      updatedById: adminUser.id,
+    },
+  });
+  crossOwnerIds.invoiceId = invoice.id;
+
+  const payment = await prisma.payment.create({
+    data: {
+      paymentNo: `CO-${uniqueSuffix}`,
+      customerId: customer.id,
+      contractId: contract.id,
+      amount: 1000,
+      receivedAt: now,
+      method: "BANK_TRANSFER",
+      bankRefNo: CROSS_OWNER_KEYWORD,
+      status: "PLANNED",
+      recorderUserId: adminUser.id,
+      createdById: adminUser.id,
+      updatedById: adminUser.id,
+    },
+  });
+  crossOwnerIds.paymentId = payment.id;
 });
 
 const guard = (fn: () => Promise<void>) => async () => {
@@ -38,6 +126,22 @@ const guardWithExpert = (fn: () => Promise<void>) => async () => {
   if (!dbReachable || !adminUser || !salesUser || !expertUser) return;
   await fn();
 };
+
+afterAll(async () => {
+  if (!dbReachable || !adminUser) return;
+  if (crossOwnerIds.paymentId) {
+    await prisma.payment.deleteMany({ where: { id: crossOwnerIds.paymentId } });
+  }
+  if (crossOwnerIds.invoiceId) {
+    await prisma.invoice.deleteMany({ where: { id: crossOwnerIds.invoiceId } });
+  }
+  if (crossOwnerIds.contractId) {
+    await prisma.contract.deleteMany({ where: { id: crossOwnerIds.contractId } });
+  }
+  if (crossOwnerIds.customerId) {
+    await prisma.customer.deleteMany({ where: { id: crossOwnerIds.customerId } });
+  }
+});
 
 describe("globalSearch", () => {
   it("returns empty results for short keyword", guard(async () => {
@@ -122,44 +226,73 @@ describe("globalSearch", () => {
     }
   }));
 
-  it("SALES user only sees own customers", guard(async () => {
-    const result = await globalSearch(salesUser!, "test");
-    for (const customer of result.customers) {
-      const owns = await prisma.customer.findFirst({
-        where: { id: customer.id, ownerUserId: salesUser!.id, deletedAt: null }
-      });
-      expect(owns).not.toBeNull();
-    }
+  it("SALES user sees another owner's customer", guard(async () => {
+    if (!crossOwnerIds.customerId) return;
+    const result = await globalSearch(salesUser!, CROSS_OWNER_KEYWORD);
+    expect(result.customers.some((c) => c.id === crossOwnerIds.customerId)).toBe(true);
   }));
 
-  it("SALES user only sees own contracts", guard(async () => {
-    const result = await globalSearch(salesUser!, "test");
-    for (const contract of result.contracts) {
-      const owns = await prisma.contract.findFirst({
-        where: { id: contract.id, ownerUserId: salesUser!.id, deletedAt: null }
-      });
-      expect(owns).not.toBeNull();
-    }
+  it("SALES user sees another owner's contract", guard(async () => {
+    if (!crossOwnerIds.contractId) return;
+    const result = await globalSearch(salesUser!, CROSS_OWNER_KEYWORD);
+    expect(result.contracts.some((c) => c.id === crossOwnerIds.contractId)).toBe(true);
   }));
 
-  it("EXPERT user only sees own customers", guardWithExpert(async () => {
-    const result = await globalSearch(expertUser!, "test");
-    for (const customer of result.customers) {
-      const owns = await prisma.customer.findFirst({
-        where: { id: customer.id, ownerUserId: expertUser!.id, deletedAt: null }
-      });
-      expect(owns).not.toBeNull();
-    }
+  it("EXPERT user sees another owner's customer", guardWithExpert(async () => {
+    if (!crossOwnerIds.customerId) return;
+    const result = await globalSearch(expertUser!, CROSS_OWNER_KEYWORD);
+    expect(result.customers.some((c) => c.id === crossOwnerIds.customerId)).toBe(true);
   }));
 
-  it("EXPERT user only sees own contracts", guardWithExpert(async () => {
-    const result = await globalSearch(expertUser!, "test");
-    for (const contract of result.contracts) {
-      const owns = await prisma.contract.findFirst({
-        where: { id: contract.id, ownerUserId: expertUser!.id, deletedAt: null }
-      });
-      expect(owns).not.toBeNull();
+  it("EXPERT user sees another owner's contract", guardWithExpert(async () => {
+    if (!crossOwnerIds.contractId) return;
+    const result = await globalSearch(expertUser!, CROSS_OWNER_KEYWORD);
+    expect(result.contracts.some((c) => c.id === crossOwnerIds.contractId)).toBe(true);
+  }));
+
+  it("SALES user sees another owner's invoice", guard(async () => {
+    if (!crossOwnerIds.invoiceId) return;
+    const result = await globalSearch(salesUser!, CROSS_OWNER_KEYWORD);
+    expect(result.invoices.some((i) => i.id === crossOwnerIds.invoiceId)).toBe(true);
+  }));
+
+  it("SALES user sees another owner's payment", guard(async () => {
+    if (!crossOwnerIds.paymentId) return;
+    const result = await globalSearch(salesUser!, CROSS_OWNER_KEYWORD);
+    expect(result.payments.some((p) => p.id === crossOwnerIds.paymentId)).toBe(true);
+  }));
+
+  it("EXPERT user sees another owner's invoice", guardWithExpert(async () => {
+    if (!crossOwnerIds.invoiceId) return;
+    const result = await globalSearch(expertUser!, CROSS_OWNER_KEYWORD);
+    expect(result.invoices.some((i) => i.id === crossOwnerIds.invoiceId)).toBe(true);
+  }));
+
+  it("EXPERT user sees another owner's payment", guardWithExpert(async () => {
+    if (!crossOwnerIds.paymentId) return;
+    const result = await globalSearch(expertUser!, CROSS_OWNER_KEYWORD);
+    expect(result.payments.some((p) => p.id === crossOwnerIds.paymentId)).toBe(true);
+  }));
+
+  it("rejects user without READ permission at the permission gates", guard(async () => {
+    const noReadUser: SessionUser = {
+      id: "no-read",
+      employeeNo: "no-read",
+      name: "No Read",
+      email: "no-read@example.com",
+      roleCode: "NO_READ" as RoleCode,
+      permissions: []
+    };
+    setRuntimePermissions("NO_READ", []);
+    let thrown: unknown;
+    try {
+      await globalSearch(noReadUser, CROSS_OWNER_KEYWORD);
+    } catch (e) {
+      thrown = e;
     }
+    clearRuntimePermissions("NO_READ");
+    expect(thrown).toBeInstanceOf(ApiError);
+    expect((thrown as ApiError).status).toBe(403);
   }));
 
   it("ADMIN user sees all customers", guard(async () => {
