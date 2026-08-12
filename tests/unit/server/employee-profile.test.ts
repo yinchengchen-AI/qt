@@ -119,14 +119,14 @@ describe("EmployeeProfile service", () => {
     expect(profile?.salary).not.toBeNull();
   }));
 
-  it("非 ADMIN 读取档案时敏感字段被过滤", guard(async () => {
+  it("本人 (SALES) 读自己档案 → 全量含敏感字段 (role-browse-permissions todo 2: 本人不剥离)", guard(async () => {
     if (!salesUser) return;
     const actor = buildUser(salesUser, "SALES");
     const profile = await getEmployeeProfile(actor, salesUser.id);
     expect(profile).toBeTruthy();
-    expect(profile?.idCard).toBeNull();
-    expect(profile?.salary).toBeNull();
-    expect(profile?.bankAccount).toBeNull();
+    expect(profile?.idCard).toBeTruthy();
+    expect(profile?.salary).not.toBeNull();
+    expect(profile?.bankAccount).toBeTruthy();
     expect(profile?.position).toBeTruthy();
   }));
 });
@@ -158,13 +158,14 @@ describe("getUserFullProfile (PR3)", () => {
     expect(out.avatar === null || typeof out.avatar === "object").toBe(true);
   });
 
-  itDb("非 ADMIN: 敏感字段为 null", async () => {
+  itDb("本人 (SALES) full profile: 敏感字段可见 (role-browse-permissions todo 2: 本人不剥离)", async () => {
     if (!salesUser) return;
     const out = await getUserFullProfile(getSalesActor(), salesUser.id);
     if (!out) return;
-    expect(out.profile.salary).toBeNull();
-    expect(out.profile.bankAccount).toBeNull();
-    expect(out.profile.bankName).toBeNull();
+    expect(out.profile.salary).not.toBeNull();
+    expect(out.profile.bankAccount).toBeTruthy();
+    expect(out.profile.bankName).toBeTruthy();
+    // 未写入过的字段本就为 null (无数据, 非剥离)
     expect(out.profile.socialSecurityAccount).toBeNull();
     expect(out.profile.providentFundAccount).toBeNull();
     // 业务字段不空

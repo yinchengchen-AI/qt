@@ -26,8 +26,11 @@ function toDto(row: Record<string, unknown>): EmployeeWorkExperienceDto {
 
 export async function listEmployeeWorkExperiences(actor: SessionUser, profileId: string): Promise<EmployeeWorkExperienceDto[]> {
   requirePermission(actor.roleCode, RESOURCE.USER, ACTION.READ);
-  const profile = await prisma.employeeProfile.findFirst({ where: { id: profileId, deletedAt: null }, select: { id: true } });
+  const profile = await prisma.employeeProfile.findFirst({ where: { id: profileId, deletedAt: null }, select: { id: true, userId: true } });
   if (!profile) throw new ApiError(ERROR_CODES.NOT_FOUND, "档案不存在", 404);
+  // 完整档案子表仅 本人 / ADMIN / OPS 可见, 其余角色 403
+  const privileged = actor.id === profile.userId || actor.roleCode === "ADMIN" || actor.roleCode === "OPS";
+  if (!privileged) throw new ApiError(ERROR_CODES.FORBIDDEN, "无权查看该员工档案", 403);
   const rows = await prisma.employeeWorkExperience.findMany({
     where: { profileId, deletedAt: null },
     orderBy: [{ startDate: "desc" }, { createdAt: "desc" }]

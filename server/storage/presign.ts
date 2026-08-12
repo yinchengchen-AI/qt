@@ -281,10 +281,10 @@ export async function getAttachmentForRead(id: string) {
 export async function canReadAttachment(att: AttachmentForRead, userId: string): Promise<boolean> {
   // 鉴权规则(放行其一即可):
   //   1) 上传者本人
-  //   2) ADMIN / FINANCE 角色
-  //   3) 关联合同: 合同的 ownerUserId / createdById
-  //   4) 关联发票: 发票的 applicantUserId / createdById,或发票所属合同的 owner/createdBy
-  //   5) 关联员工档案: 全员可读基础信息；敏感字段已在 service 层过滤
+  //   2) 员工档案附件(PII, 含身份证照): 仅 档案本人 / ADMIN / OPS, 不走下方 FINANCE 全员放行
+  //   3) ADMIN / FINANCE 角色(非档案附件)
+  //   4) 关联合同: 合同的 ownerUserId / createdById
+  //   5) 关联发票: 发票的 applicantUserId / createdById,或发票所属合同的 owner/createdBy
   //   6) 都没有(tmp 上传) -> 仅上传者可读
   if (att.uploadedById === userId) return true;
 
@@ -295,12 +295,20 @@ export async function canReadAttachment(att: AttachmentForRead, userId: string):
       ? prisma.contract.findUnique({ where: { id: att.contractId }, select: { ownerUserId: true, createdById: true } })
       : Promise.resolve(null)
   ]);
+  // 员工档案附件收紧 (role-browse-permissions todo 2): 本人 / ADMIN / OPS 之外一律拒绝
+  if (att.employeeProfileId) {
+    if (u?.role?.code === "ADMIN" || u?.role?.code === "OPS") return true;
+    const profile = await prisma.employeeProfile.findUnique({
+      where: { id: att.employeeProfileId },
+      select: { userId: true }
+    });
+    return profile?.userId === userId;
+  }
   if (u?.role?.code === "ADMIN" || u?.role?.code === "FINANCE") return true;
   if (contract && (contract.ownerUserId === userId || contract.createdById === userId)) return true;
   if (att.invoice && (att.invoice.applicantUserId === userId || att.invoice.createdById === userId)) return true;
   const invoiceContract = att.invoice?.contract;
   if (invoiceContract && (invoiceContract.ownerUserId === userId || invoiceContract.createdById === userId)) return true;
-  if (att.employeeProfileId) return true;
   return false;
 }
 

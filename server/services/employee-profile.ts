@@ -7,7 +7,7 @@ import { Prisma } from "@prisma/client";
 import { ApiError } from "@/lib/api";
 import { ERROR_CODES } from "@/types/errors";
 import type { SessionUser } from "@/lib/session";
-import { requirePermission, hasPermission, RESOURCE, ACTION } from "@/lib/permissions";
+import { requirePermission, RESOURCE, ACTION } from "@/lib/permissions";
 import { assertNotSelfAndNotLastAdmin } from "@/server/services/user";
 import { invalidateAuthCache } from "@/lib/auth";
 import { audit } from "@/server/audit";
@@ -17,7 +17,8 @@ import type { EmployeeProfileDto } from "@/lib/types/employee-profile";
 
 export const ENCRYPTED_FIELDS = ["idCard", "bankAccount", "socialSecurityAccount", "providentFundAccount"] as const;
 
-// 非 ADMIN 不可见的字段
+// 敏感字段全集(历史"非 ADMIN 不可见"语义, 保留作参考)。
+// 当前生效的剥离规则见下方分支: 本人/ADMIN 不剥离; OPS 看他人仅剥离 OPS_HIDDEN_FIELDS。
 const ADMIN_ONLY_FIELDS = new Set([
   "idCard",
   "salary",
@@ -26,6 +27,11 @@ const ADMIN_ONLY_FIELDS = new Set([
   "socialSecurityAccount",
   "providentFundAccount"
 ]);
+
+// OPS 查看他人档案时被剥离的字段 (ADMIN_ONLY_FIELDS 的子集, 当前仅 salary)
+const OPS_HIDDEN_FIELDS: ReadonlySet<string> = new Set(
+  [...ADMIN_ONLY_FIELDS].filter((field) => field === "salary")
+);
 
 function toIsoString(value: unknown): string | null {
   if (value instanceof Date) return value.toISOString();
@@ -112,16 +118,33 @@ export function redactForAudit(data: Record<string, unknown>): Record<string, un
   return out;
 }
 
-function stripAdminOnlyFields(profile: EmployeeProfileDto): EmployeeProfileDto {
+function stripFields(profile: EmployeeProfileDto, fields: ReadonlySet<string>): EmployeeProfileDto {
   const out = { ...profile };
-  for (const key of ADMIN_ONLY_FIELDS) {
+  for (const key of fields) {
     (out as Record<string, unknown>)[key] = null;
   }
   return out;
 }
 
+// 完整员工档案可见性: 仅 本人 / ADMIN / OPS; 其余角色 (SALES/FINANCE/EXPERT) 403
+function assertProfileReadable(actor: SessionUser, userId: string): void {
+  const privileged = actor.id === userId || actor.roleCode === "ADMIN" || actor.roleCode === "OPS";
+  if (!privileged) {
+    throw new ApiError(ERROR_CODES.FORBIDDEN, "无权查看该员工档案", 403);
+  }
+}
+
+// 敏感字段视图: 本人/ADMIN 全量; OPS 看他人仅剥离 salary
+function visibleProfile(actor: SessionUser, userId: string, decrypted: EmployeeProfileDto): EmployeeProfileDto {
+  if (actor.id !== userId && actor.roleCode === "OPS") {
+    return stripFields(decrypted, OPS_HIDDEN_FIELDS);
+  }
+  return decrypted;
+}
+
 export async function getEmployeeProfile(actor: SessionUser, userId: string): Promise<EmployeeProfileDto | null> {
   requirePermission(actor.roleCode, RESOURCE.USER, ACTION.READ);
+  assertProfileReadable(actor, userId);
   const user = await prisma.user.findFirst({
     where: { id: userId, deletedAt: null },
     include: {
@@ -139,10 +162,7 @@ export async function getEmployeeProfile(actor: SessionUser, userId: string): Pr
   if (!user.profile) return null;
 
   const decrypted = decryptProfile(user.profile as unknown as Record<string, unknown>);
-  if (!hasPermission(actor.roleCode, RESOURCE.USER, ACTION.UPDATE)) {
-    return stripAdminOnlyFields(decrypted);
-  }
-  return decrypted;
+  return visibleProfile(actor, userId, decrypted);
 }
 
 export async function updateEmployeeProfile(
@@ -192,6 +212,7 @@ import type { FullEmployeeProfileDto } from "@/lib/types/employee-profile";
 
 export async function getUserFullProfile(actor: SessionUser, userId: string): Promise<FullEmployeeProfileDto | null> {
   requirePermission(actor.roleCode, RESOURCE.USER, ACTION.READ);
+  assertProfileReadable(actor, userId);
   const user = await prisma.user.findFirst({
     where: { id: userId, deletedAt: null },
     include: {
@@ -207,11 +228,7 @@ export async function getUserFullProfile(actor: SessionUser, userId: string): Pr
   if (!user?.profile) return null;
 
   const decrypted = decryptProfile(user.profile as unknown as Record<string, unknown>);
-  // P0-5: 复用 stripAdminOnlyFields(已含 idCard / salary / bank 等),
-  // 避免新旧两套过滤行为不一致
-  const profile = !hasPermission(actor.roleCode, RESOURCE.USER, ACTION.UPDATE)
-    ? stripAdminOnlyFields(decrypted)
-    : decrypted;
+  const profile = visibleProfile(actor, userId, decrypted);
 
   const [educations, workExperiences, certificates, skills, emergencyContacts] = await Promise.all([
     listEmployeeEducations(actor, user.profile.id),

@@ -9,11 +9,9 @@ export async function GET(req: Request) {
   return runWithRequestContext(req, async () => {
     try {
       const actor = await requireSession();
-      // P0-6: spec §6 明确只 ADMIN 可看全公司证书到期日。
-      // SALES / FINANCE / OPS / EXPERT 拿 RESOURCE.USER READ 没意义,
-      // 直接卡死角色。
-      if (actor.roleCode !== "ADMIN") {
-        throw new ApiError(ERROR_CODES.FORBIDDEN, "仅管理员可查看到期证书", 403);
+      // P0-6 (调整): 证书到期可见性放开为 ADMIN + OPS; SALES / FINANCE / EXPERT 403。
+      if (actor.roleCode !== "ADMIN" && actor.roleCode !== "OPS") {
+        throw new ApiError(ERROR_CODES.FORBIDDEN, "仅管理员与 OPS 可查看到期证书", 403);
       }
       const url = new URL(req.url);
       const days = Number(url.searchParams.get("days") ?? "60");
