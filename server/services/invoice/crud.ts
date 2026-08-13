@@ -5,7 +5,7 @@ import { type SessionUser } from "@/lib/session";
 import { requirePermission, RESOURCE, ACTION } from "@/lib/permissions";
 import type {InvoiceCreateInput, InvoiceUpdateInput} from "@/lib/validators/invoice";
 import { Prisma } from "@prisma/client";
-import { ownerViaContract, parseStatusList, isRowRestricted } from "@/lib/ownership";
+import { assertRecordWritable, parseStatusList } from "@/lib/ownership";
 import { calcTaxBreakdown } from "@/lib/money";
 import { MONEY_TOLERANCE } from "@/lib/money-tolerance";
 import { INVOICE_LIMIT_COUNTED_STATUSES } from "@/lib/invoice-amounts";
@@ -23,7 +23,6 @@ export async function listInvoices(
     ...(statusList ? { status: { in: statusList } } : {}),
     ...(contractId ? { contractId } : {}),
     ...(keyword ? { OR: [{ invoiceNo: { contains: keyword, mode: "insensitive" } }, { customerName: { contains: keyword, mode: "insensitive" } }] } : {}),
-    ...(ownerViaContract(user) as Prisma.InvoiceWhereInput),
   };
   const [list, total] = await Promise.all([
     prisma.invoice.findMany({ where, orderBy: [{ createdAt: "desc" }, { id: "desc" }], skip: (page - 1) * pageSize, take: pageSize }),
@@ -36,7 +35,7 @@ export async function listInvoices(
 export async function getInvoice(user: SessionUser, id: string) {
   requirePermission(user.roleCode, RESOURCE.INVOICE, ACTION.READ);
   const inv = await prisma.invoice.findFirst({
-    where: { id, deletedAt: null, ...(ownerViaContract(user) as Prisma.InvoiceWhereInput) },
+    where: { id, deletedAt: null },
     include: { contract: { select: { contractNo: true } } }
   });
   if (!inv) throw new ApiError(ERROR_CODES.NOT_FOUND, "发票不存在", 404);
@@ -51,17 +50,17 @@ export async function createInvoice(user: SessionUser, input: InvoiceCreateInput
   return prisma.$transaction(async (tx) => {
     // 先锁合同行 (SELECT ... FOR UPDATE 序列化同一合同的并发开票), 消除 R-08 "先 SUM 后 INSERT" 的 TOCTOU 竞态。
     // 用 raw FOR UPDATE 而非 dummy UPDATE, 避免顺带刷新合同 updatedAt 造成污染。
-    // 行级隔离 (SALES/EXPERT 只能在自己的合同上开票) 与 deletedAt 过滤在同一查询里完成。
-    const ownerFilter = isRowRestricted(user) ? Prisma.sql`AND "ownerUserId" = ${user.id}` : Prisma.empty;
+    // 锁行无条件; SALES/EXPERT 只能在自己合同上开票的守门在锁到行后由 assertRecordWritable 显式 403。
     const contracts = await tx.$queryRaw<Array<{
-      id: string; contractNo: string; status: string; totalAmount: Prisma.Decimal; customerId: string; customerName: string;
+      id: string; contractNo: string; status: string; totalAmount: Prisma.Decimal; customerId: string; customerName: string; ownerUserId: string;
     }>>`
-      SELECT id, "contractNo", status, "totalAmount", "customerId", "customerName"
+      SELECT id, "contractNo", status, "totalAmount", "customerId", "customerName", "ownerUserId"
       FROM "Contract"
-      WHERE id = ${input.contractId} AND "deletedAt" IS NULL ${ownerFilter}
+      WHERE id = ${input.contractId} AND "deletedAt" IS NULL
       FOR UPDATE`;
     const contract = contracts[0];
     if (!contract) throw new ApiError(ERROR_CODES.NOT_FOUND, "合同不存在", 404);
+    assertRecordWritable(user, contract.ownerUserId, "发票");
     if (contract.status !== "ACTIVE") {
       throw new ApiError(
         ERROR_CODES.CONTRACT_STATUS_INVALID,
@@ -137,10 +136,14 @@ export async function createInvoice(user: SessionUser, input: InvoiceCreateInput
 
 export async function updateInvoice(user: SessionUser, id: string, input: InvoiceUpdateInput) {
   requirePermission(user.roleCode, RESOURCE.INVOICE, ACTION.UPDATE);
+  // 无条件查找: 读放开后越权写必须显式 403 (而非 owner 过滤出 404 掩盖存在性)
   const inv = await prisma.invoice.findFirst({
-    where: { id, deletedAt: null, ...(ownerViaContract(user) as Prisma.InvoiceWhereInput) }
+    where: { id, deletedAt: null },
+    include: { contract: { select: { ownerUserId: true } } }
   });
   if (!inv) throw new ApiError(ERROR_CODES.NOT_FOUND, "发票不存在", 404);
+  // 写守门: SALES/EXPERT 只能改自己合同下的发票 (非受限角色直接放行)
+  assertRecordWritable(user, inv.contract?.ownerUserId, "发票");
   // 状态机门控: admin 任意态可改; 非 admin 仅 DRAFT 可改 (与 server/services/contract/crud.ts:248 一致)
   if (user.roleCode !== "ADMIN" && inv.status !== "DRAFT") {
     throw new ApiError(ERROR_CODES.ENTITY_IMMUTABLE, "当前状态不可修改", 403);

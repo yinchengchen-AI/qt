@@ -8,7 +8,7 @@ import { Prisma } from "@prisma/client";
 import { nextBusinessNo } from "@/lib/sequence";
 import { audit } from "@/server/audit";
 
-import {ownerViaContract} from "@/lib/ownership";
+import {assertRecordWritable} from "@/lib/ownership";
 import { runTransitionInTx } from "@/lib/status-machine";
 import { refundPaymentInTx } from "@/server/services/payment";
 import { MONEY_TOLERANCE } from "@/lib/money-tolerance";
@@ -88,7 +88,8 @@ export async function invoiceAction(user: SessionUser, id: string, input: Invoic
   requirePermission(user.roleCode, RESOURCE.INVOICE, ACTION.UPDATE);
   return prisma.$transaction(async (tx) => {
     const commonLoad = (t: typeof tx) => t.invoice.findFirst({
-      where: { id, deletedAt: null, ...(ownerViaContract(user) as Prisma.InvoiceWhereInput) },
+      where: { id, deletedAt: null },
+      include: { contract: { select: { ownerUserId: true } } },
     });
     const requireFinance = () => {
       if (user.roleCode !== "FINANCE" && user.roleCode !== "ADMIN") {
@@ -98,6 +99,10 @@ export async function invoiceAction(user: SessionUser, id: string, input: Invoic
     const mismatch = { code: ERROR_CODES.ENTITY_IMMUTABLE, status: 403 } as const;
 
     if (input.action === "submit") {
+      // 读放开后 submit 是 SALES 可达的写入口: 无条件查找 + 显式 owner 守门 403
+      const pre = await commonLoad(tx);
+      if (!pre) throw new ApiError(ERROR_CODES.NOT_FOUND, "发票不存在", 404);
+      assertRecordWritable(user, pre.contract?.ownerUserId, "发票");
       const result = await runTransitionInTx(tx, {
         entity: "Invoice",
         loadInTx: commonLoad,

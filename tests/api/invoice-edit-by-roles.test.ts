@@ -4,7 +4,7 @@ import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { prisma } from "@/lib/prisma";
 import { ERROR_CODES } from "@/types/errors";
 import type { SessionUser } from "@/lib/session";
-import { createInvoice, updateInvoice } from "@/server/services/invoice";
+import { createInvoice, updateInvoice, listInvoices, getInvoice, invoiceAction } from "@/server/services/invoice";
 
 let dbReachable = false;
 const TAG = `TEST-INV-EDIT-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
@@ -13,6 +13,8 @@ const createdContractNos: string[] = [];
 let adminUser: { id: string; employeeNo: string; name: string; email: string; roleCode: "ADMIN" } | null = null;
 let salesUser: { id: string; employeeNo: string; name: string; email: string; roleCode: "SALES" } | null = null;
 let opsUser: { id: string; employeeNo: string; name: string; email: string; roleCode: "OPS" } | null = null;
+let financeUser: { id: string; employeeNo: string; name: string; email: string; roleCode: "FINANCE" } | null = null;
+let expertUser: { id: string; employeeNo: string; name: string; email: string; roleCode: "EXPERT" } | null = null;
 let testCustomerId: string | null = null;
 
 beforeAll(async () => {
@@ -36,10 +38,20 @@ beforeAll(async () => {
     where: { role: { code: "OPS" }, deletedAt: null, isSystem: false },
     select: { id: true, employeeNo: true, name: true, email: true, role: { select: { code: true } } }
   });
+  const financeRow = await prisma.user.findFirst({
+    where: { role: { code: "FINANCE" }, deletedAt: null, isSystem: false },
+    select: { id: true, employeeNo: true, name: true, email: true, role: { select: { code: true } } }
+  });
+  const expertRow = await prisma.user.findFirst({
+    where: { role: { code: "EXPERT" }, deletedAt: null, isSystem: false },
+    select: { id: true, employeeNo: true, name: true, email: true, role: { select: { code: true } } }
+  });
   if (!adminRow) return;
   adminUser = { id: adminRow.id, employeeNo: adminRow.employeeNo, name: adminRow.name, email: adminRow.email, roleCode: "ADMIN" };
   if (salesRow) salesUser = { id: salesRow.id, employeeNo: salesRow.employeeNo, name: salesRow.name, email: salesRow.email, roleCode: "SALES" };
   if (opsRow) opsUser = { id: opsRow.id, employeeNo: opsRow.employeeNo, name: opsRow.name, email: opsRow.email, roleCode: "OPS" };
+  if (financeRow) financeUser = { id: financeRow.id, employeeNo: financeRow.employeeNo, name: financeRow.name, email: financeRow.email, roleCode: "FINANCE" };
+  if (expertRow) expertUser = { id: expertRow.id, employeeNo: expertRow.employeeNo, name: expertRow.name, email: expertRow.email, roleCode: "EXPERT" };
   const cust = await prisma.customer.create({
     data: {
       code: `${TAG}-CUST`,
@@ -94,6 +106,22 @@ const buildSales = (): SessionUser => {
 const buildOps = (): SessionUser => {
   if (!opsUser) throw new Error("ops not bootstrapped");
   return { id: opsUser.id, employeeNo: opsUser.employeeNo, name: opsUser.name, email: opsUser.email, roleCode: "OPS", permissions: [] };
+};
+const buildFinance = (): SessionUser => {
+  if (!financeUser) throw new Error("finance not bootstrapped");
+  return { id: financeUser.id, employeeNo: financeUser.employeeNo, name: financeUser.name, email: financeUser.email, roleCode: "FINANCE", permissions: [] };
+};
+const buildExpert = (): SessionUser => {
+  if (!expertUser) throw new Error("expert not bootstrapped");
+  return { id: expertUser.id, employeeNo: expertUser.employeeNo, name: expertUser.name, email: expertUser.email, roleCode: "EXPERT", permissions: [] };
+};
+
+// 读放开/写守门用例需要 5 角色中 SALES + FINANCE + EXPERT 都在 (seed:dev-users)
+const guardAll = (fn: () => Promise<void>) => async () => {
+  if (!dbReachable) return;
+  if (!adminUser || !testCustomerId) return;
+  if (!salesUser || !financeUser || !expertUser) return;
+  await fn();
 };
 
 async function mkContract(totalAmount: string, suffix: string, ownerUserId?: string) {
@@ -190,5 +218,109 @@ describe("ADMIN 跨状态编辑 (P1-3 admin 侧)", () => {
     expect(updated.titleName).toBe("ADMIN 跨状态改的抬头");
     // status 不应该被 PATCH 改回去
     expect(updated.status).toBe("PENDING_FINANCE");
+  }));
+});
+
+// role-browse-permissions todo 5: 读放开 (SALES/EXPERT 全量可读) + 写守门 (create/update/submit 按合同 owner 403)
+describe("发票读放开: SALES 可见他人发票", () => {
+  it("SALES get 他人(ADMIN 名下)发票 → 200 返回记录", guardAll(async () => {
+    const c = await mkContract("10000.00", "XREAD-GET");
+    const inv = await mkDraft(c.id, "XREAD-GET", 100);
+    const got = await getInvoice(buildSales(), inv.id);
+    expect(got.id).toBe(inv.id);
+    expect(got.invoiceNo).toBe(`${TAG}-XREAD-GET`);
+  }));
+
+  it("SALES list 命中他人发票 (导出走同一 listInvoices, 随 list 放开)", guardAll(async () => {
+    const c = await mkContract("10000.00", "XREAD-LIST");
+    const inv = await mkDraft(c.id, "XREAD-LIST", 100);
+    const { list } = await listInvoices(buildSales(), { page: 1, pageSize: 100, keyword: `${TAG}-XREAD-LIST` });
+    expect(list.some((i) => i.id === inv.id)).toBe(true);
+  }));
+});
+
+describe("发票写守门: SALES 越权写他人 → 403", () => {
+  it("SALES 在他人合同下开票 → FORBIDDEN 403 无权操作他人发票", guardAll(async () => {
+    const c = await mkContract("10000.00", "XCREATE");
+    await expect(
+      createInvoice(buildSales(), {
+        contractId: c.id,
+        invoiceNo: `${TAG}-XCREATE`,
+        invoiceType: "VAT_SPECIAL",
+        amount: 100,
+        taxRate: 0.06,
+        applyDate: new Date().toISOString(),
+        titleType: "COMPANY",
+        titleName: `${TAG}-抬头`,
+        taxNo: "91330000123456789X",
+        attachments: []
+      })
+    ).rejects.toMatchObject({ errorCode: ERROR_CODES.FORBIDDEN, status: 403, message: "无权操作他人发票" });
+  }));
+
+  it("SALES 改他人发票 → FORBIDDEN 403", guardAll(async () => {
+    const c = await mkContract("10000.00", "XUPDATE");
+    const inv = await mkDraft(c.id, "XUPDATE", 100);
+    await expect(
+      updateInvoice(buildSales(), inv.id, { titleName: "越权改" })
+    ).rejects.toMatchObject({ errorCode: ERROR_CODES.FORBIDDEN, status: 403 });
+  }));
+
+  it("SALES 提交他人 DRAFT 发票 → FORBIDDEN 403 且状态仍 DRAFT", guardAll(async () => {
+    const c = await mkContract("10000.00", "XSUBMIT");
+    const inv = await mkDraft(c.id, "XSUBMIT", 100);
+    await expect(
+      invoiceAction(buildSales(), inv.id, { action: "submit" })
+    ).rejects.toMatchObject({ errorCode: ERROR_CODES.FORBIDDEN, status: 403 });
+    const after = await prisma.invoice.findUnique({ where: { id: inv.id } });
+    expect(after?.status).toBe("DRAFT");
+  }));
+});
+
+describe("发票写守门: 自有与矩阵回归", () => {
+  it("SALES 提交自己合同下的 DRAFT 发票 → PENDING_FINANCE", guardAll(async () => {
+    const c = await mkContract("10000.00", "OWNSUBMIT", salesUser!.id);
+    const inv = await mkDraft(c.id, "OWNSUBMIT", 100);
+    const res = await invoiceAction(buildSales(), inv.id, { action: "submit" });
+    expect(res?.status).toBe("PENDING_FINANCE");
+  }));
+
+  it("EXPERT 任何发票写 (create/update/submit) → FORBIDDEN (矩阵层)", guardAll(async () => {
+    const c = await mkContract("10000.00", "EXPERT-W", expertUser!.id);
+    const inv = await mkDraft(c.id, "EXPERT-W", 100);
+    await expect(
+      createInvoice(buildExpert(), {
+        contractId: c.id,
+        invoiceNo: `${TAG}-EXPERT-W2`,
+        invoiceType: "VAT_SPECIAL",
+        amount: 100,
+        taxRate: 0.06,
+        applyDate: new Date().toISOString(),
+        titleType: "COMPANY",
+        titleName: `${TAG}-抬头`,
+        taxNo: "91330000123456789X",
+        attachments: []
+      })
+    ).rejects.toMatchObject({ errorCode: ERROR_CODES.FORBIDDEN, status: 403 });
+    await expect(
+      updateInvoice(buildExpert(), inv.id, { titleName: "越权改" })
+    ).rejects.toMatchObject({ errorCode: ERROR_CODES.FORBIDDEN, status: 403 });
+    await expect(
+      invoiceAction(buildExpert(), inv.id, { action: "submit" })
+    ).rejects.toMatchObject({ errorCode: ERROR_CODES.FORBIDDEN, status: 403 });
+  }));
+
+  it("FINANCE 对他人(SALES 名下)合同的发票 issue → ISSUED (requireFinance 路径不受 owner 守门影响)", guardAll(async () => {
+    const c = await mkContract("10000.00", "FINISSUE", salesUser!.id);
+    const inv = await mkDraft(c.id, "FINISSUE", 100);
+    await invoiceAction(buildAdmin(), inv.id, { action: "submit" });
+    const res = await invoiceAction(buildFinance(), inv.id, { action: "issue" });
+    expect(res?.status).toBe("ISSUED");
+  }));
+
+  it("SALES 提交不存在的发票 id → NOT_FOUND 404 (不是 500)", guardAll(async () => {
+    await expect(
+      invoiceAction(buildSales(), `nonexistent-${TAG}`, { action: "submit" })
+    ).rejects.toMatchObject({ errorCode: ERROR_CODES.NOT_FOUND, status: 404 });
   }));
 });
