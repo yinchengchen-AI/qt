@@ -15,7 +15,7 @@ export async function listMessages(
   const { page, pageSize, unread } = params;
   const where: Prisma.MessageWhereInput = {
     receiverUserId: user.id,
-    ...(unread ? { readAt: null } : {})
+    ...(unread === true ? { readAt: null } : unread === false ? { readAt: { not: null } } : {})
   };
   const [list, total, unreadCount] = await Promise.all([
     prisma.message.findMany({ where, orderBy: { createdAt: "desc" }, skip: (page - 1) * pageSize, take: pageSize }),
