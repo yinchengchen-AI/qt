@@ -7,6 +7,7 @@ import {
   ProFormDatePicker
 } from "@ant-design/pro-components";
 import { App as AntdApp, Space, Typography } from "antd";
+import { useSession } from "next-auth/react";
 import dayjs from "dayjs";
 import { toIsoDateTime, formatCurrency } from "@/lib/format";
 import { useRouter, useSearchParams } from "next/navigation";
@@ -34,6 +35,7 @@ type Contract = {
   totalAmount: string;
   status: string;
   customerName: string;
+  ownerUserId: string;
 };
 
 type Invoice = {
@@ -51,6 +53,10 @@ export default function NewPaymentPage() {
   const presetContract = search.get("contractId") ?? undefined;
   const presetInvoice = search.get("invoiceId") ?? undefined;
   const { message } = AntdApp.useApp();
+  const { data: session } = useSession();
+  const me = session?.user?.id;
+  const roleCode = session?.user?.roleCode ?? "";
+  const isRestricted = roleCode === "SALES" || roleCode === "EXPERT";
   // ProForm 的 ProFormRef 类型未导出,用 any 承载动态表单引用
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const formRef = useRef<any>(null);
@@ -119,6 +125,7 @@ export default function NewPaymentPage() {
                   if (j.code !== 0) return [];
                   return (j.data.list as Contract[])
                     .filter((c) => c.status === "ACTIVE")
+                    .filter((c) => !isRestricted || c.ownerUserId === me)
                     .map((c) => ({
                       value: c.id,
                       label: `${c.contractNo} · ${c.title} · ${formatCurrency(c.totalAmount)}`,
