@@ -539,7 +539,7 @@ const handleDelete = () => {
         actions={
           <Space wrap>
             <Button key="pdf" icon={<FilePdfOutlined />} onClick={() => openPrintWindow(`/api/contracts/${id}/pdf`)}>导出 PDF</Button>
-            {(isAdmin || contract.status === "DRAFT") && (
+            {(isAdmin || (contract.status === "DRAFT" && contract.ownerUserId === me)) && (
               <Button onClick={() => router.push(`/contracts/${id}/edit`)}>编辑</Button>
             )}
             {allowed.map((a) => (

@@ -75,6 +75,18 @@ export default function EditContractPage() {
   // 业务/财务/行政角色在 ACTIVE/CLOSED 状态下打开会提示不可编辑.
   const roleCode = (session?.user as { roleCode?: string } | undefined)?.roleCode;
   const isAdmin = roleCode === "ADMIN";
+  const me = (session?.user as { id?: string } | undefined)?.id;
+  // 直接访问兜底: 非 admin 打开他人合同编辑页 → 无权限 (与后端 assertRecordWritable 同口径)
+  if (!isAdmin && data.ownerUserId !== me) {
+    return (
+      <Page compact>
+        <PageHeader back={goBack} title="编辑合同" />
+        <FormCard>
+          <Text type="warning">无权编辑他人合同, 仅合同负责人或管理员可编辑。</Text>
+        </FormCard>
+      </Page>
+    );
+  }
   if (!isAdmin && data.status !== "DRAFT") {
     return (
       <Page compact>
