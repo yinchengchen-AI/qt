@@ -4,7 +4,6 @@ import { ERROR_CODES } from "@/types/errors";
 import { type SessionUser } from "@/lib/session";
 import { requirePermission, RESOURCE, ACTION } from "@/lib/permissions";
 
-import {ownerEq, ownerViaContract} from "@/lib/ownership";
 import { INVOICE_ISSUED_AMOUNT_STATUSES } from "@/lib/invoice-amounts";
 import { getBillingStatus, getPaymentStatus } from "@/lib/contract-billing";
 import type { BillingStatus, PaymentProgressStatus } from "@/types/enums";
@@ -70,16 +69,16 @@ export async function getContractOverview(
   contractId: string
 ): Promise<ContractOverview> {
   requirePermission(user.roleCode, RESOURCE.CONTRACT, ACTION.READ);
-  const c = await prisma.contract.findFirst({ where: { id: contractId, deletedAt: null, ...ownerEq(user) } });
+  const c = await prisma.contract.findFirst({ where: { id: contractId, deletedAt: null } });
   if (!c) throw new ApiError(ERROR_CODES.NOT_FOUND, "合同不存在", 404);
 
   const [invoices, payments, reviewLogs, deliverableAttachments] = await Promise.all([
     prisma.invoice.findMany({
-      where: { contractId, deletedAt: null, ...(ownerViaContract(user) as Prisma.InvoiceWhereInput) },
+      where: { contractId, deletedAt: null },
       orderBy: { applyDate: "desc" }
     }),
     prisma.payment.findMany({
-      where: { contractId, deletedAt: null, ...(ownerViaContract(user) as Prisma.PaymentWhereInput) },
+      where: { contractId, deletedAt: null },
       orderBy: { receivedAt: "desc" }
     }),
     prisma.contractReviewLog.findMany({

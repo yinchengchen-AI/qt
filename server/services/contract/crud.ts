@@ -5,7 +5,7 @@ import { type SessionUser } from "@/lib/session";
 import { requirePermission, RESOURCE, ACTION } from "@/lib/permissions";
 import type { ContractCreateInput, ContractUpdateInput } from "@/lib/validators/contract";
 
-import {ownerEq, parseStatusList} from "@/lib/ownership";
+import {assertRecordWritable, parseStatusList} from "@/lib/ownership";
 import { buildRegionWhere } from "@/lib/region";
 import { getBillingStatus } from "@/lib/contract-billing";
 import { Prisma } from "@prisma/client";
@@ -55,7 +55,7 @@ export async function listContracts(
   const where: Prisma.ContractWhereInput = {
     // 默认排除 legacy 0.01 占位合同; 显式 includeLegacyZeroAmount=true 时全量
     ...(includeLegacy ? {} : { isLegacyZeroAmount: false }),
-    ...ownerEq(user),
+    // 读放开: SALES/EXPERT 可浏览全公司合同 (行级过滤仅统计/工作台口径保留), 写由 updateContract 显式守门
     deletedAt: null,
     ...(statusList ? { status: { in: statusList } } : {}),
     ...(customerId ? { customerId } : {}),
@@ -148,7 +148,7 @@ export async function listContracts(
 export async function getContract(user: SessionUser, id: string) {
   requirePermission(user.roleCode, RESOURCE.CONTRACT, ACTION.READ);
   const c = await prisma.contract.findFirst({
-    where: { id, deletedAt: null, ...ownerEq(user) },
+    where: { id, deletedAt: null },
     include: {
       customer: {
         select: { contactName: true, contactPhone: true }
@@ -328,8 +328,11 @@ export async function createContract(user: SessionUser, input: ContractCreateInp
 
 export async function updateContract(user: SessionUser, id: string, input: ContractUpdateInput) {
   requirePermission(user.roleCode, RESOURCE.CONTRACT, ACTION.UPDATE);
-  const existing = await prisma.contract.findFirst({ where: { id, deletedAt: null, ...ownerEq(user) } });
+  // 无条件查找: 读放开后越权写必须显式 403 (而非 ownerEq 过滤出 404 掩盖存在性)
+  const existing = await prisma.contract.findFirst({ where: { id, deletedAt: null } });
   if (!existing) throw new ApiError(ERROR_CODES.NOT_FOUND, "合同不存在", 404);
+  // 写守门: SALES/EXPERT 只能改自己名下的合同 (非受限角色直接放行)
+  assertRecordWritable(user, existing.ownerUserId, "合同");
   // 状态机门控: admin 任意态可改; 非 admin 仅 DRAFT 可改 (新模型下 PENDING_REVIEW/SUSPENDED 已合并入 ACTIVE)
   if (user.roleCode !== "ADMIN" && existing.status !== "DRAFT") {
     throw new ApiError(ERROR_CODES.ENTITY_IMMUTABLE, "当前状态不可修改", 403);

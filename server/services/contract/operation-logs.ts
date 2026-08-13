@@ -1,6 +1,6 @@
 // 合同维度操作日志：合同自身 + 该合同下的开票/回款 涉及的所有 OperationLog
-// 权限校验在 service 入口处做：CONTRACT.READ；SALES 通过 ownerEq 在合同存在性查询里
-// 隔离（越权访问非自己的合同直接 404，不泄漏存在性）。
+// 权限校验在 service 入口处做：CONTRACT.READ；读放开后 SALES/EXPERT 可浏览
+// 全公司合同的日志 (行级过滤仅统计/工作台口径保留)，合同不存在才 404。
 //
 // 提取到 service 是为了 (1) 跟 overview.ts 等其它 contract service 保持同样分层，
 // (2) tests/api/contract-operation-logs.test.ts 可直接 import 本函数跑单测。
@@ -11,7 +11,6 @@ import { requirePermission, RESOURCE, ACTION } from "@/lib/permissions";
 import { prisma } from "@/lib/prisma";
 import { SYSTEM_USER_ID, isSystemUser } from "@/lib/system";
 import { entityLabel, entityHref } from "@/lib/operation-log-format";
-import { ownerEq } from "@/lib/ownership";
 import type { Prisma } from "@prisma/client";
 
 export type ContractOperationLog = {
@@ -51,9 +50,9 @@ export async function getContractOperationLogs(
 ): Promise<ContractOperationLogPage> {
   requirePermission(user.roleCode, RESOURCE.CONTRACT, ACTION.READ);
 
-  // 合同存在性 + 行级隔离；SALES 越权访问非自己的合同直接 404
+  // 合同存在性校验；读放开后不再按 owner 过滤，仅真不存在 404
   const c = await prisma.contract.findFirst({
-    where: { id: contractId, deletedAt: null, ...ownerEq(user) },
+    where: { id: contractId, deletedAt: null },
     select: { id: true },
   });
   if (!c) throw new ApiError(ERROR_CODES.NOT_FOUND, "合同不存在", 404);

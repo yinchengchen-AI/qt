@@ -2,7 +2,7 @@
 //
 // 覆盖矩阵:
 //   1) ADMIN 可看到本合同 + 关联发票 + 关联回款 的全部日志
-//   2) SALES 越权访问别人 owner 的合同 → 404
+//   2) SALES 读别人 owner 的合同日志 → 200 (读放开, 仅真不存在才 404)
 //   3) SALES 看自己 owner 的合同 → OK 且包含关联发票/回款的日志
 //   4) 无关合同的日志不会被混入（其他合同的 OperationLog 不应出现）
 //   5) 分页参数 total / page / pageSize 正确
@@ -15,7 +15,6 @@ import { prisma } from "@/lib/prisma";
 import { getContractOperationLogs } from "@/server/services/contract";
 import { SYSTEM_USER_ID } from "@/lib/system";
 import { ApiError } from "@/lib/api";
-import { ERROR_CODES } from "@/types/errors";
 import type { SessionUser } from "@/lib/session";
 
 let dbReachable = false;
@@ -241,11 +240,12 @@ describe("getContractOperationLogs: 权限与隔离", () => {
     expect(adminLog?.actor).toMatchObject({ isSystem: false });
   }));
 
-  it("SALES 越权访问别人 owner 的合同 → 404 (不泄漏存在性)", guard(async () => {
+  it("SALES 读别人 owner 的合同日志 → 200 (读放开)", guard(async () => {
     const otherContract = await mkContract("OWNED-BY-OTHER", salesOther!.id, testCustomer2Id!);
-    await expect(
-      getContractOperationLogs(salesOwner!, otherContract, { page: 1, pageSize: 50 })
-    ).rejects.toMatchObject({ errorCode: ERROR_CODES.NOT_FOUND });
+    await mkOpLog({ actorId: salesOther!.id, action: "CONTRACT_UPDATE", entity: "Contract", entityId: otherContract });
+    const page = await getContractOperationLogs(salesOwner!, otherContract, { page: 1, pageSize: 50 });
+    expect(page.total).toBe(1);
+    expect(page.list[0]!.entityId).toBe(otherContract);
   }));
 
   it("SALES 看自己 owner 的合同 → OK 且包含关联发票/回款日志", guard(async () => {

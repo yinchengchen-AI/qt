@@ -11,7 +11,6 @@ import { ok, err, ApiError } from "@/lib/api";
 import { requireSession } from "@/lib/session";
 import { requirePermission, RESOURCE, ACTION } from "@/lib/permissions";
 import { prisma } from "@/lib/prisma";
-import { ownerEq } from "@/lib/ownership";
 import { checkPublishable } from "@/server/services/contract";
 import { ERROR_CODES } from "@/types/errors";
 
@@ -25,7 +24,7 @@ export async function GET(
       requirePermission(user.roleCode, RESOURCE.CONTRACT, ACTION.READ);
       const { id } = await params;
       const c = await prisma.contract.findFirst({
-        where: { id, deletedAt: null, ...ownerEq(user) },
+        where: { id, deletedAt: null },
         select: {
           status: true,
           customerId: true,
