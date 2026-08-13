@@ -106,6 +106,7 @@ export type Invoice = {
   // 列表场景合同号/标题/服务类型用于"合同"列渲染; 不含 deliverables — 交付物仅在合同管理侧展示
   contract?: {
     contractNo: string;
+    ownerUserId?: string | null;
     title?: string | null;
     customerName?: string | null;
     serviceType?: string | null;
@@ -141,6 +142,7 @@ export type Payment = {
   // 列表场景合同号/标题/服务类型用于"合同"列渲染; 不含 deliverables — 交付物仅在合同管理侧展示
   contract?: {
     contractNo: string;
+    ownerUserId?: string | null;
     title?: string | null;
     customerName?: string | null;
     serviceType?: string | null;

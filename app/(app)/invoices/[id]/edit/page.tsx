@@ -75,6 +75,8 @@ export default function EditInvoicePage() {
   // roleCode 在 session 未就绪时为 undefined, 用 ?? 兜底, OPS 兜底成 "" 后 hasPermission 返回 false
   const roleCode = (session?.user?.roleCode ?? "") as Parameters<typeof hasPermission>[0];
   const isAdmin = roleCode === "ADMIN";
+  const me = (session?.user as { id?: string } | undefined)?.id;
+  const isRestricted = roleCode === "SALES" || roleCode === "EXPERT";
   const canUpdate = hasPermission(roleCode, RESOURCE.INVOICE, ACTION.UPDATE);
   if (!canUpdate) {
     return (
@@ -82,6 +84,17 @@ export default function EditInvoicePage() {
         <PageHeader back={goBack} title="编辑开票" />
         <FormCard>
           <Text type="warning">当前角色无开票编辑权限, 仅可查看。如需修改请联系财务或管理员。</Text>
+        </FormCard>
+      </Page>
+    );
+  }
+  // 行级隔离兜底: 与后端 updateInvoice 的 assertRecordWritable 同口径 (先 owner 后状态机)
+  if (isRestricted && data.contract?.ownerUserId !== me) {
+    return (
+      <Page compact>
+        <PageHeader back={goBack} title="编辑开票" />
+        <FormCard>
+          <Text type="warning">该发票归属其他销售负责的合同, 不可编辑。</Text>
         </FormCard>
       </Page>
     );

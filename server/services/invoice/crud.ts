@@ -36,12 +36,17 @@ export async function getInvoice(user: SessionUser, id: string) {
   requirePermission(user.roleCode, RESOURCE.INVOICE, ACTION.READ);
   const inv = await prisma.invoice.findFirst({
     where: { id, deletedAt: null },
-    include: { contract: { select: { contractNo: true } } }
+    include: { contract: { select: { contractNo: true, ownerUserId: true } } }
   });
   if (!inv) throw new ApiError(ERROR_CODES.NOT_FOUND, "发票不存在", 404);
-  // 平铺合同编号:Invoice 表只有 contractId,前端编辑页"合同编号"需要 contractNo 展示
+  // 平铺合同编号:Invoice 表只有 contractId,前端编辑页"合同编号"需要 contractNo 展示;
+  // 同时带出 contract.ownerUserId,供前端对 SALES/EXPERT 做编辑/提交入口的 owner 判定 (与后端 assertRecordWritable 同口径)
   const { contract, ...rest } = inv;
-  return { ...rest, contractNo: contract.contractNo };
+  return {
+    ...rest,
+    contractNo: contract.contractNo,
+    contract: { contractNo: contract.contractNo, ownerUserId: contract.ownerUserId }
+  };
 }
 
 

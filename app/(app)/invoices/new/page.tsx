@@ -7,6 +7,7 @@ import {
 } from "@ant-design/pro-components";
 import { App as AntdApp, Space, Tag, Typography } from "antd";
 import { useRouter } from "next/navigation";
+import { useSession } from "next-auth/react";
 import { useGoBack } from "@/lib/navigation";
 import { useRef, useState } from "react";
 import dayjs from "dayjs";
@@ -48,6 +49,10 @@ export default function NewInvoicePage() {
   const router = useRouter();
   const goBack = useGoBack("/invoices");
   const { message } = AntdApp.useApp();
+  const { data: session } = useSession();
+  const me = session?.user?.id;
+  const roleCode = session?.user?.roleCode ?? "";
+  const isRestricted = roleCode === "SALES" || roleCode === "EXPERT";
   // ProForm 的 ProFormRef 类型未导出,用 any 承载动态表单引用
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const formRef = useRef<any>(null);
@@ -193,7 +198,10 @@ export default function NewInvoicePage() {
                   occupiedAmount: number;
                   customerId: string;
                   customerName: string;
-                }>).map((c) => ({
+                  ownerUserId: string;
+                }>)
+                  .filter((c) => !isRestricted || c.ownerUserId === me)
+                  .map((c) => ({
                   value: c.id,
                   label: `${c.contractNo} · ${c.title} · ${formatCurrency(c.totalAmount)}`,
                   contract: c

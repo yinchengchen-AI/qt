@@ -54,11 +54,15 @@ export default function InvoiceDetailPage() {
     );
   }
   const roleCode = (session?.user?.roleCode ?? "") as Parameters<typeof hasPermission>[0];
+  const me = (session?.user as { id?: string } | undefined)?.id;
   const isFinance = roleCode === "FINANCE" || roleCode === "ADMIN";
   const isAdmin = roleCode === "ADMIN";
+  // 行级隔离同口径 (lib/ownership.ts isRowRestricted): SALES/EXPERT 仅能操作自己合同下的发票
+  const isRestricted = roleCode === "SALES" || roleCode === "EXPERT";
   // 与 server/services/invoice/crud.ts:130 的状态机门控保持一致: 非 admin 仅 DRAFT 可改, admin 任意态
   const canUpdate = hasPermission(roleCode, RESOURCE.INVOICE, ACTION.UPDATE);
   const status = invoice?.status;
+  const canTouch = isAdmin || (status === "DRAFT" && (!isRestricted || invoice.contract?.ownerUserId === me));
   // 红冲票 (负数票) 服务端禁止作废/再红冲, 前端同步隐藏按钮
   const isRedFlushTicket = Number(invoice.amount) < 0;
 
@@ -96,10 +100,10 @@ export default function InvoiceDetailPage() {
         actions={
           <Space wrap>
             <Button key="pdf" icon={<FilePdfOutlined />} onClick={() => openPrintWindow(`/api/invoices/${id}/pdf`)}>导出 PDF</Button>
-            {canUpdate && (isAdmin || status === "DRAFT") && (
+            {canUpdate && canTouch && (
               <Button key="edit" icon={<EditOutlined />} onClick={() => router.push(`/invoices/${id}/edit`)}>编辑</Button>
             )}
-            {status === "DRAFT" && canUpdate && <Button type="primary" onClick={() => run("submit")}>提交</Button>}
+            {status === "DRAFT" && canUpdate && (!isRestricted || invoice.contract?.ownerUserId === me) && <Button type="primary" onClick={() => run("submit")}>提交</Button>}
             {status === "PENDING_FINANCE" && isFinance && (
               <>
                 <Button danger onClick={() => openModal("reject")}>驳回</Button>
