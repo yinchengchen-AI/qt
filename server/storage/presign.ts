@@ -10,6 +10,8 @@ import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { ApiError } from "@/lib/api";
 import { ERROR_CODES } from "@/types/errors";
+import { hasPermission, RESOURCE, ACTION } from "@/lib/permissions";
+import type { RoleCode } from "@/types/enums";
 import {
   ALLOWED_MIME_TYPES,
   MAX_FILE_SIZE,
@@ -283,18 +285,12 @@ export async function canReadAttachment(att: AttachmentForRead, userId: string):
   //   1) 上传者本人
   //   2) 员工档案附件(PII, 含身份证照): 仅 档案本人 / ADMIN / OPS, 不走下方 FINANCE 全员放行
   //   3) ADMIN / FINANCE 角色(非档案附件)
-  //   4) 关联合同: 合同的 ownerUserId / createdById
-  //   5) 关联发票: 发票的 applicantUserId / createdById,或发票所属合同的 owner/createdBy
-  //   6) 都没有(tmp 上传) -> 仅上传者可读
+  //   4) 合同/发票附件: 任何对父资源有 READ 权限的角色 (读放开后随行级读口径)
+  //   5) 都没有(tmp 上传) -> 仅上传者可读
   if (att.uploadedById === userId) return true;
 
-  // 单次并行查询: 角色 + 合同 owner (避免 2 次顺序往返,典型 30-80ms 节省)
-  const [u, contract] = await Promise.all([
-    prisma.user.findUnique({ where: { id: userId }, select: { role: { select: { code: true } } } }),
-    att.contractId
-      ? prisma.contract.findUnique({ where: { id: att.contractId }, select: { ownerUserId: true, createdById: true } })
-      : Promise.resolve(null)
-  ]);
+  // 单次查询: 角色 (读放开后合同 owner 检查已并入角色 READ 判定, 无需再拉合同行)
+  const u = await prisma.user.findUnique({ where: { id: userId }, select: { role: { select: { code: true } } } });
   // 员工档案附件收紧 (role-browse-permissions todo 2): 本人 / ADMIN / OPS 之外一律拒绝
   if (att.employeeProfileId) {
     if (u?.role?.code === "ADMIN" || u?.role?.code === "OPS") return true;
@@ -305,10 +301,10 @@ export async function canReadAttachment(att: AttachmentForRead, userId: string):
     return profile?.userId === userId;
   }
   if (u?.role?.code === "ADMIN" || u?.role?.code === "FINANCE") return true;
-  if (contract && (contract.ownerUserId === userId || contract.createdById === userId)) return true;
-  if (att.invoice && (att.invoice.applicantUserId === userId || att.invoice.createdById === userId)) return true;
-  const invoiceContract = att.invoice?.contract;
-  if (invoiceContract && (invoiceContract.ownerUserId === userId || invoiceContract.createdById === userId)) return true;
+  // 读放开 (role-browse-permissions todo 9): 附件下载随父记录 READ 权限放开
+  const role = u?.role?.code as RoleCode | undefined;
+  if (att.contractId && role && hasPermission(role, RESOURCE.CONTRACT, ACTION.READ)) return true;
+  if (att.invoiceId && role && hasPermission(role, RESOURCE.INVOICE, ACTION.READ)) return true;
   return false;
 }
 
