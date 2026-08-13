@@ -3,6 +3,7 @@ import { ProCard, ProDescriptions, ProTable } from "@ant-design/pro-components";
 import { Button, Col, Empty, Row, Space, Tabs } from "antd";
 import { FilePdfOutlined } from "@ant-design/icons";
 import { useParams, useRouter } from "next/navigation";
+import { useSession } from "next-auth/react";
 import { useGoBack } from "@/lib/navigation";
 import useSWR from "swr";
 import { useState } from "react";
@@ -24,6 +25,7 @@ type Customer = {
   scale: string | null;
   contactName: string | null; contactTitle: string | null; contactPhone: string;
   province: string; city: string; district: string | null; town: string | null; address: string | null;
+  ownerUserId: string;
   createdAt: string;
 };
 
@@ -42,10 +44,13 @@ export default function CustomerDetailPage() {
   const router = useRouter();
   const goBack = useGoBack("/customers");
   const { isMobile } = useResponsive();
+  const { data: session } = useSession();
   const customerType = useDict("CUSTOMER_TYPE");
   const industryDict = useDict("CUSTOMER_INDUSTRY");
   const sourceDict = useDict("CUSTOMER_SOURCE");
   const scaleDict = useDict("CUSTOMER_SCALE");
+  const me = (session?.user as { id?: string } | undefined)?.id;
+  const isAdmin = (session?.user as { roleCode?: string } | undefined)?.roleCode === "ADMIN";
   const { data, error, isLoading, mutate } = useSWR<Customer>(`/api/customers/${id}`);
   const { data: overview } = useSWR<Overview>(`/api/customers/${id}/overview`);
   const [activeTab, setActiveTab] = useState("info");
@@ -212,9 +217,11 @@ export default function CustomerDetailPage() {
         actions={
           <Space wrap>
             <Button key="pdf" icon={<FilePdfOutlined />} onClick={() => openPrintWindow(`/api/customers/${id}/pdf`)}>导出 PDF</Button>
-            <Button key="edit" type="primary" onClick={() => router.push(`/customers/${id}/edit`)}>
-              编辑
-            </Button>
+            {(isAdmin || data.ownerUserId === me) && (
+              <Button key="edit" type="primary" onClick={() => router.push(`/customers/${id}/edit`)}>
+                编辑
+              </Button>
+            )}
           </Space>
         }
       />
