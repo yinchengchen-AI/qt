@@ -1,11 +1,10 @@
 // 进程内通知 hub (SSE 广播源)
 //
-// 设计:emit 写入 inbox 消息完全不变(不动 5 个 caller,无事务回滚复杂度),
-// SSE 端点用 "kick" 模式:
-//   - 前端 EventSource 订阅
-//   - 后台 5s setInterval 给所有活跃订阅者推 {kind:"kick"}
+// 设计:事件驱动推送为主 + 5s scheduler 为安全兜底。
+//   - 非事务路径(定时任务 emit):创建消息后立即定向 broadcastKick(receivers),延迟 ~0
+//   - 事务路径(状态机 emit):emit 内部 queueKickKick,外层 $transaction commit 后 flushPendingKicks
+//   - scheduler 5s broadcastKickAll 保留为兜底(事务回滚/丢漏场景)
 //   - 前端收到 kick → mutate SWR cache of unread-count,重拉一次
-//   - 实际通知延迟 = max(SSE 推送间隔, 5s) + 前端 SWR 重拉
 //   - 60s polling 保留作为 EventSource 错误时的兜底
 //
 // 多实例扩展(本期不做):切换 Redis pub/sub,API 形状不变。
@@ -81,6 +80,26 @@ export function broadcastKickAll(): number {
   return ok;
 }
 
+// ── 事务内延迟推送: emit 在 $transaction 内调用时,消息未 commit → 不能立即推 kick ──
+// queueKickKick 将 receiver userIds 入队; flushPendingKicks 在 transaction commit 后调用,
+// 才真正 broadcastKick。若 tx 回滚,queued kick 永远不会 flush(安全无副作用)。
+const pendingKickUsers = new Set<string>();
+
+/** 将 userIds 入队等待 flush (事务内 emit 调用)。 */
+export function queueKickKick(userIds: string[]): void {
+  for (const uid of userIds) pendingKickUsers.add(uid);
+}
+
+/** 将所有排队的 userIds 执行 broadcastKick 并清空队列;返回成功推送的连接总数。 */
+export function flushPendingKicks(): number {
+  const users = [...pendingKickUsers];
+  pendingKickUsers.clear();
+  if (users.length === 0) return 0;
+  let ok = 0;
+  for (const uid of users) ok += broadcastKick(uid);
+  return ok;
+}
+
 export function heartbeatFrame(): Uint8Array {
   return HEARTBEAT_FRAME;
 }
@@ -88,9 +107,13 @@ export function heartbeatFrame(): Uint8Array {
 /** 仅测试用 */
 export function _resetForTests(): void {
   subscribers.clear();
+  pendingKickUsers.clear();
 }
 export function _activeCount(): number {
   let n = 0;
   for (const s of subscribers.values()) n += s.size;
   return n;
+}
+export function _pendingKickCount(): number {
+  return pendingKickUsers.size;
 }

@@ -10,6 +10,7 @@ import { audit } from "@/server/audit";
 
 import {assertRecordWritable} from "@/lib/ownership";
 import { runTransitionInTx } from "@/lib/status-machine";
+import { flushPendingKicks } from "@/server/notifications/hub";
 import { refundPaymentInTx } from "@/server/services/payment";
 import { MONEY_TOLERANCE } from "@/lib/money-tolerance";
 import { INVOICE_LIMIT_COUNTED_STATUSES } from "@/lib/invoice-amounts";
@@ -296,5 +297,6 @@ export async function invoiceAction(user: SessionUser, id: string, input: Invoic
 
     throw new ApiError(ERROR_CODES.VALIDATION_FAILED, "未知动作", 400);
   });
+  flushPendingKicks();
 }
 

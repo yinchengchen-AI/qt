@@ -10,6 +10,7 @@ import type { Prisma as PrismaNS } from "@prisma/client";
 import { listAdminUserIds } from "@/server/events/bus";
 import { assertRecordWritable, ownerViaContract, parseStatusList } from "@/lib/ownership";
 import { runTransitionInTx } from "@/lib/status-machine";
+import { flushPendingKicks } from "@/server/notifications/hub";
 import { MONEY_TOLERANCE } from "@/lib/money-tolerance";
 
 export async function listPayments(
@@ -192,6 +193,7 @@ export async function createPayment(
       }
     });
   });
+  flushPendingKicks();
 }
 
 // 在事务内将一笔 Payment 从 CONFIRMED/RECONCILED 退到 REFUNDED,
@@ -396,4 +398,5 @@ export async function paymentAction(user: SessionUser, id: string, input: Paymen
 
     throw new ApiError(ERROR_CODES.VALIDATION_FAILED, "未知动作", 400);
   });
+  flushPendingKicks();
 }

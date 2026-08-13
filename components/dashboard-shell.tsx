@@ -3,6 +3,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useMessageStream } from "@/lib/use-message-stream";
+import { useUnreadCount, refreshUnread } from "@/lib/message-unread";
 import Link from "next/link";
 import { useRouter, usePathname } from "next/navigation";
 import { signOut } from "next-auth/react";
@@ -207,7 +208,7 @@ export function DashboardShell({ user, children }: Props) {
   const [collapsed, setCollapsed] = useState(false);
   // 父分组展开状态(controlled, 手风琴: 仅同时打开一个父分组)
   const [openKeys, setOpenKeys] = useState<string[]>([]);
-  const [unread, setUnread] = useState(0);
+  const unread = useUnreadCount();
   const [navOpen, setNavOpen] = useState(false);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [messages, setMessages] = useState<
@@ -258,15 +259,6 @@ export function DashboardShell({ user, children }: Props) {
     setOpenKeys(newlyOpened.length > 0 ? newlyOpened : keys);
   };
 
-  const loadUnread = async () => {
-    try {
-      const r = await fetch("/api/messages/unread-count", { credentials: "include" });
-      const j = await r.json();
-      if (j.code === 0) setUnread(j.data.unreadCount);
-    } catch {
-      /* ignore */
-    }
-  };
   const loadMessages = async () => {
     try {
       const r = await fetch("/api/messages?page=1&pageSize=10", { credentials: "include" });
@@ -277,17 +269,9 @@ export function DashboardShell({ user, children }: Props) {
     }
   };
 
-  useEffect(() => {
-    loadUnread();
-    const t = setInterval(loadUnread, 60000);
-    return () => clearInterval(t);
-  }, []);
-
-  // SSE kick 触发器:收到 kick 立即重拉 unread-count + drawer 最新 10 条
-  // (polling 仍以 60s 周期跑,SSE 是加速,失败时 polling 兜底)
   useMessageStream({
     onKick: () => {
-      loadUnread();
+      refreshUnread();
       if (drawerOpen) loadMessages();
     }
   });
@@ -684,7 +668,7 @@ export function DashboardShell({ user, children }: Props) {
                 const r = await fetch("/api/messages/mark-all-read", { method: "POST", credentials: "include" });
                 const j = await r.json();
                 if (j.code === 0) {
-                  setUnread(0);
+                  refreshUnread();
                   loadMessages();
                   modal.success({ content: t("messages.toast.markedRead", { n: j.data.updated }) });
                 }
@@ -729,7 +713,7 @@ export function DashboardShell({ user, children }: Props) {
                 <div>
                   <div style={{ color: token.colorTextSecondary, fontSize: 13 }}>{t("messages.empty")}</div>
                   <div style={{ color: token.colorTextTertiary, fontSize: 12, marginTop: 4 }}>
-                    新消息会在事件触发时送达
+                    {t("messages.drawer.hint")}
                   </div>
                 </div>
               }
@@ -760,7 +744,7 @@ export function DashboardShell({ user, children }: Props) {
                       const j = await res.json();
                       if (j.code === 0) {
                         const readAt = j.data.readAt ?? new Date().toISOString();
-                        setUnread((u) => Math.max(0, u - 1));
+                        refreshUnread();
                         setMessages((prev) =>
                           prev.map((x) => (x.id === m.id ? { ...x, readAt } : x))
                         );
@@ -768,7 +752,7 @@ export function DashboardShell({ user, children }: Props) {
                         throw new Error(j.message);
                       }
                     } catch {
-                      loadUnread();
+                      refreshUnread();
                     }
                   }
                   if (m.link) {
@@ -854,7 +838,7 @@ export function DashboardShell({ user, children }: Props) {
                 }}
                 style={{ color: token.colorPrimary, fontSize: 13 }}
               >
-                查看全部消息 →
+                {t("messages.drawer.viewAll")}
               </a>
             </div>
           ) : null}

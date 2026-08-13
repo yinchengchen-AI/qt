@@ -11,6 +11,7 @@ import { Prisma as PrismaNS } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { audit } from "@/server/audit";
 import { emit, type DomainEventType } from "@/server/events/bus";
+import { flushPendingKicks } from "@/server/notifications/hub";
 import { ApiError } from "@/lib/api";
 import { ERROR_CODES } from "@/types/errors";
 
@@ -124,10 +125,12 @@ export async function runTransition<C extends { id: string; status: string }>(
 ): Promise<TransitionResult> {
   for (let attempt = 1; attempt <= SERIALIZABLE_RETRY; attempt++) {
     try {
-      return await prisma.$transaction(
+      const result = await prisma.$transaction(
         async (tx) => runTransitionInTx(tx, input),
         { isolationLevel: PrismaNS.TransactionIsolationLevel.Serializable, timeout: TX_TIMEOUT_MS },
       );
+      flushPendingKicks();
+      return result;
     } catch (e) {
       if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === "P2034" && attempt < SERIALIZABLE_RETRY) {
         continue;

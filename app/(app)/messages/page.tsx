@@ -1,16 +1,17 @@
 "use client";
 import { ProTable, type ActionType, type ProColumns } from "@ant-design/pro-components";
-import { Tag, Button, Space, App as AntdApp, Tabs, Empty, Typography, Popover } from "antd";
-import { CheckOutlined, DeleteOutlined, LinkOutlined } from "@ant-design/icons";
+import { Tag, Button, Space, App as AntdApp, Tabs, Empty, Typography, Popover, Card, Skeleton } from "antd";
+import { CheckOutlined, DeleteOutlined, LinkOutlined, PushpinOutlined } from "@ant-design/icons";
 import Link from "next/link";
-import { useRef, useState } from "react";
+import { useRef, useState, useEffect } from "react";
 import { Page } from "@/components/page";
 import { PageHeader } from "@/components/page-header";
 import { StatusTag } from "@/components/status-tag";
 import { DateTimeCell } from "@/components/table-cells";
 import { useT } from "@/lib/i18n";
 import { useResponsive } from "@/lib/use-breakpoint";
-import useSWR from "swr";
+import { useUnreadCount, refreshUnread } from "@/lib/message-unread";
+import { useMessageStream } from "@/lib/use-message-stream";
 import { buildMessageLinkHref as buildLinkHref } from "@/lib/message-link";
 
 const { Text, Paragraph } = Typography;
@@ -34,16 +35,26 @@ export default function MessagesPage() {
   const actionRef = useRef<ActionType>(undefined);
   const [tab, setTab] = useState<TabKey>("all");
 
-  // 未读数量 (用于 tab 角标)
-  const { data: unreadResp } = useSWR<{ unreadCount: number }>(
-    "/api/messages/unread-count",
-    async (url: string) => {
-      const r = await fetch(url, { credentials: "include" });
-      const j = await r.json();
-      return j.data ?? { unreadCount: 0 };
-    }
-  );
-  const unreadCount = unreadResp?.unreadCount ?? 0;
+  const unreadCount = useUnreadCount();
+
+  useMessageStream({ onKick: () => {
+    actionRef.current?.reload?.();
+    refreshUnread();
+  } });
+
+  type PinnedAnnouncement = { id: string; title: string; content: string; publishAt: string };
+  const [pinned, setPinned] = useState<PinnedAnnouncement[]>([]);
+  const [pinnedLoading, setPinnedLoading] = useState(true);
+  useEffect(() => {
+    (async () => {
+      try {
+        const r = await fetch("/api/announcements/pinned", { credentials: "include" });
+        const j = await r.json();
+        if (j.code === 0) setPinned(j.data?.list ?? []);
+      } catch { /* empty */ }
+      setPinnedLoading(false);
+    })();
+  }, []);
 
   const columns: ProColumns<Message>[] = [
     {
@@ -176,17 +187,17 @@ export default function MessagesPage() {
   ];
 
   const tabItems = [
-    { key: "all", label: "全部" },
+    { key: "all", label: t("messages.tab.all") },
     {
       key: "unread",
       label: (
         <Space size={6}>
-          <span>未读</span>
+          <span>{t("messages.tab.unread")}</span>
           {unreadCount > 0 ? <Tag color="red" style={{ margin: 0 }}>{unreadCount}</Tag> : null}
         </Space>
       )
     },
-    { key: "read", label: "已读" }
+    { key: "read", label: t("messages.tab.read") }
   ];
 
   return (
@@ -206,6 +217,7 @@ export default function MessagesPage() {
                 if (j.code === 0) {
                   msg.success(t("messages.toast.markedRead", { n: j.data.updated }));
                   actionRef.current?.reloadAndRest?.();
+                  refreshUnread();
                 } else msg.error(j.message);
               }}
             >
@@ -238,6 +250,23 @@ export default function MessagesPage() {
           </Space>
         }
       />
+
+      {pinnedLoading ? (
+        <Card size="small" style={{ marginBottom: 12 }}><Skeleton active paragraph={{ rows: 1 }} /></Card>
+      ) : pinned.length > 0 ? (
+        <Card
+          size="small"
+          title={<Space size={6}><PushpinOutlined />{t("messages.pinned.title")}</Space>}
+          style={{ marginBottom: 12 }}
+        >
+          {pinned.map((p) => (
+            <div key={p.id} style={{ marginBottom: 8 }}>
+              <Text strong>{p.title}</Text>
+              <Paragraph type="secondary" style={{ marginBottom: 0, fontSize: 13 }}>{p.content}</Paragraph>
+            </div>
+          ))}
+        </Card>
+      ) : null}
 
       <div
         style={{
@@ -278,7 +307,7 @@ export default function MessagesPage() {
             <Empty
               image={Empty.PRESENTED_IMAGE_SIMPLE}
               description={
-                tab === "unread" ? "暂无未读消息" : tab === "read" ? "暂无已读消息" : t("messages.empty")
+                tab === "unread" ? t("messages.empty.unread") : tab === "read" ? t("messages.empty.read") : t("messages.empty")
               }
             />
           )

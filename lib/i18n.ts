@@ -78,6 +78,16 @@ const messages: Record<Locale, Record<string, string>> = {
     "admin.messagesArchive.subtitle": "已读超过 90 天的业务通知被迁移到这里，仅限管理员查看",
     "messages.clearReadConfirm.title": "清空已读消息?",
     "messages.clearReadConfirm.content": "将永久删除所有已读消息,不可恢复",
+    "messages.tab.all": "全部",
+    "messages.tab.unread": "未读",
+    "messages.tab.read": "已读",
+    "messages.empty.unread": "暂无未读消息",
+    "messages.empty.read": "暂无已读消息",
+    "messages.drawer.hint": "新消息会在事件触发时送达",
+    "messages.drawer.loadMore": "加载更多",
+    "messages.drawer.viewAll": "查看全部消息 →",
+    "messages.pinned.title": "置顶公告",
+    "messages.pinned.empty": "暂无置顶公告",
 
     // 公告
     "announcements.title": "公告",
@@ -273,6 +283,16 @@ const messages: Record<Locale, Record<string, string>> = {
     "admin.messagesArchive.subtitle": "Read messages older than 90 days are moved here. Admin only.",
     "messages.clearReadConfirm.title": "Clear read messages?",
     "messages.clearReadConfirm.content": "Permanently delete all read messages. This cannot be recovered.",
+    "messages.tab.all": "All",
+    "messages.tab.unread": "Unread",
+    "messages.tab.read": "Read",
+    "messages.empty.unread": "No unread messages",
+    "messages.empty.read": "No read messages",
+    "messages.drawer.hint": "New messages arrive when events are triggered",
+    "messages.drawer.loadMore": "Load more",
+    "messages.drawer.viewAll": "View all messages →",
+    "messages.pinned.title": "Pinned Announcements",
+    "messages.pinned.empty": "No pinned announcements",
 
     // Announcements
     "announcements.title": "Announcements",

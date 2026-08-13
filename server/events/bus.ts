@@ -8,6 +8,7 @@
 import type { Prisma, PrismaClient } from "@prisma/client";
 import { Prisma as PrismaNS } from "@prisma/client";
 import { MESSAGE_TYPE } from "@/types/enums";
+import { broadcastKick, queueKickKick } from "@/server/notifications/hub";
 
 export type DomainEventType = (typeof MESSAGE_TYPE)[number];
 
@@ -53,6 +54,15 @@ export async function emit(prisma: TxOrClient, ev: DomainEvent): Promise<number>
   // 那个派发必须放在事务外(失败不阻塞业务),并在事务回滚时通过 message.findFirst
   // 反查避免发出"假阳性"通知。
   await prisma.message.createMany({ data, skipDuplicates: true });
+
+  // 事件驱动推送：非事务路径立即踢；事务路径由外层 flushPendingKicks 负责
+  const isTx = typeof (prisma as Prisma.TransactionClient).$transaction === "function";
+  if (!isTx) {
+    for (const uid of ev.receivers) broadcastKick(uid);
+  } else {
+    queueKickKick(ev.receivers);
+  }
+
   return messages.length;
 }
 

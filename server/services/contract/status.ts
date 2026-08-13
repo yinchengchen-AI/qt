@@ -10,6 +10,7 @@ import { MONEY_TOLERANCE } from "@/lib/money-tolerance";
 import { audit } from "@/server/audit";
 import { listAdminUserIds } from "@/server/events/bus";
 import { runTransition, runTransitionInTx, SkipTransition } from "@/lib/status-machine";
+import { flushPendingKicks } from "@/server/notifications/hub";
 import { INVOICE_ISSUED_AMOUNT_STATUSES } from "@/lib/invoice-amounts";
 import { SYSTEM_USER_ID } from "@/lib/system";
 import { env } from "@/lib/env";
@@ -34,6 +35,7 @@ export async function publishContract(user: SessionUser, id: string) {
     });
     return updated;
   });
+  flushPendingKicks();
 }
 
 
@@ -79,6 +81,7 @@ export async function closeContract(
     });
     return updated;
   });
+  flushPendingKicks();
 }
 
 

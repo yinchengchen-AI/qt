@@ -115,3 +115,12 @@ export async function softDeleteAnnouncement(user: SessionUser, id: string) {
   await audit(prisma, { actorId: user.id, action: "ANNOUNCEMENT_DELETE", entity: "Announcement", entityId: id, before: { title: existing.title } });
   return { ok: true };
 }
+
+export async function listPinnedAnnouncements(user: SessionUser) {
+  requirePermission(user.roleCode, RESOURCE.ANNOUNCEMENT, ACTION.READ);
+  return prisma.announcement.findMany({
+    where: { ...visibilityWhere(user), pinned: true },
+    orderBy: { publishAt: "desc" },
+    take: 5,
+  });
+}
