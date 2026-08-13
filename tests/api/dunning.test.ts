@@ -1,12 +1,15 @@
 // 催收记录 (DunningNote) — service + API 集成测试
 //
 // 覆盖:
-//   1) createDunningNote: SALES 看不到他人的发票 -> 404
+//   1) createDunningNote: SALES 在自己合同的发票上记催收 -> 200 (正常流程, 写库 + 读出)
 //   2) createDunningNote: PROMISED 状态必须带 promisedDate -> 400
-//   3) createDunningNote: 正常流程, 写库 + 行级隔离读出
-//   4) updateDunningNote: 修改 status / promisedDate (UPDATE 角色限定 FINANCE/ADMIN)
-//   5) deleteDunningNote: SALES 无 DELETE 矩阵权限; FINANCE/ADMIN 可删
-//   6) getDunningSummary: byStatus 计数正确
+//   3) createDunningNote: SALES 在他人 owner 的发票上记催收 -> 403 无权操作他人催收记录
+//   3b) createDunningNote: 发票不存在 -> 404 (missing 语义, 不与越权 403 混淆)
+//   4) listDunningNotes: 读放开 — SALES 能列出他人 owner 发票的催收记录 (200 有行)
+//   5) updateDunningNote: 修改 status / promisedDate (UPDATE 角色限定 FINANCE/ADMIN)
+//   6) deleteDunningNote: SALES 无 DELETE 矩阵权限; FINANCE/ADMIN 可删任意 owner 记录
+//   7) getDunningSummary: 本人口径 — 他人 owner 的 ISSUED 发票 + 催收不影响 SALES 汇总卡
+//   8) createDunningNote: EXPERT 矩阵仅 R, create -> 403
 //
 // DB 不可达时整组 skip.
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
@@ -27,6 +30,7 @@ let adminUser: SessionUser | null = null;
 let financeUser: SessionUser | null = null;
 let salesUser: SessionUser | null = null;
 let otherSalesUser: SessionUser | null = null;
+let expertUser: SessionUser | null = null;
 let testCustomerId: string | null = null;
 const createdContractNos: string[] = [];
 const createdInvoiceIds: string[] = [];
@@ -43,6 +47,10 @@ const buildFinance = (): SessionUser => {
 const buildSales = (): SessionUser => {
   if (!salesUser) throw new Error("sales not bootstrapped");
   return salesUser;
+};
+const buildExpert = (): SessionUser => {
+  if (!expertUser) throw new Error("expert not bootstrapped");
+  return expertUser;
 };
 
 beforeAll(async () => {
@@ -61,6 +69,10 @@ beforeAll(async () => {
   financeUser = { id: financeRow.id, employeeNo: financeRow.employeeNo, name: financeRow.name, email: financeRow.email, roleCode: "FINANCE", permissions: [] };
   salesUser = { id: salesRows[0]!.id, employeeNo: salesRows[0]!.employeeNo, name: salesRows[0]!.name, email: salesRows[0]!.email, roleCode: "SALES", permissions: [] };
   otherSalesUser = { id: salesRows[1]!.id, employeeNo: salesRows[1]!.employeeNo, name: salesRows[1]!.name, email: salesRows[1]!.email, roleCode: "SALES", permissions: [] };
+  const expertRow = await prisma.user.findFirst({ where: { role: { code: "EXPERT" }, deletedAt: null, isSystem: false } });
+  if (expertRow) {
+    expertUser = { id: expertRow.id, employeeNo: expertRow.employeeNo, name: expertRow.name, email: expertRow.email, roleCode: "EXPERT", permissions: [] };
+  }
 
   const cust = await prisma.customer.create({
     data: {
@@ -100,7 +112,7 @@ afterAll(async () => {
   }
 });
 
-async function makeIssuedInvoiceFor(contractId: string, ownerId: string, amount: number, suffix: string) {
+async function makeIssuedInvoiceFor(contractId: string, ownerId: string, amount: number, suffix: string, issueDaysAgo = 90) {
   const created = await createInvoice(buildAdmin(), {
     contractId,
     invoiceNo: `${TAG}-INV-${suffix}`,
@@ -117,7 +129,7 @@ async function makeIssuedInvoiceFor(contractId: string, ownerId: string, amount:
   await invoiceAction(buildAdmin(), created.id, { action: "submit" });
   await invoiceAction(buildFinance(), created.id, {
     action: "issue",
-    actualIssueDate: new Date(Date.now() - 90 * 86400_000).toISOString()
+    actualIssueDate: new Date(Date.now() - issueDaysAgo * 86400_000).toISOString()
   });
   createdInvoiceIds.push(created.id);
   return created;
@@ -187,18 +199,77 @@ describe("createDunningNote", () => {
     ).rejects.toThrow(/必须填写承诺付款日/);
   });
 
-  it("另一个 SALES 看不到不属于自己的发票 (assertInvoiceAccess -> 404)", async () => {
+  it("另一个 SALES 在他人 owner 的发票上记催收 -> 403 无权操作他人催收记录", async () => {
     if (!dbReachable || !adminUser || !salesUser || !otherSalesUser) return;
     const ctr = await makeContractFor(salesUser.id, salesUser.id, "c-3");
     const inv = await makeIssuedInvoiceFor(ctr.id, salesUser.id, 1000, "c-3");
-    await expect(
-      createDunningNote(otherSalesUser, {
+    try {
+      await createDunningNote(otherSalesUser, {
         invoiceId: inv.id,
         status: "CONTACTED",
         lastContactAt: new Date().toISOString(),
         channel: "PHONE"
-      })
-    ).rejects.toThrow(/发票不存在或无权限/);
+      });
+      expect.unreachable("越权 create 应抛 403");
+    } catch (e) {
+      const err = e as { status?: number; message?: string };
+      expect(err.status).toBe(403);
+      expect(err.message).toMatch(/无权操作他人催收记录/);
+    }
+  });
+
+  it("发票不存在 -> 404 (missing 语义保留, 不与越权 403 混淆)", async () => {
+    if (!dbReachable || !salesUser) return;
+    try {
+      await createDunningNote(buildSales(), {
+        invoiceId: `${TAG}-NO-SUCH-INVOICE`,
+        status: "CONTACTED",
+        lastContactAt: new Date().toISOString(),
+        channel: "PHONE"
+      });
+      expect.unreachable("不存在的发票应抛 404");
+    } catch (e) {
+      const err = e as { status?: number; message?: string };
+      expect(err.status).toBe(404);
+      expect(err.message).toMatch(/发票不存在或无权限访问/);
+    }
+  });
+
+  it("EXPERT 矩阵仅 DUNNING.READ, create -> 403", async () => {
+    if (!dbReachable || !adminUser || !salesUser || !expertUser) return;
+    const ctr = await makeContractFor(salesUser.id, salesUser.id, "c-4");
+    const inv = await makeIssuedInvoiceFor(ctr.id, salesUser.id, 1000, "c-4");
+    try {
+      await createDunningNote(buildExpert(), {
+        invoiceId: inv.id,
+        status: "CONTACTED",
+        lastContactAt: new Date().toISOString(),
+        channel: "PHONE"
+      });
+      expect.unreachable("EXPERT 无 CREATE 矩阵权限应抛 403");
+    } catch (e) {
+      const err = e as { status?: number; message?: string };
+      expect(err.status).toBe(403);
+    }
+  });
+});
+
+describe("listDunningNotes 读放开", () => {
+  it("SALES 能列出他人 owner 合同发票的催收记录 (200 且有行)", async () => {
+    if (!dbReachable || !adminUser || !salesUser || !otherSalesUser) return;
+    const ctr = await makeContractFor(otherSalesUser.id, otherSalesUser.id, "r-1");
+    const inv = await makeIssuedInvoiceFor(ctr.id, otherSalesUser.id, 1000, "r-1");
+    const note = await createDunningNote(otherSalesUser, {
+      invoiceId: inv.id,
+      status: "CONTACTED",
+      lastContactAt: new Date().toISOString(),
+      channel: "PHONE",
+      remark: "他人 owner 的记录"
+    });
+    createdNoteIds.push(note.id);
+    const list = await listDunningNotes(buildSales(), { invoiceId: inv.id });
+    expect(list.some((n) => n.id === note.id)).toBe(true);
+    expect(list[0]?.invoiceNo).toBe(`${TAG}-INV-r-1`);
   });
 });
 

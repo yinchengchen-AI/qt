@@ -1,5 +1,7 @@
 // 催收记录服务
-//   - 行级隔离: SALES/EXPERT 角色只看到自己 owner 的合同下发票的催收(走 isRowRestricted)
+//   - 读放开 (v0.19): 所有有 DUNNING.READ 的角色全量可读催收记录(list 不再行级过滤);
+//     create 写守门按合同 owner 显式 403 (assertRecordWritable); 汇总卡 getDunningSummary
+//     保持 SALES/EXPERT 本人口径 (自带受限 where)。
 //   - 权限: DUNNING resource (CRUD+EXPORT for ADMIN; CRUD for FINANCE;
 //             CR for SALES/EXPERT — 业务现场记录, 修改与清理交给财务; R for OPS)
 //   - 注意: 催收记录本身是 invoiceId 级(不存 customerId),所有过滤都通过 Invoice -> Contract -> owner
@@ -7,7 +9,7 @@ import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { type SessionUser } from "@/lib/session";
 import { requirePermission, RESOURCE, ACTION } from "@/lib/permissions";
-import { isRowRestricted, ownerViaContract } from "@/lib/ownership";
+import { assertRecordWritable, isRowRestricted, ownerViaContract } from "@/lib/ownership";
 import { Prisma } from "@prisma/client";
 
 export const DUNNING_STATUS = ["CONTACTED", "PROMISED", "DISPUTED", "LEGAL"] as const;
@@ -52,34 +54,29 @@ export type DunningNoteRow = {
 };
 
 /**
- * 把"按 invoice 限定"的行级隔离条件转成 Prisma where。
- * SALES / EXPERT 只能列出自己 owner 合同下的催收记录;
- * ADMIN/FINANCE/OPS 看到全部。
+ * 催收记录的 Prisma where (读放开后仅供 list/update/delete 使用):
+ * 所有有 DUNNING.READ 的角色全量可读, 不再做行级过滤;
+ * 本人口径只保留在 getDunningSummary 自带的受限 where 里。
  */
-function whereForUser(user: SessionUser, extra: Prisma.DunningNoteWhereInput = {}): Prisma.DunningNoteWhereInput {
-  const base: Prisma.DunningNoteWhereInput = { ...extra };
-  if (isRowRestricted(user)) {
-    base.invoice = { contract: { ownerUserId: user.id } } as Prisma.InvoiceWhereInput;
-  }
-  return base;
+function whereForUser(_user: SessionUser, extra: Prisma.DunningNoteWhereInput = {}): Prisma.DunningNoteWhereInput {
+  return { ...extra };
 }
 
 async function assertInvoiceAccess(user: SessionUser, invoiceId: string): Promise<void> {
-  // 验证发票存在 + SALES 行级隔离
+  // 无条件查发票: 不存在 → 404; 存在但非本人名下 → 显式 403 (读放开后 create 是 SALES 可达的写入口)
   const inv = await prisma.invoice.findFirst({
     where: {
       id: invoiceId,
-      deletedAt: null,
-      ...(ownerViaContract(user) as Prisma.InvoiceWhereInput)
+      deletedAt: null
     },
-    select: { id: true, invoiceNo: true, customerName: true }
+    select: { id: true, invoiceNo: true, customerName: true, contract: { select: { ownerUserId: true } } }
   });
   if (!inv) {
-    // SALES 看不到的发票,统一抛 404(不是 403,避免泄露存在性)
     const err = new Error("发票不存在或无权限访问");
     (err as Error & { status?: number }).status = 404;
     throw err;
   }
+  assertRecordWritable(user, inv.contract?.ownerUserId, "催收记录");
 }
 
 export async function listDunningNotes(
@@ -245,7 +242,8 @@ export async function getDunningSummary(user: SessionUser): Promise<DunningSumma
   const [openCount, latestNotes] = await Promise.all([
     prisma.invoice.count({ where: baseInvoiceWhere }),
     prisma.dunningNote.findMany({
-      where: whereForUser(user, {}),
+      // 汇总卡本人口径: 复用与 baseInvoiceWhere 相同的 owner 限定, 不跟随列表读放开
+      where: { ...(isRowRestricted(user) ? { invoice: { contract: { ownerUserId: user.id } } } : {}) },
       orderBy: { lastContactAt: "desc" },
       include: { invoice: { select: { id: true, invoiceNo: true, actualIssueDate: true, dueDate: true, amount: true } } }
     })
