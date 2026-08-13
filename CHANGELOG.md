@@ -2,6 +2,19 @@
 
 本文件记录 qt-biz 每个版本的详细变更。项目快速入口请见 [README.md](README.md)。
 
+## v0.18.6(2026-08-13)消息中心优化:事件驱动推送 + 跨页未读同步 + 置顶公告
+
+消息中心体验升级:后端 emit 事件后即时定向 SSE kick(替代纯 5s 轮询兜底),前端跨页面共享未读计数 + SSE 监听,Drawer 与消息页统一置顶公告展示。**DB schema / migrations: 无变化**。
+
+变更:
+- **feat(notifications)**:后端事件驱动推送 — emit() 在非事务路径立即 broadcastKick(receivers),事务路径 queueKickKick 延迟到 $transaction commit 后 flushPendingKicks;5s scheduler 保留为安全兜底
+- **feat(notifications)**:hub 新增 queueKickKick / flushPendingKicks / _pendingKickCount,invoice/payment/contract/status-machine 事务后自动 flush
+- **feat(messages)**:前端 SSE 单例 — lib/use-message-stream.ts 重构为模块级单 EventSource + listener registry,多消费者共享单一连接
+- **feat(messages)**:跨页未读同步 — lib/message-unread.ts 共享 SWR useUnreadCount() hook + refreshUnread() 全局 mutate,Dashboard Shell 与消息页统一数据源
+- **feat(messages)**:置顶公告 — GET /api/announcements/pinned 端点,消息页顶部 Card 展示 pinned announcements,Drawer 同步展示
+- **feat(i18n)**:9 组中英文 key(tab 标签/空态/drawer 提示/加载更多/查看全部/置顶公告标题)
+- **测试**:typecheck / lint 通过
+
 ## v0.18.5(2026-08-13)行级隔离前端收口 (Wave 3)
 
 行级隔离(RLS)前端收口:后端服务层已有 owner 校验(见 v0.18.4 前 permissions 系列提交),本版本对齐页面层——非管理员查看/编辑他人数据的入口全部按 owner 判定,直接访问 URL 也有 403/降级兜底。**DB schema / migrations: 无变化**。
