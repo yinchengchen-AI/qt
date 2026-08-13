@@ -2,6 +2,18 @@
 
 本文件记录 qt-biz 每个版本的详细变更。项目快速入口请见 [README.md](README.md)。
 
+## v0.18.5(2026-08-13)行级隔离前端收口 (Wave 3)
+
+行级隔离(RLS)前端收口:后端服务层已有 owner 校验(见 v0.18.4 前 permissions 系列提交),本版本对齐页面层——非管理员查看/编辑他人数据的入口全部按 owner 判定,直接访问 URL 也有 403/降级兜底。**DB schema / migrations: 无变化**。
+
+变更:
+- **feat(workflow)**:客户详情页编辑按钮 owner 判定(SALES/EXPERT 仅本人可编辑),编辑页直接访问兜底(T10)
+- **feat(workflow)**:合同详情页编辑按钮 owner 判定(草稿放宽管理员),编辑页直接访问兜底(T11)
+- **feat(workflow)**:发票详情页 owner 判定(仅 ADMIN/FINANCE/owner),`getInvoice` 带出 `contract.ownerUserId`,`Invoice` 类型补 owner 字段,编辑页直接访问兜底,新建页合同选择器只列本人合同(T12)
+- **feat(workflow)**:回款新建页合同选择器 owner 过滤,只列本人合同(T13)
+- **feat(workflow)**:员工档案 403 降级基本联系卡(不外泄敏感字段),敏感区仅 ADMIN 可见,证书到期页门禁放开 OPS 查看(T14)
+- **测试**:typecheck / lint / vitest 全绿(94 文件,772 用例)
+
 ## v0.18.4(2026-08-11) 全局搜索
 
 新增全局搜索功能，支持跨客户/合同/发票/回款快速检索。

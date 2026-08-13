@@ -6,11 +6,11 @@
 [![TypeScript](https://img.shields.io/badge/TypeScript-6.0.3-3178c6)](https://www.typescriptlang.org/)
 [![Prisma](https://img.shields.io/badge/Prisma-7.9.1-2d3748)](https://www.prisma.io/)
 [![PostgreSQL](https://img.shields.io/badge/PostgreSQL-16-336791)](https://www.postgresql.org/)
-[![Last Release](https://img.shields.io/badge/release-v0.18.4-blue)](CHANGELOG.md)
+[![Last Release](https://img.shields.io/badge/release-v0.18.5-blue)](CHANGELOG.md)
 
 > **客户 / 合同 / 开票 / 回款** 一体化管理,附件走 MinIO presigned 直传,服务端 Server Actions + RBAC + 行级隔离。
 >
-> **当前版本: v0.18.4**(2026-08-11)。文档地图见 [docs/README.md](docs/README.md),架构与设计见 [docs/architecture/DESIGN-v3.md](docs/architecture/DESIGN-v3.md),用户手册见 [docs/user/USER_MANUAL.md](docs/user/USER_MANUAL.md)。
+> **当前版本: v0.18.5**(2026-08-13)。文档地图见 [docs/README.md](docs/README.md),架构与设计见 [docs/architecture/DESIGN-v3.md](docs/architecture/DESIGN-v3.md),用户手册见 [docs/user/USER_MANUAL.md](docs/user/USER_MANUAL.md)。
 
 ## 目录
 
@@ -255,6 +255,15 @@ nginx 反代下上游异常时,由 `public/502.html` 静态页与 `app/502/page.
 ## 最近更新
 
 最近 5 个版本,完整历史见 [CHANGELOG.md](CHANGELOG.md)。
+
+### v0.18.5(2026-08-13)行级隔离前端收口 (Wave 3)
+
+页面层对齐行级隔离:非管理员查看/编辑他人数据的入口全部按 owner 判定,直接访问 URL 也有 403/降级兜底。**DB schema 无变化**。
+
+- **客户/合同/发票编辑入口 owner 判定**:详情页编辑按钮仅本人(SALES/EXPERT)可见,编辑页直接访问兜底
+- **发票/回款新建合同选择器过滤**:只列本人负责的合同
+- **员工档案 403 降级**:无权查看他人档案时显示基本联系卡,敏感区仅 ADMIN 可见
+- **证书到期页 OPS 门禁**:仅 ADMIN / OPS 可查看
 
 ### v0.18.4(2026-08-11)全局搜索
 
