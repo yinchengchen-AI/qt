@@ -47,6 +47,10 @@ export default function UserDetailPage() {
   const { data: session } = useSession();
   const roleCode = (session?.user as { roleCode?: string } | undefined)?.roleCode;
   const isAdmin = roleCode === "ADMIN";
+  const me = (session?.user as { id?: string } | undefined)?.id;
+  const isOps = roleCode === "OPS";
+  // 非管理员/非运营/非本人查看他人档案 → with-profile 返回 403,前端降级为基本联系卡
+  const profileForbidden = !isAdmin && !isOps && me !== id;
   const { data, error, isLoading, mutate } = useSWR<{ data: FullEmployeeProfileDto | null }>(
     `/api/users/${id}/with-profile`
   );
@@ -55,6 +59,31 @@ export default function UserDetailPage() {
   const contractTypeDict = useDict("CONTRACT_TYPE");
 
   if (error || userError) {
+    if (profileForbidden) {
+      return (
+        <Page>
+          <PageHeader back={goBack} title="用户详情" />
+          {userResp ? (
+            <HeroHeader
+              user={userResp}
+              isAdmin={false}
+              id={id}
+              avatarUrl={undefined}
+              onEditProfile={() => undefined}
+              onRefresh={() => { mutate(); mutateUser(); }}
+            />
+          ) : null}
+          <ProCard style={{ marginTop: 8 }}>
+            <EmptyState
+              icon={<IdcardOutlined style={{ fontSize: 48, color: "var(--qt-text-faint)" }} />}
+              title="无权查看完整档案"
+              description={<>仅管理员、运营及本人可查看员工完整档案</>}
+              height="tall"
+            />
+          </ProCard>
+        </Page>
+      );
+    }
     const e = error || userError;
     return (
       <Page>

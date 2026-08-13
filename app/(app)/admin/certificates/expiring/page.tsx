@@ -28,11 +28,11 @@ export default function ExpiringCertificatesPage() {
   const roleCode = (session?.user as { roleCode?: string } | undefined)?.roleCode;
   const isAdmin = roleCode === "ADMIN";
 
-  if (!isAdmin) {
+  if (!isAdmin && roleCode !== "OPS") {
     return (
       <Page>
         <PageHeader back={goBack} title="到期证书" />
-        <ErrorBox title="无权限">仅管理员可查看到期证书，请联系系统管理员</ErrorBox>
+        <ErrorBox title="无权限">仅管理员与运营可查看到期证书，请联系系统管理员</ErrorBox>
       </Page>
     );
   }
