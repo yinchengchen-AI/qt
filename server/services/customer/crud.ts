@@ -9,7 +9,7 @@ import { buildCustomerUpdateData } from "@/lib/customer-update";
 import { Prisma } from "@prisma/client";
 import { rlsTransaction } from "@/lib/rls";
 
-import {ownerEq, parseStatusList} from "@/lib/ownership";
+import {assertRecordWritable, ownerEq, parseStatusList} from "@/lib/ownership";
 import { buildRegionWhere } from "@/lib/region";
 import { softDelete } from "@/lib/soft-delete";
 
@@ -49,14 +49,14 @@ export async function listCustomers(
       ? { lte: toDate }
       : undefined;
   const where: Prisma.CustomerWhereInput = {
-    ...ownerEq(user),
+    // 读放开: SALES/EXPERT 可浏览全公司客户 (行级过滤仅统计/工作台口径保留), 写由 updateCustomer 显式守门
     deletedAt: null,
     ...(scaleList ? { scale: { in: scaleList } } : {}),
     ...(customerTypeList ? { customerType: { in: customerTypeList } } : {}),
     ...(industryList ? { industry: { in: industryList } } : {}),
     // 地区级联 (省/市/区/镇街): 任一非空层 equals+insensitive 匹配 (与合同列表同口径, 见 lib/region.ts)
     ...buildRegionWhere(params),
-    // 负责人: 精确匹配 (SALES 角色受 ownerEq 限制, 传别人 id 自然返回空集, 符合预期)
+    // 负责人: 精确匹配 (读放开后为显式筛选条件, 不再承担行级隔离)
     ...(params.ownerUserId ? { ownerUserId: params.ownerUserId } : {}),
     ...(createdAtRange ? { createdAt: createdAtRange } : {}),
     ...(keyword
@@ -87,7 +87,7 @@ export async function getCustomer(user: SessionUser, id: string) {
   requirePermission(user.roleCode, RESOURCE.CUSTOMER, ACTION.READ);
   // 客户状态机 v0.5.0 下线, status / lastAutoAppliedAt / lastAutoRule 3 列已删
   const c = await prisma.customer.findFirst({
-    where: { id, deletedAt: null, ...ownerEq(user) },
+    where: { id, deletedAt: null },
     select: {
       id: true,
       code: true,
@@ -144,8 +144,11 @@ export async function createCustomer(user: SessionUser, input: CustomerCreateInp
 export async function updateCustomer(user: SessionUser, id: string, input: CustomerUpdateInput) {
   requirePermission(user.roleCode, RESOURCE.CUSTOMER, ACTION.UPDATE);
   return prisma.$transaction(async (tx) => {
-    const existing = await tx.customer.findFirst({ where: { id, deletedAt: null, ...ownerEq(user) } });
+    // 无条件查找: 读放开后越权写必须显式 403 (而非 ownerEq 过滤出 404 掩盖存在性)
+    const existing = await tx.customer.findFirst({ where: { id, deletedAt: null } });
     if (!existing) throw new ApiError(ERROR_CODES.NOT_FOUND, "客户不存在", 404);
+    // 写守门: SALES/EXPERT 只能改自己名下的客户 (非受限角色直接放行)
+    assertRecordWritable(user, existing.ownerUserId, "客户");
     if (
       input.ownerUserId &&
       input.ownerUserId !== existing.ownerUserId &&

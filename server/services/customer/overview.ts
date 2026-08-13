@@ -11,14 +11,11 @@ import { ApiError } from "@/lib/api";
 import { ERROR_CODES } from "@/types/errors";
 import { type SessionUser } from "@/lib/session";
 import { requirePermission, RESOURCE, ACTION } from "@/lib/permissions";
-import { Prisma } from "@prisma/client";
-
-import { ownerEq, ownerViaContract } from "@/lib/ownership";
 
 export async function listCustomerContracts(user: SessionUser, customerId: string) {
-  // 行级隔离: 客户必须可见
+  // 客户存在性校验; 读放开后不再按 owner 过滤, 真不存在才 404
   await prisma.customer.findFirstOrThrow({
-    where: { id: customerId, deletedAt: null, ...ownerEq(user) }
+    where: { id: customerId, deletedAt: null }
   });
   return prisma.contract.findMany({
     where: { customerId, deletedAt: null },
@@ -71,23 +68,23 @@ export async function getCustomerOverview(
   customerId: string
 ): Promise<CustomerOverview> {
   requirePermission(user.roleCode, RESOURCE.CUSTOMER, ACTION.READ);
-  // 1. 客户存在性 + 行级隔离
-  const c = await prisma.customer.findFirst({ where: { id: customerId, deletedAt: null, ...ownerEq(user) } });
+  // 客户存在性校验; 读放开后不再按 owner 过滤
+  const c = await prisma.customer.findFirst({ where: { id: customerId, deletedAt: null } });
   if (!c) throw new ApiError(ERROR_CODES.NOT_FOUND, "客户不存在", 404);
 
   // 2. 一次性查所有相关数据
   const contracts = await prisma.contract.findMany({
-    where: { customerId, deletedAt: null, ...ownerEq(user) },
+    where: { customerId, deletedAt: null },
     orderBy: { signDate: "desc" }
   });
   const contractIds = contracts.map((c) => c.id);
   const [invoices, payments] = await Promise.all([
     prisma.invoice.findMany({
-      where: { contractId: { in: contractIds }, deletedAt: null, ...(ownerViaContract(user) as Prisma.InvoiceWhereInput) },
+      where: { contractId: { in: contractIds }, deletedAt: null },
       orderBy: { applyDate: "desc" }
     }),
     prisma.payment.findMany({
-      where: { contractId: { in: contractIds }, deletedAt: null, ...(ownerViaContract(user) as Prisma.PaymentWhereInput) },
+      where: { contractId: { in: contractIds }, deletedAt: null },
       orderBy: { receivedAt: "desc" }
     })
   ]);
