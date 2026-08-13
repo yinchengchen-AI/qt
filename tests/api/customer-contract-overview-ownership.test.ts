@@ -1,10 +1,13 @@
-// 修复锁:`/api/customers/[id]/pdf` 与 `/api/contracts/[id]/pdf` 在 SALES 角色下
-// 报 500。根因:Invoice / Payment 模型无 `ownerUserId` 字段(分别用
-// `applicantUserId` / `recorderUserId`),overview 函数却 spread 了
-// `ownerEq(user)`,Prisma 把 `ownerUserId` 当 unknown arg 抛 P2009,被
-// `lib/api.ts:err()` 兜底成 500。
-// 正确做法:跨一跳查询改走 `ownerViaContract(user)`,经 contract 关系过滤
-// ownerUserId。
+// 读放开 (v0.19, role-browse-permissions): 客户/合同 360 概览的 Invoice / Payment
+// 查询不再做任何 owner 行级过滤 (读放开后 SALES/EXPERT 全量可读), 行级限定只保留
+// 在统计/工作台口径 (statistics.ts / getDunningSummary 自带受限 where)。
+//
+// 本文件原为修复锁 (P2009 500): overview 曾把 ownerEq spread 到无 ownerUserId 字段的
+// Invoice/Payment 查询, Prisma 把 ownerUserId 当 unknown arg 抛错。新口径下该风险点
+// 已随读放开消除 — 改为守卫:
+//   1) customer/contract overview 的 invoice/payment 查询不再携带任何 owner 过滤;
+//   2) 统计口径 statistics.ts 仍走 ownerEq/ownerViaContract (本人口径不回退);
+//   3) lib/ownership.ts 四个 helper 形态不变。
 //
 // 注:server/services/{customer,contract}.ts 已拆为子目录(2026-06 refactor),
 // 本测试用 readAll(...) 合并读子文件。函数位置:
@@ -39,15 +42,8 @@ const CONTRACT_SERVICE_FILES = [
   "server/services/contract/jobs.ts",
 ];
 
-describe("客户/合同概览的 ownership 过滤(避免 SALES 报 ownerUserId 未知字段)", () => {
-  it("server/services/customer.ts 导入 ownerViaContract", () => {
-    const src = readAll(CUSTOMER_SERVICE_FILES);
-    expect(src, "应从 @/lib/ownership 导入 ownerViaContract").toMatch(
-      /import\s*\{[^}]*\bownerViaContract\b[^}]*\}\s*from\s+"@\/lib\/ownership"/
-    );
-  });
-
-  it("getCustomerOverview 内 Invoice / Payment 查询用 ownerViaContract,不再 spread ownerEq", () => {
+describe("概览读放开后 owner 过滤的口径守卫", () => {
+  it("getCustomerOverview 内 Invoice / Payment 查询不再带 ownerViaContract / ownerEq", () => {
     const src = read("server/services/customer/overview.ts");
     const overviewBody = src.match(
       /export\s+async\s+function\s+getCustomerOverview[\s\S]*?\n\}\s*\n/
@@ -59,29 +55,16 @@ describe("客户/合同概览的 ownership 过滤(避免 SALES 报 ownerUserId �
         new RegExp(`prisma\\.${model}\\.findMany\\(\\s*\\{[\\s\\S]*?\\}\\s*\\)`)
       )?.[0] ?? "";
       expect(block, `应能找到 prisma.${model}.findMany 调用`).toBeTruthy();
-      expect(block, `${model} 查询应 spread ownerViaContract`).toMatch(
-        /\.\.\.\(?\s*ownerViaContract\(user\)/
+      expect(block, `${model} 查询不再 spread ownerViaContract`).not.toMatch(
+        /ownerViaContract\(user\)/
       );
-      expect(block, `${model} 查询不应再 spread ownerEq`).not.toMatch(
+      expect(block, `${model} 查询不再 spread ownerEq`).not.toMatch(
         /\.\.\.\s*ownerEq\(user\)/
       );
     }
   });
 
-  it("Customer/Contract 主表查询仍可 spread ownerEq(它们有 ownerUserId 字段)", () => {
-    const src = readAll([...CUSTOMER_SERVICE_FILES, ...CONTRACT_SERVICE_FILES]);
-    // Customer / Contract 的 ownerUserId 是真实字段,ownerEq 仍合法
-    expect(src).toMatch(/\.\.\.\s*ownerEq\(user\)/);
-  });
-
-  it("server/services/contract.ts 导入 ownerViaContract", () => {
-    const src = readAll(CONTRACT_SERVICE_FILES);
-    expect(src, "应从 @/lib/ownership 导入 ownerViaContract").toMatch(
-      /import\s*\{[^}]*\bownerViaContract\b[^}]*\}\s*from\s+"@\/lib\/ownership"/
-    );
-  });
-
-  it("getContractOverview 内 Invoice / Payment 查询都用 ownerViaContract", () => {
+  it("getContractOverview 内 Invoice / Payment 查询不再带 ownerViaContract / ownerEq", () => {
     const src = read("server/services/contract/overview.ts");
     const overviewBody = src.match(
       /export\s+async\s+function\s+getContractOverview[\s\S]*?\n\}\s*\n/
@@ -93,28 +76,51 @@ describe("客户/合同概览的 ownership 过滤(避免 SALES 报 ownerUserId �
         new RegExp(`prisma\\.${model}\\.findMany\\(\\s*\\{[\\s\\S]*?\\}\\s*\\)`)
       )?.[0] ?? "";
       expect(block, `应能找到 prisma.${model}.findMany 调用`).toBeTruthy();
-      expect(block, `${model} 查询应 spread ownerViaContract`).toMatch(
-        /\.\.\.\(?\s*ownerViaContract\(user\)/
+      expect(block, `${model} 查询不再 spread ownerViaContract`).not.toMatch(
+        /ownerViaContract\(user\)/
       );
-      expect(block, `${model} 查询不应再 spread ownerEq`).not.toMatch(
+      expect(block, `${model} 查询不再 spread ownerEq`).not.toMatch(
         /\.\.\.\s*ownerEq\(user\)/
       );
     }
   });
 
-  it("ownerViaContract 应被 cast 到对应 model 的 WhereInput(避免 Prisma 泛型过严报错)", () => {
-    const customerSrc = read("server/services/customer/overview.ts");
-    const contractSrc = read("server/services/contract/overview.ts");
-    expect(customerSrc).toMatch(/ownerViaContract\(user\)\s*as\s*Prisma\.InvoiceWhereInput/);
-    expect(customerSrc).toMatch(/ownerViaContract\(user\)\s*as\s*Prisma\.PaymentWhereInput/);
-    expect(contractSrc).toMatch(/ownerViaContract\(user\)\s*as\s*Prisma\.InvoiceWhereInput/);
-    expect(contractSrc).toMatch(/ownerViaContract\(user\)\s*as\s*Prisma\.PaymentWhereInput/);
+it("客户/合同主表读查询 (list/get) 不再 spread ownerEq", () => {
+    const getFnBody = (src: string, name: string) =>
+      src.match(new RegExp(`export\\s+async\\s+function\\s+${name}[\\s\\S]*?\\n\\}\\s*\\n`))?.[0] ?? "";
+    const customerSrc = readAll(CUSTOMER_SERVICE_FILES);
+    const contractSrc = readAll(CONTRACT_SERVICE_FILES);
+    // 读放开后主表 list/get 全量; ownerEq 仅保留在统计口径与 softDeleteCustomer 的 ADMIN 路径
+    for (const fn of ["listCustomers", "getCustomer"]) {
+      const body = getFnBody(customerSrc, fn);
+      expect(body, `应能定位 ${fn}`).toBeTruthy();
+      expect(body, `${fn} 不再 spread ownerEq`).not.toMatch(/ownerEq\(user\)/);
+    }
+    for (const fn of ["listContracts", "getContract"]) {
+      const body = getFnBody(contractSrc, fn);
+      expect(body, `应能定位 ${fn}`).toBeTruthy();
+      expect(body, `${fn} 不再 spread ownerEq`).not.toMatch(/ownerEq\(user\)/);
+    }
   });
 
-  it("lib/ownership.ts 的 ownerViaContract helper 走 contract 关系", () => {
+  it("统计口径 statistics.ts 仍走 ownerEq / ownerViaContract (本人口径不回退)", () => {
+    const src = read("server/services/statistics.ts");
+    expect(src, "statistics.ts 应继续 import 行级 helper").toMatch(
+      /import\s*\{[^}]*\bownerEq\b[^}]*\}/
+    );
+    expect(src).toMatch(/\.\.\.\s*ownerEq\(user\)/);
+    expect(src).toMatch(/ownerViaContract\(user\)/);
+  });
+
+  it("lib/ownership.ts 的四个 helper 形态不变 (统计口径与写守门继续消费)", () => {
     const src = read("lib/ownership.ts");
+    expect(src).toMatch(/export\s+function\s+isRowRestricted\s*\(\s*user\s*:\s*SessionUser\s*\)/);
+    expect(src).toMatch(/export\s+function\s+ownerEq\s*\(\s*user\s*:\s*SessionUser\s*\)/);
     expect(src).toMatch(
       /export\s+function\s+ownerViaContract\s*\(\s*user\s*:\s*SessionUser\s*\)\s*:\s*\{\s*contract\s*\?\s*:\s*\{\s*ownerUserId\s*:\s*string\s*\}\s*\}/
+    );
+    expect(src).toMatch(
+      /export\s+function\s+assertRecordWritable\s*\(\s*user\s*:\s*SessionUser\s*,\s*recordOwnerId\s*:\s*string/
     );
   });
 });
