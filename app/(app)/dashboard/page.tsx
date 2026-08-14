@@ -33,7 +33,7 @@ type DashboardData = {
   agingBuckets: Record<string, number>;
   customers: { total: number; newInRange: number };
   contracts: { byStatus: { status: string; count: number; totalAmount: number }[] };
-  invoices: { total: number; byStatus: { status: string; count: number; totalAmount: number }[] };
+  invoices: { total: number; byStatus: { status: string; count: number; totalAmount: number }[]; pending: number };
   payments: { total: number; byStatus: { status: string; count: number; totalAmount: number }[] };
   topCustomers: { id: string; name: string; code: string; total: number; contractCount: number }[];
 };
@@ -191,7 +191,7 @@ export default function DashboardPage() {
       suffix: "元",
       description: `开票率 ${o.invoiceRate}% · ${o.invoiceCount} 张`,
       progress: o.invoiceRate,
-      delta: { value: `待审 ${inv.byStatus.find(s => s.status === "PENDING_FINANCE")?.count ?? 0} 张待开票`, direction: "flat" }
+      delta: { value: `待审 ${inv.pending} 张待开票`, direction: "flat" }
     },
     {
       label: "已回款额",
@@ -217,7 +217,7 @@ export default function DashboardPage() {
   ];
 
   // ── 待办预警(全部为零则不渲染) ──
-  const pendingInvoiceCount = inv.byStatus.find(s => s.status === "PENDING_FINANCE")?.count ?? 0;
+  const pendingInvoiceCount = inv.pending;
   const over90Amount = data.agingBuckets?.["90+"] ?? 0;
   const dunningActive = dunningData
     ? (dunningData.byStatus.CONTACTED ?? 0) + (dunningData.byStatus.PROMISED ?? 0) + (dunningData.byStatus.DISPUTED ?? 0)

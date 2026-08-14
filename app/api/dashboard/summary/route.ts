@@ -66,11 +66,13 @@ export async function GET(req: Request) {
         paymentSCs,
         newCusts,
         townRows,
+        pendingInvoiceCount,
       ] = await Promise.all([
         getOverview(user, range),
         getCustomerDistribution(user),
         getInvoiceAging(user),
-        getTopCustomers(user, "contract", 5),
+        // Top 客户按统计区间过滤(与 statistics/top-customers 同口径)
+        getTopCustomers(user, "contract", 5, range),
         prisma.customer.count({
           where: { deletedAt: null, ...own } as Prisma.CustomerWhereInput,
         }),
@@ -122,6 +124,15 @@ export async function GET(req: Request) {
           } as Prisma.CustomerWhereInput,
           select: { town: true },
         }),
+        // 待财务审核发票(actualIssueDate 为空,不进 byStatus 区间统计);
+        // 按当前存量计数,与其它待办预警项(90+ 账龄/催收中/法务介入)同口径
+        prisma.invoice.count({
+          where: {
+            deletedAt: null,
+            status: "PENDING_FINANCE",
+            ...ownVia,
+          } as Prisma.InvoiceWhereInput,
+        }),
       ]);
 
       // 区域分布反映"现有客户的地域结构",全期统计;不按 from/to 过滤
@@ -153,6 +164,7 @@ export async function GET(req: Request) {
             count: x._count._all,
             totalAmount: Number(x._sum.amount ?? 0),
           })),
+          pending: pendingInvoiceCount,
         },
         payments: {
           total: paymentSCs.reduce((s, x) => s + x._count._all, 0),

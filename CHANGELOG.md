@@ -2,6 +2,16 @@
 
 本文件记录 qt-biz 每个版本的详细变更。项目快速入口请见 [README.md](README.md)。
 
+## v0.18.11(2026-08-14)工作台月度/季度/年度 Top 5 客户按区间过滤 + 待审待开票计数修复
+
+修复工作台月/季/年切换时数据不准确的问题:Top 5 客户此前漏传区间参数,显示的是全期数据(而非所选 月度/季度/年度 区间);「待审/待开票」此前因按 `actualIssueDate` 过滤而恒为 0,现改为独立计数待财务审核发票存量。**DB schema / migrations: 无变化**。
+
+变更:
+- **fix(dashboard)**:`app/api/dashboard/summary/route.ts` `getTopCustomers(user, "contract", 5)` 补传 `range` 参数,Top 5 客户按统计区间过滤(与 `statistics/top-customers` 同口径)
+- **fix(dashboard)**:`app/api/dashboard/summary/route.ts` 新增 PENDING_FINANCE 发票独立 count(按当前存量,不受 `actualIssueDate` 区间过滤影响,与 90+ 账龄/催收中/法务介入等待办预警同口径),response `invoices.pending` 承接;修复「待审 X 张待开票」与「待办预警-待开票」恒为 0 的缺陷
+- **fix(dashboard)**:`app/(app)/dashboard/page.tsx` KPI 副文案与待办预警改用 `inv.pending`,删除对 `byStatus` 中 PENDING_FINANCE 的查找
+- **测试**:新增 `tests/api/dashboard-summary-range.test.ts`(3 用例:month 区间 Top 过滤 / from-to 全期对照组 / pending 独立计数);typecheck / lint / vitest 全绿(95 文件,775 用例)
+
 ## v0.18.10(2026-08-14)工作台客户区域分布柱状图恢复按镇街彩虹色
 
 客户区域分布柱状图恢复 `colorField="town"` 按镇街彩虹着色(每个镇街独立颜色,图例可区分),保留 v0.18.9 的 Top 10 + 其他 聚合与空镇街「未录入」标注。**DB schema / migrations: 无变化**。
