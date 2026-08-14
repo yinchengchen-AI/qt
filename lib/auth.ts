@@ -279,6 +279,9 @@ export const authOptions: AuthOptions = {
           data: { sessionVersion: { increment: 1 } },
           select: { sessionVersion: true }
         });
+        // 必须清缓存:否则 2s 内 jwt callback 的 loadActiveUser 返回旧 sessionVersion,
+        // 新签发的 token 会被覆盖成旧值,缓存过期后立即被单点校验踢掉(快速重登必现)
+        invalidateAuthCache(user.id);
 
         const remember = creds?.remember === "true";
         return {
@@ -303,6 +306,9 @@ export const authOptions: AuthOptions = {
         token.roleCode = user.roleCode;
         token.roleVersion = user.roleVersion;
         token.mustChangePassword = user.mustChangePassword;
+        // authorize 刚 +1 的最新值,先落 token;否则靠下面的 loadActiveUser 回填,
+        // 命中 2s 旧缓存时会把新 token 写成旧 sessionVersion
+        token.sessionVersion = user.sessionVersion;
         token.iat = Math.floor(Date.now() / 1000);
         token.remember = !!user.remember;
       }
