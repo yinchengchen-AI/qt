@@ -75,7 +75,7 @@ antd `ConfigProvider.theme`:`colorPrimary=#0a1c33`,`colorInfo=#0f2a47`,`colorWar
 - `Page > PageHeader(back, title, subtitle)`
 - 表单本身保留 `ProForm`(它和权限/字典配合最稳),但通过 ConfigProvider 已经统一色,无需大改;只把页面级 `padding` 收一下
 
-**4 个统计页**(statistics/overview, /aging, /by-region, /performance)
+**3 个统计页**(statistics/overview, /aging, /performance;原 by-region 已并入 performance 的「按区域」维度)
 - `Page > PageHeader(title, subtitle, extra: [RangePicker, 导出按钮])`
 - 顶部 4 卡片用 `<StatGrid>`
 - 图表用 `@ant-design/charts` 保留(色板已经在 antd 主题里影响),外层包 `<Card bordered={false}>` 收紧

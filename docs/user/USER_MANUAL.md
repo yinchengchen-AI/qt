@@ -579,7 +579,7 @@ PLANNED ─confirm─▶ CONFIRMED ─reconcile─▶ RECONCILED
   - 账龄段多选(默认全选); 客户 / 业务人员 / 合同(支持搜索) ; 最小金额
   - 重置回到默认(按到期日 + 全选桶 + 全部客户/业务人员/合同)
 - **KPI**: 应收总额 / 90+ 余额(占比 + 风险方向) / 最高单笔欠款(链接到发票) / 涉及客户数 / 涉及业务人员数
-- **趋势 + 桶图** 同行展示: 左侧 4 桶柱图, 右侧近 30 天应收总额 Line Chart
+- **趋势 + 桶图** 同行展示: 左侧 4 桶柱图, 右侧近 30 天应收总额 Line Chart(读 `AgingSnapshot` 每日快照表,cron 每日幂等重算近 30 天;受限角色实时计算)
 - **Tab 1: 明细** — ProTable 服务端分页(20/50/100), 列: 发票号 / 客户 / 合同 / 业务人员 / 桶 / 逾期天数 / 剩余未收 / 状态 / 催收 Badge / 操作(添加催收)
   - 表头 Tab label 显示 "明细 (N)" — N 为全部超期数, 跨页时此 N 不变
 - **Tab 2: 按客户** — 客户维度 Top 20, 列: 客户 / 发票数 / 总应收 / 4 桶金额 / 90+ 占比(按 20%/50% 染色)
@@ -594,15 +594,17 @@ PLANNED ─confirm─▶ CONFIRMED ─reconcile─▶ RECONCILED
 - **移动端**:KPI 单列堆叠(2 列);Tab 折叠到 Top 5;明细表 `sticky` 表头;趋势图 / 桶图分两行(每个 `xs={24}`)
 - **导出**: Excel `账龄分析_<basis>_<YYYY-MM-DD>.xlsx`, 走 `/api/statistics/export?type=aging` 带全部当前 filter
 
-### 11.3 业绩(Performance)
+### 11.3 业绩排行(Performance)
 
-- **员工业绩**:
-  - SALES 只能看自己(短路径 short-circuit,只返回自己一行)
-  - ADMIN / FINANCE / OPS / EXPERT 看全员:排除 `isSystem=true` 的内部 actor 与 `role.code = "ADMIN"` 的管理员
-  - 顶部支持单人筛选(`?userId=xxx`),后端在 `owners` 上加 `id = userId` 过滤
-- 指标:合同金额、开票金额、回款金额、合同数,以及每个员工的「开票率 / 回款率」Tag
-- 时间区间可配(`from / to` 同时作用于合同签订日 / 发票开具日 / 回款到账日)
-- 移动端同上
+- **三维度切换**(按员工 / 按签约人 / 按区域,默认按签约人),统一排行表 + 单图 Segmented 切指标(合同额/已开票/已回款/合同数):
+  - **按员工**(owner):SALES 只能看自己(短路径 short-circuit,只返回自己一行);ADMIN / FINANCE / OPS / EXPERT 看全员:排除 `isSystem=true` 的内部 actor 与 `role.code = "ADMIN"` 的管理员
+  - **按签约人**(signer):与员工业绩 PDF / 签约明细抽屉同口径
+  - **按区域**(region):原「区域统计」页并入此维度;行点击下钻 `/customers?district=&town=`;无镇街的客户归入「未填写」行(不进入图表 Top N)
+- 指标:合同金额、开票金额、回款金额、未回款额、合同数,以及每行的「开票率 / 回款率」Tag
+- 时间区间:预设 Segmented(本月/本季/本年,默认本年)优先,RangePicker 自定义时改传 `from / to`(同时作用于合同签订日 / 发票开具日 / 回款到账日)
+- 员工/签约人维度行点击打开业绩明细抽屉;「导出 PDF」仅员工/签约人维度可用
+- **导出**: Excel `业绩排行_<dimension>_<YYYY-MM-DD>.xlsx`,走 `/api/statistics/export?type=performance&dimension=...`,仅 ADMIN / FINANCE(满足 `STATISTICS:EXPORT`)
+- 移动端同上(图表/表格只显示 Top 5)
 
 ### 11.4 Top 客户
 

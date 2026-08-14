@@ -10,11 +10,12 @@ import {
   getRegionStatistics,
   getInvoiceAging,
   getSignerSummary,
-  getSignerContractDetail
+  getSignerContractDetail,
+  getPerformanceRanking
 } from "@/server/services/statistics";
 import ExcelJS from "exceljs";
 import { exportToXlsx, exportMaxRows, attachmentHeader } from "@/lib/excel";
-import { parseDateRangeQuery, exportFileTimestamp} from "@/lib/date-range";
+import { parseDateRangeQuery, exportFileTimestamp, resolveStatsRange } from "@/lib/date-range";
 
 // 员工业绩 xlsx 导出: 2 sheet, 含分组小计 + 总计
 //   Sheet 1 「员工业绩汇总」: 一员工一行, 末行总计
@@ -149,11 +150,14 @@ async function buildEmployeePerformanceXlsx(
 }
 
 const query = z.object({
-  type: z.enum(["overview", "top-customers", "employee-performance", "by-region", "aging"]),
+  type: z.enum(["overview", "top-customers", "employee-performance", "by-region", "aging", "performance"]),
   metric: z.enum(["contract", "payment"]).optional(),
   from: z.string().optional(),
   to: z.string().optional(),
+  preset: z.enum(["month", "quarter", "year"]).optional(),
   userId: z.string().optional(),
+  // 性能排行导出专属
+  dimension: z.enum(["owner", "signer", "region"]).optional(),
   // 账龄导出专属参数
   basis: z.enum(["issue", "due"]).optional(),
   customerId: z.string().optional(),
@@ -301,6 +305,43 @@ export async function GET(req: Request) {
           headers: {
             "Content-Type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
             "Content-Disposition": attachmentHeader(`账龄分析_${basisTag}_${ts}.xlsx`),
+            "Cache-Control": "no-store"
+          }
+        });
+      }
+      // performance (统一业绩排行: owner/signer/region 三维度, 支持 preset 快捷区间)
+      // Sheet 1: 排行表 (rank + 金额 + 开票率/回款率), 走 getPerformanceRanking 全量后截断 MAX_ROWS
+      if (parsed.type === "performance") {
+        const perfRange = resolveStatsRange(parsed);
+        const ranking = await getPerformanceRanking(
+          user,
+          parsed.dimension ?? "owner",
+          perfRange,
+          MAX_ROWS
+        );
+        const showRegion = parsed.dimension === "region";
+        const perfColumns: Array<{ header: string; key: string; width: number; formatter?: (v: unknown) => string }> = [
+          { header: "名次", key: "rank", width: 8 },
+          { header: showRegion ? "区域" : "姓名", key: "name", width: 20 },
+          { header: "工号", key: "employeeNo", width: 14 },
+          { header: "合同数", key: "contractCount", width: 10 },
+          { header: "合同额", key: "contractAmount", width: 18, formatter: num },
+          { header: "已开票额", key: "invoiceAmount", width: 18, formatter: num },
+          { header: "已回款额", key: "paymentAmount", width: 18, formatter: num },
+          { header: "未回款额", key: "unpaidAmount", width: 18, formatter: num },
+          { header: "开票率(%)", key: "invoiceRate", width: 12, formatter: num },
+          { header: "回款率(%)", key: "paymentRate", width: 12, formatter: num }
+        ];
+        if (showRegion) {
+          // 区域维度无工号列, 但保留客户数
+          perfColumns.splice(2, 0, { header: "客户数", key: "customerCount", width: 10 });
+        }
+        const buf = await exportToXlsx(ranking, perfColumns);
+        return new Response(new Uint8Array(buf), {
+          headers: {
+            "Content-Type":
+              "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            "Content-Disposition": attachmentHeader(`业绩排行_${parsed.dimension ?? "owner"}_${ts}.xlsx`),
             "Cache-Control": "no-store"
           }
         });

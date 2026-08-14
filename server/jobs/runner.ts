@@ -9,6 +9,7 @@ import { tickPublishableDrafts, tickCompletionCandidates } from "@/server/jobs/c
 import { runCertificateExpiryCheck } from "@/server/jobs/certificate-expiry-check";
 import { tickStaleContracts } from "@/server/jobs/stale-contract";
 import { runMessageArchive } from "@/server/jobs/message-archive";
+import { runAgingSnapshot } from "@/server/jobs/aging-snapshot";
 
 /**
  * 单个 job 一次执行的统计。
@@ -64,6 +65,20 @@ export async function runAllJobs(now = new Date()): Promise<JobResult[]> {
           job: "certificate-expiry-check",
           created: r.sent,
           scanned: r.scanned,
+          durationMs: 0
+        };
+      }
+    },
+    // 账龄趋势预计算:每日幂等写近 30 天 AgingSnapshot,getAgingTrend 读表 O(N)
+    {
+      name: "aging-snapshot",
+      run: async () => {
+        const r = await runAgingSnapshot(now);
+        return {
+          job: "aging-snapshot",
+          created: 0,
+          scanned: 0,
+          updated: r.upserted,
           durationMs: 0
         };
       }

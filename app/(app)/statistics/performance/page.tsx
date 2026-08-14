@@ -2,9 +2,10 @@
 import { ProCard } from "@ant-design/pro-components";
 import { Column } from "@ant-design/charts";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Button, Col, DatePicker, Row, Segmented, Space, App as AntdApp, Typography, Tag, Drawer, Spin, Descriptions } from "antd";
-import { DownloadOutlined, FilePdfOutlined, FileTextOutlined, AuditOutlined, MoneyCollectOutlined, TeamOutlined } from "@ant-design/icons";
-import dayjs from "dayjs";
+import { useRouter } from "next/navigation";
+import { Button, Col, DatePicker, Row, Segmented, Space, App as AntdApp, Typography, Tag, Drawer, Spin, Descriptions, theme } from "antd";
+import { DownloadOutlined, FilePdfOutlined, FileTextOutlined, AuditOutlined, MoneyCollectOutlined, TeamOutlined, EnvironmentOutlined } from "@ant-design/icons";
+import dayjs, { type Dayjs } from "dayjs";
 import { Page } from "@/components/page";
 import { PageHeader } from "@/components/page-header";
 import { StatGrid, type StatItem } from "@/components/stat-grid";
@@ -12,79 +13,127 @@ import { EmptyState } from "@/components/empty-state";
 import { formatCompact, formatCurrency } from "@/lib/format";
 import { downloadExcel } from "@/lib/excel-client";
 import { useResponsive } from "@/lib/use-breakpoint";
-import { toDateRangeQuery } from "@/lib/date-range";
+import { presetRange, toDateRangeQuery, type RangePreset } from "@/lib/date-range";
 import { openPrintWindow } from "@/lib/print-client";
+import {
+  CATEGORICAL_COLORS,
+  INVOICE_RATE_THRESHOLDS,
+  PAYMENT_RATE_THRESHOLDS,
+  calcRates,
+  rankEmoji,
+  rateTagColor
+} from "@/lib/stats-ui";
 
 const { Text } = Typography;
+const { useToken } = theme;
 
-// 业绩明细中开票率/回款率的 Tag 颜色阈值（百分比）
-const INVOICE_RATE_THRESHOLDS = { green: 70, blue: 40 } as const;
-const PAYMENT_RATE_THRESHOLDS = { green: 80, blue: 50 } as const;
+type Dimension = "owner" | "signer" | "region";
 
+// 统一业绩排行行结构:与 GET /api/statistics/performance 返回的 row 同形。
+// owner/signer 行 key=userId + employeeNo;region 行 key=区域展示名 + district/town/customerCount
 type Row = {
-  userId: string; name: string; employeeNo: string;
-  contractAmount: number; invoiceAmount: number; paymentAmount: number; contractCount: number;
+  rank: number; key: string; name: string;
+  employeeNo?: string | null;
+  region?: string | null; district?: string | null; town?: string | null;
+  customerCount?: number;
+  contractCount: number; contractAmount: number; invoiceAmount: number; paymentAmount: number;
+  invoiceRate: number; paymentRate: number; unpaidAmount: number;
 };
 
-function rankEmoji(i: number) {
-  if (i === 0) return "🥇";
-  if (i === 1) return "🥈";
-  if (i === 2) return "🥉";
-  return "";
-}
+const DIMENSION_OPTIONS: { value: Dimension; label: string }[] = [
+  { value: "owner", label: "按员工" },
+  { value: "signer", label: "按签约人" },
+  { value: "region", label: "按区域" }
+];
 
-// 员工分类色板：同一员工在四个图表中保持同一颜色，不同员工颜色不同
-// 已用 dataviz skill 的 validate_palette.js 在 light 表面验证通过（CVD ≥ 12，labels 提供 relief）
-const EMPLOYEE_CATEGORICAL_COLORS = [
-  "#2a78d6", // blue
-  "#1baf7a", // aqua
-  "#eda100", // yellow
-  "#008300", // green
-  "#4a3aa7", // violet
-  "#e34948", // red
-  "#e87ba4", // magenta
-  "#eb6834", // orange
-  "#13c2c2", // cyan
-  "#1890ff", // antd blue
-] as const;
+const PRESET_OPTIONS: { value: RangePreset; label: string }[] = [
+  { value: "month", label: "本月" },
+  { value: "quarter", label: "本季" },
+  { value: "year", label: "本年" }
+];
+
+type MetricKey = "contract" | "invoice" | "payment" | "count";
+const METRIC_OPTIONS: { value: MetricKey; label: string }[] = [
+  { value: "contract", label: "合同额" },
+  { value: "invoice", label: "已开票" },
+  { value: "payment", label: "已回款" },
+  { value: "count", label: "合同数" }
+];
 
 export default function PerformancePage() {
   const { isMobile } = useResponsive();
+  const router = useRouter();
+  const { token } = useToken();
   const [rows, setRows] = useState<Row[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  // 员工业绩默认本年度 1 月 1 日 00:00 ~ 当前; 用户可改/清空
-  const [range, setRange] = useState<[dayjs.Dayjs, dayjs.Dayjs] | null>(() => [
-    dayjs().startOf("year"),
-    dayjs()
-  ]);
+  // 维度:默认按签约人(与改版前口径一致);切换维度会重取数并重置图表指标
+  const [dimension, setDimension] = useState<Dimension>("signer");
+  const isRegion = dimension === "region";
+  // 区间:预设优先(本月/本季/本年,默认本年);RangePicker 自定义时清掉预设改传 from/to
+  const [preset, setPreset] = useState<RangePreset | null>("year");
+  const [range, setRange] = useState<[Dayjs, Dayjs] | null>(() => {
+    const { from, to } = presetRange("year");
+    return [dayjs(from), dayjs(to)];
+  });
   const { message } = AntdApp.useApp();
 
   const chartHeight = isMobile ? 240 : 380;
   // 移动端只显示 Top 5,完整数据可导出
   const TOP_N = isMobile ? 5 : 10;
-  const visibleRows = isMobile && rows.length > TOP_N ? rows.slice(0, TOP_N) : rows;
+  // region 维度过滤掉排在末尾的 "未填写" 行(避免图表把它排进 Top N)
+  const realRows = useMemo(
+    () => (isRegion ? rows.filter((r) => r.district || r.town) : rows),
+    [rows, isRegion]
+  );
+  const visibleRows = isMobile && realRows.length > TOP_N ? realRows.slice(0, TOP_N) : realRows;
+  const unfilledCount = useMemo(
+    () => (isRegion ? rows.find((r) => !r.district && !r.town)?.customerCount ?? 0 : 0),
+    [rows, isRegion]
+  );
+
+  // 主接口/导出:preset 激活传 preset,否则传 from/to
+  const applyRangeParams = useCallback((qs: URLSearchParams) => {
+    if (preset) {
+      qs.set("preset", preset);
+      return;
+    }
+    const { from, to } = toDateRangeQuery(range);
+    if (from) qs.set("from", from);
+    if (to) qs.set("to", to);
+  }, [preset, range]);
 
   const load = useCallback(async () => {
     setLoading(true); setError(null);
     try {
-      const qs = new URLSearchParams();
-      const { from, to } = toDateRangeQuery(range);
-      if (from) qs.set("from", from);
-      if (to) qs.set("to", to);
-      // 改用签约人维度 (与 PDF 合计、抽屉明细同口径), xlsx 导出仍走原 owner 维度端点不受影响
-      const r = await fetch(`/api/statistics/employee-performance/by-signer?${qs}`, { credentials: "include" });
+      const qs = new URLSearchParams({ dimension });
+      applyRangeParams(qs);
+      const r = await fetch(`/api/statistics/performance?${qs}`, { credentials: "include" });
       const j = await r.json();
       if (j.code !== 0) throw new Error(j.message);
-      setRows(j.data);
+      setRows(j.data.rows);
     } catch (e) {
       setError((e as Error).message);
     } finally { setLoading(false); }
-  }, [range]);
+  }, [dimension, applyRangeParams]);
 
   useEffect(() => { load(); }, [load]);
 
-  // 业绩明细抽屉：点击行时按 userId 拉明细
+  const onDimensionChange = (v: Dimension) => {
+    setDimension(v);
+    setMetric("contract");
+  };
+  const onPresetChange = (v: RangePreset) => {
+    setPreset(v);
+    const { from, to } = presetRange(v);
+    setRange([dayjs(from), dayjs(to)]);
+  };
+  const onRangeChange = (v: [Dayjs, Dayjs] | null) => {
+    setRange(v);
+    setPreset(null);
+  };
+
+  // 业绩明细抽屉:点击行时按 userId 拉明细(owner/signer 维度)
   const [drawerUserId, setDrawerUserId] = useState<string | null>(null);
   const [drawerLoading, setDrawerLoading] = useState(false);
   const [drawerData, setDrawerData] = useState<{
@@ -102,6 +151,7 @@ export default function PerformancePage() {
     setDrawerLoading(true);
     try {
       const qs = new URLSearchParams({ userId });
+      // 明细/PDF 旧端点只认 from/to;preset 选中时 range 同步过,口径一致
       const { from, to } = toDateRangeQuery(range);
       if (from) qs.set("from", from);
       if (to) qs.set("to", to);
@@ -122,6 +172,12 @@ export default function PerformancePage() {
     setDrawerData(null);
   };
 
+  // region 维度行点击下钻到客户列表(仅当 district/town 有值)
+  const drillToCustomers = useCallback((r: Row) => {
+    if (!r.district && !r.town) return;
+    router.push(`/customers?district=${encodeURIComponent(r.district ?? "")}&town=${encodeURIComponent(r.town ?? "")}`);
+  }, [router]);
+
   const downloadPdf = () => {
     const qs = new URLSearchParams();
     const { from, to } = toDateRangeQuery(range);
@@ -135,10 +191,8 @@ export default function PerformancePage() {
   };
 
   const download = async () => {
-    const qs = new URLSearchParams({ type: "employee-performance" });
-    const { from, to } = toDateRangeQuery(range);
-    if (from) qs.set("from", from);
-    if (to) qs.set("to", to);
+    const qs = new URLSearchParams({ type: "performance", dimension });
+    applyRangeParams(qs);
     // 走 downloadExcel:从服务端 Content-Disposition 拿真实文件名,中文不会被截断
     try {
       await downloadExcel(`/api/statistics/export?${qs}`);
@@ -147,67 +201,73 @@ export default function PerformancePage() {
     }
   };
 
+  // 总额按 realRows(region 维度已剔除"未填写");KPI 同时显式呈现"未填写"客户数,口径与表格脚注一致
   const totals = useMemo(() => ({
-    contract: rows.reduce((s, r) => s + r.contractAmount, 0),
-    invoice: rows.reduce((s, r) => s + r.invoiceAmount, 0),
-    payment: rows.reduce((s, r) => s + r.paymentAmount, 0),
-    count: rows.reduce((s, r) => s + r.contractCount, 0),
-  }), [rows]);
+    contract: realRows.reduce((s, r) => s + r.contractAmount, 0),
+    invoice: realRows.reduce((s, r) => s + r.invoiceAmount, 0),
+    payment: realRows.reduce((s, r) => s + r.paymentAmount, 0),
+    count: realRows.reduce((s, r) => s + r.contractCount, 0),
+    customerTotal: realRows.reduce((s, r) => s + (r.customerCount ?? 0), 0)
+  }), [realRows]);
 
-  const invRateTotal = totals.contract > 0 ? (totals.invoice / totals.contract) * 100 : 0;
-  const payRateTotal = totals.invoice > 0 ? (totals.payment / totals.invoice) * 100 : 0;
+  const { invoiceRate: invRateTotal, paymentRate: payRateTotal } = calcRates(
+    totals.contract, totals.invoice, totals.payment
+  );
   const kpis: StatItem[] = [
     { label: "合同总额", icon: <FileTextOutlined />, value: formatCompact(totals.contract), suffix: "", description: `共 ${totals.count} 份` },
     { label: "已开票总额", icon: <AuditOutlined />, value: formatCompact(totals.invoice), suffix: "", description: `开票率 ${invRateTotal.toFixed(1)}%`, progress: invRateTotal },
     { label: "已回款总额", icon: <MoneyCollectOutlined />, value: formatCompact(totals.payment), suffix: "", description: `回款率 ${payRateTotal.toFixed(1)}%`, progress: payRateTotal },
-    { label: "员工人数", icon: <TeamOutlined />, value: rows.length, suffix: "人", description: `人均 ${formatCompact(totals.contract / Math.max(rows.length, 1))} 元` },
+    isRegion
+      ? { label: "已分类区域数", icon: <EnvironmentOutlined />, value: realRows.length, suffix: "个", description: `覆盖 ${totals.customerTotal} 位客户` + (unfilledCount > 0 ? ` / 另有 ${unfilledCount} 位未填写` : "") }
+      : { label: "员工人数", icon: <TeamOutlined />, value: realRows.length, suffix: "人", description: `人均 ${formatCompact(totals.contract / Math.max(realRows.length, 1))} 元` }
   ];
 
-  // 按员工名字母顺序分配稳定颜色，保证同一员工在四个桶柱图中颜色一致
-  const employeeColorMap = useMemo(() => {
-    const uniqueNames = Array.from(new Set(rows.map((r) => r.name))).sort((a, b) => a.localeCompare(b, "zh-CN"));
+  // 按实体名(员工/区域)字典序分配稳定颜色,保证同一实体在指标切换时颜色一致
+  const entityColorMap = useMemo(() => {
+    const uniqueNames = Array.from(new Set(realRows.map((r) => r.name))).sort((a, b) => a.localeCompare(b, "zh-CN"));
     const map = new Map<string, string>();
     uniqueNames.forEach((name, i) => {
-      map.set(name, EMPLOYEE_CATEGORICAL_COLORS[i % EMPLOYEE_CATEGORICAL_COLORS.length] ?? EMPLOYEE_CATEGORICAL_COLORS[0]);
+      map.set(name, CATEGORICAL_COLORS[i % CATEGORICAL_COLORS.length] ?? CATEGORICAL_COLORS[0]);
     });
     return map;
-  }, [rows]);
+  }, [realRows]);
 
-  // 图表用 Top N 数据,每个员工绑定固定颜色;
-  // 4 个指标(合同额/已开票/已回款/合同数)共用一张图,Segmented 切换 — 同一批员工同一配色,只是 y 不同
-  type MetricKey = "contract" | "invoice" | "payment" | "count";
+  // 图表用 Top N 数据,每个实体绑定固定颜色;
+  // 4 个指标(合同额/已开票/已回款/合同数)共用一张图,Segmented 切换 — 同一批实体同一配色,只是 y 不同
   const [metric, setMetric] = useState<MetricKey>("contract");
-  const METRIC_OPTIONS: { value: MetricKey; label: string }[] = [
-    { value: "contract", label: "合同额" },
-    { value: "invoice", label: "已开票" },
-    { value: "payment", label: "已回款" },
-    { value: "count", label: "合同数" }
-  ];
   const metricValue = (r: Row): number =>
     metric === "contract" ? r.contractAmount
     : metric === "invoice" ? r.invoiceAmount
     : metric === "payment" ? r.paymentAmount
     : r.contractCount;
   const metricLabel = METRIC_OPTIONS.find((o) => o.value === metric)?.label ?? "";
+  const dimensionLabel = DIMENSION_OPTIONS.find((o) => o.value === dimension)?.label ?? "";
   const chartData = visibleRows.map(r => ({
     name: r.name,
     value: metricValue(r),
-    color: employeeColorMap.get(r.name) ?? EMPLOYEE_CATEGORICAL_COLORS[0]
+    color: entityColorMap.get(r.name) ?? CATEGORICAL_COLORS[0]
   }));
 
   return (
     <Page>
       <PageHeader
-        title="员工业绩"
-        subtitle="按员工汇总合同、开票、回款(业务人员仅看自己负责的合同);支持时间范围筛选"
+        title="业绩排行"
+        subtitle="按员工 / 签约人 / 区域三个维度汇总合同、开票、回款(业务人员仅看自己负责的合同);支持时间范围筛选"
         actions={
           <Space wrap>
+            <Segmented<RangePreset>
+              options={PRESET_OPTIONS}
+              value={preset ?? undefined}
+              onChange={onPresetChange}
+            />
             <DatePicker.RangePicker
               value={range}
-              onChange={(v) => setRange(v as [dayjs.Dayjs, dayjs.Dayjs] | null)}
+              onChange={(v) => onRangeChange(v as [Dayjs, Dayjs] | null)}
               allowClear
             />
-            <Button icon={<FilePdfOutlined />} onClick={downloadPdf}>导出 PDF</Button>
+            {!isRegion ? (
+              <Button icon={<FilePdfOutlined />} onClick={downloadPdf}>导出 PDF</Button>
+            ) : null}
             <Button icon={<DownloadOutlined />} onClick={download}>导出 xlsx</Button>
           </Space>
         }
@@ -222,14 +282,22 @@ export default function PerformancePage() {
           <Row gutter={[16, 16]} style={{ marginTop: 24 }}>
             <Col xs={24}>
               <ProCard
-                title={isMobile ? "员工业绩排行" : `员工业绩排行（${metricLabel}）`}
+                title={isMobile ? `${dimensionLabel}排行` : `${dimensionLabel}排行（${metricLabel}）`}
                 extra={
-                  <Segmented<MetricKey>
-                    options={METRIC_OPTIONS}
-                    value={metric}
-                    onChange={(v) => setMetric(v)}
-                    size="small"
-                  />
+                  <Space wrap>
+                    <Segmented<Dimension>
+                      options={DIMENSION_OPTIONS}
+                      value={dimension}
+                      onChange={onDimensionChange}
+                      size="small"
+                    />
+                    <Segmented<MetricKey>
+                      options={METRIC_OPTIONS}
+                      value={metric}
+                      onChange={(v) => setMetric(v)}
+                      size="small"
+                    />
+                  </Space>
                 }
               >
                 {chartData.length > 0 ? (
@@ -237,7 +305,7 @@ export default function PerformancePage() {
                     tooltip={{ title: (d: Record<string, unknown>) => String(d.name), items: [(d: Record<string, unknown>) => ({ name: metricLabel, value: d.value })] }}
                     label={{ text: (d: Record<string, unknown>) => metric === "count" ? String(d.value) : formatCompact(d.value as number), style: { fontSize: 10 } }}
                   />
-                ) : <EmptyState empty title="暂无员工业绩" description="当前时间范围内尚无合同、开票或回款记录" height={chartHeight} />}
+                ) : <EmptyState empty title={isRegion ? "暂无区域数据" : "暂无员工业绩"} description="当前时间范围内尚无合同、开票或回款记录" height={chartHeight} />}
               </ProCard>
             </Col>
           </Row>
@@ -245,48 +313,97 @@ export default function PerformancePage() {
           <div style={{ marginTop: 32 }}>
             <PageHeader
               level="section"
-              title={`业绩明细${isMobile && rows.length > TOP_N ? `（Top ${TOP_N}）` : ""}`}
+              title={`${isRegion ? "区域" : "业绩"}明细${isMobile && realRows.length > TOP_N ? `（Top ${TOP_N}）` : ""}`}
+              subtitle={isRegion ? "点击行可查看该区域下的客户列表" : undefined}
             />
             <ProCard>
               <div style={{ overflowX: "auto" }}>
-                <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13, minWidth: isMobile ? 620 : undefined }}>
+                <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13, minWidth: isMobile ? (isRegion ? 720 : 620) : undefined }}>
                   <thead>
-                    <tr style={{ borderBottom: "2px solid #f0f0f0", textAlign: "left" }}>
-                      <th style={{ padding: "10px 8px", width: 50 }}>#</th>
-                      <th style={{ padding: "10px 8px" }}>员工</th>
-                      <th style={{ padding: "10px 8px", textAlign: "right" }}>合同数</th>
-                      <th style={{ padding: "10px 8px", textAlign: "right" }}>合同额</th>
-                      <th style={{ padding: "10px 8px", textAlign: "right" }}>已开票</th>
-                      <th style={{ padding: "10px 8px", textAlign: "right" }}>已回款</th>
-                      <th style={{ padding: "10px 8px", textAlign: "right" }}>开票率</th>
-                      <th style={{ padding: "10px 8px", textAlign: "right" }}>回款率</th>
-                    </tr>
+                    {isRegion ? (
+                      <tr style={{ borderBottom: "2px solid #f0f0f0", textAlign: "left" }}>
+                        <th style={{ padding: "10px 8px", width: 50 }}>#</th>
+                        <th style={{ padding: "10px 8px" }}>区域</th>
+                        <th style={{ padding: "10px 8px", textAlign: "right" }}>客户数</th>
+                        <th style={{ padding: "10px 8px", textAlign: "right" }}>合同数</th>
+                        <th style={{ padding: "10px 8px", textAlign: "right" }}>合同额</th>
+                        <th style={{ padding: "10px 8px", textAlign: "right" }}>已开票</th>
+                        <th style={{ padding: "10px 8px", textAlign: "right" }}>已回款</th>
+                        <th style={{ padding: "10px 8px", textAlign: "right" }}>开票率</th>
+                        <th style={{ padding: "10px 8px", textAlign: "right" }}>回款率</th>
+                        <th style={{ padding: "10px 8px", textAlign: "right" }}>未回款</th>
+                      </tr>
+                    ) : (
+                      <tr style={{ borderBottom: "2px solid #f0f0f0", textAlign: "left" }}>
+                        <th style={{ padding: "10px 8px", width: 50 }}>#</th>
+                        <th style={{ padding: "10px 8px" }}>员工</th>
+                        <th style={{ padding: "10px 8px", textAlign: "right" }}>合同数</th>
+                        <th style={{ padding: "10px 8px", textAlign: "right" }}>合同额</th>
+                        <th style={{ padding: "10px 8px", textAlign: "right" }}>已开票</th>
+                        <th style={{ padding: "10px 8px", textAlign: "right" }}>已回款</th>
+                        <th style={{ padding: "10px 8px", textAlign: "right" }}>开票率</th>
+                        <th style={{ padding: "10px 8px", textAlign: "right" }}>回款率</th>
+                      </tr>
+                    )}
                   </thead>
                   <tbody>
                     {visibleRows.map((r, i) => {
-                      const invRate = r.contractAmount > 0 ? (r.invoiceAmount / r.contractAmount * 100) : 0;
-                      const payRate = r.invoiceAmount > 0 ? (r.paymentAmount / r.invoiceAmount * 100) : 0;
+                      if (isRegion) {
+                        return (
+                          <tr
+                            key={r.key}
+                            style={{ borderBottom: "1px solid #f0f0f0", cursor: "pointer" }}
+                            onClick={() => drillToCustomers(r)}
+                            onKeyDown={(e) => {
+                              if (e.key === "Enter" || e.key === " ") {
+                                e.preventDefault();
+                                drillToCustomers(r);
+                              }
+                            }}
+                            tabIndex={0}
+                          >
+                            <td style={{ padding: "10px 8px" }}>
+                              {rankEmoji(i) || <Text type="secondary">{i + 1}</Text>}
+                            </td>
+                            <td style={{ padding: "10px 8px" }}>
+                              <Text strong style={{ color: token.colorPrimary }}>{r.name}</Text>
+                            </td>
+                            <td style={{ padding: "10px 8px", textAlign: "right" }}>{r.customerCount ?? 0}</td>
+                            <td style={{ padding: "10px 8px", textAlign: "right" }}>{r.contractCount}</td>
+                            <td style={{ padding: "10px 8px", textAlign: "right" }}>{formatCurrency(r.contractAmount)}</td>
+                            <td style={{ padding: "10px 8px", textAlign: "right" }}>{formatCurrency(r.invoiceAmount)}</td>
+                            <td style={{ padding: "10px 8px", textAlign: "right" }}>{formatCurrency(r.paymentAmount)}</td>
+                            <td style={{ padding: "10px 8px", textAlign: "right" }}>
+                              <Tag color={rateTagColor(r.invoiceRate, INVOICE_RATE_THRESHOLDS)}>{r.invoiceRate.toFixed(1)}%</Tag>
+                            </td>
+                            <td style={{ padding: "10px 8px", textAlign: "right" }}>
+                              <Tag color={rateTagColor(r.paymentRate, PAYMENT_RATE_THRESHOLDS)}>{r.paymentRate.toFixed(1)}%</Tag>
+                            </td>
+                            <td style={{ padding: "10px 8px", textAlign: "right" }}>{formatCurrency(r.unpaidAmount)}</td>
+                          </tr>
+                        );
+                      }
                       return (
-                        <tr key={r.userId} style={{ borderBottom: "1px solid #f0f0f0", cursor: "pointer" }} onClick={() => openDrawer(r.userId)}>
+                        <tr key={r.key} style={{ borderBottom: "1px solid #f0f0f0", cursor: "pointer" }} onClick={() => openDrawer(r.key)}>
                           <td style={{ padding: "10px 8px" }}>
                             {rankEmoji(i) || <Text type="secondary">{i + 1}</Text>}
                           </td>
                           <td style={{ padding: "10px 8px" }}>
-                            <a onClick={(e) => { e.stopPropagation(); openDrawer(r.userId); }} style={{ color: "var(--ant-color-link, #1677ff)" }}>
+                            <a onClick={(e) => { e.stopPropagation(); openDrawer(r.key); }} style={{ color: "var(--ant-color-link, #1677ff)" }}>
                               <Text strong>{r.name}</Text>
                             </a>
                             <br />
-                            <Text type="secondary" style={{ fontSize: 12 }}>{r.employeeNo}</Text>
+                            <Text type="secondary" style={{ fontSize: 12 }}>{r.employeeNo ?? ""}</Text>
                           </td>
                           <td style={{ padding: "10px 8px", textAlign: "right" }}>{r.contractCount}</td>
                           <td style={{ padding: "10px 8px", textAlign: "right" }}>{formatCurrency(r.contractAmount)}</td>
                           <td style={{ padding: "10px 8px", textAlign: "right" }}>{formatCurrency(r.invoiceAmount)}</td>
                           <td style={{ padding: "10px 8px", textAlign: "right" }}>{formatCurrency(r.paymentAmount)}</td>
                           <td style={{ padding: "10px 8px", textAlign: "right" }}>
-                            <Tag color={invRate >= INVOICE_RATE_THRESHOLDS.green ? "green" : invRate >= INVOICE_RATE_THRESHOLDS.blue ? "blue" : "orange"}>{invRate.toFixed(1)}%</Tag>
+                            <Tag color={rateTagColor(r.invoiceRate, INVOICE_RATE_THRESHOLDS)}>{r.invoiceRate.toFixed(1)}%</Tag>
                           </td>
                           <td style={{ padding: "10px 8px", textAlign: "right" }}>
-                            <Tag color={payRate >= PAYMENT_RATE_THRESHOLDS.green ? "green" : payRate >= PAYMENT_RATE_THRESHOLDS.blue ? "blue" : "orange"}>{payRate.toFixed(1)}%</Tag>
+                            <Tag color={rateTagColor(r.paymentRate, PAYMENT_RATE_THRESHOLDS)}>{r.paymentRate.toFixed(1)}%</Tag>
                           </td>
                         </tr>
                       );
@@ -294,9 +411,14 @@ export default function PerformancePage() {
                   </tbody>
                 </table>
               </div>
-              {isMobile && rows.length > TOP_N ? (
+              {isMobile && realRows.length > TOP_N ? (
                 <div style={{ marginTop: 12, textAlign: "center", color: "var(--qt-processing)", fontSize: 13 }}>
-                  共 {rows.length} 条，完整数据请使用「导出 xlsx」
+                  共 {realRows.length} 条，完整数据请使用「导出 xlsx」
+                </div>
+              ) : null}
+              {isRegion && rows.some((r) => !r.district && !r.town) ? (
+                <div style={{ marginTop: 8, textAlign: "right", color: "var(--qt-text-secondary)", fontSize: 12 }}>
+                  注：另有 {unfilledCount} 位未填写所在镇街的客户，未在上表显示
                 </div>
               ) : null}
             </ProCard>

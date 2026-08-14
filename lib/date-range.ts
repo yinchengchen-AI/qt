@@ -62,7 +62,7 @@ export function exportFileTimestamp(now: Date = new Date()): string {
 
 /**
  * 把查询参数解析成最终使用的 DateRange：调用方传了 from/to 就用,否则用默认本月。
- * 各统计页路由(员工业绩 / 区域统计)统一用这个,避免手写 parse + fallback 漂移。
+ * 各统计页路由(业绩排行 / 总览 / 账龄)统一用这个,避免手写 parse + fallback 漂移。
  */
 export function resolveDateRangeQuery(params: { from?: string; to?: string }): DateRange {
   const parsed = parseDateRangeQuery(params);
@@ -71,4 +71,36 @@ export function resolveDateRangeQuery(params: { from?: string; to?: string }): D
     from: parsed.from ?? fallback.from,
     to: parsed.to ?? fallback.to
   };
+}
+
+/** 统计区间预设(与 dashboard 的月/季/年 Segmented 一致) */
+export type RangePreset = "month" | "quarter" | "year";
+
+/** 预设区间起始(本地时区零点);to 返回当前时刻 */
+export function presetRange(preset: RangePreset, now: Date = new Date()): DateRange {
+  const from = (() => {
+    if (preset === "month") return new Date(now.getFullYear(), now.getMonth(), 1);
+    if (preset === "year") return new Date(now.getFullYear(), 0, 1);
+    const qStartMonth = Math.floor(now.getMonth() / 3) * 3;
+    return new Date(now.getFullYear(), qStartMonth, 1);
+  })();
+  return { from, to: now };
+}
+
+/**
+ * 统一的统计区间解析:预设 > 自定义 from/to > 默认本月。
+ * 全统计模块(总览 / 业绩排行 / 账龄)统一用它,消除
+ * "全期 / 本月 / 预设"三套兜底语义漂移。
+ */
+export function resolveStatsRange(params: { preset?: RangePreset; from?: string; to?: string }, now: Date = new Date()): DateRange {
+  if (params.preset === "month" || params.preset === "quarter" || params.preset === "year") {
+    return presetRange(params.preset, now);
+  }
+  const parsed = parseDateRangeQuery(params);
+  if (parsed.from || parsed.to) {
+    // 用户只给一端时,另一端用默认本月补全,避免"从某日起至今/至今前"歧义
+    const fallback = defaultMonthRange();
+    return { from: parsed.from ?? fallback.from, to: parsed.to ?? fallback.to };
+  }
+  return defaultMonthRange();
 }

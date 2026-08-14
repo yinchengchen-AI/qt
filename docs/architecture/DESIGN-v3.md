@@ -509,7 +509,7 @@ PLANNED ─confirm(finance)─▶ CONFIRMED ─reconcile(finance)─▶ RECONCIL
 - `GET /api/statistics/aging/uninvoiced-contracts?thresholdDays=30&limit=50`
   - ACTIVE 且无 ISSUED 发票的合同, signDate 升序, `isOverdue = daysSinceSign > thresholdDays`
 - `GET /api/statistics/aging/trend?days=30&basis=`
-  - in-memory 每日重算(days × 2 query); 数据量大换 AgingSnapshot 定时表
+  - 读 AgingSnapshot 预计算表(每日 cron 幂等 upsert 近 30 天);快照缺失的日期回退实时计算;受限角色(SALES/EXPERT)恒走实时计算以维持行级隔离
 - `GET /api/statistics/aging/dunning/summary`
   - 催收汇总 `{ totalOpen, withDunning, byStatus, topOverdue }`;
     `topOverdue[i].remaining = amount - paid` 与 getInvoiceAging 同口径
@@ -523,7 +523,8 @@ PLANNED ─confirm(finance)─▶ CONFIRMED ─reconcile(finance)─▶ RECONCIL
   - `from/to` 同时作用于 `Contract.signDate` / `Invoice.actualIssueDate` / `Payment.receivedAt`
 - `GET /api/statistics/employee-performance?userId=&from=&to=`
   - `userId` 不传时全员(非系统、非 ADMIN、ACTIVE);业务人员 (SALES) 强制只看自己
-- `GET /api/statistics/export?type=overview|top-customers|employee-performance|aging|by-region&metric=&from=&to=&userId=&basis=&customerId=&ownerUserId=&contractId=&buckets=&minAmount=`
+- `GET /api/statistics/performance?dimension=owner|signer|region&preset=month|quarter|year&from=&to=&limit=`(统一业绩排行,原 by-region 页并入 dimension=region)
+- `GET /api/statistics/export?type=overview|top-customers|employee-performance|aging|by-region|performance&metric=&from=&to=&preset=&dimension=&userId=&basis=&customerId=&ownerUserId=&contractId=&buckets=&minAmount=`
   - 需 `STATISTICS:EXPORT` 权限;单次最多 `exportMaxRows()` 行
   - `type=aging` 时额外接受账龄专属参数(basis / customerId / ownerUserId / contractId / buckets / minAmount),
     文件名 `账龄分析_<basis>_<YYYY-MM-DD>.xlsx`

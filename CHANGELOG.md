@@ -2,6 +2,20 @@
 
 本文件记录 qt-biz 每个版本的详细变更。项目快速入口请见 [README.md](README.md)。
 
+## v0.19.0(2026-08-14)统计模块收口:业绩排行三维度合并 + 账龄趋势快照预计算
+
+「员工业绩」与「区域统计」两页合并为统一的「业绩排行」页(按员工 / 按签约人 / 按区域三维度切换);账龄趋势图从每次请求实时重算 30 天改为读每日快照表。**DB schema 有变化:新增 `AgingSnapshot` 表(迁移 `20260814_aging_snapshot`,含 `GRANT ALL ... TO qt_app`)**。
+
+变更:
+- **feat(statistics)**:`/statistics/performance` 重做为统一业绩排行页 — 维度 Segmented(员工/签约人/区域,默认签约人)+ 指标 Segmented(合同额/已开票/已回款/合同数)单图切换;区间改为预设(本月/本季/本年,默认本年)优先、RangePicker 自定义兜底;区域维度行点击下钻 `/customers?district=&town=`,「未填写」行不进图表 Top N;员工/签约人维度保留业绩明细抽屉与 PDF 导出
+- **feat(statistics)**:新增 `GET /api/statistics/performance?dimension=owner|signer|region&preset=&from=&to=&limit=`,服务端 `getPerformanceRanking` 复用 `getEmployeePerformance` / `getSignerSummary` / `getRegionStatistics` 三个既有口径,行级隔离在子服务内天然生效
+- **feat(statistics)**:导出新增 `type=performance&dimension=...`(`业绩排行_<dimension>_<ts>.xlsx`);旧 `type=by-region` 导出保留兼容
+- **feat(statistics)**:新增 `AgingSnapshot` 表 + `server/jobs/aging-snapshot.ts`(cron 每日幂等 upsert 近 30 天 × 2 基准的全局账龄桶);`getAgingTrend` 非受限角色改读快照表(单次 findMany),快照缺失日回退实时计算,受限角色(SALES/EXPERT)恒走实时计算维持行级隔离
+- **refactor(lib)**:新增 `lib/date-range.ts#resolveStatsRange`(预设 > 自定义 > 默认本月,消除各统计页兜底语义漂移)与 `lib/stats-ui.ts`(统计页共享的比率阈值 / 色板 / 排名 emoji / 账龄桶常量)
+- **remove(statistics)**:删除 `/statistics/by-region` 页面与菜单项(功能并入业绩排行「按区域」维度);菜单「员工业绩」更名「业绩排行」
+- **fix(auth)**:登录 `sessionVersion +1` 后补 `invalidateAuthCache(user.id)`,且 jwt callback 登录分支直接落 `token.sessionVersion = user.sessionVersion`;修复快速重登(2s 缓存窗口内)签发的新 token 被旧缓存覆盖成旧 sessionVersion、缓存过期后被单点校验误踢的缺陷(e2e 连续登录同账号复现)
+- **测试**:新增 `tests/api/statistics-performance.test.ts`(12 用例:三维度口径 / limit 截断 / preset 区间 / SALES 行级隔离);重写 `tests/e2e/99-performance-region.spec.ts` + `99-region-drilldown.spec.ts`(下钻区域改用 `seed:dev-customers` 固定 tier 余杭区/瓶窑镇,废弃 networkidle 改等具体响应,登录后统一关闭 AppRelease 弹窗);typecheck / lint / vitest 全绿(96 文件,782 用例)
+
 ## v0.18.11(2026-08-14)工作台月度/季度/年度 Top 5 客户按区间过滤 + 待审待开票计数修复
 
 修复工作台月/季/年切换时数据不准确的问题:Top 5 客户此前漏传区间参数,显示的是全期数据(而非所选 月度/季度/年度 区间);「待审/待开票」此前因按 `actualIssueDate` 过滤而恒为 0,现改为独立计数待财务审核发票存量。**DB schema / migrations: 无变化**。

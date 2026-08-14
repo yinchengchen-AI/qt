@@ -661,10 +661,9 @@ export async function getUninvoicedContracts(
 }
 
 // 3.3 账龄趋势(近 N 天,默认 30)
-// 实现:把"现在"回退 N 天到 (now - N*day),遍历每日 asOf,调用 bucketOf(due - asOf)
-//   给出该日"如果以这天为口径截止日"的桶分布。
-// 注意:这是 in-memory 计算,N=30 时每次 ~30 次 getInvoiceAging 调用;数据量小时可行,
-//   数据量起来后改写为 AgingSnapshot 定时表 (生产用 cron 写盘,API 读盘)。
+// 实现:非受限角色优先读 AgingSnapshot 预计算表(job 每日 01:00 UTC 写近 30 天),
+//   单次 findMany 得到 N 天曲线;快照缺失的日期回退实时计算保持曲线连续。
+// 受限角色 (SALES/EXPERT) 因快照是全局口径(无 owner 维度),恒走实时计算以维持行级隔离。
 export async function getAgingTrend(
   user: SessionUser,
   query: { days?: number; basis?: "issue" | "due" } = {}
@@ -676,18 +675,59 @@ export async function getAgingTrend(
   // 把 now 截到 UTC 0 点,避免漂移
   const todayUtc = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
 
-  // 一次性拉取需要的发票 + 回款(避免 N 次 query);我们直接复用 getInvoiceAging
-  //   在内存里模拟"as of 某日",性能边界见函数顶部注释。
   const out: Array<{ date: string; total: number; byBucket: Record<Bucket, number> }> = [];
+
+  if (isRowRestricted(user)) {
+    // 受限角色:快照无 owner 维度,回退实时计算
+    for (let i = days - 1; i >= 0; i--) {
+      const asOf = new Date(todayUtc);
+      asOf.setUTCDate(asOf.getUTCDate() - i);
+      // 未来日期不计算(如时区差异导致的偏差兜底)
+      if (asOf.getTime() > Date.now()) continue;
+      const point = await getInvoiceAgingForDate(user, basis, asOf);
+      out.push({
+        date: asOf.toISOString().slice(0, 10),
+        total: round2(point.bucket0_30 + point.bucket31_60 + point.bucket61_90 + point.bucket90),
+        byBucket: { "0-30": point.bucket0_30, "31-60": point.bucket31_60, "61-90": point.bucket61_90, "90+": point.bucket90 }
+      });
+    }
+    return out;
+  }
+
+  // 非受限:读 AgingSnapshot 表,单次 findMany 覆盖整段区间
+  const from = new Date(todayUtc);
+  from.setUTCDate(from.getUTCDate() - (days - 1));
+  const snaps = await prisma.agingSnapshot.findMany({
+    where: { basis, asOfDate: { gte: from, lte: todayUtc } },
+    orderBy: { asOfDate: "asc" }
+  });
+  const snapByDate = new Map(snaps.map((s) => [s.asOfDate.toISOString().slice(0, 10), s]));
+
   for (let i = days - 1; i >= 0; i--) {
     const asOf = new Date(todayUtc);
     asOf.setUTCDate(asOf.getUTCDate() - i);
-    // 单日只算一次,O(N)=30 时 30 次 in-memory 重算,生产可换 AgingSnapshot。
-    const r = await getInvoiceAgingForDate(user, basis, asOf);
+    if (asOf.getTime() > Date.now()) continue;
+    const dateKey = asOf.toISOString().slice(0, 10);
+    const snap = snapByDate.get(dateKey);
+    if (snap) {
+      out.push({
+        date: dateKey,
+        total: round2(snap.totalReceivable),
+        byBucket: {
+          "0-30": round2(snap.bucket0_30),
+          "31-60": round2(snap.bucket31_60),
+          "61-90": round2(snap.bucket61_90),
+          "90+": round2(snap.bucket90)
+        }
+      });
+      continue;
+    }
+    // 快照缺失(job 尚未覆盖该日):回退实时计算,保证曲线连续
+    const point = await getInvoiceAgingForDate(user, basis, asOf);
     out.push({
-      date: asOf.toISOString().slice(0, 10),
-      total: round2(r.bucket0_30 + r.bucket31_60 + r.bucket61_90 + r.bucket90),
-      byBucket: { "0-30": r.bucket0_30, "31-60": r.bucket31_60, "61-90": r.bucket61_90, "90+": r.bucket90 }
+      date: dateKey,
+      total: round2(point.bucket0_30 + point.bucket31_60 + point.bucket61_90 + point.bucket90),
+      byBucket: { "0-30": point.bucket0_30, "31-60": point.bucket31_60, "61-90": point.bucket61_90, "90+": point.bucket90 }
     });
   }
   return out;
@@ -1318,6 +1358,122 @@ export async function getRegionStatistics(user: SessionUser, range?: DateRange):
     return b.contractAmount - a.contractAmount;
   });
   return rows;
+}
+
+// =====================================================
+// 8. 统一业绩排行 (owner / signer / region 三维度)
+// =====================================================
+// 用途:统计模块「业绩排行 / 区域排行」共用同一数据源与统一行结构,前端一个表格/柱状图
+// 组件即可渲染三个维度;各维度口径与既有服务完全一致 (owner=getEmployeePerformance /
+// signer=getSignerSummary / region=getRegionStatistics),行级隔离在子服务内已处理:
+//   - SALES/EXPERT (受限角色):owner 只看自己;signer 沿用 "owner 或签签人是我" 的
+//     OR 口径;region 沿用 ownerEq/ownerViaContract 口径 → 排行数据天然被隔离。
+// metric 指定排序键 (默认合同额),rank 从 1 起按降序打榜。
+export type RankingDimension = "owner" | "signer" | "region";
+
+export type PerformanceRankingRow = {
+  /** 名次 (1 起) */
+  rank: number;
+  /** 唯一键:owner/signer 为 userId,region 为区域展示名 */
+  key: string;
+  /** 员工姓名 / 区域展示名 */
+  name: string;
+  employeeNo?: string | null;
+  /** region 维度才有 */
+  region?: string | null;
+  district?: string | null;
+  town?: string | null;
+  customerCount?: number;
+  contractCount: number;
+  contractAmount: number;
+  invoiceAmount: number;
+  paymentAmount: number;
+  /** 开票率 % (contract=0 时为 0) */
+  invoiceRate: number;
+  /** 回款率 % (invoice=0 时为 0) */
+  paymentRate: number;
+  /** max(0, invoice - payment) */
+  unpaidAmount: number;
+};
+
+/** 计算开票率 / 回款率 / 未回款,与 getRegionStatistics 同口径 */
+function computeRowRates(contractAmount: number, invoiceAmount: number, paymentAmount: number): {
+  invoiceRate: number;
+  paymentRate: number;
+  unpaidAmount: number;
+} {
+  const unpaid = new Prisma.Decimal(invoiceAmount).minus(paymentAmount);
+  return {
+    invoiceRate: contractAmount > 0 ? round2(new Prisma.Decimal(invoiceAmount).div(contractAmount).mul(100)) : 0,
+    paymentRate: invoiceAmount > 0 ? round2(new Prisma.Decimal(paymentAmount).div(invoiceAmount).mul(100)) : 0,
+    unpaidAmount: unpaid.greaterThan(0) ? round2(unpaid) : 0
+  };
+}
+
+export async function getPerformanceRanking(
+  user: SessionUser,
+  dimension: RankingDimension = "owner",
+  range?: DateRange,
+  limit = 20
+): Promise<PerformanceRankingRow[]> {
+  requirePermission(user.roleCode, RESOURCE.STATISTICS, ACTION.READ);
+
+  let rows: PerformanceRankingRow[];
+  if (dimension === "region") {
+    const regions = await getRegionStatistics(user, range);
+    rows = regions.map((r) => ({
+      rank: 0, // 排序后统一回填
+      key: r.region,
+      name: r.region,
+      region: r.region,
+      district: r.district,
+      town: r.town,
+      customerCount: r.customerCount,
+      contractCount: r.contractCount,
+      contractAmount: r.contractAmount,
+      invoiceAmount: r.invoiceAmount,
+      paymentAmount: r.paymentAmount,
+      invoiceRate: r.invoiceRate,
+      paymentRate: r.paymentRate,
+      unpaidAmount: r.unpaidAmount
+    }));
+  } else if (dimension === "signer") {
+    const signers = await getSignerSummary(user, range);
+    rows = signers.map((r) => {
+      const rates = computeRowRates(r.contractAmount, r.invoiceAmount, r.paymentAmount);
+      return {
+        rank: 0,
+        key: r.userId,
+        name: r.name,
+        employeeNo: r.employeeNo,
+        contractCount: r.contractCount,
+        contractAmount: r.contractAmount,
+        invoiceAmount: r.invoiceAmount,
+        paymentAmount: r.paymentAmount,
+        ...rates
+      };
+    });
+  } else {
+    const owners = await getEmployeePerformance(user, undefined, range);
+    rows = owners.map((r) => {
+      const rates = computeRowRates(r.contractAmount, r.invoiceAmount, r.paymentAmount);
+      return {
+        rank: 0,
+        key: r.userId,
+        name: r.name,
+        employeeNo: r.employeeNo,
+        contractCount: r.contractCount,
+        contractAmount: r.contractAmount,
+        invoiceAmount: r.invoiceAmount,
+        paymentAmount: r.paymentAmount,
+        ...rates
+      };
+    });
+  }
+
+  // 按合同额降序打榜 (与各维度服务默认排序一致),截断到 limit
+  rows.sort((a, b) => b.contractAmount - a.contractAmount);
+  return rows.slice(0, Math.max(1, limit)).map((r, i) => ({ ...r, rank: i + 1 }));
 }
 
 function round2(v: number | Prisma.Decimal): number {

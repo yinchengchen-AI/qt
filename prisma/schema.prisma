@@ -568,11 +568,11 @@ model Message {
   /// 配合 @@unique([entityKey, receiverUserId]) + createMany(skipDuplicates) 做行级去重
   entityKey      String?     @db.VarChar(500)
 
+  @@unique([entityKey, receiverUserId])
   @@index([receiverUserId, readAt])
   // 去重查询:`type + receiverUserId + createdAt + JSON link.id`
   // 这个复合索引把扫描收敛到"今天 + 该用户 + 该类型"的小窗口,JSON 路径再二次过滤
   @@index([type, receiverUserId, createdAt])
-  @@unique([entityKey, receiverUserId])
 }
 
 /// 消息归档表 (append-only)。已读超过 90 天的 Message 会被移动到这里,
@@ -587,7 +587,7 @@ model MessageArchive {
   entityKey      String?     @db.VarChar(500)
   readAt         DateTime?   @db.Timestamptz(6)
   createdAt      DateTime    @db.Timestamptz(6)
-  archivedAt     DateTime    @default(now())  @db.Timestamptz(6)
+  archivedAt     DateTime    @default(now()) @db.Timestamptz(6)
 
   @@index([receiverUserId, archivedAt])
   @@index([type, receiverUserId, archivedAt])
@@ -759,6 +759,35 @@ model DunningNote {
   @@index([invoiceId])
   @@index([status])
   @@index([actorId, createdAt])
+}
+
+// =====================================================
+// AgingSnapshot (应收账龄日快照 / 预计算)
+//   - 用途: 账龄趋势图 O(1) 读取,避免每次请求对全量 ISSUED 发票 + 回款
+//     重算 N 天。cron job (server/jobs/aging-snapshot.ts) 每日幂等 upsert
+//     近 30 天的 (asOfDate, basis) 快照,自动覆盖"今天"。
+//   - 口径: 全局口径 (不限 owner),与 getInvoiceAging(basis) 完全一致:
+//       remaining = 发票金额 − 已确认回款 (CONFIRMED/RECONCILED),
+//       > MONEY_TOLERANCE 才计入;负逾期归 90+。
+//     受限角色 (SALES/EXPERT) 在读取时回退实时计算 (数据量小, 性能可接受)。
+//   - asOfDate: 快照日 (UTC 零点归一日, 用 @db.Date 避免时区漂移)。
+//   - 无 RLS: 与 AppRelease 相同策略, 行级隔离在 service 层按角色处理。
+// =====================================================
+model AgingSnapshot {
+  id              String   @id @default(cuid())
+  asOfDate        DateTime @db.Date
+  basis           String // "issue" | "due"
+  bucket0_30      Decimal  @db.Decimal(18, 2)
+  bucket31_60     Decimal  @db.Decimal(18, 2)
+  bucket61_90     Decimal  @db.Decimal(18, 2)
+  bucket90        Decimal  @db.Decimal(18, 2)
+  totalReceivable Decimal  @db.Decimal(18, 2)
+  invoiceCount    Int
+  createdAt       DateTime @default(now()) @db.Timestamptz(6)
+  updatedAt       DateTime @updatedAt @db.Timestamptz(6)
+
+  @@unique([asOfDate, basis])
+  @@index([basis, asOfDate])
 }
 
 // =====================================================
