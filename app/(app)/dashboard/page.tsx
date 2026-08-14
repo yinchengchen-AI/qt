@@ -346,8 +346,7 @@ export default function DashboardPage() {
                 xField="town"
                 yField="count"
                 height={chartHeight}
-                color={token.colorPrimary}
-                legend={false}
+                colorField="town"
                 autoFit
                 label={{ text: (d: Record<string, unknown>) => String(d.count), style: { fontSize: 11 } }}
                 xAxis={{ label: { autoRotate: true, autoHide: true } }}

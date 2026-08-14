@@ -6,11 +6,11 @@
 [![TypeScript](https://img.shields.io/badge/TypeScript-6.0.3-3178c6)](https://www.typescriptlang.org/)
 [![Prisma](https://img.shields.io/badge/Prisma-7.9.1-2d3748)](https://www.prisma.io/)
 [![PostgreSQL](https://img.shields.io/badge/PostgreSQL-16-336791)](https://www.postgresql.org/)
-[![Last Release](https://img.shields.io/badge/release-v0.18.9-blue)](CHANGELOG.md)
+[![Last Release](https://img.shields.io/badge/release-v0.18.10-blue)](CHANGELOG.md)
 
 > **客户 / 合同 / 开票 / 回款** 一体化管理,附件走 MinIO presigned 直传,服务端 Server Actions + RBAC + 行级隔离。
 >
-> **当前版本: v0.18.9**(2026-08-14)。文档地图见 [docs/README.md](docs/README.md),架构与设计见 [docs/architecture/DESIGN-v3.md](docs/architecture/DESIGN-v3.md),用户手册见 [docs/user/USER_MANUAL.md](docs/user/USER_MANUAL.md)。
+> **当前版本: v0.18.10**(2026-08-14)。文档地图见 [docs/README.md](docs/README.md),架构与设计见 [docs/architecture/DESIGN-v3.md](docs/architecture/DESIGN-v3.md),用户手册见 [docs/user/USER_MANUAL.md](docs/user/USER_MANUAL.md)。
 
 ## 目录
 
@@ -255,6 +255,13 @@ nginx 反代下上游异常时,由 `public/502.html` 静态页与 `app/502/page.
 ## 最近更新
 
 最近 5 个版本,完整历史见 [CHANGELOG.md](CHANGELOG.md)。
+
+### v0.18.10(2026-08-14)工作台客户区域分布柱状图恢复按镇街彩虹色
+
+客户区域分布柱状图恢复 `colorField="town"` 按镇街彩虹着色(每镇街独立颜色,图例可区分),保留 Top 10 + 其他 聚合与空镇街「未录入」标注。**DB schema 无变化**。
+
+- **彩虹着色回归**:恢复 `colorField="town"`,因已聚合 Top 10 + 其他,图例最多 11 项,不再有巨型图例
+- **测试**:typecheck / lint / vitest 全绿(94 文件,772 用例)
 
 ### v0.18.9(2026-08-14)工作台客户区域分布柱状图视觉打磨
 
