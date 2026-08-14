@@ -2,6 +2,16 @@
 
 本文件记录 qt-biz 每个版本的详细变更。项目快速入口请见 [README.md](README.md)。
 
+## v0.18.9(2026-08-14)工作台客户区域分布柱状图视觉打磨
+
+工作台「客户区域分布」柱状图视觉打磨:去除彩虹色与巨型图例,聚合 Top 10 + 其他,空镇街标注。**DB schema / migrations: 无变化**。
+
+变更:
+- **fix(dashboard)**:`app/(app)/dashboard/page.tsx` 区域分布图去掉 `colorField="town"` 彩虹色与自动生成的几十项图例,改用单色(品牌主色) + `legend: false`
+- **fix(dashboard)**:前端按 count 聚合 **Top 10 + 其他**(后端 `townDistribution` 已按数量降序,口径不变);未录入镇街的客户标为「未录入」
+- **fix(dashboard)**:x 轴标签 `autoHide: true` 防长镇街名重叠;卡片副标题在截断时显示「前 10」
+- **测试**:typecheck / lint / vitest 全绿(94 文件,772 用例)
+
 ## v0.18.8(2026-08-14)合同详情页操作记录动作中文标签 + 语义色
 
 合同详情页「操作记录」时间线 + 点击节点打开的详情抽屉,动作标识从英文原始码(经 StatusTag 回退显示)统一改为中文标签 + 语义色 Tag。**DB schema / migrations: 无变化**。

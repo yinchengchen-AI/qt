@@ -6,11 +6,11 @@
 [![TypeScript](https://img.shields.io/badge/TypeScript-6.0.3-3178c6)](https://www.typescriptlang.org/)
 [![Prisma](https://img.shields.io/badge/Prisma-7.9.1-2d3748)](https://www.prisma.io/)
 [![PostgreSQL](https://img.shields.io/badge/PostgreSQL-16-336791)](https://www.postgresql.org/)
-[![Last Release](https://img.shields.io/badge/release-v0.18.8-blue)](CHANGELOG.md)
+[![Last Release](https://img.shields.io/badge/release-v0.18.9-blue)](CHANGELOG.md)
 
 > **客户 / 合同 / 开票 / 回款** 一体化管理,附件走 MinIO presigned 直传,服务端 Server Actions + RBAC + 行级隔离。
 >
-> **当前版本: v0.18.8**(2026-08-14)。文档地图见 [docs/README.md](docs/README.md),架构与设计见 [docs/architecture/DESIGN-v3.md](docs/architecture/DESIGN-v3.md),用户手册见 [docs/user/USER_MANUAL.md](docs/user/USER_MANUAL.md)。
+> **当前版本: v0.18.9**(2026-08-14)。文档地图见 [docs/README.md](docs/README.md),架构与设计见 [docs/architecture/DESIGN-v3.md](docs/architecture/DESIGN-v3.md),用户手册见 [docs/user/USER_MANUAL.md](docs/user/USER_MANUAL.md)。
 
 ## 目录
 
@@ -256,20 +256,12 @@ nginx 反代下上游异常时,由 `public/502.html` 静态页与 `app/502/page.
 
 最近 5 个版本,完整历史见 [CHANGELOG.md](CHANGELOG.md)。
 
-### v0.18.8(2026-08-14)合同详情页操作记录动作中文标签 + 语义色
+### v0.18.9(2026-08-14)工作台客户区域分布柱状图视觉打磨
 
-合同详情页「操作记录」时间线 + 点击节点打开的详情抽屉,动作标识从英文原始码统一改为中文标签 + 语义色 Tag(正向绿 / 负向红 / 进行中蓝 / 待定橙 / 中性灰)。**DB schema 无变化**。
+工作台「客户区域分布」柱状图视觉打磨:去彩虹色与巨型图例,改单色;按数量聚合 Top 10 + 其他,未录入镇街标「未录入」,x 轴标签防重叠。**DB schema 无变化**。
 
-- **合同操作记录中文标签**:`operation-timeline.tsx` 与 `operation-log-drawer.tsx` 动作改用 `<Tag color={shortActionTone(action)}>{shortActionLabel(action)}</Tag>`
-- **`lib/operation-log-format.ts` 重构**:`ACTION_LABELS` 升级为 `ACTION_META`(label + tone 语义色),新增 `shortActionTone()`
-- **测试**:typecheck / lint / vitest 全绿(94 文件,772 用例)
-
-### v0.18.8(2026-08-14)合同详情页操作记录动作中文标签 + 语义色
-
-合同详情页「操作记录」时间线 + 点击节点打开的详情抽屉,动作标识从英文原始码统一改为中文标签 + 语义色 Tag(正向绿 / 负向红 / 进行中蓝 / 待定橙 / 中性灰)。**DB schema 无变化**。
-
-- **合同操作记录中文标签**:`operation-timeline.tsx` 与 `operation-log-drawer.tsx` 动作改用 `<Tag color={shortActionTone(action)}>{shortActionLabel(action)}</Tag>`
-- **`lib/operation-log-format.ts` 重构**:`ACTION_LABELS` 升级为 `ACTION_META`(label + tone 语义色),新增 `shortActionTone()`
+- **单色替代彩虹**:去掉 `colorField="town"` 几十项图例,改用品牌主色 + `legend: false`
+- **Top 10 + 其他**:后端 `townDistribution` 已按数量降序,前端聚合前 10 与「其他」,空镇街标「未录入」
 - **测试**:typecheck / lint / vitest 全绿(94 文件,772 用例)
 
 ### v0.18.8(2026-08-14)合同详情页操作记录动作中文标签 + 语义色

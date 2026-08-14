@@ -229,7 +229,15 @@ export default function DashboardPage() {
   if (dunningActive > 0) todoItems.push({ label: "催收中", value: `${dunningActive} 张`, href: "/statistics/aging", color: "#faad14" });
   if (dunningLegal > 0) todoItems.push({ label: "法务介入", value: `${dunningLegal} 张`, href: "/statistics/aging", color: "#cf1322" });
 
-  const townData = data.townDistribution;
+  const TOWN_TOP_N = 10;
+  const rawTown = data.townDistribution.map((d) => ({ town: d.town || "未录入", count: d.count }));
+  const townTruncated = rawTown.length > TOWN_TOP_N;
+  const townData = townTruncated
+    ? [
+        ...rawTown.slice(0, TOWN_TOP_N),
+        { town: "其他", count: rawTown.slice(TOWN_TOP_N).reduce((s, d) => s + d.count, 0) },
+      ]
+    : rawTown;
 
   // ── 合同状态环图 ──
   const contractTotal = cont.byStatus.reduce((s, x) => s + x.count, 0);
@@ -331,17 +339,18 @@ export default function DashboardPage() {
       {/*** 区域分布 + 合同状态 ***/}
       <Row gutter={[16, 16]} style={{ marginBottom: 24 }}>
         <Col xs={24} lg={16}>
-          <ProCard title="客户区域分布" subTitle="按镇街分组">
+          <ProCard title="客户区域分布" subTitle={townTruncated ? `按镇街分组（前 ${TOWN_TOP_N}）` : "按镇街分组"}>
             {townData.length > 0 ? (
               <Column
                 data={townData}
                 xField="town"
                 yField="count"
                 height={chartHeight}
-                colorField="town"
+                color={token.colorPrimary}
+                legend={false}
                 autoFit
                 label={{ text: (d: Record<string, unknown>) => String(d.count), style: { fontSize: 11 } }}
-                xAxis={{ label: { autoRotate: true, autoHide: false } }}
+                xAxis={{ label: { autoRotate: true, autoHide: true } }}
               />
             ) : <EmptyState empty title="暂无区域分布数据" description="客户所在地尚未录入镇街信息；请在客户档案中补充所在镇街" height={chartHeight} />}
           </ProCard>
