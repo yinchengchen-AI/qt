@@ -8,6 +8,7 @@ import {
   Drawer,
   Typography,
   Tag,
+  Tooltip,
   Space,
   Descriptions,
   Skeleton,
@@ -18,11 +19,9 @@ import { LinkOutlined, RobotOutlined } from "@ant-design/icons";
 import { useEffect, useState } from "react";
 import { useResponsive } from "@/lib/use-breakpoint";
 import {
-  actionDomain,
-  shortAction,
   shortActionLabel,
+  shortActionTone,
 } from "@/lib/operation-log-format";
-import { StatusTag } from "@/components/status-tag";
 import { SYSTEM_USER_ID } from "@/lib/system";
 import { formatDateTime } from "@/lib/format";
 
@@ -123,7 +122,6 @@ export function OperationLogDrawer({ logId, onClose }: Props) {
 
 function DetailBody({ data }: { data: OperationLogDetail }) {
   const isSystem = data.actorId === SYSTEM_USER_ID;
-  const domain = actionDomain(data.action);
   const diff = parseDiff(data.diff);
   const { isMobile: isM } = useResponsive();
 
@@ -182,12 +180,12 @@ function DetailBody({ data }: { data: OperationLogDetail }) {
           {
             key: "action",
             label: "动作",
-            children: domain ? (
-              <StatusTag status={shortAction(data.action)} domain={domain} />
-            ) : (
-              <Text style={{ fontFamily: "ui-monospace, Menlo, monospace" }}>
-                {data.action}
-              </Text>
+            children: (
+              <Tooltip title={data.action}>
+                <Tag color={shortActionTone(data.action)} style={{ margin: 0 }}>
+                  {shortActionLabel(data.action)}
+                </Tag>
+              </Tooltip>
             ),
           },
           {

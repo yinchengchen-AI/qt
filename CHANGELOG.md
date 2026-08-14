@@ -2,6 +2,16 @@
 
 本文件记录 qt-biz 每个版本的详细变更。项目快速入口请见 [README.md](README.md)。
 
+## v0.18.8(2026-08-14)合同详情页操作记录动作中文标签 + 语义色
+
+合同详情页「操作记录」时间线 + 点击节点打开的详情抽屉,动作标识从英文原始码(经 StatusTag 回退显示)统一改为中文标签 + 语义色 Tag。**DB schema / migrations: 无变化**。
+
+变更:
+- **fix(contract)**:`components/contract/operation-timeline.tsx` 动作列改用 `<Tag color={shortActionTone(action)}>{shortActionLabel(action)}</Tag>`,中文标签 + 语义色(正向绿 / 负向红 / 进行中蓝 / 待定橙 / 中性灰)
+- **fix(contract)**:`components/admin/operation-log-drawer.tsx` 详情抽屉「动作」字段同步改为中文标签 + 语义色
+- **refactor(lib)**:`lib/operation-log-format.ts` 的 `ACTION_LABELS` 升级为 `ACTION_META`(label + tone 语义色),新增 `shortActionTone()`
+- **测试**:typecheck / lint / vitest 全绿(94 文件,772 用例)
+
 ## v0.18.7(2026-08-14)消息中心前端显示优化 (Wave 2)
 
 消息中心前端显示打磨:补齐抽屉的「加载更多」与「置顶公告」缺口,统一类型标签样式,消除冗余列与单条已读后的分页跳动。**DB schema / migrations: 无变化**。

@@ -17,12 +17,10 @@ import {
 import { RobotOutlined, ReloadOutlined, CloseCircleFilled, CheckCircleFilled } from "@ant-design/icons";
 import useSWRInfinite from "swr/infinite";
 import { DateTimeCell } from "@/components/table-cells";
-import { StatusTag } from "@/components/status-tag";
 import { SYSTEM_USER_ID } from "@/lib/system";
 import {
-  actionDomain,
-  shortAction,
   shortActionLabel,
+  shortActionTone,
   entityLabel,
 } from "@/lib/operation-log-format";
 import { OperationLogDrawer } from "@/components/admin/operation-log-drawer";
@@ -240,7 +238,6 @@ function TimelineItem({
   onOpen: (id: string) => void;
   dense: boolean;
 }) {
-  const domain = actionDomain(log.action);
   const isSystem = log.actorId === SYSTEM_USER_ID;
   const entityIsNotContract = log.entity !== "Contract";
 
@@ -281,15 +278,11 @@ function TimelineItem({
             {log.actorId}
           </Text>
         )}
-        {domain ? (
-          <Tooltip title={log.action}>
-            <StatusTag status={shortAction(log.action)} domain={domain} />
-          </Tooltip>
-        ) : (
-          <Text style={{ fontFamily: "ui-monospace, Menlo, monospace", fontSize: 12 }}>
+        <Tooltip title={log.action}>
+          <Tag color={shortActionTone(log.action)} style={{ margin: 0 }}>
             {shortActionLabel(log.action)}
-          </Text>
-        )}
+          </Tag>
+        </Tooltip>
         {entityIsNotContract && (
           <Tag style={{ margin: 0 }}>{entityLabel(log.entity)}</Tag>
         )}
