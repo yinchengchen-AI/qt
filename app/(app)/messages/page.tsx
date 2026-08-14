@@ -1,6 +1,6 @@
 "use client";
 import { ProTable, type ActionType, type ProColumns } from "@ant-design/pro-components";
-import { Tag, Button, Space, App as AntdApp, Tabs, Empty, Typography, Popover, Card, Skeleton } from "antd";
+import { Tag, Button, Space, App as AntdApp, Tabs, Empty, Typography, Card, Skeleton } from "antd";
 import { CheckOutlined, DeleteOutlined, LinkOutlined, PushpinOutlined } from "@ant-design/icons";
 import Link from "next/link";
 import { useRef, useState, useEffect } from "react";
@@ -75,48 +75,36 @@ export default function MessagesPage() {
       render: (_, r) => <StatusTag status={r.type} domain="message" />
     },
     {
-      title: t("messages.column.title"),
+      title: t("messages.column.message"),
       dataIndex: "title",
-      width: 320,
+      width: 360,
       render: (_, r) => (
-        <Space size={6} align="start" wrap>
+        <div style={{ minWidth: 0 }}>
           <Text
             strong={!r.readAt}
             style={{
-              color: r.readAt ? "var(--qt-text-muted)" : undefined
+              color: r.readAt ? "var(--qt-text-muted)" : undefined,
+              display: "block"
             }}
           >
             {r.title}
           </Text>
-          {r.content && r.content.length > 60 ? (
-            <Popover
-              content={
-                <div style={{ maxWidth: 360 }}>
-                  <Paragraph style={{ marginBottom: 0, whiteSpace: "pre-wrap" }}>
-                    {r.content}
-                  </Paragraph>
-                </div>
-              }
-              trigger="hover"
-              placement="topLeft"
+          {r.content ? (
+            <Text
+              type="secondary"
+              style={{
+                fontSize: 12,
+                display: "-webkit-box",
+                WebkitLineClamp: 2,
+                WebkitBoxOrient: "vertical",
+                overflow: "hidden",
+                marginTop: 2
+              }}
             >
-              <Text type="secondary" style={{ fontSize: 12, cursor: "help" }}>
-                详情
-              </Text>
-            </Popover>
+              {r.content}
+            </Text>
           ) : null}
-        </Space>
-      )
-    },
-    {
-      title: t("messages.column.content"),
-      dataIndex: "content",
-      hideInTable: isMobile,
-      ellipsis: true,
-      render: (_, r) => (
-        <Text type="secondary" style={{ fontSize: 13 }}>
-          {r.content}
-        </Text>
+        </div>
       )
     },
     {
@@ -152,7 +140,7 @@ export default function MessagesPage() {
                 const j = await res.json();
                 if (j.code === 0) {
                   msg.success(t("messages.tag.read"));
-                  actionRef.current?.reloadAndRest?.();
+                  actionRef.current?.reload?.();
                 }
               }}
             >
@@ -174,7 +162,7 @@ export default function MessagesPage() {
                 onOk: async () => {
                   const res = await fetch(`/api/messages/${r.id}`, { method: "DELETE", credentials: "include" });
                   const j = await res.json();
-                  if (j.code === 0) actionRef.current?.reloadAndRest?.();
+                  if (j.code === 0) actionRef.current?.reload?.();
                 }
               });
             }}
@@ -216,7 +204,7 @@ export default function MessagesPage() {
                 const j = await r.json();
                 if (j.code === 0) {
                   msg.success(t("messages.toast.markedRead", { n: j.data.updated }));
-                  actionRef.current?.reloadAndRest?.();
+                  actionRef.current?.reload?.();
                   refreshUnread();
                 } else msg.error(j.message);
               }}
@@ -239,7 +227,7 @@ export default function MessagesPage() {
                     const j = await r.json();
                     if (j.code === 0) {
                       msg.success(t("messages.toast.clearedRead", { n: j.data.deleted }));
-                      actionRef.current?.reloadAndRest?.();
+                      actionRef.current?.reload?.();
                     } else msg.error(j.message);
                   }
                 });
@@ -281,7 +269,7 @@ export default function MessagesPage() {
           activeKey={tab}
           onChange={(k) => {
             setTab(k as TabKey);
-            actionRef.current?.reloadAndRest?.();
+            actionRef.current?.reload?.();
           }}
           items={tabItems}
           size={isMobile ? "small" : "middle"}

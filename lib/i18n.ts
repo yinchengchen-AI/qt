@@ -88,6 +88,8 @@ const messages: Record<Locale, Record<string, string>> = {
     "messages.drawer.viewAll": "查看全部消息 →",
     "messages.pinned.title": "置顶公告",
     "messages.pinned.empty": "暂无置顶公告",
+    "messages.column.message": "消息",
+    "messages.drawer.loading": "加载中…",
 
     // 公告
     "announcements.title": "公告",
@@ -293,6 +295,8 @@ const messages: Record<Locale, Record<string, string>> = {
     "messages.drawer.viewAll": "View all messages →",
     "messages.pinned.title": "Pinned Announcements",
     "messages.pinned.empty": "No pinned announcements",
+    "messages.column.message": "Message",
+    "messages.drawer.loading": "Loading…",
 
     // Announcements
     "announcements.title": "Announcements",

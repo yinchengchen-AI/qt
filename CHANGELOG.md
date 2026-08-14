@@ -2,6 +2,19 @@
 
 本文件记录 qt-biz 每个版本的详细变更。项目快速入口请见 [README.md](README.md)。
 
+## v0.18.7(2026-08-14)消息中心前端显示优化 (Wave 2)
+
+消息中心前端显示打磨:补齐抽屉的「加载更多」与「置顶公告」缺口,统一类型标签样式,消除冗余列与单条已读后的分页跳动。**DB schema / migrations: 无变化**。
+
+变更:
+- **fix(messages)**:抽屉加载更多 — 原 `loadMessages` 仅拉第 1 页 10 条(`messages.drawer.loadMore` 文案预留却从未接线),现支持分页追加,带 `hasMore` / `loading` 态
+- **feat(messages)**:抽屉置顶公告 — 打开抽屉 / 收到 SSE kick 时拉取 `/api/announcements/pinned`,列表顶部渲染置顶公告区
+- **fix(messages)**:单条已读后分页跳动 — 标记已读 / 删除 / 清空由 `reloadAndRest`(重置到第 1 页)改为 `reload`(保留当前分页)
+- **refactor(messages)**:合并冗余列 — 消息页「标题」列 + 「内容」列 + `详情` 气泡合并为单一「消息」列(标题加粗 + 内容两行截断预览),移除硬编码「详情」气泡与未使用的 `Popover` 导入
+- **fix(messages)**:类型标签统一 — 抽屉内手写的 `m.type` 彩色 `Tag` 改为 `<StatusTag status={m.type} domain="message" />`,与消息页一致;删除不再使用的 `MESSAGE_TYPE_COLORS` 映射
+- **feat(i18n)**:新增 `messages.column.message` / `messages.drawer.loading`(中英文)
+- **测试**:typecheck / lint / vitest 全绿(94 文件,772 用例)
+
 ## v0.18.6(2026-08-13)消息中心优化:事件驱动推送 + 跨页未读同步 + 置顶公告
 
 消息中心体验升级:后端 emit 事件后即时定向 SSE kick(替代纯 5s 轮询兜底),前端跨页面共享未读计数 + SSE 监听,Drawer 与消息页统一置顶公告展示。**DB schema / migrations: 无变化**。

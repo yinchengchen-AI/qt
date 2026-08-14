@@ -13,10 +13,10 @@ import {
   Avatar,
   Dropdown,
   Badge,
+  Button,
   Drawer,
   Empty,
   Space,
-  Tag,
   Typography,
   theme,
   App as AntdApp,
@@ -37,6 +37,7 @@ import {
   AccountBookOutlined,
   IdcardOutlined,
   SearchOutlined,
+  PushpinOutlined,
 } from "@ant-design/icons";
 import type { RoleCode } from "@/types/enums";
 import { ACTION, RESOURCE, type Action, type Resource } from "@/lib/permissions";
@@ -45,6 +46,7 @@ import { ROLE_LABEL } from "@/lib/status";
 import { useT } from "@/lib/i18n";
 import { ReleasePopup, type ReleasePopupData } from "@/components/release-popup";
 import { GlobalSearch } from "@/components/global-search";
+import { StatusTag } from "@/components/status-tag";
 import { formatDate, formatDateTime } from "@/lib/format";
 
 const { Sider, Header, Content } = Layout;
@@ -214,6 +216,12 @@ export function DashboardShell({ user, children }: Props) {
   const [messages, setMessages] = useState<
     Array<{ id: string; title: string; type: string; readAt: string | null; createdAt: string; link: { kind: string; id: string } | null }>
   >([]);
+  // 抽屉里的置顶公告(打开抽屉时拉一次)
+  const [pinned, setPinned] = useState<Array<{ id: string; title: string; content: string }>>([]);
+  // 抽屉消息分页:loadMessages(false) 翻页追加,loadMessages(true) 重置到第 1 页
+  const [msgPage, setMsgPage] = useState(1);
+  const [msgHasMore, setMsgHasMore] = useState(false);
+  const [msgLoading, setMsgLoading] = useState(false);
   // 应用更新弹窗:登录后若有未读的 AppRelease 弹出
   // (release=null + open=false 表示没有未读 / 已关闭)
   const [pendingRelease, setPendingRelease] = useState<ReleasePopupData | null>(null);
@@ -259,11 +267,30 @@ export function DashboardShell({ user, children }: Props) {
     setOpenKeys(newlyOpened.length > 0 ? newlyOpened : keys);
   };
 
-  const loadMessages = async () => {
+  const loadMessages = async (reset = true) => {
+    const nextPage = reset ? 1 : msgPage + 1;
+    setMsgLoading(true);
     try {
-      const r = await fetch("/api/messages?page=1&pageSize=10", { credentials: "include" });
+      const r = await fetch(`/api/messages?page=${nextPage}&pageSize=10`, { credentials: "include" });
       const j = await r.json();
-      if (j.code === 0) setMessages(j.data.list);
+      if (j.code === 0) {
+        const list = (j.data.list ?? []) as typeof messages;
+        setMessages((prev) => (reset ? list : [...prev, ...list]));
+        setMsgPage(nextPage);
+        setMsgHasMore(list.length === 10 && nextPage * 10 < (j.data.total ?? 0));
+      }
+    } catch {
+      /* ignore */
+    } finally {
+      setMsgLoading(false);
+    }
+  };
+
+  const loadPinned = async () => {
+    try {
+      const r = await fetch("/api/announcements/pinned", { credentials: "include" });
+      const j = await r.json();
+      if (j.code === 0) setPinned((j.data.list ?? []) as typeof pinned);
     } catch {
       /* ignore */
     }
@@ -272,7 +299,10 @@ export function DashboardShell({ user, children }: Props) {
   useMessageStream({
     onKick: () => {
       refreshUnread();
-      if (drawerOpen) loadMessages();
+      if (drawerOpen) {
+        loadMessages();
+        loadPinned();
+      }
     }
   });
 
@@ -586,6 +616,7 @@ export function DashboardShell({ user, children }: Props) {
                 onClick={() => {
                   setDrawerOpen(true);
                   loadMessages();
+                  loadPinned();
                 }}
                 aria-label="消息"
                 style={{
@@ -706,6 +737,27 @@ export function DashboardShell({ user, children }: Props) {
         }
       >
         <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+          {pinned.length > 0 ? (
+            <div
+              style={{
+                background: token.colorWarningBg,
+                border: `1px solid ${token.colorWarningBorder}`,
+                borderRadius: 8,
+                padding: "10px 12px"
+              }}
+            >
+              <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 6, fontWeight: 600, fontSize: 13, color: token.colorText }}>
+                <PushpinOutlined />
+                {t("messages.pinned.title")}
+              </div>
+              {pinned.map((p) => (
+                <div key={p.id} style={{ marginBottom: 6 }}>
+                  <div style={{ fontSize: 13, fontWeight: 500 }}>{p.title}</div>
+                  <div style={{ fontSize: 12, color: token.colorTextTertiary, marginTop: 2 }}>{p.content}</div>
+                </div>
+              ))}
+            </div>
+          ) : null}
           {messages.length === 0 ? (
             <Empty
               image={Empty.PRESENTED_IMAGE_SIMPLE}
@@ -722,7 +774,6 @@ export function DashboardShell({ user, children }: Props) {
           ) : null}
           {messages.map((m) => {
             const isUnread = !m.readAt;
-            const typeColor = MESSAGE_TYPE_COLORS[m.type] ?? token.colorPrimary;
             return (
               <div
                 key={m.id}
@@ -812,9 +863,7 @@ export function DashboardShell({ user, children }: Props) {
                         flexWrap: "wrap"
                       }}
                     >
-                      <Tag color={typeColor} style={{ margin: 0, fontSize: 11, lineHeight: "16px", padding: "0 6px" }}>
-                        {m.type}
-                      </Tag>
+                      <StatusTag status={m.type} domain="message" />
                       <span title={formatDateTime(m.createdAt)}>
                         {relativeTime(m.createdAt)}
                       </span>
@@ -827,6 +876,13 @@ export function DashboardShell({ user, children }: Props) {
               </div>
             );
           })}
+          {msgHasMore ? (
+            <div style={{ textAlign: "center", marginTop: 8 }}>
+              <Button type="link" size="small" loading={msgLoading} onClick={() => loadMessages(false)}>
+                {t("messages.drawer.loadMore")}
+              </Button>
+            </div>
+          ) : null}
           {messages.length > 0 ? (
             <div style={{ textAlign: "center", marginTop: 8 }}>
               <a
@@ -931,15 +987,6 @@ function Crumbs({ pathname, compact }: { pathname: string; compact?: boolean }) 
     </span>
   );
 }
-
-// 消息类型 → Tag 颜色映射(常见业务事件)
-const MESSAGE_TYPE_COLORS: Record<string, string> = {
-  CONTRACT_EXPIRING: "orange",
-  INVOICE_OVERDUE: "red",
-  PAYMENT_RECEIVED: "green",
-  CONTRACT_TRANSITION: "purple",
-  ANNOUNCEMENT: "cyan"
-};
 
 // 相对时间:刚刚 / N 分钟前 / N 小时前 / N 天前 / 绝对日期
 function relativeTime(iso: string): string {

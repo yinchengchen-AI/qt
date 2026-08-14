@@ -6,11 +6,11 @@
 [![TypeScript](https://img.shields.io/badge/TypeScript-6.0.3-3178c6)](https://www.typescriptlang.org/)
 [![Prisma](https://img.shields.io/badge/Prisma-7.9.1-2d3748)](https://www.prisma.io/)
 [![PostgreSQL](https://img.shields.io/badge/PostgreSQL-16-336791)](https://www.postgresql.org/)
-[![Last Release](https://img.shields.io/badge/release-v0.18.5-blue)](CHANGELOG.md)
+[![Last Release](https://img.shields.io/badge/release-v0.18.7-blue)](CHANGELOG.md)
 
 > **客户 / 合同 / 开票 / 回款** 一体化管理,附件走 MinIO presigned 直传,服务端 Server Actions + RBAC + 行级隔离。
 >
-> **当前版本: v0.18.5**(2026-08-13)。文档地图见 [docs/README.md](docs/README.md),架构与设计见 [docs/architecture/DESIGN-v3.md](docs/architecture/DESIGN-v3.md),用户手册见 [docs/user/USER_MANUAL.md](docs/user/USER_MANUAL.md)。
+> **当前版本: v0.18.7**(2026-08-14)。文档地图见 [docs/README.md](docs/README.md),架构与设计见 [docs/architecture/DESIGN-v3.md](docs/architecture/DESIGN-v3.md),用户手册见 [docs/user/USER_MANUAL.md](docs/user/USER_MANUAL.md)。
 
 ## 目录
 
@@ -255,6 +255,16 @@ nginx 反代下上游异常时,由 `public/502.html` 静态页与 `app/502/page.
 ## 最近更新
 
 最近 5 个版本,完整历史见 [CHANGELOG.md](CHANGELOG.md)。
+
+### v0.18.7(2026-08-14)消息中心前端显示优化 (Wave 2)
+
+消息中心前端打磨:抽屉补齐「加载更多」与「置顶公告」,类型标签统一为 StatusTag,消息页合并标题/内容冗余列,单条已读后不再跳回第 1 页。**DB schema 无变化**。
+
+- **抽屉加载更多**:补齐分页,带 loading 态
+- **抽屉置顶公告**:打开抽屉 / 收到推送时拉取并展示 pinned 公告
+- **消息页合并冗余列**:标题 + 内容 + 详情气泡 → 单一「消息」列(标题加粗 + 内容两行截断预览)
+- **类型标签统一**:抽屉改用 `<StatusTag domain="message">`,与消息页一致
+- **单条已读保留分页**:标记已读 / 删除 / 清空不再 `reloadAndRest` 跳页
 
 ### v0.18.5(2026-08-13)行级隔离前端收口 (Wave 3)
 
