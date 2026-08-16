@@ -2,6 +2,17 @@
 
 本文件记录 qt-biz 每个版本的详细变更。项目快速入口请见 [README.md](README.md)。
 
+## v0.19.4(2026-08-16)聚合搜索框移至内容区 sticky 吸附条
+
+搜索框从顶栏右侧移至内容区顶部,sticky 吸附在 Header 下方——随页面滚动始终保持可见,任何页面任何滚动位置都能直接搜索。**DB schema / migrations: 无变化**。
+
+变更:
+- **feat(search)**:搜索条移至 Content 顶部 sticky(top=Header 高度, zIndex 低于 Header),居中限宽 720px,实色背景遮挡滚动内容;顶栏右侧移除搜索框,只留消息与头像
+- **feat(search)**:`GlobalSearch` 新增 `block` 全宽模式:宽度 100% + 下拉跟随输入框宽度;手机端直接显示输入框(不再走"图标→展开 fixed 条"两步流程)
+- **fix(search)**:手机端隐藏 `Ctrl K` 徽标(无物理键盘场景)
+- **test(e2e)**:登录 waitForURL timeout 10s→20s(dev 按需编译 + 多项目连续跑时登录 POST 偶发 >10s;生产构建无此问题)
+- **测试**:typecheck / lint / vitest 全绿(96 文件,775 用例);playwright 三项目(chromium/ipad/iphone)各 3 用例全过;桌面+移动端 sticky 滚动截图验证
+
 ## v0.19.3(2026-08-16)全局搜索框外观与实用性优化
 
 顶栏聚合搜索框视觉与交互双重升级:分组彩色图标、快捷键唤起、搜索历史、Enter 直达列表页。**DB schema / migrations: 无变化**。

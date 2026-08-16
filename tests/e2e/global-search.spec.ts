@@ -13,7 +13,8 @@ async function ensureLoggedIn(page: import("@playwright/test").Page, employeeNo:
     await page.getByPlaceholder("工号", { exact: true }).fill(employeeNo);
     await page.getByPlaceholder("密码", { exact: true }).fill(password);
     await page.getByRole("button", { name: "登 录", exact: true }).click();
-    await page.waitForURL(/dashboard/, { timeout: 10000 });
+    // dev 模式按需编译 + 多项目连续跑时登录 POST 偶发 >10s, 放宽到 20s (生产构建无此问题)
+    await page.waitForURL(/dashboard/, { timeout: 20000 });
   }
 }
 

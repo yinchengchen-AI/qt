@@ -256,6 +256,14 @@ nginx 反代下上游异常时,由 `public/502.html` 静态页与 `app/502/page.
 
 最近 5 个版本,完整历史见 [CHANGELOG.md](CHANGELOG.md)。
 
+### v0.19.4(2026-08-16)聚合搜索框移至内容区 sticky 吸附条
+
+搜索框从顶栏右侧移至内容区顶部,sticky 吸附随页面滚动始终可见;居中限宽 720px,手机端直显输入框。**DB schema 无变化**。
+
+- **feat**:Content 顶部 sticky 搜索条(top=Header 高度,实色背景遮挡);顶栏右侧只留消息+头像
+- **feat**:GlobalSearch 新增 block 全宽模式;手机端不再走"图标→展开"两步流程,隐藏无意义的 Ctrl K 徽标
+- **test(e2e)**:登录 timeout 放宽(dev 编译压力容错);三项目 e2e 全过;sticky 滚动截图验证
+
 ### v0.19.3(2026-08-16)全局搜索框外观与实用性优化
 
 顶栏聚合搜索框升级:Ctrl+K 快捷键唤起、搜索历史(最近 5 条)、Enter 直达列表页、分组彩色图标、「查看全部」整行醒目化、空态/失败态带图标可重试。**DB schema 无变化**。

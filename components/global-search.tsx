@@ -77,7 +77,8 @@ function readHistory(): string[] {
   }
 }
 
-export function GlobalSearch() {
+/** block=true: 全宽模式 (内容区 sticky 搜索条); 手机端直接显示输入框, 跳过图标→展开流程 */
+export function GlobalSearch({ block }: { block?: boolean }) {
   const router = useRouter();
   const { token } = theme.useToken();
   const { isPhone } = useResponsive();
@@ -358,10 +359,10 @@ export function GlobalSearch() {
     return groups;
   };
 
-  // 快捷键徽标: 空输入且非加载时显示, 提示可 Ctrl+K 唤起
+  // 快捷键徽标: 空输入且非加载时显示, 提示可 Ctrl+K 唤起 (手机端无物理键盘, 不显示)
   const isMac = typeof navigator !== "undefined" && /mac/i.test(navigator.platform);
   const kbdHint =
-    !keyword && !loading ? (
+    !keyword && !loading && !isPhone ? (
       <kbd
         style={{
           fontSize: 10,
@@ -412,8 +413,8 @@ export function GlobalSearch() {
       }}
       open={dropdownOpen}
       onOpenChange={(v) => setOpen(v)}
-      popupMatchSelectWidth={480}
-      style={{ width: isPhone ? "100%" : 280 }}
+      popupMatchSelectWidth={block ? true : 480}
+      style={{ width: block || isPhone ? "100%" : 280 }}
       suffixIcon={loading ? <Spin size="small" /> : kbdHint}
     >
       <Input
@@ -439,8 +440,8 @@ export function GlobalSearch() {
     </AutoComplete>
   );
 
-  // 手机端: 默认一个搜索图标, 点开为全宽输入条 (fixed 在 Header 下方)
-  if (isPhone && !expanded) {
+  // 手机端 (非 block): 默认一个搜索图标, 点开为全宽输入条 (fixed 在 Header 下方)
+  if (!block && isPhone && !expanded) {
     return (
       <button
         type="button"
@@ -466,7 +467,7 @@ export function GlobalSearch() {
       </button>
     );
   }
-  if (isPhone && expanded) {
+  if (!block && isPhone && expanded) {
     return (
       <div
         style={{

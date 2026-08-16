@@ -572,7 +572,6 @@ export function DashboardShell({ user, children }: Props) {
           </div>
 
           <div style={{ display: "inline-flex", alignItems: "center", gap: isMobile ? 4 : 16, flexShrink: 0 }}>
-            <GlobalSearch />
             <Badge count={unread} overflowCount={99} size="small" offset={[-2, 2]}>
               <button
                 type="button"
@@ -638,6 +637,24 @@ export function DashboardShell({ user, children }: Props) {
             minHeight: isMobile ? "calc(100vh - 56px)" : "calc(100vh - 64px)"
           }}
         >
+          {/* 聚合搜索条: sticky 吸附在 Header 下方, 随页面滚动保持可见;
+              zIndex 低于 Header(10), 内容从其下方滚过 */}
+          <div
+            style={{
+              position: "sticky",
+              top: isMobile ? 56 : 64,
+              zIndex: 9,
+              padding: isMobile ? "8px 12px" : "10px 20px",
+              background: token.colorBgContainer,
+              borderBottom: `1px solid ${token.colorSplit}`,
+              display: "flex",
+              justifyContent: "center"
+            }}
+          >
+            <div style={{ width: "100%", maxWidth: 720 }}>
+              <GlobalSearch block />
+            </div>
+          </div>
           {children}
         </Content>
       </Layout>
