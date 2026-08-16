@@ -2,9 +2,10 @@
 //
 // 覆盖:
 //   1) 按客户名 / 信用代码 / 联系人电话 / 合同号 / 发票号 / 回款单号各命中一次
-//   2) SALES 行级隔离: 只命中自己名下记录; ADMIN 全量
+//   2) read-open: SALES 跨 owner 可见 (与列表页同口径, v0.18.4 Wave 3); ADMIN 全量
 //   3) 1 字符 q 不查库返回空分组; 含 % 的 q 被转义不命中; 无命中返回全空分组
 //   4) 软删除记录不出现
+//   5) 运行时权限收窄: 无 READ 权限的组返回空分组且不查库
 //
 // DB 不可达时整组 skip. 数据带唯一 TAG 前缀,跑完自清理.
 
@@ -26,7 +27,7 @@ let adminUser: SessionUser | null = null;
 let salesUser: SessionUser | null = null;
 
 // sales 名下的完整链路: 客户A → 合同A → 发票A / 回款A
-// admin 名下的客户B(用于验证 SALES 看不到)
+// admin 名下的客户B(用于验证 read-open: SALES 也能搜到)
 let salesCustomerId: string | null = null;
 let adminCustomerId: string | null = null;
 let contractId: string | null = null;
@@ -76,7 +77,7 @@ beforeAll(async () => {
   });
   salesCustomerId = custA.id;
 
-  // 客户B (admin 名下): SALES 搜索时不应命中
+  // 客户B (admin 名下): read-open 后 SALES 搜索也应命中
   const custB = await prisma.customer.create({
     data: {
       code: `${TAG}-B`,
@@ -229,14 +230,16 @@ describe("searchAll 聚合搜索", () => {
     expect(hit!.customerName).toContain(TAG);
   });
 
-  it("SALES 只命中自己名下记录", async () => {
+  it("SALES 跨 owner 可见 (read-open, 与列表页同口径)", async () => {
     if (!dbReachable || !salesUser) return;
     const r = await searchAll(salesUser, TAG);
     expect(r.customers.items.some((c) => c.id === salesCustomerId)).toBe(true);
-    expect(r.customers.items.some((c) => c.id === adminCustomerId)).toBe(false);
-    // 乙客户名检索: SALES 视角 total = 0
+    // read-open: admin 名下客户对 SALES 同样可见 (v0.18.4 Wave 3 权限改造)
+    expect(r.customers.items.some((c) => c.id === adminCustomerId)).toBe(true);
+    // 乙客户名检索: SALES 视角也能命中
     const r2 = await searchAll(salesUser, `${TAG}-乙客户`);
-    expect(r2.customers.total).toBe(0);
+    expect(r2.customers.total).toBeGreaterThanOrEqual(1);
+    expect(r2.customers.items.some((c) => c.id === adminCustomerId)).toBe(true);
   });
 
   it("ADMIN 全量可见", async () => {

@@ -36,7 +36,6 @@ import {
   AppstoreOutlined,
   AccountBookOutlined,
   IdcardOutlined,
-  SearchOutlined,
   PushpinOutlined,
 } from "@ant-design/icons";
 import type { RoleCode } from "@/types/enums";
@@ -46,10 +45,7 @@ import { ROLE_LABEL } from "@/lib/status";
 import { useT } from "@/lib/i18n";
 import { ReleasePopup, type ReleasePopupData } from "@/components/release-popup";
 import { GlobalSearch } from "@/components/global-search";
-<<<<<<< HEAD
 import { StatusTag } from "@/components/status-tag";
-=======
->>>>>>> 55cf801 (feat(search): DashboardShell 顶栏接入 GlobalSearch)
 import { formatDate, formatDateTime } from "@/lib/format";
 
 const { Sider, Header, Content } = Layout;
@@ -228,7 +224,6 @@ export function DashboardShell({ user, children }: Props) {
   // (release=null + open=false 表示没有未读 / 已关闭)
   const [pendingRelease, setPendingRelease] = useState<ReleasePopupData | null>(null);
   const [releasePopupOpen, setReleasePopupOpen] = useState(false);
-  const [searchOpen, setSearchOpen] = useState(false);
 
   const { key: selectedKey, open: defaultOpen } = useMemo(
     () => findSelectedKey(pathname),
@@ -331,18 +326,6 @@ export function DashboardShell({ user, children }: Props) {
     return () => {
       cancelled = true;
     };
-  }, []);
-
-  // Cmd+K / Ctrl+K 快捷键打开全局搜索
-  useEffect(() => {
-    const handler = (e: KeyboardEvent) => {
-      if ((e.metaKey || e.ctrlKey) && e.key === "k") {
-        e.preventDefault();
-        setSearchOpen((o) => !o);
-      }
-    };
-    window.addEventListener("keydown", handler);
-    return () => window.removeEventListener("keydown", handler);
   }, []);
 
   const userMenu: MenuProps["items"] = [
@@ -902,7 +885,6 @@ export function DashboardShell({ user, children }: Props) {
         }}
       />
 
-      <GlobalSearch open={searchOpen} onClose={() => setSearchOpen(false)} />
     </Layout>
   );
 }

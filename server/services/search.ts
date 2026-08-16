@@ -1,11 +1,10 @@
 // 全局搜索聚合: 跨 客户/合同/发票/回款 四类实体, 各取前 5 条 + 命中总数。
 // 逐组消费现有 READ 权限 (运行时权限真源, 见 lib/permissions.ts): 无权限的组返回空分组且不查库;
-// 行级隔离与列表页同口径 (ownerEq / ownerViaContract, 见 lib/ownership.ts);
+// 读路径开放 (read-open): 与列表页同口径, SALES/EXPERT 可跨 owner 搜索 (v0.18.4 Wave 3 权限改造);
 // 软删除记录一律排除 (deletedAt: null)。
 import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import type { SessionUser } from "@/lib/session";
-import { ownerEq, ownerViaContract } from "@/lib/ownership";
 import { ACTION, RESOURCE, hasPermission } from "@/lib/permissions";
 
 const GROUP_TAKE = 5;
@@ -53,9 +52,10 @@ export async function searchAll(user: SessionUser, q: string): Promise<SearchRes
   const kw = escapeLike(keyword);
   const like = { contains: kw, mode: "insensitive" as const };
 
+  // read-open: 不注入 ownerEq / ownerViaContract, 与列表页读口径一致 (lib/ownership.ts 注释:
+  // "此后仅统计/工作台/回收站口径使用; 业务浏览读路径不再消费")
   const customerWhere: Prisma.CustomerWhereInput = {
     deletedAt: null,
-    ...ownerEq(user),
     OR: [
       { code: like },
       { name: like },
@@ -67,17 +67,14 @@ export async function searchAll(user: SessionUser, q: string): Promise<SearchRes
   };
   const contractWhere: Prisma.ContractWhereInput = {
     deletedAt: null,
-    ...ownerEq(user),
     OR: [{ contractNo: like }, { title: like }, { customerName: like }]
   };
   const invoiceWhere: Prisma.InvoiceWhereInput = {
     deletedAt: null,
-    ...(ownerViaContract(user) as Prisma.InvoiceWhereInput),
     OR: [{ invoiceNo: like }, { invoiceCode: like }, { customerName: like }]
   };
   const paymentWhere: Prisma.PaymentWhereInput = {
     deletedAt: null,
-    ...(ownerViaContract(user) as Prisma.PaymentWhereInput),
     OR: [{ paymentNo: like }, { bankRefNo: like }, { customer: { name: like } }]
   };
 
