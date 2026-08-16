@@ -2,6 +2,15 @@
 
 本文件记录 qt-biz 每个版本的详细变更。项目快速入口请见 [README.md](README.md)。
 
+## v0.19.2(2026-08-16)remote-deploy.sh 退出码假阴性修复
+
+修复本地触发远端部署的两个退出码判定缺陷:部署成功后脚本误报"30 分钟 stream 超时"(exit 124),以及潜在的 deploy 失败被误记为成功。**DB schema / migrations: 无变化**;纯运维脚本(本地触发端)改动,随下次部署顺带同步远端。
+
+变更:
+- **fix(deploy)**:`scripts/prod/remote-deploy.sh` tmux 会话退出分支从"误报 stream 超时"改为 ssh 读远端 `/tmp/qt-deploy.log` 的 `EXIT=` 标记并以其为真实退出码(EXIT= 由 tmux 内命令写入日志文件,不出现在 capture-pane 输出,原 grep 永不命中)
+- **fix(deploy)**:tmux 内命令加 `set -o pipefail`:否则 `deploy.sh | tee` 的 `$?` 是 tee 的退出码(恒 0),deploy.sh 失败会被误记为 EXIT=0
+- **测试**:bash -n 语法检查通过;--dry-run 回归正常
+
 ## v0.19.1(2026-08-16)全局搜索对齐 read-open 权限口径
 
 全局搜索从行级隔离改为读开放(read-open),与列表页读口径一致(v0.18.4 Wave 3 权限改造同策略):SALES/EXPERT 现在可跨 owner 搜索客户/合同/发票/回款。此前搜索仍走 ownerEq/ownerViaContract 行级隔离,与列表页"读开放、写守门"行为不一致(列表页可见的记录搜不到)。**DB schema / migrations: 无变化**。

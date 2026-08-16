@@ -117,7 +117,8 @@ if [ "$USE_TMUX" -eq 1 ]; then
     exit 1
   fi
 
-  REMOTE_CMD="cd '$DEPLOY_PATH' && tmux new-session -d -s $TMUX_SESSION 'sudo -E ./scripts/prod/deploy.sh 2>&1 | tee $TMUX_LOG; echo EXIT=\$? >> $TMUX_LOG' && tmux list-sessions | grep $TMUX_SESSION"
+  # pipefail: 否则 EXIT=$? 拿到的是管道末端 tee 的退出码 (恒 0), deploy.sh 失败会被误记为成功
+  REMOTE_CMD="cd '$DEPLOY_PATH' && tmux new-session -d -s $TMUX_SESSION 'set -o pipefail; sudo -E ./scripts/prod/deploy.sh 2>&1 | tee $TMUX_LOG; echo EXIT=\$? >> $TMUX_LOG' && tmux list-sessions | grep $TMUX_SESSION"
 
   echo "[local] 远端启动 tmux 会话: $TMUX_SESSION"
   "${SSH_BASE[@]}" "$DEPLOY_USER@$DEPLOY_HOST" "$REMOTE_CMD"
@@ -131,8 +132,16 @@ if [ "$USE_TMUX" -eq 1 ]; then
     sleep 3
     OUTPUT=$("${SSH_BASE[@]}" "$DEPLOY_USER@$DEPLOY_HOST" "tmux capture-pane -t $TMUX_SESSION -p 2>/dev/null || echo '__NO_SESSION__'")
     if echo "$OUTPUT" | grep -q "__NO_SESSION__"; then
-      echo "[local] tmux 会话已退出,停止 stream"
-      break
+      # tmux 会话退出 = deploy 已结束。EXIT= 标记写在远端 $TMUX_LOG 文件 (不在 pane),
+      # 必须从日志读真实退出码; 否则会话正常结束会被误报为 "30 分钟 stream 超时" (exit 124)
+      echo "[local] tmux 会话已退出,从远端日志读取真实退出码..."
+      EXIT_CODE=$("${SSH_BASE[@]}" "$DEPLOY_USER@$DEPLOY_HOST" "grep -oP 'EXIT=\K\d+' '$TMUX_LOG' 2>/dev/null | tail -1")
+      if [ -n "$EXIT_CODE" ]; then
+        echo "[local] 远端 deploy 退出码: $EXIT_CODE"
+        exit "$EXIT_CODE"
+      fi
+      echo "[local] [WARN] 远端日志 ($TMUX_LOG) 无 EXIT 标记;手动检查: ssh ... tail $TMUX_LOG"
+      exit 1
     fi
     # 只打印新增的行 (按行号去重; 简化: 重打整个 capture-pane 末尾 50 行, 加 [remote] 前缀)
     echo "$OUTPUT" | tail -50 | sed 's/^/[remote] /'

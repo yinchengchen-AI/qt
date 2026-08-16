@@ -256,6 +256,10 @@ nginx 反代下上游异常时,由 `public/502.html` 静态页与 `app/502/page.
 
 最近 5 个版本,完整历史见 [CHANGELOG.md](CHANGELOG.md)。
 
+### v0.19.2(2026-08-16)remote-deploy.sh 退出码假阴性修复
+
+修复本地触发远端部署后误报"30 分钟 stream 超时"的缺陷:tmux 会话退出时改读远端日志的 EXIT= 标记作为真实退出码;tmux 内命令补 pipefail,防止 deploy 失败被 tee 的退出码掩盖。**DB schema 无变化**;纯运维脚本改动,随下次部署顺带同步。
+
 ### v0.19.1(2026-08-16)全局搜索对齐 read-open 权限口径
 
 全局搜索从行级隔离改为读开放(read-open),与列表页读口径一致(v0.18.4 Wave 3 同策略):SALES/EXPERT 可跨 owner 搜索客户/合同/发票/回款。**DB schema 无变化**。
