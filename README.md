@@ -256,6 +256,14 @@ nginx 反代下上游异常时,由 `public/502.html` 静态页与 `app/502/page.
 
 最近 5 个版本,完整历史见 [CHANGELOG.md](CHANGELOG.md)。
 
+### v0.19.1(2026-08-16)全局搜索对齐 read-open 权限口径
+
+全局搜索从行级隔离改为读开放(read-open),与列表页读口径一致(v0.18.4 Wave 3 同策略):SALES/EXPERT 可跨 owner 搜索客户/合同/发票/回款。**DB schema 无变化**。
+
+- **fix(search)**:search 服务去掉 ownerEq/ownerViaContract 行级隔离注入;逐组 READ 权限门禁、LIKE 转义、分组 total 统计保留
+- **fix(search)**:GlobalSearch 恢复自管理组件(防抖/高亮/分组/移动端),清理合并混入的受控弹窗残留
+- **测试**:typecheck / lint / vitest 全绿(96 文件,775 用例)
+
 ### v0.19.0(2026-08-14)统计模块收口:业绩排行三维度合并 + 账龄趋势快照预计算
 
 「员工业绩」与「区域统计」合并为统一的「业绩排行」页(员工/签约人/区域三维度);账龄趋势图改读每日快照表。**DB schema 有变化:新增 `AgingSnapshot` 表(迁移 `20260814_aging_snapshot`)**。

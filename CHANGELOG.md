@@ -2,6 +2,16 @@
 
 本文件记录 qt-biz 每个版本的详细变更。项目快速入口请见 [README.md](README.md)。
 
+## v0.19.1(2026-08-16)全局搜索对齐 read-open 权限口径
+
+全局搜索从行级隔离改为读开放(read-open),与列表页读口径一致(v0.18.4 Wave 3 权限改造同策略):SALES/EXPERT 现在可跨 owner 搜索客户/合同/发票/回款。此前搜索仍走 ownerEq/ownerViaContract 行级隔离,与列表页"读开放、写守门"行为不一致(列表页可见的记录搜不到)。**DB schema / migrations: 无变化**。
+
+变更:
+- **fix(search)**:`server/services/search.ts` 四组 where 去掉 `ownerEq` / `ownerViaContract` 行级隔离注入,与列表页读口径对齐(`lib/ownership.ts` 注释: owner 过滤仅统计/工作台/回收站口径使用);逐组 READ 权限门禁(`hasPermission`,无权限组返回空分组且不查库)、LIKE 通配符转义、分组 total 统计保留不变
+- **fix(search)**:`GlobalSearch` 恢复为自管理组件(AutoComplete 下拉式,防抖/高亮/分组/移动端展开),清理合并时混入的受控弹窗调用与 ⌘K 快捷键残留
+- **test(search)**:`tests/api/search.test.ts` 用例"SALES 只命中自己名下记录"改为"SALES 跨 owner 可见 (read-open, 与列表页同口径)",断言 SALES 也能搜到 admin 名下客户
+- **测试**:typecheck / lint / vitest 全绿(96 文件,775 用例)
+
 ## v0.19.0(2026-08-14)统计模块收口:业绩排行三维度合并 + 账龄趋势快照预计算
 
 「员工业绩」与「区域统计」两页合并为统一的「业绩排行」页(按员工 / 按签约人 / 按区域三维度切换);账龄趋势图从每次请求实时重算 30 天改为读每日快照表。**DB schema 有变化:新增 `AgingSnapshot` 表(迁移 `20260814_aging_snapshot`,含 `GRANT ALL ... TO qt_app`)**。
