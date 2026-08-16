@@ -2,6 +2,19 @@
 
 本文件记录 qt-biz 每个版本的详细变更。项目快速入口请见 [README.md](README.md)。
 
+## v0.19.3(2026-08-16)全局搜索框外观与实用性优化
+
+顶栏聚合搜索框视觉与交互双重升级:分组彩色图标、快捷键唤起、搜索历史、Enter 直达列表页。**DB schema / migrations: 无变化**。
+
+变更:
+- **feat(search)**:Ctrl+K / ⌘K 全局快捷键聚焦搜索框(手机端展开全宽输入条);输入框右侧常驻 `Ctrl K` 徽标提示(非 Mac 自动切换文案)
+- **feat(search)**:搜索历史(localStorage 最近 5 条,仅在真实跳转时写入);空输入聚焦显示「最近搜索」分组,单条可删
+- **feat(search)**:Enter 智能跳转——未用 ↑↓ 导航时跳首个命中类的「查看全部」列表页(带 ?keyword=);用过 ↑↓ 则交给 antd 默认选中,两者不冲突
+- **feat(search)**:1 字符输入显示「再输入 1 个字符开始搜索」提示(此前静默无反馈)
+- **style(search)**:下拉分组标题加彩色图标(客户蓝/合同紫/发票青/回款绿);「查看全部 N 条」整行醒目化(主色+虚线分隔+右箭头);空态/失败态带图标,失败可点击重试;输入框 240→280px,下拉 420→480px
+- **fix(search)**:修复下拉闪烁竞态——fill 输入后防抖 300ms 窗口内 loading=false+data=null 导致下拉闪关并触发 antd onOpenChange(false) 锁死 open 状态,改为 trimmedLen>=1 常开(e2e 实测复现)
+- **测试**:e2e 新增 2 用例(Ctrl+K 聚焦+历史记录 / Enter 跳查看全部);typecheck / lint / vitest 全绿(96 文件,775 用例);playwright chromium 3 用例全过
+
 ## v0.19.2(2026-08-16)remote-deploy.sh 退出码假阴性修复
 
 修复本地触发远端部署的两个退出码判定缺陷:部署成功后脚本误报"30 分钟 stream 超时"(exit 124),以及潜在的 deploy 失败被误记为成功。**DB schema / migrations: 无变化**;纯运维脚本(本地触发端)改动,随下次部署顺带同步远端。
