@@ -1,18 +1,38 @@
+// 全局搜索聚合 service 回归
+//
+// 覆盖:
+//   1) 按客户名 / 信用代码 / 联系人电话 / 合同号 / 发票号 / 回款单号各命中一次
+//   2) SALES 行级隔离: 只命中自己名下记录; ADMIN 全量
+//   3) 1 字符 q 不查库返回空分组; 含 % 的 q 被转义不命中; 无命中返回全空分组
+//   4) 软删除记录不出现
+//
+// DB 不可达时整组 skip. 数据带唯一 TAG 前缀,跑完自清理.
+
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { prisma } from "@/lib/prisma";
 import type { SessionUser } from "@/lib/session";
-import type { RoleCode } from "@/types/enums";
-import { ApiError } from "@/lib/api";
-import { globalSearch } from "@/server/services/search";
-import { setRuntimePermissions, clearRuntimePermissions } from "@/lib/permissions";
+import {
+  ACTION,
+  RESOURCE,
+  ROLE_PERMISSIONS,
+  _resetRuntimePermissionsForTests,
+  setRuntimePermissions
+} from "@/lib/permissions";
+import { searchAll } from "@/server/services/search";
 
 let dbReachable = false;
+const TAG = `TEST-SEARCH-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 let adminUser: SessionUser | null = null;
 let salesUser: SessionUser | null = null;
-let expertUser: SessionUser | null = null;
 
-const CROSS_OWNER_KEYWORD = "CrossOwnerSearchKeyword";
-const crossOwnerIds: { customerId?: string; contractId?: string; invoiceId?: string; paymentId?: string } = {};
+// sales 名下的完整链路: 客户A → 合同A → 发票A / 回款A
+// admin 名下的客户B(用于验证 SALES 看不到)
+let salesCustomerId: string | null = null;
+let adminCustomerId: string | null = null;
+let contractId: string | null = null;
+let invoiceId: string | null = null;
+let paymentId: string | null = null;
+let softDeletedCustomerId: string | null = null;
 
 beforeAll(async () => {
   try {
@@ -22,282 +42,256 @@ beforeAll(async () => {
     dbReachable = false;
     return;
   }
-  const [adminRow, salesRow, expertRow] = await Promise.all([
-    prisma.user.findFirst({ where: { role: { code: "ADMIN" }, deletedAt: null, isSystem: false } }),
-    prisma.user.findFirst({ where: { role: { code: "SALES" }, deletedAt: null, isSystem: false } }),
-    prisma.user.findFirst({ where: { role: { code: "EXPERT" }, deletedAt: null, isSystem: false } })
-  ]);
-  if (!adminRow || !salesRow) return;
-  adminUser = { id: adminRow.id, employeeNo: adminRow.employeeNo, name: adminRow.name, email: adminRow.email, roleCode: "ADMIN", permissions: [] };
-  salesUser = { id: salesRow.id, employeeNo: salesRow.employeeNo, name: salesRow.name, email: salesRow.email, roleCode: "SALES", permissions: [] };
-  if (expertRow) {
-    expertUser = { id: expertRow.id, employeeNo: expertRow.employeeNo, name: expertRow.name, email: expertRow.email, roleCode: "EXPERT", permissions: [] };
-  }
-
-  const uniqueSuffix = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-  const customer = await prisma.customer.create({
-    data: {
-      code: `CO-${uniqueSuffix}`,
-      name: `${CROSS_OWNER_KEYWORD} Customer`,
-      customerType: "ENTERPRISE",
-      province: "浙江",
-      city: "杭州",
-      contactPhone: "13800000000",
-      ownerUserId: adminUser.id,
-      createdById: adminUser.id,
-      updatedById: adminUser.id,
-    },
+  const adminRow = await prisma.user.findFirst({
+    where: { role: { code: "ADMIN" }, deletedAt: null, status: "ACTIVE" },
+    select: { id: true, employeeNo: true, name: true, email: true }
   });
-  crossOwnerIds.customerId = customer.id;
+  const salesRow = await prisma.user.findFirst({
+    where: { role: { code: "SALES" }, deletedAt: null, status: "ACTIVE" },
+    select: { id: true, employeeNo: true, name: true, email: true }
+  });
+  if (!adminRow || !salesRow) {
+    dbReachable = false;
+    return;
+  }
+  adminUser = { ...adminRow, roleCode: "ADMIN", permissions: [] };
+  salesUser = { ...salesRow, roleCode: "SALES", permissions: [] };
 
-  const now = new Date();
+  // 客户A (sales 名下): 名称/信用代码/联系人电话都含 TAG 变体,便于分组断言
+  const custA = await prisma.customer.create({
+    data: {
+      code: `${TAG}-A`,
+      name: `${TAG}-企泰客户`,
+      shortName: `${TAG}-企泰`,
+      unifiedSocialCreditCode: `91330100${TAG.replace(/[^A-Z0-9]/gi, "X").slice(0, 10)}`,
+      customerType: "ENTERPRISE",
+      province: "浙江省",
+      city: "杭州市",
+      contactName: `${TAG}-张三`,
+      contactPhone: "13800000999",
+      ownerUserId: salesRow.id,
+      createdById: salesRow.id,
+      updatedById: salesRow.id
+    }
+  });
+  salesCustomerId = custA.id;
+
+  // 客户B (admin 名下): SALES 搜索时不应命中
+  const custB = await prisma.customer.create({
+    data: {
+      code: `${TAG}-B`,
+      name: `${TAG}-乙客户`,
+      customerType: "ENTERPRISE",
+      province: "浙江省",
+      city: "杭州市",
+      contactPhone: "13800000888",
+      ownerUserId: adminRow.id,
+      createdById: adminRow.id,
+      updatedById: adminRow.id
+    }
+  });
+  adminCustomerId = custB.id;
+
+  // 软删除客户 (sales 名下, 名称含 TAG): 不应出现在任何结果里
+  const custDel = await prisma.customer.create({
+    data: {
+      code: `${TAG}-DEL`,
+      name: `${TAG}-已删客户`,
+      customerType: "ENTERPRISE",
+      province: "浙江省",
+      city: "杭州市",
+      contactPhone: "13800000777",
+      ownerUserId: salesRow.id,
+      createdById: salesRow.id,
+      updatedById: salesRow.id,
+      deletedAt: new Date()
+    }
+  });
+  softDeletedCustomerId = custDel.id;
+
   const contract = await prisma.contract.create({
     data: {
-      contractNo: `CO-${uniqueSuffix}`,
-      customerId: customer.id,
-      customerName: customer.name,
-      title: `${CROSS_OWNER_KEYWORD} Contract`,
+      contractNo: `${TAG}-HT-001`,
+      customerId: custA.id,
+      customerName: custA.name,
+      title: `${TAG}-安全评价合同`,
       serviceType: "OTHER",
-      signDate: now,
-      startDate: now,
-      endDate: new Date(now.getTime() + 86400000),
-      totalAmount: 1000,
+      signDate: new Date(),
+      startDate: new Date(),
+      endDate: new Date(Date.now() + 365 * 86400_000),
+      totalAmount: 10000,
       taxRate: 0.06,
-      taxAmount: 56.6,
-      amountExcludingTax: 943.4,
+      taxAmount: Number((10000 * 0.06 / 1.06).toFixed(2)),
+      amountExcludingTax: Number((10000 / 1.06).toFixed(2)),
       paymentMethod: "LUMP_SUM",
-      status: "DRAFT",
-      ownerUserId: adminUser.id,
-      signerId: adminUser.id,
-      attachments: [],
-      createdById: adminUser.id,
-      updatedById: adminUser.id,
-    },
+      status: "ACTIVE",
+      ownerUserId: salesRow.id,
+      signerId: salesRow.id,
+      attachments: [] as unknown as Parameters<typeof prisma.contract.create>[0]["data"]["attachments"],
+      createdById: salesRow.id,
+      updatedById: salesRow.id
+    }
   });
-  crossOwnerIds.contractId = contract.id;
+  contractId = contract.id;
 
   const invoice = await prisma.invoice.create({
     data: {
-      invoiceNo: `CO-${uniqueSuffix}`,
-      invoiceCode: CROSS_OWNER_KEYWORD,
+      invoiceNo: `${TAG}-FP-001`,
       contractId: contract.id,
-      customerId: customer.id,
-      customerName: customer.name,
-      invoiceType: "VAT_GENERAL",
+      customerId: custA.id,
+      customerName: custA.name,
+      invoiceType: "VAT_SPECIAL",
       amount: 1000,
       taxRate: 0.06,
-      taxAmount: 56.6,
-      amountExcludingTax: 943.4,
-      applyDate: now,
+      taxAmount: Number((1000 * 0.06 / 1.06).toFixed(2)),
+      amountExcludingTax: Number((1000 / 1.06).toFixed(2)),
+      applyDate: new Date(),
       titleType: "COMPANY",
-      titleName: customer.name,
-      status: "DRAFT",
-      applicantUserId: adminUser.id,
-      createdById: adminUser.id,
-      updatedById: adminUser.id,
-    },
+      titleName: custA.name,
+      status: "ISSUED",
+      applicantUserId: salesRow.id,
+      attachments: [],
+      createdById: salesRow.id,
+      updatedById: salesRow.id
+    }
   });
-  crossOwnerIds.invoiceId = invoice.id;
+  invoiceId = invoice.id;
 
   const payment = await prisma.payment.create({
     data: {
-      paymentNo: `CO-${uniqueSuffix}`,
-      customerId: customer.id,
+      paymentNo: `${TAG}-SK-001`,
+      customerId: custA.id,
       contractId: contract.id,
+      invoiceId: invoice.id,
       amount: 1000,
-      receivedAt: now,
+      receivedAt: new Date(),
       method: "BANK_TRANSFER",
-      bankRefNo: CROSS_OWNER_KEYWORD,
-      status: "PLANNED",
-      recorderUserId: adminUser.id,
-      createdById: adminUser.id,
-      updatedById: adminUser.id,
-    },
+      bankRefNo: `${TAG}-REF-001`,
+      status: "CONFIRMED",
+      recorderUserId: salesRow.id,
+      createdById: salesRow.id,
+      updatedById: salesRow.id
+    }
   });
-  crossOwnerIds.paymentId = payment.id;
+  paymentId = payment.id;
 });
-
-const guard = (fn: () => Promise<void>) => async () => {
-  if (!dbReachable || !adminUser || !salesUser) return;
-  await fn();
-};
-
-const guardWithExpert = (fn: () => Promise<void>) => async () => {
-  if (!dbReachable || !adminUser || !salesUser || !expertUser) return;
-  await fn();
-};
 
 afterAll(async () => {
-  if (!dbReachable || !adminUser) return;
-  if (crossOwnerIds.paymentId) {
-    await prisma.payment.deleteMany({ where: { id: crossOwnerIds.paymentId } });
-  }
-  if (crossOwnerIds.invoiceId) {
-    await prisma.invoice.deleteMany({ where: { id: crossOwnerIds.invoiceId } });
-  }
-  if (crossOwnerIds.contractId) {
-    await prisma.contract.deleteMany({ where: { id: crossOwnerIds.contractId } });
-  }
-  if (crossOwnerIds.customerId) {
-    await prisma.customer.deleteMany({ where: { id: crossOwnerIds.customerId } });
+  if (!dbReachable) return;
+  if (paymentId) await prisma.payment.delete({ where: { id: paymentId } }).catch(() => {});
+  if (invoiceId) await prisma.invoice.delete({ where: { id: invoiceId } }).catch(() => {});
+  if (contractId) await prisma.contract.delete({ where: { id: contractId } }).catch(() => {});
+  for (const id of [salesCustomerId, adminCustomerId, softDeletedCustomerId]) {
+    if (id) await prisma.customer.delete({ where: { id } }).catch(() => {});
   }
 });
 
-describe("globalSearch", () => {
-  it("returns empty results for short keyword", guard(async () => {
-    const result = await globalSearch(adminUser!, "a");
-    expect(result).toEqual({ customers: [], contracts: [], invoices: [], payments: [] });
-  }));
+describe("searchAll 聚合搜索", () => {
+  it("按客户名命中 customers 组", async () => {
+    if (!dbReachable || !adminUser) return;
+    const r = await searchAll(adminUser, `${TAG}-企泰客户`);
+    expect(r.customers.total).toBeGreaterThanOrEqual(1);
+    expect(r.customers.items.some((c) => c.id === salesCustomerId)).toBe(true);
+  });
 
-  it("returns empty results for empty keyword", guard(async () => {
-    const result = await globalSearch(adminUser!, "");
-    expect(result).toEqual({ customers: [], contracts: [], invoices: [], payments: [] });
-  }));
+  it("按统一社会信用代码命中 customers 组", async () => {
+    if (!dbReachable || !adminUser) return;
+    const cust = await prisma.customer.findUnique({ where: { id: salesCustomerId! } });
+    const r = await searchAll(adminUser, cust!.unifiedSocialCreditCode!);
+    expect(r.customers.items.some((c) => c.id === salesCustomerId)).toBe(true);
+  });
 
-  it("returns empty results for whitespace-only keyword", guard(async () => {
-    const result = await globalSearch(adminUser!, "   ");
-    expect(result).toEqual({ customers: [], contracts: [], invoices: [], payments: [] });
-  }));
+  it("按联系人电话命中 customers 组", async () => {
+    if (!dbReachable || !adminUser) return;
+    const r = await searchAll(adminUser, "13800000999");
+    expect(r.customers.items.some((c) => c.id === salesCustomerId)).toBe(true);
+  });
 
-  it("searches customers by name", guard(async () => {
-    const customer = await prisma.customer.findFirst({ where: { deletedAt: null } });
-    if (!customer) return;
-    const result = await globalSearch(adminUser!, customer.name.slice(0, 3));
-    expect(result.customers.length).toBeGreaterThan(0);
-    expect(result.customers.some((c) => c.id === customer.id)).toBe(true);
-  }));
+  it("按合同号命中 contracts 组", async () => {
+    if (!dbReachable || !adminUser) return;
+    const r = await searchAll(adminUser, `${TAG}-HT-001`);
+    expect(r.contracts.items.some((c) => c.id === contractId)).toBe(true);
+  });
 
-  it("searches customers by code", guard(async () => {
-    const customer = await prisma.customer.findFirst({ where: { deletedAt: null } });
-    if (!customer) return;
-    const result = await globalSearch(adminUser!, customer.code);
-    expect(result.customers.length).toBeGreaterThan(0);
-    expect(result.customers.some((c) => c.id === customer.id)).toBe(true);
-  }));
+  it("按发票号命中 invoices 组且金额为 string", async () => {
+    if (!dbReachable || !adminUser) return;
+    const r = await searchAll(adminUser, `${TAG}-FP-001`);
+    const hit = r.invoices.items.find((i) => i.id === invoiceId);
+    expect(hit).toBeDefined();
+    expect(typeof hit!.amount).toBe("string");
+  });
 
-  it("searches contracts by contractNo", guard(async () => {
-    const contract = await prisma.contract.findFirst({ where: { deletedAt: null } });
-    if (!contract) return;
-    const result = await globalSearch(adminUser!, contract.contractNo.slice(0, 5));
-    expect(result.contracts.length).toBeGreaterThan(0);
-    expect(result.contracts.some((c) => c.id === contract.id)).toBe(true);
-  }));
+  it("按回款单号命中 payments 组且带出客户名", async () => {
+    if (!dbReachable || !adminUser) return;
+    const r = await searchAll(adminUser, `${TAG}-SK-001`);
+    const hit = r.payments.items.find((p) => p.id === paymentId);
+    expect(hit).toBeDefined();
+    expect(hit!.customerName).toContain(TAG);
+  });
 
-  it("searches contracts by title", guard(async () => {
-    const contract = await prisma.contract.findFirst({ where: { deletedAt: null } });
-    if (!contract) return;
-    const result = await globalSearch(adminUser!, contract.title.slice(0, 5));
-    expect(result.contracts.length).toBeGreaterThan(0);
-    expect(result.contracts.some((c) => c.id === contract.id)).toBe(true);
-  }));
+  it("SALES 只命中自己名下记录", async () => {
+    if (!dbReachable || !salesUser) return;
+    const r = await searchAll(salesUser, TAG);
+    expect(r.customers.items.some((c) => c.id === salesCustomerId)).toBe(true);
+    expect(r.customers.items.some((c) => c.id === adminCustomerId)).toBe(false);
+    // 乙客户名检索: SALES 视角 total = 0
+    const r2 = await searchAll(salesUser, `${TAG}-乙客户`);
+    expect(r2.customers.total).toBe(0);
+  });
 
-  it("searches invoices by invoiceNo", guard(async () => {
-    const invoice = await prisma.invoice.findFirst({ where: { deletedAt: null } });
-    if (!invoice) return;
-    const result = await globalSearch(adminUser!, invoice.invoiceNo.slice(0, 5));
-    expect(result.invoices.length).toBeGreaterThan(0);
-    expect(result.invoices.some((i) => i.id === invoice.id)).toBe(true);
-  }));
+  it("ADMIN 全量可见", async () => {
+    if (!dbReachable || !adminUser) return;
+    const r = await searchAll(adminUser, TAG);
+    expect(r.customers.items.some((c) => c.id === adminCustomerId)).toBe(true);
+  });
 
-  it("searches payments by paymentNo", guard(async () => {
-    const payment = await prisma.payment.findFirst({ where: { deletedAt: null } });
-    if (!payment) return;
-    const result = await globalSearch(adminUser!, payment.paymentNo.slice(0, 5));
-    expect(result.payments.length).toBeGreaterThan(0);
-    expect(result.payments.some((p) => p.id === payment.id)).toBe(true);
-  }));
+  it("1 字符关键字不查库, 返回全空分组", async () => {
+    if (!dbReachable || !adminUser) return;
+    const r = await searchAll(adminUser, "企");
+    expect(r.customers.total).toBe(0);
+    expect(r.contracts.total).toBe(0);
+    expect(r.invoices.total).toBe(0);
+    expect(r.payments.total).toBe(0);
+  });
 
-  it("returns correct result structure", guard(async () => {
-    const result = await globalSearch(adminUser!, "test");
-    expect(result).toHaveProperty("customers");
-    expect(result).toHaveProperty("contracts");
-    expect(result).toHaveProperty("invoices");
-    expect(result).toHaveProperty("payments");
-    for (const group of Object.values(result)) {
-      for (const item of group) {
-        expect(item).toHaveProperty("id");
-        expect(item).toHaveProperty("title");
-        expect(item).toHaveProperty("subtitle");
-        expect(item).toHaveProperty("module");
-        expect(item).toHaveProperty("link");
-        expect(["customer", "contract", "invoice", "payment"]).toContain(item.module);
-        expect(item.link).toMatch(/^\/(customers|contracts|invoices|payments)\//);
-      }
-    }
-  }));
+  it("LIKE 通配符 % 被转义, 不会匹配全部", async () => {
+    if (!dbReachable || !adminUser) return;
+    const r = await searchAll(adminUser, "%%");
+    expect(r.customers.total).toBe(0);
+  });
 
-  it("SALES user sees another owner's customer", guard(async () => {
-    if (!crossOwnerIds.customerId) return;
-    const result = await globalSearch(salesUser!, CROSS_OWNER_KEYWORD);
-    expect(result.customers.some((c) => c.id === crossOwnerIds.customerId)).toBe(true);
-  }));
+  it("软删除记录不出现", async () => {
+    if (!dbReachable || !adminUser) return;
+    const r = await searchAll(adminUser, `${TAG}-已删客户`);
+    expect(r.customers.items.some((c) => c.id === softDeletedCustomerId)).toBe(false);
+    expect(r.customers.total).toBe(0);
+  });
 
-  it("SALES user sees another owner's contract", guard(async () => {
-    if (!crossOwnerIds.contractId) return;
-    const result = await globalSearch(salesUser!, CROSS_OWNER_KEYWORD);
-    expect(result.contracts.some((c) => c.id === crossOwnerIds.contractId)).toBe(true);
-  }));
+  it("无命中返回全空分组而非报错", async () => {
+    if (!dbReachable || !adminUser) return;
+    const r = await searchAll(adminUser, `${TAG}-不存在的关键字`);
+    expect(r.customers.total).toBe(0);
+    expect(r.contracts.items).toEqual([]);
+  });
 
-  it("EXPERT user sees another owner's customer", guardWithExpert(async () => {
-    if (!crossOwnerIds.customerId) return;
-    const result = await globalSearch(expertUser!, CROSS_OWNER_KEYWORD);
-    expect(result.customers.some((c) => c.id === crossOwnerIds.customerId)).toBe(true);
-  }));
-
-  it("EXPERT user sees another owner's contract", guardWithExpert(async () => {
-    if (!crossOwnerIds.contractId) return;
-    const result = await globalSearch(expertUser!, CROSS_OWNER_KEYWORD);
-    expect(result.contracts.some((c) => c.id === crossOwnerIds.contractId)).toBe(true);
-  }));
-
-  it("SALES user sees another owner's invoice", guard(async () => {
-    if (!crossOwnerIds.invoiceId) return;
-    const result = await globalSearch(salesUser!, CROSS_OWNER_KEYWORD);
-    expect(result.invoices.some((i) => i.id === crossOwnerIds.invoiceId)).toBe(true);
-  }));
-
-  it("SALES user sees another owner's payment", guard(async () => {
-    if (!crossOwnerIds.paymentId) return;
-    const result = await globalSearch(salesUser!, CROSS_OWNER_KEYWORD);
-    expect(result.payments.some((p) => p.id === crossOwnerIds.paymentId)).toBe(true);
-  }));
-
-  it("EXPERT user sees another owner's invoice", guardWithExpert(async () => {
-    if (!crossOwnerIds.invoiceId) return;
-    const result = await globalSearch(expertUser!, CROSS_OWNER_KEYWORD);
-    expect(result.invoices.some((i) => i.id === crossOwnerIds.invoiceId)).toBe(true);
-  }));
-
-  it("EXPERT user sees another owner's payment", guardWithExpert(async () => {
-    if (!crossOwnerIds.paymentId) return;
-    const result = await globalSearch(expertUser!, CROSS_OWNER_KEYWORD);
-    expect(result.payments.some((p) => p.id === crossOwnerIds.paymentId)).toBe(true);
-  }));
-
-  it("rejects user without READ permission at the permission gates", guard(async () => {
-    const noReadUser: SessionUser = {
-      id: "no-read",
-      employeeNo: "no-read",
-      name: "No Read",
-      email: "no-read@example.com",
-      roleCode: "NO_READ" as RoleCode,
-      permissions: []
-    };
-    setRuntimePermissions("NO_READ", []);
-    let thrown: unknown;
+  it("运行时权限被收窄后, 无 READ 权限的组返回空分组 (不查库)", async () => {
+    if (!dbReachable || !salesUser) return;
+    // SALES 默认权限剔除 INVOICE 资源的 READ action, 模拟 admin 在 /admin/roles 收窄
+    const narrowed = ROLE_PERMISSIONS.SALES.map((p) =>
+      p.resource === RESOURCE.INVOICE
+        ? { ...p, actions: p.actions.filter((a) => a !== ACTION.READ) }
+        : p
+    );
     try {
-      await globalSearch(noReadUser, CROSS_OWNER_KEYWORD);
-    } catch (e) {
-      thrown = e;
+      setRuntimePermissions("SALES", narrowed);
+      const r = await searchAll(salesUser, TAG);
+      // 发票组被门禁: 即使 sales 名下有命中发票也返回空
+      expect(r.invoices.total).toBe(0);
+      expect(r.invoices.items).toEqual([]);
+      // 客户组不受影响, 仍正常命中
+      expect(r.customers.items.some((c) => c.id === salesCustomerId)).toBe(true);
+    } finally {
+      _resetRuntimePermissionsForTests();
     }
-    clearRuntimePermissions("NO_READ");
-    expect(thrown).toBeInstanceOf(ApiError);
-    expect((thrown as ApiError).status).toBe(403);
-  }));
-
-  it("ADMIN user sees all customers", guard(async () => {
-    const totalCustomers = await prisma.customer.count({ where: { deletedAt: null } });
-    const result = await globalSearch(adminUser!, "test");
-    expect(result.customers.length).toBeLessThanOrEqual(totalCustomers);
-  }));
+  });
 });
