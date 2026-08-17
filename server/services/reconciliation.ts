@@ -11,6 +11,7 @@ import { audit } from "@/server/audit";
 import { emit } from "@/server/events/bus";
 import { listAdminUserIds } from "@/server/events/bus";
 import type { BankTransaction, Payment, Invoice, Contract, Customer } from "@prisma/client";
+import type ExcelJS from "exceljs";
 
 // =====================================================
 // 类型定义
@@ -131,6 +132,79 @@ export function parseBankTransactionRow(row: Record<string, unknown>, rowIndex: 
     summary: summary || undefined,
     purpose: purpose || undefined,
   };
+}
+
+/**
+ * 解析银行流水文件（.xlsx / .csv）为行记录数组。
+ * 第一行必须是表头（流水号 / 交易日期 / 金额 / ...），列名兼容见 parseBankTransactionRow。
+ * 单次导入上限 MAX_IMPORT_ROWS，防止超大文件把进程打爆。
+ */
+export const MAX_IMPORT_ROWS = 5000;
+
+export async function parseStatementFile(
+  buffer: Buffer,
+  filename: string
+): Promise<Array<Record<string, unknown>>> {
+  const lower = filename.toLowerCase();
+
+  let rows: Array<Record<string, unknown>>;
+  if (lower.endsWith(".csv") || lower.endsWith(".txt")) {
+    const { parseDelimitedText } = await import("@/lib/statement-text");
+    rows = parseDelimitedText(buffer.toString("utf-8"));
+  } else if (lower.endsWith(".xlsx")) {
+    const { default: ExcelJS } = await import("exceljs");
+    const wb = new ExcelJS.Workbook();
+    // exceljs d.ts 引用旧版 @types/node 的 Buffer, 与当前 Buffer 泛型不兼容, 按其实参类型收窄
+    await wb.xlsx.load(buffer as unknown as Parameters<typeof wb.xlsx.load>[0]);
+    const ws = wb.worksheets[0];
+    if (!ws) {
+      throw new ApiError(ERROR_CODES.VALIDATION_FAILED, "Excel 文件中没有工作表", 400);
+    }
+    const headers: string[] = [];
+    ws.getRow(1).eachCell({ includeEmpty: true }, (cell, col) => {
+      headers[col - 1] = cellText(cell.value).trim();
+    });
+    rows = [];
+    ws.eachRow((row, rowNumber) => {
+      if (rowNumber === 1) return;
+      const r: Record<string, unknown> = {};
+      row.eachCell({ includeEmpty: true }, (cell, col) => {
+        const h = headers[col - 1];
+        if (h) r[h] = cellText(cell.value);
+      });
+      if (Object.values(r).some((v) => String(v).trim() !== "")) rows.push(r);
+    });
+  } else {
+    throw new ApiError(ERROR_CODES.VALIDATION_FAILED, "仅支持 .xlsx / .csv 文件", 400);
+  }
+
+  if (rows.length === 0) {
+    throw new ApiError(ERROR_CODES.VALIDATION_FAILED, "文件中没有数据行（第一行须为表头）", 400);
+  }
+  if (rows.length > MAX_IMPORT_ROWS) {
+    throw new ApiError(ERROR_CODES.VALIDATION_FAILED, `单次最多导入 ${MAX_IMPORT_ROWS} 行`, 400);
+  }
+  return rows;
+}
+
+/** exceljs 单元格值 → 字符串（日期转 YYYY-MM-DD，富文本/公式取结果值） */
+function cellText(value: ExcelJS.CellValue): string {
+  if (value == null) return "";
+  if (value instanceof Date) {
+    const y = value.getFullYear();
+    const m = String(value.getMonth() + 1).padStart(2, "0");
+    const d = String(value.getDate()).padStart(2, "0");
+    return `${y}-${m}-${d}`;
+  }
+  if (typeof value === "object") {
+    // 富文本 / 超链接 / 公式结果
+    const v = value as { richText?: Array<{ text: string }>; text?: string; result?: unknown; hyperlink?: string };
+    if (v.richText) return v.richText.map((t) => t.text).join("");
+    if (v.result != null) return String(v.result);
+    if (v.text != null) return String(v.text);
+    return String(value);
+  }
+  return String(value);
 }
 
 /**
@@ -520,6 +594,36 @@ export async function autoMatchBatch(
 // 匹配操作
 // =====================================================
 
+/** 处于"已关联"区间的匹配状态 — 这些状态会占用 paymentId */
+const MATCHED_STATUSES = ["AUTO_MATCHED", "CONFIRMED_MATCHED", "MANUAL_MATCHED"] as const;
+
+/**
+ * 校验回款未被其它流水占用（一对一占用约束）。
+ * 不加这个校验时，同一笔回款可以被多条流水重复确认，金额统计会翻倍。
+ */
+async function assertPaymentNotOccupied(
+  db: Prisma.TransactionClient,
+  transactionId: string,
+  paymentId: string
+): Promise<void> {
+  const occupied = await db.bankTransaction.findFirst({
+    where: {
+      paymentId,
+      deletedAt: null,
+      matchStatus: { in: [...MATCHED_STATUSES] },
+      id: { not: transactionId },
+    },
+    select: { id: true, bankRefNo: true },
+  });
+  if (occupied) {
+    throw new ApiError(
+      ERROR_CODES.VALIDATION_FAILED,
+      `该回款已关联银行流水 ${occupied.bankRefNo}，请先取消原匹配`,
+      422
+    );
+  }
+}
+
 /**
  * 确认匹配（财务复核后确认）
  */
@@ -541,6 +645,8 @@ export async function confirmMatch(
       where: { id: paymentId, deletedAt: null },
     });
     if (!payment) throw new ApiError(ERROR_CODES.NOT_FOUND, "回款记录不存在", 404);
+
+    await assertPaymentNotOccupied(tx, transactionId, paymentId);
 
     // 校验金额一致性（容差 0.01）
     const amountDiff = Math.abs(Number(transaction.amount) - Number(payment.amount));
@@ -621,6 +727,8 @@ export async function manualMatch(
     });
     if (!payment) throw new ApiError(ERROR_CODES.NOT_FOUND, "回款记录不存在", 404);
 
+    await assertPaymentNotOccupied(tx, transactionId, paymentId);
+
     const updated = await tx.bankTransaction.update({
       where: { id: transactionId },
       data: {
@@ -653,33 +761,59 @@ export async function unmatchTransaction(
   requireReconciliationPermission(user, ACTION.UPDATE);
   requireFinanceOrAdmin(user);
 
-  const transaction = await prisma.bankTransaction.findFirst({
-    where: { id: transactionId, deletedAt: null },
-  });
-  if (!transaction) throw new ApiError(ERROR_CODES.NOT_FOUND, "银行流水不存在", 404);
+  return prisma.$transaction(async (tx) => {
+    const transaction = await tx.bankTransaction.findFirst({
+      where: { id: transactionId, deletedAt: null },
+    });
+    if (!transaction) throw new ApiError(ERROR_CODES.NOT_FOUND, "银行流水不存在", 404);
 
-  const updated = await prisma.bankTransaction.update({
-    where: { id: transactionId },
-    data: {
-      matchStatus: "UNMATCHED",
-      paymentId: null,
-      matchScore: null,
-      matchReason: null,
-      matchedAt: null,
-      matchedById: null,
-    },
-  });
+    const updated = await tx.bankTransaction.update({
+      where: { id: transactionId },
+      data: {
+        matchStatus: "UNMATCHED",
+        paymentId: null,
+        matchScore: null,
+        matchReason: null,
+        matchedAt: null,
+        matchedById: null,
+      },
+    });
 
-  await audit(prisma, {
-    actorId: user.id,
-    action: "RECONCILIATION_UNMATCH",
-    entity: "BankTransaction",
-    entityId: transactionId,
-    before: { matchStatus: transaction.matchStatus, paymentId: transaction.paymentId },
-    after: { matchStatus: "UNMATCHED" },
-  });
+    // 回滚 confirmMatch 对 Payment 的副作用, 避免孤儿状态:
+    //   - bankRefNo 是本流水写入的 → 清空
+    //   - status 是本流水从 PLANNED 推进到 CONFIRMED 的 → 退回 PLANNED
+    // confirmMatch 只在推进状态时把 receivedAt 覆写为流水交易日期,
+    // 因此 "bankRefNo 匹配 且 receivedAt == 交易日期" 即本次对账写入的签名;
+    // 原本就 CONFIRMED 的回款不会被误退。
+    if (transaction.paymentId) {
+      const payment = await tx.payment.findFirst({
+        where: { id: transaction.paymentId, deletedAt: null },
+      });
+      if (payment && payment.bankRefNo === transaction.bankRefNo) {
+        const advancedByThisMatch =
+          payment.status === "CONFIRMED" &&
+          payment.receivedAt.getTime() === transaction.transactionDate.getTime();
+        await tx.payment.update({
+          where: { id: payment.id },
+          data: {
+            bankRefNo: null,
+            ...(advancedByThisMatch ? { status: "PLANNED" } : {}),
+          },
+        });
+      }
+    }
 
-  return updated;
+    await audit(tx, {
+      actorId: user.id,
+      action: "RECONCILIATION_UNMATCH",
+      entity: "BankTransaction",
+      entityId: transactionId,
+      before: { matchStatus: transaction.matchStatus, paymentId: transaction.paymentId },
+      after: { matchStatus: "UNMATCHED" },
+    });
+
+    return updated;
+  });
 }
 
 /**
@@ -724,9 +858,16 @@ export async function listBankTransactions(
 
   const { page, pageSize, matchStatus, keyword, startDate, endDate, minAmount, maxAmount } = params;
 
+  // SUGGESTED 是虚拟状态: 数据上仍是 UNMATCHED, 只是引擎已给出 ≥60 分建议
+  const isSuggested = matchStatus === "SUGGESTED";
+
   const where: Prisma.BankTransactionWhereInput = {
     deletedAt: null,
-    ...(matchStatus ? { matchStatus } : {}),
+    ...(matchStatus
+      ? isSuggested
+        ? { matchStatus: "UNMATCHED", matchScore: { gte: 60 } }
+        : { matchStatus }
+      : {}),
     ...(keyword
       ? {
           OR: [

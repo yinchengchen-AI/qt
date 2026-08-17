@@ -185,6 +185,20 @@ if [ "$PUBLISH_EXIT" -ne 0 ]; then
   log_warn "       稍后手动补: cd /opt/qt && npx tsx scripts/release/publish.ts"
 fi
 
+# ---- seed-roles (幂等同步角色权限矩阵 → DB) ----
+# 权限以 DB Role.permissions 为准 (lib/permissions.ts 运行时缓存);
+# 新增资源/权限 (如 RECONCILIATION) 只改代码矩阵不同步 DB 的话, 线上全员 403。
+# seed-roles 是 upsert, 每次部署跑一遍保证 DB 与代码矩阵一致。
+log "==> seed-roles (同步内置角色权限到 DB, 幂等)"
+set +e
+npx tsx scripts/shared/seed-roles.ts
+SEED_EXIT=$?
+set -e
+if [ "$SEED_EXIT" -ne 0 ]; then
+  log_warn "seed-roles 失败 (exit=$SEED_EXIT) — 部署继续, 但新增权限可能未生效"
+  log_warn "       稍后手动补: cd /opt/qt && npx tsx scripts/shared/seed-roles.ts"
+fi
+
 # ---- restart app (native) ----
 # Next.js 16 + 活跃 SSE / keep-alive 连接 → SIGTERM 关闭慢; deploy.sh 容错:
 #   1. 先 SIGTERM (systemctl kill --no-block) 等 up to 30s 优雅退出

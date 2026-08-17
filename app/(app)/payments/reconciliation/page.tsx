@@ -1,11 +1,13 @@
 "use client";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { Page } from "@/components/page";
 import { PageHeader } from "@/components/page-header";
 import { StatGrid } from "@/components/stat-grid";
 import { ProTable } from "@ant-design/pro-components";
-import { Button, App as AntdApp, Drawer, Space, Tag, Descriptions, List, Modal, Input } from "antd";
-import { UploadOutlined, SyncOutlined, CloseOutlined, EyeOutlined } from "@ant-design/icons";
+import type { ActionType } from "@ant-design/pro-components";
+import { Button, App as AntdApp, Drawer, Space, Tag, Descriptions, List, Modal, Input, Upload } from "antd";
+import { UploadOutlined, SyncOutlined, CloseOutlined, EyeOutlined, InboxOutlined } from "@ant-design/icons";
+import type { UploadFile } from "antd";
 import { useResponsive } from "@/lib/use-breakpoint";
 import { useActionCall } from "@/lib/use-action-call";
 import { formatDateTime, formatCurrency } from "@/lib/format";
@@ -14,15 +16,23 @@ import useSWR from "swr";
 import { useSession } from "next-auth/react";
 import Link from "next/link";
 import { useListRequest } from "@/lib/use-list-request";
+import { parseDelimitedText } from "@/lib/statement-text";
 
 // 对账状态映射
+// SUGGESTED 是虚拟状态: 数据上仍是 UNMATCHED, 只是引擎给出了 ≥60 分建议
 const MATCH_STATUS_MAP: Record<string, { label: string; color: string }> = {
   UNMATCHED: { label: "待匹配", color: "default" },
+  SUGGESTED: { label: "建议匹配", color: "geekblue" },
   AUTO_MATCHED: { label: "自动匹配", color: "processing" },
   CONFIRMED_MATCHED: { label: "已确认", color: "success" },
   MANUAL_MATCHED: { label: "手动匹配", color: "success" },
   IGNORED: { label: "已忽略", color: "warning" },
 };
+
+function effectiveStatus(row: { matchStatus: string; matchScore?: number | string | null }): string {
+  if (row.matchStatus === "UNMATCHED" && Number(row.matchScore) >= 60) return "SUGGESTED";
+  return row.matchStatus;
+}
 
 const SEVERITY_MAP: Record<string, { label: string; color: string }> = {
   LOW: { label: "低", color: "default" },
@@ -88,13 +98,15 @@ export default function ReconciliationPage() {
   const { isMobile } = useResponsive();
   const { message } = AntdApp.useApp();
   const { data: session } = useSession();
+  const actionRef = useRef<ActionType>(undefined);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [selectedTx, setSelectedTx] = useState<BankTransactionRow | null>(null);
   const [candidates, setCandidates] = useState<Candidate[]>([]);
   const [importModalOpen, setImportModalOpen] = useState(false);
   const [importText, setImportText] = useState("");
+  const [importFileList, setImportFileList] = useState<UploadFile[]>([]);
+  const [importing, setImporting] = useState(false);
   const [discrepancyDrawerOpen, setDiscrepancyDrawerOpen] = useState(false);
-  const [resolution, setResolution] = useState("");
 
   const { data: summary, mutate: mutateSummary } = useSWR<SummaryData>(
     "/api/reconciliation/summary"
@@ -102,28 +114,48 @@ export default function ReconciliationPage() {
 
   const isFinance = session?.user?.roleCode === "FINANCE" || session?.user?.roleCode === "ADMIN";
 
+  // 所有写操作后统一刷新: 统计卡 + 流水表格
+  const reloadAll = () => {
+    void mutateSummary();
+    actionRef.current?.reload();
+  };
+
   const { run: runAction } = useActionCall({
     baseUrl: "/api/reconciliation/transactions",
-    reload: () => {
-      mutateSummary();
-    },
+    reload: reloadAll,
   });
 
+  const refreshSelectedTx = async (id: string) => {
+    try {
+      const res = await fetch(`/api/reconciliation/transactions/${id}`, { credentials: "include" });
+      const j = await res.json();
+      if (j.code === 0) {
+        setSelectedTx(j.data);
+        setCandidates(j.data.candidates ?? []);
+      }
+    } catch {
+      // 刷新失败不打断操作, 表格已 reload
+    }
+  };
+
   const handleAutoMatch = async (id: string) => {
-    await runAction(`${id}/match`, { action: "auto-match" });
+    const okFlag = await runAction(`${id}/match`, { action: "auto-match" });
+    if (okFlag && selectedTx?.id === id) await refreshSelectedTx(id);
   };
 
   const handleConfirmMatch = async (txId: string, paymentId: string) => {
-    await runAction(`${txId}/match`, { action: "confirm-match", paymentId });
-    setDrawerOpen(false);
+    const okFlag = await runAction(`${txId}/match`, { action: "confirm-match", paymentId });
+    if (okFlag) setDrawerOpen(false);
   };
 
   const handleUnmatch = async (id: string) => {
-    await runAction(`${id}/match`, { action: "unmatch" });
+    const okFlag = await runAction(`${id}/match`, { action: "unmatch" });
+    if (okFlag && selectedTx?.id === id) await refreshSelectedTx(id);
   };
 
   const handleIgnore = async (id: string) => {
-    await runAction(`${id}/match`, { action: "ignore" });
+    const okFlag = await runAction(`${id}/match`, { action: "ignore" });
+    if (okFlag && selectedTx?.id === id) await refreshSelectedTx(id);
   };
 
   const handleBatchMatch = async () => {
@@ -136,33 +168,74 @@ export default function ReconciliationPage() {
     const j = await res.json();
     if (j.code === 0) {
       message.success(`批量匹配完成: 自动匹配 ${j.data.matched} 条, 建议 ${j.data.suggested} 条`);
-      mutateSummary();
+      reloadAll();
     } else {
       message.error(j.message);
     }
   };
 
-  const handleImport = async () => {
-    try {
-      const rows = JSON.parse(importText);
+  /** 粘贴区内容 → 行记录: JSON 数组, 或从 Excel 直接复制的表格文本 (TSV/CSV, 首行表头) */
+  const parseImportText = (text: string): Array<Record<string, unknown>> => {
+    const trimmed = text.trim();
+    if (!trimmed) throw new Error("请粘贴流水数据, 或选择文件上传");
+    if (trimmed.startsWith("[")) {
+      const rows = JSON.parse(trimmed);
       if (!Array.isArray(rows)) throw new Error("请输入 JSON 数组格式");
-      const res = await fetch("/api/reconciliation/import", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include",
-        body: JSON.stringify({ rows }),
-      });
+      return rows;
+    }
+    const rows = parseDelimitedText(trimmed);
+    if (rows.length === 0) throw new Error("未解析到数据行（首行须为表头, 如: 流水号 交易日期 金额）");
+    return rows;
+  };
+
+  const handleImport = async () => {
+    setImporting(true);
+    try {
+      let res: Response;
+      if (importFileList.length > 0 && importFileList[0]!.originFileObj) {
+        // 文件导入: 服务端解析 .xlsx / .csv
+        const form = new FormData();
+        form.append("file", importFileList[0]!.originFileObj);
+        res = await fetch("/api/reconciliation/import", {
+          method: "POST",
+          credentials: "include",
+          body: form,
+        });
+      } else {
+        const rows = parseImportText(importText);
+        res = await fetch("/api/reconciliation/import", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          credentials: "include",
+          body: JSON.stringify({ rows }),
+        });
+      }
       const j = await res.json();
       if (j.code === 0) {
         message.success(`导入完成: 成功 ${j.data.success} 条, 失败 ${j.data.failed} 条`);
+        if (j.data.errors?.length) {
+          Modal.warning({
+            title: "部分行导入失败",
+            content: (
+              <div style={{ maxHeight: 300, overflow: "auto" }}>
+                {j.data.errors.slice(0, 20).map((e: { row: number; message: string }, i: number) => (
+                  <div key={i}>第 {e.row} 行: {e.message}</div>
+                ))}
+              </div>
+            ),
+          });
+        }
         setImportModalOpen(false);
         setImportText("");
-        mutateSummary();
+        setImportFileList([]);
+        reloadAll();
       } else {
         message.error(j.message);
       }
     } catch (e) {
-      message.error("JSON 解析失败: " + (e as Error).message);
+      message.error("导入失败: " + (e as Error).message);
+    } finally {
+      setImporting(false);
     }
   };
 
@@ -170,41 +243,9 @@ export default function ReconciliationPage() {
     setSelectedTx(tx);
     setDrawerOpen(true);
     if (tx.matchStatus === "UNMATCHED") {
-      // 实时加载候选
-      try {
-        const res = await fetch(`/api/reconciliation/transactions/${tx.id}`, {
-          credentials: "include",
-        });
-        const j = await res.json();
-        if (j.code === 0) {
-          setCandidates(j.data.candidates ?? []);
-        }
-      } catch {
-        setCandidates([]);
-      }
+      await refreshSelectedTx(tx.id);
     } else {
       setCandidates([]);
-    }
-  };
-
-  const openDiscrepancyDrawer = () => {
-    setDiscrepancyDrawerOpen(true);
-  };
-
-  const handleResolveDiscrepancy = async (id: string) => {
-    const res = await fetch(`/api/reconciliation/discrepancies/${id}/resolve`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      credentials: "include",
-      body: JSON.stringify({ resolution }),
-    });
-    const j = await res.json();
-    if (j.code === 0) {
-      message.success("已标记处理");
-      setResolution("");
-      mutateSummary();
-    } else {
-      message.error(j.message);
     }
   };
 
@@ -213,12 +254,14 @@ export default function ReconciliationPage() {
       title: "交易日期",
       dataIndex: "transactionDate",
       width: 120,
+      search: false,
       render: (_: unknown, r: BankTransactionRow) => <DateTimeCell value={r.transactionDate} />,
     },
     {
       title: "流水号",
       dataIndex: "bankRefNo",
       width: 180,
+      search: false,
       render: (_: unknown, r: BankTransactionRow) => (
         <Link href={`/payments/reconciliation?txId=${r.id}`} onClick={(e) => { e.preventDefault(); openTxDetail(r); }}>
           {r.bankRefNo}
@@ -229,6 +272,7 @@ export default function ReconciliationPage() {
       title: "金额",
       dataIndex: "amount",
       width: 120,
+      search: false,
       render: (_: unknown, r: BankTransactionRow) => <CurrencyCell value={r.amount} />,
     },
     {
@@ -236,19 +280,23 @@ export default function ReconciliationPage() {
       dataIndex: "counterpartyName",
       width: 160,
       ellipsis: true,
+      search: false,
     },
     {
       title: "摘要",
       dataIndex: "summary",
       width: 180,
       ellipsis: true,
+      search: false,
     },
     {
       title: "匹配状态",
       dataIndex: "matchStatus",
       width: 110,
+      search: false,
       render: (_: unknown, r: BankTransactionRow) => {
-        const meta = MATCH_STATUS_MAP[r.matchStatus] ?? { label: r.matchStatus, color: "default" };
+        const key = effectiveStatus(r);
+        const meta = MATCH_STATUS_MAP[key] ?? { label: r.matchStatus, color: "default" };
         return <Tag color={meta.color}>{meta.label}</Tag>;
       },
     },
@@ -256,13 +304,15 @@ export default function ReconciliationPage() {
       title: "匹配分数",
       dataIndex: "matchScore",
       width: 90,
+      search: false,
       render: (_: unknown, r: BankTransactionRow) =>
-        r.matchScore != null ? <Tag color={r.matchScore >= 80 ? "green" : r.matchScore >= 60 ? "blue" : "default"}>{r.matchScore}分</Tag> : "—",
+        r.matchScore != null ? <Tag color={Number(r.matchScore) >= 80 ? "green" : Number(r.matchScore) >= 60 ? "blue" : "default"}>{r.matchScore}分</Tag> : "—",
     },
     {
       title: "关联回款",
       dataIndex: ["payment", "paymentNo"],
       width: 140,
+      search: false,
       render: (_: unknown, r: BankTransactionRow) =>
         r.payment ? (
           <Link href={`/payments/${r.payment.id}`}>{r.payment.paymentNo}</Link>
@@ -273,6 +323,7 @@ export default function ReconciliationPage() {
     {
       title: "操作",
       width: 180,
+      search: false,
       fixed: isMobile ? undefined : ("right" as const),
       render: (_: unknown, r: BankTransactionRow) => (
         <Space size="small">
@@ -307,7 +358,7 @@ export default function ReconciliationPage() {
             <Button type="primary" icon={<SyncOutlined />} onClick={handleBatchMatch} disabled={!isFinance}>
               批量自动匹配
             </Button>
-            <Button onClick={openDiscrepancyDrawer}>
+            <Button onClick={() => setDiscrepancyDrawerOpen(true)}>
               差异处理 ({summary?.discrepancyCount ?? 0})
             </Button>
           </Space>
@@ -329,6 +380,7 @@ export default function ReconciliationPage() {
       <div style={{ marginTop: 16 }}>
         <ProTable<BankTransactionRow>
           rowKey="id"
+          actionRef={actionRef}
           search={{
             labelWidth: "auto",
             defaultCollapsed: isMobile,
@@ -346,13 +398,22 @@ export default function ReconciliationPage() {
             if (params.matchStatus) qs.set("matchStatus", String(params.matchStatus));
             if (params.startDate) qs.set("startDate", String(params.startDate));
             if (params.endDate) qs.set("endDate", String(params.endDate));
-            const res = await fetch(`/api/reconciliation/transactions?${qs}`, { credentials: "include" });
-            const j = await res.json();
-            return {
-              data: j.data?.list ?? [],
-              total: j.data?.total ?? 0,
-              success: true,
-            };
+            try {
+              const res = await fetch(`/api/reconciliation/transactions?${qs}`, { credentials: "include" });
+              const j = await res.json();
+              if (j.code !== 0) {
+                message.error(j.message ?? "流水列表加载失败");
+                return { data: [], total: 0, success: false };
+              }
+              return {
+                data: j.data?.list ?? [],
+                total: j.data?.total ?? 0,
+                success: true,
+              };
+            } catch (e) {
+              message.error("流水列表加载失败: " + (e as Error).message);
+              return { data: [], total: 0, success: false };
+            }
           }}
           columns={[
             {
@@ -367,10 +428,20 @@ export default function ReconciliationPage() {
               hideInTable: true,
               valueEnum: {
                 UNMATCHED: { text: "待匹配" },
+                SUGGESTED: { text: "建议匹配" },
                 AUTO_MATCHED: { text: "自动匹配" },
                 CONFIRMED_MATCHED: { text: "已确认" },
                 MANUAL_MATCHED: { text: "手动匹配" },
                 IGNORED: { text: "已忽略" },
+              },
+            },
+            {
+              title: "交易日期",
+              dataIndex: "dateRange",
+              hideInTable: true,
+              valueType: "dateRange",
+              search: {
+                transform: (value: [string, string]) => ({ startDate: value[0], endDate: value[1] }),
               },
             },
             ...columns,
@@ -398,8 +469,8 @@ export default function ReconciliationPage() {
               <Descriptions.Item label="对方户名">{selectedTx.counterpartyName ?? "—"}</Descriptions.Item>
               <Descriptions.Item label="摘要" span={2}>{selectedTx.summary ?? "—"}</Descriptions.Item>
               <Descriptions.Item label="匹配状态" span={2}>
-                <Tag color={MATCH_STATUS_MAP[selectedTx.matchStatus]?.color}>
-                  {MATCH_STATUS_MAP[selectedTx.matchStatus]?.label ?? selectedTx.matchStatus}
+                <Tag color={MATCH_STATUS_MAP[effectiveStatus(selectedTx)]?.color}>
+                  {MATCH_STATUS_MAP[effectiveStatus(selectedTx)]?.label ?? selectedTx.matchStatus}
                 </Tag>
                 {selectedTx.matchScore != null && (
                   <Tag color="blue" style={{ marginLeft: 8 }}>{selectedTx.matchScore}分</Tag>
@@ -492,30 +563,31 @@ export default function ReconciliationPage() {
         title="导入银行流水"
         open={importModalOpen}
         onOk={handleImport}
-        onCancel={() => setImportModalOpen(false)}
+        onCancel={() => { setImportModalOpen(false); setImportFileList([]); }}
         width={isMobile ? "100%" : 640}
         okText="导入"
         cancelText="取消"
+        confirmLoading={importing}
       >
-        <div style={{ marginBottom: 12 }}>
-          <p>请粘贴 JSON 数组格式的银行流水数据。每行应包含以下字段：</p>
-          <pre style={{ background: "#f5f5f5", padding: 12, borderRadius: 4, fontSize: 12 }}>
-{`[
-  {
-    "流水号": "20260820001",
-    "交易日期": "2026-08-20",
-    "金额": "50000.00",
-    "对方户名": "杭州某某科技有限公司",
-    "摘要": "合同款"
-  }
-]`}
-          </pre>
+        <Upload.Dragger
+          accept=".xlsx,.csv"
+          maxCount={1}
+          fileList={importFileList}
+          beforeUpload={() => false}
+          onChange={({ fileList }) => setImportFileList(fileList.slice(-1))}
+        >
+          <p className="ant-upload-drag-icon"><InboxOutlined /></p>
+          <p className="ant-upload-text">点击或拖拽上传银行导出的流水文件</p>
+          <p className="ant-upload-hint">支持 .xlsx / .csv，第一行为表头（流水号、交易日期、金额、对方户名、摘要…），单次最多 5000 行</p>
+        </Upload.Dragger>
+        <div style={{ margin: "12px 0 8px", color: "#999", fontSize: 12 }}>
+          也可以直接从 Excel 复制表格粘贴到下面（含表头）, 或粘贴 JSON 数组；上传文件时本框内容会被忽略
         </div>
         <Input.TextArea
-          rows={10}
+          rows={8}
           value={importText}
           onChange={(e) => setImportText(e.target.value)}
-          placeholder='[{"流水号":"...","交易日期":"...","金额":"...",...}]'
+          placeholder={"流水号\t交易日期\t金额\t对方户名\t摘要\n20260820001\t2026-08-20\t50000.00\t杭州某某科技有限公司\t合同款"}
         />
       </Modal>
 
@@ -526,23 +598,23 @@ export default function ReconciliationPage() {
         onClose={() => setDiscrepancyDrawerOpen(false)}
         width={isMobile ? "100%" : 640}
       >
-        <DiscrepancyList onResolve={handleResolveDiscrepancy} resolution={resolution} setResolution={setResolution} />
+        <DiscrepancyList onResolved={reloadAll} />
       </Drawer>
     </Page>
   );
 }
 
 // 差异列表子组件
-function DiscrepancyList({
-  onResolve,
-  resolution,
-  setResolution,
-}: {
-  onResolve: (id: string) => void;
-  resolution: string;
-  setResolution: (v: string) => void;
-}) {
-  const { data, loading } = useListRequest<{
+function DiscrepancyList({ onResolved }: { onResolved: () => void }) {
+  const { message } = AntdApp.useApp();
+  const { data: session } = useSession();
+  const [resolveTarget, setResolveTarget] = useState<string | null>(null);
+  const [resolution, setResolution] = useState("");
+  const [resolving, setResolving] = useState(false);
+
+  const isFinance = session?.user?.roleCode === "FINANCE" || session?.user?.roleCode === "ADMIN";
+
+  const { data, loading, error, reload } = useListRequest<{
     id: string;
     type: string;
     severity: string;
@@ -554,6 +626,39 @@ function DiscrepancyList({
     createdAt: string;
   }>("/api/reconciliation/discrepancies", { pageSize: 50 });
 
+  const handleResolve = async () => {
+    if (!resolveTarget) return;
+    if (!resolution.trim()) {
+      message.warning("请填写处理结果说明");
+      return;
+    }
+    setResolving(true);
+    try {
+      const res = await fetch(`/api/reconciliation/discrepancies/${resolveTarget}/resolve`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ resolution: resolution.trim() }),
+      });
+      const j = await res.json();
+      if (j.code === 0) {
+        message.success("已标记处理");
+        setResolveTarget(null);
+        setResolution("");
+        reload();
+        onResolved();
+      } else {
+        message.error(j.message);
+      }
+    } finally {
+      setResolving(false);
+    }
+  };
+
+  if (error) {
+    return <div style={{ color: "var(--qt-text-danger, #ff4d4f)" }}>差异列表加载失败: {error}</div>;
+  }
+
   return (
     <div>
       <List
@@ -562,9 +667,9 @@ function DiscrepancyList({
         renderItem={(item) => (
           <List.Item
             actions={
-              item.status === "OPEN"
+              item.status === "OPEN" && isFinance
                 ? [
-                    <Button key="resolve" type="primary" size="small" onClick={() => onResolve(item.id)}>
+                    <Button key="resolve" type="primary" size="small" onClick={() => { setResolveTarget(item.id); setResolution(""); }}>
                       标记处理
                     </Button>,
                   ]
@@ -576,6 +681,7 @@ function DiscrepancyList({
                 <Space>
                   <Tag color={SEVERITY_MAP[item.severity]?.color}>{SEVERITY_MAP[item.severity]?.label}</Tag>
                   <span>{DISCREPANCY_TYPE_MAP[item.type] ?? item.type}</span>
+                  {item.status !== "OPEN" && <Tag color="success">已处理</Tag>}
                 </Space>
               }
               description={
@@ -593,16 +699,22 @@ function DiscrepancyList({
           </List.Item>
         )}
       />
-      {data.some((d) => d.status === "OPEN") && (
-        <div style={{ marginTop: 16 }}>
-          <Input.TextArea
-            rows={2}
-            placeholder="处理结果说明..."
-            value={resolution}
-            onChange={(e) => setResolution(e.target.value)}
-          />
-        </div>
-      )}
+      <Modal
+        title="标记差异已处理"
+        open={resolveTarget != null}
+        onOk={handleResolve}
+        onCancel={() => setResolveTarget(null)}
+        okText="确认"
+        cancelText="取消"
+        confirmLoading={resolving}
+      >
+        <Input.TextArea
+          rows={3}
+          placeholder="处理结果说明（必填）..."
+          value={resolution}
+          onChange={(e) => setResolution(e.target.value)}
+        />
+      </Modal>
     </div>
   );
 }

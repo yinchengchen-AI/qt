@@ -463,6 +463,65 @@ describe("match operations", () => {
     const result = await ignoreTransaction(buildFinance(), tx.id);
     expect(result.matchStatus).toBe("IGNORED");
   }));
+
+  it("confirmMatch 拒绝重复占用同一回款", guard(async () => {
+    const contract = await mkContract("100000", "DUP-OCCUPY");
+    const inv = await mkIssuedInvoice(contract.id, 30000, "DUP-OCCUPY");
+    const payment = await mkPayment(contract.id, inv.id, 30000, "DUP-OCCUPY");
+
+    const tx1 = await prisma.bankTransaction.create({
+      data: {
+        bankRefNo: `${TAG}-DUP-OCCUPY-001`,
+        transactionDate: new Date(),
+        amount: 30000,
+        importBatchId: `${TAG}-BATCH`,
+        importedById: financeUser!.id,
+      },
+    });
+    const tx2 = await prisma.bankTransaction.create({
+      data: {
+        bankRefNo: `${TAG}-DUP-OCCUPY-002`,
+        transactionDate: new Date(),
+        amount: 30000,
+        importBatchId: `${TAG}-BATCH`,
+        importedById: financeUser!.id,
+      },
+    });
+    createdTxIds.push(tx1.id, tx2.id);
+
+    await confirmMatch(buildFinance(), tx1.id, payment.id);
+    await expect(confirmMatch(buildFinance(), tx2.id, payment.id)).rejects.toThrow(/已关联银行流水/);
+    await expect(manualMatch(buildFinance(), tx2.id, payment.id)).rejects.toThrow(/已关联银行流水/);
+  }));
+
+  it("unmatch 回滚 confirmMatch 对 Payment 的副作用", guard(async () => {
+    const contract = await mkContract("100000", "ROLLBACK");
+    const inv = await mkIssuedInvoice(contract.id, 20000, "ROLLBACK");
+    const payment = await mkPayment(contract.id, inv.id, 20000, "ROLLBACK");
+    expect(payment.status).toBe("PLANNED");
+
+    const txDate = new Date("2026-08-15T08:00:00Z");
+    const tx = await prisma.bankTransaction.create({
+      data: {
+        bankRefNo: `${TAG}-ROLLBACK-001`,
+        transactionDate: txDate,
+        amount: 20000,
+        importBatchId: `${TAG}-BATCH`,
+        importedById: financeUser!.id,
+      },
+    });
+    createdTxIds.push(tx.id);
+
+    await confirmMatch(buildFinance(), tx.id, payment.id);
+    const afterConfirm = await prisma.payment.findUnique({ where: { id: payment.id } });
+    expect(afterConfirm?.status).toBe("CONFIRMED");
+    expect(afterConfirm?.bankRefNo).toBe(`${TAG}-ROLLBACK-001`);
+
+    await unmatchTransaction(buildFinance(), tx.id);
+    const afterUnmatch = await prisma.payment.findUnique({ where: { id: payment.id } });
+    expect(afterUnmatch?.bankRefNo).toBeNull();
+    expect(afterUnmatch?.status).toBe("PLANNED");
+  }));
 });
 
 // =====================================================
@@ -496,6 +555,32 @@ describe("query services", () => {
     });
     for (const tx of result.list) {
       expect(tx.matchStatus).toBe("UNMATCHED");
+    }
+  }));
+
+  it("listBankTransactions SUGGESTED 虚拟状态筛选", guard(async () => {
+    const tx = await prisma.bankTransaction.create({
+      data: {
+        bankRefNo: `${TAG}-SUGGESTED-001`,
+        transactionDate: new Date(),
+        amount: 8888,
+        matchStatus: "UNMATCHED",
+        matchScore: 83,
+        importBatchId: `${TAG}-BATCH`,
+        importedById: financeUser!.id,
+      },
+    });
+    createdTxIds.push(tx.id);
+
+    const suggested = await listBankTransactions(buildFinance(), {
+      page: 1,
+      pageSize: 50,
+      matchStatus: "SUGGESTED",
+    });
+    expect(suggested.list.some((t) => t.id === tx.id)).toBe(true);
+    for (const t of suggested.list) {
+      expect(t.matchStatus).toBe("UNMATCHED");
+      expect(Number(t.matchScore)).toBeGreaterThanOrEqual(60);
     }
   }));
 });

@@ -918,6 +918,7 @@ const CRUMB_LABEL: Record<string, string> = {
   "admin/trash": "回收站",
   invoices: "开票管理",
   payments: "回款管理",
+  reconciliation: "对账中心",
   FINANCIAL: "财务经营",
   BUSINESS: "业务经营",
   CUSTOM: "自定义报表",

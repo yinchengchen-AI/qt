@@ -2,6 +2,22 @@
 
 本文件记录 qt-biz 每个版本的详细变更。项目快速入口请见 [README.md](README.md)。
 
+## v0.20.1(2026-08-17)对账中心可用性修复与导入增强
+
+对 v0.20.0 对账中心做全链路走查（浏览器实操 + DB 落账核对），修复一批实用性与数据一致性问题：部署后角色权限不同步导致全员 403 且页面静默空数据、取消匹配不回滚回款状态、操作后表格不刷新、导入只支持手贴 JSON 等。**DB schema / migrations: 无变化**。
+
+变更:
+- **fix(deploy)**:`deploy.sh` 在 migrate 后新增 `seed-roles` 幂等步骤（失败只告警不阻断）——权限以 DB `Role.permissions` 为准，新增 `RECONCILIATION` 资源只改代码矩阵不同步 DB 会导致线上全员 403
+- **fix(reconciliation)**:`unmatchTransaction` 改事务内回滚 `confirmMatch` 对 Payment 的副作用——清掉本流水写入的 `bankRefNo`；仅当确为本对账推进（bankRefNo 匹配且 receivedAt == 交易日期）才退回 PLANNED，不误退原本就 CONFIRMED 的回款，消除孤儿状态
+- **fix(reconciliation)**:`confirmMatch`/`manualMatch` 新增回款一对一占用校验，已被其它流水占用的回款 422 拒绝（报"该回款已关联银行流水 xxx"）
+- **feat(reconciliation)**:导入三通道——上传 `.xlsx`/`.csv` 文件（服务端 exceljs 解析，日期单元格/带逗号金额正确处理，5MB、5000 行上限）、Excel 复制表格直接粘贴（TSV）、保留 JSON 粘贴；新增前后端共用解析器 `lib/statement-text.ts`；导入失败行明细弹窗展示
+- **fix(reconciliation)**:ProTable 接入 `actionRef`，匹配/取消/忽略/批量/导入/确认后表格与统计卡自动刷新（此前需手动刷新，行状态纹丝不动）；列表请求失败显式 `message.error`，403 不再静默显示"暂无数据"
+- **feat(reconciliation)**:筛选下拉与状态标签新增"建议匹配"（UNMATCHED + ≥60 分的虚拟状态），服务端 `matchStatus=SUGGESTED` 翻译为对应查询，建议记录不再无处可找
+- **fix(reconciliation)**:搜索区瘦身——表格列全部 `search: false`，只留关键词/匹配状态/交易日期区间三个有效项，消除"操作列变搜索框"与重复"匹配状态"（React duplicate key 告警）
+- **fix(reconciliation)**:差异处理改逐项弹窗（点该项"标记处理"→ 填说明（必填）→ 确认），处理完列表自动刷新；非财务角色隐藏按钮
+- **fix(layout)**:面包屑补 `reconciliation` → "对账中心"
+- **测试**:新增 8 用例（占用防护 / unmatch 回滚 / SUGGESTED 筛选 / CSV·TSV·xlsx 解析）;typecheck / lint / vitest 全绿（98 文件，806 用例）;浏览器全链路复验通过
+
 ## v0.20.0(2026-08-20)发票与回款自动对账匹配
 
 新增对账中心模块：银行流水导入、多维度自动匹配引擎、差异处理与对账确认全流程。**DB schema 有变化：新增 `BankTransaction`/`ReconciliationRule`/`ReconciliationDiscrepancy` 3 张表（迁移 `20260820_bank_reconciliation`，含 `GRANT ALL ... TO qt_app`）**。
