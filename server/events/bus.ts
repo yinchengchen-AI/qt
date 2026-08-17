@@ -193,6 +193,38 @@ function buildMessage(uid: string, ev: DomainEvent): ResolvedMessage {
         content: `到期日：${formatDate(p.expiryDate)}`,
         link: { kind: "employee-profile", id: p.userId, certificateId: p.certificateId }
       };
+    case "RECONCILIATION_AUTO_MATCHED":
+      // 自动匹配成功，待财务确认
+      return {
+        receiverUserId: uid,
+        title: `银行流水 ${p.bankRefNo} 已自动匹配到回款 ${p.paymentNo}`,
+        content: `金额：¥${p.amount}，客户：${p.customerName}，匹配分数：${p.score}分，请前往对账中心确认`,
+        link: { kind: "reconciliation", id: p.transactionId }
+      };
+    case "RECONCILIATION_SUGGESTION":
+      // 有建议匹配，需人工判断
+      return {
+        receiverUserId: uid,
+        title: `银行流水 ${p.bankRefNo} 有 ${p.candidateCount} 条候选匹配`,
+        content: `金额：¥${p.amount}，客户：${p.customerName}，请前往对账中心人工确认`,
+        link: { kind: "reconciliation", id: p.transactionId }
+      };
+    case "RECONCILIATION_DISCREPANCY":
+      // 对账差异提醒
+      return {
+        receiverUserId: uid,
+        title: `对账差异提醒：${p.description}`,
+        content: `类型：${p.type}，严重程度：${p.severity}，请及时处理`,
+        link: { kind: "reconciliation-discrepancy", id: p.discrepancyId }
+      };
+    case "RECONCILIATION_WEEKLY_REPORT":
+      // 每周对账汇总报告
+      return {
+        receiverUserId: uid,
+        title: `本周对账汇总：新增 ${p.newCount} 条流水，匹配率 ${p.matchRate}%`,
+        content: `待确认 ${p.pendingCount} 条，差异 ${p.discrepancyCount} 条，请前往对账中心查看`,
+        link: { kind: "reconciliation" }
+      };
     default:
       // 历史消息 fallback: deprecated 事件类型 (CUSTOMER_STATUS_SUGGEST 等) 保留在 enum 但不再 emit
       // 偶有历史 row 会落在这里, 渲染为占位 + 提示

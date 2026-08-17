@@ -2,6 +2,20 @@
 
 本文件记录 qt-biz 每个版本的详细变更。项目快速入口请见 [README.md](README.md)。
 
+## v0.20.0(2026-08-20)发票与回款自动对账匹配
+
+新增对账中心模块：银行流水导入、多维度自动匹配引擎、差异处理与对账确认全流程。**DB schema 有变化：新增 `BankTransaction`/`ReconciliationRule`/`ReconciliationDiscrepancy` 3 张表（迁移 `20260820_bank_reconciliation`，含 `GRANT ALL ... TO qt_app`）**。
+
+变更:
+- **feat(reconciliation)**:银行流水 Excel/CSV 导入（`POST /api/reconciliation/import`），支持中文字段映射（流水号/交易日期/金额/对方户名/摘要）、同批次去重、跨批次唯一约束防重复；导入结果含成功/失败/错误明细
+- **feat(reconciliation)**:多维度自动匹配引擎 — 金额（40%权重，精确/容差/近似分级）、日期（20%，±0/1/3/7天分级）、客户名称相似度（25%，公共子串比例）、摘要关键词（15%，发票号/合同号/回款单号识别）、历史交易模式（5%）；高置信度（≥80分且领先第二名≥20分）自动匹配写 `AUTO_MATCHED`，中置信度（60-79分）标记建议
+- **feat(reconciliation)**:对账中心页面 `/payments/reconciliation` — 6 项统计卡片（待匹配/建议/自动待确认/已确认/已忽略/差异）、ProTable 流水列表（关键词/状态/日期/金额筛选）、详情 Drawer（含候选匹配列表带分数与依据）、批量自动匹配按钮、差异处理 Drawer
+- **feat(reconciliation)**:匹配操作 API — `POST /api/reconciliation/transactions/[id]/match` 支持 auto-match/confirm-match/manual-match/unmatch/ignore；`confirm-match` 联动更新 Payment.bankRefNo + 状态推进 PLANNED→CONFIRMED，金额差异自动写 `ReconciliationDiscrepancy`
+- **feat(reconciliation)**:差异处理 — `GET /api/reconciliation/discrepancies` 列表 + `POST .../resolve` 标记处理，支持严重程度分级（LOW/MEDIUM/HIGH/CRITICAL）
+- **feat(permissions)**:新增 `RECONCILIATION` 资源权限 — ADMIN/FINANCE CRUD+EXPORT，SALES/OPS/EXPERT 只读；规则配置仅 ADMIN 可写
+- **feat(messages)**:新增 4 类对账消息 — `RECONCILIATION_AUTO_MATCHED`（自动匹配待确认）、`RECONCILIATION_SUGGESTION`（建议匹配）、`RECONCILIATION_DISCREPANCY`（差异提醒）、`RECONCILIATION_WEEKLY_REPORT`（周报，预留）
+- **测试**:新增 `tests/api/reconciliation.test.ts` 20 用例 — 解析（标准/英文/YYYYMMDD/异常）、导入（批量/去重/跨批重复/权限）、自动匹配（高置信度/无候选/重复处理）、匹配操作（确认/手动/取消/忽略）、查询（统计/列表/筛选）;typecheck / lint / vitest 全绿（97 文件，795 用例）
+
 ## v0.19.9(2026-08-17)账龄分析明细列表翻页失效修复
 
 账龄分析页「明细」tab 翻页点击无效:page/pageSize 只存在 `DetailTable` 本地 state,从未进查询串——请求恒为 `page=1&pageSize=20`(服务端早已支持分页参数,有 schema 测试),onChange 只是用相同参数重拉。代码注释里甚至留了 "实际生产:把 page/pageSize 也放 filter" 的 TODO。**DB schema / migrations: 无变化**。

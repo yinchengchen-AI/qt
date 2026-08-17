@@ -33,6 +33,7 @@ export const RESOURCE = {
   DEPARTMENT: "DEPARTMENT",
   DUNNING: "DUNNING",
   APP_RELEASE: "APP_RELEASE",
+  RECONCILIATION: "RECONCILIATION",
 } as const;
 export type Resource = (typeof RESOURCE)[keyof typeof RESOURCE];
 
@@ -57,7 +58,8 @@ const R_EXPORT: Action[] = ["READ", "EXPORT"];
 export const ROLE_PERMISSIONS: Record<RoleCode, Permission[]> = {
   ADMIN: Object.values(RESOURCE).map((resource) =>
     resource === RESOURCE.STATISTICS || resource === RESOURCE.CUSTOMER || resource === RESOURCE.CONTRACT ||
-    resource === RESOURCE.INVOICE || resource === RESOURCE.PAYMENT || resource === RESOURCE.DUNNING
+    resource === RESOURCE.INVOICE || resource === RESOURCE.PAYMENT || resource === RESOURCE.DUNNING ||
+    resource === RESOURCE.RECONCILIATION
       ? { resource, actions: [...CRUD, ACTION.EXPORT] }
       : { resource, actions: CRUD }
   ),
@@ -87,6 +89,7 @@ export const ROLE_PERMISSIONS: Record<RoleCode, Permission[]> = {
     { resource: RESOURCE.STATISTICS, actions: R_EXPORT },
     // 催收: 财务对账合规留痕, 拿全 CRUD; 业务仅可新增/查询.
     { resource: RESOURCE.DUNNING, actions: CRUD },
+    { resource: RESOURCE.RECONCILIATION, actions: [...CRUD, ACTION.EXPORT] },
     { resource: RESOURCE.MESSAGE, actions: CRUD },
     { resource: RESOURCE.ANNOUNCEMENT, actions: R },
     { resource: RESOURCE.APP_RELEASE, actions: R },
@@ -102,6 +105,7 @@ export const ROLE_PERMISSIONS: Record<RoleCode, Permission[]> = {
     { resource: RESOURCE.PAYMENT, actions: [...R, ACTION.EXPORT] },
     { resource: RESOURCE.STATISTICS, actions: R },
     { resource: RESOURCE.DUNNING, actions: R },
+    { resource: RESOURCE.RECONCILIATION, actions: R },
     { resource: RESOURCE.MESSAGE, actions: CRUD },
     { resource: RESOURCE.ANNOUNCEMENT, actions: CRUD },
     { resource: RESOURCE.APP_RELEASE, actions: R },
@@ -122,6 +126,7 @@ export const ROLE_PERMISSIONS: Record<RoleCode, Permission[]> = {
     { resource: RESOURCE.STATISTICS, actions: R },
     // 催收: 仅查看; 现场记录归 SALES, 修改清理由财务负责.
     { resource: RESOURCE.DUNNING, actions: R },
+    { resource: RESOURCE.RECONCILIATION, actions: R },
     { resource: RESOURCE.MESSAGE, actions: CRUD },
     { resource: RESOURCE.ANNOUNCEMENT, actions: R },
     { resource: RESOURCE.APP_RELEASE, actions: R },

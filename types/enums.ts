@@ -114,6 +114,11 @@ export const MESSAGE_TYPE = [
   // 发票开具/驳回结果通知申请人 (invoiceAction issue/reject 触发)
   "INVOICE_ISSUED",
   "INVOICE_REJECTED",
+  // 对账中心 (bank-reconciliation)
+  "RECONCILIATION_AUTO_MATCHED",
+  "RECONCILIATION_SUGGESTION",
+  "RECONCILIATION_DISCREPANCY",
+  "RECONCILIATION_WEEKLY_REPORT",
 ] as const;
 
 // 5 个内置角色
