@@ -33,7 +33,7 @@ export async function emit(prisma: TxOrClient, ev: DomainEvent): Promise<number>
   // entityKey 由调用方提供;无 link 或 deprecated 事件可省略(null)→ 不参与 unique。
   const data = messages.map((m) => ({
     receiverUserId: m.receiverUserId,
-    type: ev.type,
+    type: ev.type as Prisma.MessageCreateManyInput["type"],
     title: m.title,
     content: m.content,
     link: (m.link ?? PrismaNS.JsonNull) as Prisma.InputJsonValue,

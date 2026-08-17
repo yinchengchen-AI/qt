@@ -12,14 +12,20 @@ import { MESSAGE_TYPE } from "@/types/enums";
 import { prisma } from "@/lib/prisma";
 
 // v0.5.0 起客户状态机下线,以下类型不再 emit,但保留在 PG enum 供历史消息可读
+// v0.20.0 起对账消息类型走应用层枚举,不扩展 PG enum (生产 qt_app 非 owner, ALTER TYPE 42501)
 const DEPRECATED_MESSAGE_TYPES: string[] = [
   "CUSTOMER_STATUS_SUGGEST",
   "CUSTOMER_STATUS_AUTO_APPLIED",
   "CUSTOMER_STATUS_AUTO_REVERTED",
+  // 对账中心: 应用层枚举, PG enum 不扩展 (见 migration 20260820_bank_reconciliation)
+  "RECONCILIATION_AUTO_MATCHED",
+  "RECONCILIATION_SUGGESTION",
+  "RECONCILIATION_DISCREPANCY",
+  "RECONCILIATION_WEEKLY_REPORT",
 ];
 
 describe("MESSAGE_TYPE / Prisma MessageType 一致性", () => {
-  it("MESSAGE_TYPE 数组是 Prisma MessageType enum 的子集", async () => {
+  it("MESSAGE_TYPE 数组是 Prisma MessageType enum 的子集（应用层扩展类型除外）", async () => {
     // 用一个未保存的 raw query 拿到 PG enum 的所有合法 label
     const rows = await prisma.$queryRaw<Array<{ enumlabel: string }>>`
       SELECT enumlabel FROM pg_enum
@@ -27,7 +33,15 @@ describe("MESSAGE_TYPE / Prisma MessageType 一致性", () => {
     `;
     const dbLabels = rows.map((r) => r.enumlabel);
     const appValues = [...MESSAGE_TYPE];
+    // 应用层扩展类型（不落在 PG enum 中）: 对账消息走应用层枚举, 与 v0.19.9 历史处理一致
+    const APP_LAYER_ONLY = new Set([
+      "RECONCILIATION_AUTO_MATCHED",
+      "RECONCILIATION_SUGGESTION",
+      "RECONCILIATION_DISCREPANCY",
+      "RECONCILIATION_WEEKLY_REPORT",
+    ]);
     for (const v of appValues) {
+      if (APP_LAYER_ONLY.has(v)) continue;
       expect(dbLabels).toContain(v);
     }
   });
@@ -59,8 +73,16 @@ describe("MESSAGE_TYPE / Prisma MessageType 一致性", () => {
       // 没 system 用户就跳过(没有 system 种子数据)
       return;
     }
+    // 应用层扩展类型（不落在 PG enum 中）: 对账消息走应用层枚举
+    const APP_LAYER_ONLY = new Set([
+      "RECONCILIATION_AUTO_MATCHED",
+      "RECONCILIATION_SUGGESTION",
+      "RECONCILIATION_DISCREPANCY",
+      "RECONCILIATION_WEEKLY_REPORT",
+    ]);
     try {
       for (const t of MESSAGE_TYPE) {
+        if (APP_LAYER_ONLY.has(t)) continue;
         const m = await prisma.message.create({
           data: { receiverUserId: receiverId, type: t as never, title: "consistency-test", content: "x" }
         });

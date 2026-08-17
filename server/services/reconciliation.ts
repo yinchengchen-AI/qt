@@ -434,21 +434,26 @@ export async function autoMatchTransaction(
       },
     });
 
-    // 通知财务确认
-    const admins = await listAdminUserIds(prisma);
-    await emit(prisma, {
-      type: "RECONCILIATION_AUTO_MATCHED",
-      payload: {
-        transactionId: tx.id,
-        bankRefNo: tx.bankRefNo,
-        amount: Number(tx.amount),
-        paymentNo: best.payment.paymentNo,
-        customerName: best.payment.customer?.name ?? "",
-        score: best.score,
-      },
-      entityKey: `RECONCILIATION_AUTO_MATCHED:${tx.id}`,
-      receivers: Array.from(new Set([user.id, ...admins])),
-    });
+    // 通知财务确认 (应用层消息类型, 不扩展 PG enum; 失败不阻断主流程)
+    try {
+      const admins = await listAdminUserIds(prisma);
+      await emit(prisma, {
+        type: "RECONCILIATION_AUTO_MATCHED",
+        payload: {
+          transactionId: tx.id,
+          bankRefNo: tx.bankRefNo,
+          amount: Number(tx.amount),
+          paymentNo: best.payment.paymentNo,
+          customerName: best.payment.customer?.name ?? "",
+          score: best.score,
+        },
+        entityKey: `RECONCILIATION_AUTO_MATCHED:${tx.id}`,
+        receivers: Array.from(new Set([user.id, ...admins])),
+      });
+    } catch (e) {
+      // 消息发送失败不影响对账主流程
+      console.warn("[reconciliation] emit RECONCILIATION_AUTO_MATCHED failed:", e instanceof Error ? e.message : e);
+    }
 
     return {
       action: "AUTO_MATCHED",

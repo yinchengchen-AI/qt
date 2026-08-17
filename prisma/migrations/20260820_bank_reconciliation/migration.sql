@@ -109,9 +109,6 @@ GRANT ALL ON TABLE "ReconciliationDiscrepancy" TO qt_app;
 -- =====================================================
 -- 4. 扩展 MessageType enum: 对账相关通知
 -- =====================================================
--- 注意: PostgreSQL ALTER TYPE ... ADD VALUE 是即时生效的, 但旧版本 PG 有使用限制
--- 当前 MessageType 是原生 enum, 需要 ALTER TYPE 添加新值
-ALTER TYPE "MessageType" ADD VALUE IF NOT EXISTS 'RECONCILIATION_AUTO_MATCHED';
-ALTER TYPE "MessageType" ADD VALUE IF NOT EXISTS 'RECONCILIATION_SUGGESTION';
-ALTER TYPE "MessageType" ADD VALUE IF NOT EXISTS 'RECONCILIATION_DISCREPANCY';
-ALTER TYPE "MessageType" ADD VALUE IF NOT EXISTS 'RECONCILIATION_WEEKLY_REPORT';
+-- 注意: 生产环境 qt_app 不是 MessageType 的 owner, ALTER TYPE 会报 42501
+-- 改用应用层 TS 联合类型 + Zod 校验, 不扩展 PG 原生 enum
+-- 历史迁移: v0.19.9 及之前的消息类型扩展也是通过应用层处理

@@ -114,7 +114,8 @@ export const MESSAGE_TYPE = [
   // 发票开具/驳回结果通知申请人 (invoiceAction issue/reject 触发)
   "INVOICE_ISSUED",
   "INVOICE_REJECTED",
-  // 对账中心 (bank-reconciliation)
+  // 对账中心 (bank-reconciliation) — 应用层枚举, 不扩展 PG MessageType enum
+  // 生产环境 qt_app 非 enum owner, ALTER TYPE 会报 42501; 与 v0.19.9 历史处理一致
   "RECONCILIATION_AUTO_MATCHED",
   "RECONCILIATION_SUGGESTION",
   "RECONCILIATION_DISCREPANCY",
