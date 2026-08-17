@@ -2,6 +2,15 @@
 
 本文件记录 qt-biz 每个版本的详细变更。项目快速入口请见 [README.md](README.md)。
 
+## v0.19.9(2026-08-17)账龄分析明细列表翻页失效修复
+
+账龄分析页「明细」tab 翻页点击无效:page/pageSize 只存在 `DetailTable` 本地 state,从未进查询串——请求恒为 `page=1&pageSize=20`(服务端早已支持分页参数,有 schema 测试),onChange 只是用相同参数重拉。代码注释里甚至留了 "实际生产:把 page/pageSize 也放 filter" 的 TODO。**DB schema / migrations: 无变化**。
+
+变更:
+- **fix(statistics)**:page/pageSize 提升到页面层并进 `/api/statistics/invoice-aging` 查询串,翻页/改页大小真正生效;filter 变化自动重置到第 1 页;删除 DetailTable 本地分页 state 与无效 `onChanged` 透传
+- **fix(statistics)**:当前页为空但 total>0(如末页数据被并发变化抽空)时仍渲染表格+分页器,不再困死在空态页
+- **测试**:typecheck / lint / vitest 全绿(96 文件,775 用例)
+
 ## v0.19.8(2026-08-17)CI 修复:seed 前补 prisma generate
 
 CI 二跑再进一步(迁移 resolve 路径与 build job 均通过),挂在 seed 步:fresh node_modules 的 `@prisma/client` 没有生成 client(postinstall 只跑 patch-package),`pnpm seed` 报 `does not provide an export named 'Prisma'`。test job 在迁移前补显式 `prisma generate`(无需 DB,与 dev-up.sh "显式跑一次保险" 同理)。**DB schema / migrations: 无变化**;纯 CI 配置改动,无需部署。

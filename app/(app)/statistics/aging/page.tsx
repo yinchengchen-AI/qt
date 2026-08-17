@@ -118,6 +118,9 @@ export default function AgingPage() {
 
   // 共享筛选 — QueryFilter 一次性托管,所有 tab 共享
   const [filter, setFilter] = useState<FilterValues>(DEFAULT_FILTER);
+  // 明细分页:服务端分页,page/pageSize 进查询串;filter 变化时重置到第 1 页
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(20);
   const [agingData, setAgingData] = useState<AgingResult | null>(null);
   const [agingLoading, setAgingLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -181,7 +184,8 @@ export default function AgingPage() {
       if (typeof filter.minAmount === "number" && filter.minAmount > 0) {
         qs.set("minAmount", String(filter.minAmount));
       }
-      qs.set("pageSize", "20");
+      qs.set("page", String(page));
+      qs.set("pageSize", String(pageSize));
       const data = await swrFetcher<AgingResult>(`/api/statistics/invoice-aging?${qs}`, { signal: ab.signal });
       setAgingData(data);
     } catch (e) {
@@ -192,7 +196,7 @@ export default function AgingPage() {
         setAgingLoading(false);
       }
     }
-  }, [filter]);
+  }, [filter, page, pageSize]);
 
   // 首次 + filter 变化时拉
   useEffect(() => {
@@ -262,6 +266,7 @@ export default function AgingPage() {
           labelWidth={isMobile ? 0 : "auto"}
           layout={isMobile ? "vertical" : "horizontal"}
           onFinish={async (values) => {
+            setPage(1);
             setFilter({
               basis: (values.basis as AgingBasis) || "due",
               buckets: Array.isArray(values.buckets) ? (values.buckets as Bucket[]) : undefined,
@@ -271,7 +276,7 @@ export default function AgingPage() {
               minAmount: typeof values.minAmount === "number" ? values.minAmount : undefined
             });
           }}
-          onReset={() => setFilter(DEFAULT_FILTER)}
+          onReset={() => { setPage(1); setFilter(DEFAULT_FILTER); }}
           initialValues={{ basis: "due" }}
         >
           <ProForm.Item name="basis" label="账龄基准">
@@ -396,7 +401,7 @@ export default function AgingPage() {
                 {
                   key: "detail",
                   label: `明细 (${agingData?.total ?? 0})`,
-                  children: <DetailTable data={agingData} loading={agingLoading} dunningMap={dunningMap} onOpenDunning={(id, no) => { setDunningInvoiceId(id); setDunningInvoiceNo(no); }} onChanged={handleDunningChanged} />
+                  children: <DetailTable data={agingData} loading={agingLoading} dunningMap={dunningMap} page={page} pageSize={pageSize} onPageChange={(p, ps) => { setPage(p); setPageSize(ps); }} onOpenDunning={(id, no) => { setDunningInvoiceId(id); setDunningInvoiceNo(no); }} />
                 },
                 {
                   key: "byCustomer",
@@ -438,26 +443,26 @@ function DetailTable({
   data,
   loading,
   dunningMap,
-  onOpenDunning,
-  onChanged
+  page,
+  pageSize,
+  onPageChange,
+  onOpenDunning
 }: {
   data: AgingResult | null;
   loading: boolean;
   dunningMap: Record<string, number>;
+  page: number;
+  pageSize: number;
+  onPageChange: (page: number, pageSize: number) => void;
   onOpenDunning: (id: string, no: string) => void;
-  onChanged: () => void;
 }) {
   const { isMobile } = useResponsive();
   const { token } = useToken();
-  const [page, setPage] = useState(1);
-  const [pageSize, setPageSize] = useState(20);
 
-  // 服务端已分页,这里只切页(URL 加 page/pageSize 后由 useSWR 重拉)
-  // 为了让 pageSize/page 改动生效且不丢 filter,这里用本地 state 控制 + 简单 refetch
-  // (实际生产:把 page/pageSize 也放 filter 或 URL state)
+  // 服务端分页:page/pageSize 由页面层持有并进查询串,翻页触发 refetchAging
   return (
     <ProCard>
-      {data && data.rows.length > 0 ? (
+      {data && data.pagination.total > 0 ? (
         <ProTable<AgingRow>
           rowKey="invoiceId"
           dataSource={data.rows}
@@ -472,11 +477,7 @@ function DetailTable({
             total: data.pagination.total,
             showSizeChanger: !isMobile,
             size: isMobile ? "small" : "middle",
-            onChange: (p, ps) => {
-              setPage(p);
-              setPageSize(ps);
-              onChanged();
-            }
+            onChange: (p, ps) => onPageChange(p, ps)
           }}
           columns={[
             {

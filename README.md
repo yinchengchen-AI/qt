@@ -257,6 +257,10 @@ nginx 反代下上游异常时,由 `public/502.html` 静态页与 `app/502/page.
 
 最近 5 个版本,完整历史见 [CHANGELOG.md](CHANGELOG.md)。
 
+### v0.19.9(2026-08-17)账龄分析明细列表翻页失效修复
+
+明细分页的 page/pageSize 只存在组件本地 state、从未进查询串(恒拉第 1 页),翻页点击无效;提升到页面层进 `/api/statistics/invoice-aging` 参数,filter 变化自动重置页码。**DB schema 无变化**。
+
 ### v0.19.8(2026-08-17)CI 修复:seed 前补 prisma generate
 
 fresh node_modules 的 `@prisma/client` 未生成 client 导致 seed 报错,test job 迁移前补显式 generate;迁移 resolve 路径与 build job 已验证通过。**DB schema 无变化**,纯 CI 配置无需部署。
@@ -280,13 +284,6 @@ eslint 9.18→9.39.5 后 `declare global` 中的 `var` 不再触发 `no-var`,删
 - **feat**:Content 顶部 sticky 搜索条(top=Header 高度,实色背景遮挡);顶栏右侧只留消息+头像
 - **feat**:GlobalSearch 新增 block 全宽模式;手机端不再走"图标→展开"两步流程,隐藏无意义的 Ctrl K 徽标
 - **test(e2e)**:登录 timeout 放宽(dev 编译压力容错);三项目 e2e 全过;sticky 滚动截图验证
-
-### v0.18.10(2026-08-14)工作台客户区域分布柱状图恢复按镇街彩虹色
-
-客户区域分布柱状图恢复 `colorField="town"` 按镇街彩虹着色(每镇街独立颜色,图例可区分),保留 Top 10 + 其他 聚合与空镇街「未录入」标注。**DB schema 无变化**。
-
-- **彩虹着色回归**:恢复 `colorField="town"`,因已聚合 Top 10 + 其他,图例最多 11 项,不再有巨型图例
-- **测试**:typecheck / lint / vitest 全绿(94 文件,772 用例)
 
 ### v0.18.9(2026-08-14)工作台客户区域分布柱状图视觉打磨
 
