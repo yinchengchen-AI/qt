@@ -2,6 +2,17 @@
 
 本文件记录 qt-biz 每个版本的详细变更。项目快速入口请见 [README.md](README.md)。
 
+## v0.19.7(2026-08-17)CI 修复:fresh DB 迁移重放雷区自动化 + 测试 fixture 自愈
+
+CI 首跑暴露两个 fresh DB 才能发现的问题,均已修复并全流程本地彩排(scratch PG 16 从建库到 775 用例全绿)。**DB schema / migrations: 无变化**;CI/脚本/测试/docs 改动,不影响运行时,无需部署。
+
+变更:
+- **fix(ci)**:CI 迁移步骤撞 fresh DB 已知雷区——`20260630_message_type_enum_index` 裸 `CREATE TYPE` 必撞 `20260627` 预建 enum(42710);封装 `scripts/shared/migrate-deploy.sh`:只在 deploy 报错点名 20260630 时才 `migrate resolve --applied` + 补列转换/索引 DDL 再续跑(与 `prisma/migrations/README.md` #29 文档化路径一致),其它失败原样报错绝不 resolve;`migrate status` 不点名失败迁移,判定依据是 deploy 的 P3018 "Migration name:" 输出
+- **fix(dev)**:`dev:setup` 从 `migrate dev`(shadow DB 重放,与迁移历史不兼容,AGENTS.md 明令禁止)改为同一 `migrate-deploy.sh` 入口——此前新机器跑 dev:setup 必挂 P3006
+- **fix(test)**:`tests/api/contract-no-partial-unique.test.ts` 不再 `findFirstOrThrow` 依赖环境已有客户(fresh DB 必挂),改为 beforeAll 自建 TAG 前缀客户 fixture + afterAll 清理;无用户(seed 未跑)时整组 skip
+- **docs(ops)**:AGENTS.md 修正 `docs/db-bootstrap.md` 失效引用(已迁至 `docs/ops/db-bootstrap.md`)、数据库迁移节补 fresh DB 两坑(qt_app 角色 + 20260630);`docs/ops/db-bootstrap.md` 同步补 "fresh DB 的两个已知坑" 小节
+- **测试**:typecheck / lint / vitest 全绿(96 文件,775 用例);scratch PG 16 全新库完整彩排:建 qt_app 角色 → migrate-deploy.sh(自动 resolve)→ seed/seed:dev-users → vitest 775/775
+
 ## v0.19.6(2026-08-17)CI 门禁上线 + CHANGELOG 草稿半自动化
 
 发版闭环加固:GitHub Actions CI 在每次 push/PR 时用真实 PG(迁移+seed)跑 lint/typecheck/vitest + 生产构建冒烟;新增 `npm run changelog:draft` 从 commits 生成 CHANGELOG 草稿,不用手翻 git log。**DB schema / migrations: 无变化**;CI/工具/docs 改动,不影响运行时,无需部署,随下次上线顺带同步。

@@ -9,14 +9,17 @@
 //   2) 软删合同 + 新建同号 → 不抛 P2002
 //   3) 两条活动合同同号 → 仍 P2002
 //
-// DB 不可达时整组 skip (开发机 / CI 没起 docker 时不阻塞).
+// DB 不可达(或无用户)时整组 skip (开发机 / CI 没起 docker 时不阻塞).
 // 测试用唯一前缀的 contractNo, 不会污染真实数据; 跑完自己清理.
+// fresh DB (CI) 上库里可能一个客户都没有, 客户 fixture 必须自建, 不能 findFirstOrThrow 依赖环境数据.
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { prisma } from "@/lib/prisma";
 
 let dbReachable = false;
 const TAG = `TEST-PARTIAL-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 const createdContractNos: string[] = [];
+let fixtureCustomerId: string | null = null;
+let fixtureUserId: string | null = null;
 
 beforeAll(async () => {
   try {
@@ -24,7 +27,32 @@ beforeAll(async () => {
     dbReachable = true;
   } catch {
     dbReachable = false;
+    return;
   }
+  // 用户走 seed (CI 会先跑 seed:dev-users); 一个用户都没有说明 seed 没跑, 整组 skip
+  const user = await prisma.user.findFirst({ where: { deletedAt: null }, select: { id: true } });
+  if (!user) {
+    dbReachable = false;
+    return;
+  }
+  fixtureUserId = user.id;
+  const customer = await prisma.customer.create({
+    data: {
+      code: `${TAG}-C`,
+      name: `${TAG}-客户`,
+      shortName: `${TAG}-客`,
+      unifiedSocialCreditCode: `91330100${TAG.replace(/[^A-Z0-9]/gi, "X").slice(0, 10)}`,
+      customerType: "ENTERPRISE",
+      province: "浙江省",
+      city: "杭州市",
+      contactName: `${TAG}-联系人`,
+      contactPhone: "13800000000",
+      ownerUserId: user.id,
+      createdById: user.id,
+      updatedById: user.id
+    }
+  });
+  fixtureCustomerId = customer.id;
 });
 
 afterAll(async () => {
@@ -33,6 +61,9 @@ afterAll(async () => {
     if (createdContractNos.length > 0) {
       // 测试数据强制物理清理, 不会污染生产数据 (前缀已隔离)
       await prisma.contract.deleteMany({ where: { contractNo: { in: createdContractNos } } });
+    }
+    if (fixtureCustomerId) {
+      await prisma.customer.delete({ where: { id: fixtureCustomerId } });
     }
   } catch {
     // 忽略清理失败
@@ -73,7 +104,7 @@ describe("Contract.contractNo 部分唯一索引 (软删可复用)", () => {
     const first = await prisma.contract.create({
       data: {
         contractNo: no,
-        customerId: (await prisma.customer.findFirstOrThrow({ where: { deletedAt: null }, select: { id: true } })).id,
+        customerId: fixtureCustomerId!,
         customerName: "TEST-PARTIAL-客户",
         title: "TEST-PARTIAL-title-1",
         serviceType: "OTHER",
@@ -85,11 +116,11 @@ describe("Contract.contractNo 部分唯一索引 (软删可复用)", () => {
         taxAmount: "0",
         amountExcludingTax: "0",
         paymentMethod: "LUMP_SUM",
-        ownerUserId: (await prisma.user.findFirstOrThrow({ where: { deletedAt: null }, select: { id: true } })).id,
-        signerId: (await prisma.user.findFirstOrThrow({ where: { deletedAt: null }, select: { id: true } })).id,
+        ownerUserId: fixtureUserId!,
+        signerId: fixtureUserId!,
         attachments: [] as unknown as Parameters<typeof prisma.contract.create>[0]["data"]["attachments"],
-        createdById: (await prisma.user.findFirstOrThrow({ where: { deletedAt: null }, select: { id: true } })).id,
-        updatedById: (await prisma.user.findFirstOrThrow({ where: { deletedAt: null }, select: { id: true } })).id
+        createdById: fixtureUserId!,
+        updatedById: fixtureUserId!
       }
     });
     expect(first.id).toBeTruthy();
@@ -126,8 +157,8 @@ describe("Contract.contractNo 部分唯一索引 (软删可复用)", () => {
   it("两条活动合同同号仍触发 P2002", guard(async () => {
     const no = `${TAG}-COLLIDE`;
     createdContractNos.push(no);
-    const customerId = (await prisma.customer.findFirstOrThrow({ where: { deletedAt: null }, select: { id: true } })).id;
-    const userId = (await prisma.user.findFirstOrThrow({ where: { deletedAt: null }, select: { id: true } })).id;
+    const customerId = fixtureCustomerId!;
+    const userId = fixtureUserId!;
     const base = {
       contractNo: no,
       customerId,

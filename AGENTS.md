@@ -67,5 +67,6 @@ Node `>=20.9.0`. Use `npm`; `pnpm-lock.yaml` is kept in sync.
 - `prisma/migrations/<committed>/` 是不可变的。**已合并到 main 的迁移文件禁止删除、重命名或重写 SQL**。代码与 `_prisma_migrations` 表共同构成生产 schema 的合同，破坏任一边都会让所有已部署环境在 `prisma migrate deploy` 报 "migration not found"。
 - 删字段/删表通过新增的迁移做（`ALTER TABLE ... DROP COLUMN`），不要回滚历史迁移。
 - 新环境拉代码后用 `npm run prisma:deploy` 应用迁移；不要用 `prisma migrate dev`（它会建 shadow DB 跑完整重放，跟当前迁移历史不兼容）。
-- 撞上 drift（DB 已应用某迁移但本地缺文件）时参考 `docs/db-bootstrap.md` 的恢复流程，从 git 历史找回原文件，**不要** `migrate resolve` 凭空标记。
+- **fresh DB 重放已知雷区**：`20260630_message_type_enum_index` 的裸 `CREATE TYPE "MessageType"` 会撞 `20260627` 预建的 enum（42710），只有全新库完整重放才触发（历史 dev/prod 是手工按序应用的）。统一入口 `bash scripts/shared/migrate-deploy.sh`（CI 与 `dev:setup` 都在用）：只在失败迁移恰为 20260630 时自动 `migrate resolve --applied` + 补列转换/索引 DDL 再续跑，其它失败原样报错绝不 resolve。另：全新库跑迁移前需先 `CREATE ROLE qt_app BYPASSRLS NOLOGIN;`（20260704/20260711 两个迁移含无保护 GRANT）。
+- 撞上 drift（DB 已应用某迁移但本地缺文件）时参考 `docs/ops/db-bootstrap.md` 的恢复流程，从 git 历史找回原文件，**不要** `migrate resolve` 凭空标记。
 - **新表必须显式 GRANT 给 qt_app**：`qt_app` 是 BYPASSRLS 应用运行时用户（BYPASSRLS 只旁路 RLS 策略，**不**旁路表级权限）。任何 `CREATE TABLE` 迁移在末尾追加 `GRANT ALL ON TABLE "<TableName>" TO qt_app;`；漏了会报 `42501 permission denied for table <X>`（v0.7.0 真实事故：`DunningNote`）。回填用新迁移 `GRANT ... TO qt_app;`（幂等），不要改原 SQL 破坏 checksum。

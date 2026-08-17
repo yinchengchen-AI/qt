@@ -72,9 +72,11 @@ jobs:
       - name: 建 qt_app 角色
         run: echo "CREATE ROLE qt_app BYPASSRLS NOLOGIN;" | pnpm exec prisma db execute --stdin
 
-      - name: 应用迁移 + seed(ADMIN/SALES 等测试账号,避免 DB 用例整组 skip)
+      - name: 应用迁移(fresh DB 自动走 20260630 resolve 路径,见 scripts/shared/migrate-deploy.sh)
+        run: bash scripts/shared/migrate-deploy.sh
+
+      - name: seed(ADMIN/SALES 等测试账号,避免 DB 用例整组 skip)
         run: |
-          pnpm exec prisma migrate deploy
           pnpm seed
           pnpm seed:dev-users
 

@@ -25,6 +25,18 @@ npm run seed
 
 `prisma migrate deploy` 会按时间顺序应用 `prisma/migrations/` 下所有未应用的迁移，然后停止。**不要**用 `npm run prisma:migrate`（即 `migrate dev`），它会建 shadow 数据库从头重放，跟我们这套迁移历史不兼容（部分迁移依赖 `prisma/seed.ts` 写入的 ADMIN 角色才能跑）。
 
+### fresh DB 的两个已知坑（CI / 新机器必看）
+
+1. **`qt_app` 角色必须先建**：`20260704_grant_dunning_note_qt_app` / `20260711_login_security_hardening` 含无 DO 块保护的 `GRANT ... TO qt_app`，全新库没有该角色会报 `42704 role "qt_app" does not exist`：
+   ```bash
+   echo "CREATE ROLE qt_app BYPASSRLS NOLOGIN;" | npx prisma db execute --stdin
+   ```
+2. **`20260630_message_type_enum_index` 必失败**：它的裸 `CREATE TYPE "MessageType"` 撞 `20260627_message_type_enum_bootstrap` 预建的 12 值 enum（`42710 duplicate_object`；背景见 `prisma/migrations/README.md` #29）。修复路径已脚本化，直接用它代替裸 `migrate deploy`：
+   ```bash
+   bash scripts/shared/migrate-deploy.sh
+   ```
+   该脚本只在失败迁移恰为 20260630 时自动 `migrate resolve --applied` + 补列转换/索引 DDL 再续跑；其它失败原样报错，绝不 resolve（防凭空标记）。CI（`.github/workflows/ci.yml`）与 `npm run dev:setup` 都走这个入口。
+
 ## 2. 漂移（drift）恢复
 
 drift 的两种典型场景：

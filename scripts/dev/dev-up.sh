@@ -59,8 +59,8 @@ if [ ! -d node_modules ]; then
 fi
 
 # --- 4) 推库 + seed ---
-say "prisma migrate dev"
-pnpm prisma:migrate
+say "prisma migrate deploy (fresh DB 自动走 20260630 resolve 路径; 不用 migrate dev, 见 AGENTS.md)"
+bash scripts/shared/migrate-deploy.sh
 say "prisma generate (postinstall 只跑 patch-package, 显式跑一次保险)"
 pnpm prisma:generate
 say "pnpm seed (系统字典/角色/管理员 幂等)"

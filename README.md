@@ -257,6 +257,10 @@ nginx 反代下上游异常时,由 `public/502.html` 静态页与 `app/502/page.
 
 最近 5 个版本,完整历史见 [CHANGELOG.md](CHANGELOG.md)。
 
+### v0.19.7(2026-08-17)CI 修复:fresh DB 迁移重放雷区自动化 + 测试 fixture 自愈
+
+CI 首跑抓到两个 fresh DB 限定问题:迁移重放撞 20260630 已知雷区(封装 `scripts/shared/migrate-deploy.sh` 自动 resolve,dev:setup 同入口,弃用 migrate dev)、测试依赖环境已有客户(改为自建 fixture)。scratch PG 全新库彩排 775/775 全绿。**DB schema 无变化**,不影响运行时无需部署。
+
 ### v0.19.6(2026-08-17)CI 门禁上线 + CHANGELOG 草稿半自动化
 
 GitHub Actions 每次 push/PR 自动跑真实 PG(迁移+seed)上的 lint/typecheck/vitest + 生产构建冒烟;`npm run changelog:draft` 从 commits 生成 CHANGELOG 草稿(自动检测迁移改动预填 DB 行)。**DB schema 无变化**,不影响运行时无需部署。
@@ -281,10 +285,6 @@ eslint 9.18→9.39.5 后 `declare global` 中的 `var` 不再触发 `no-var`,删
 - **style**:分组彩色图标(客户/合同/发票/回款);「查看全部 N 条」主色+虚线+箭头;输入框加宽至 280px
 - **fix**:下拉闪烁竞态(防抖窗口内闪关锁死 open,e2e 实测复现)——trimmedLen>=1 常开
 - **测试**:e2e 新增 2 用例;typecheck / lint / vitest 全绿(775 用例);playwright 3 用例全过
-
-### v0.19.2(2026-08-16)remote-deploy.sh 退出码假阴性修复
-
-修复本地触发远端部署后误报"30 分钟 stream 超时"的缺陷:tmux 会话退出时改读远端日志的 EXIT= 标记作为真实退出码;tmux 内命令补 pipefail,防止 deploy 失败被 tee 的退出码掩盖。**DB schema 无变化**;纯运维脚本改动,随下次部署顺带同步。
 
 ### v0.19.1(2026-08-16)全局搜索对齐 read-open 权限口径
 
