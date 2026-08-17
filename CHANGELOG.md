@@ -2,6 +2,12 @@
 
 本文件记录 qt-biz 每个版本的详细变更。项目快速入口请见 [README.md](README.md)。
 
+## v0.19.8(2026-08-17)CI 修复:seed 前补 prisma generate
+
+CI 二跑再进一步(迁移 resolve 路径与 build job 均通过),挂在 seed 步:fresh node_modules 的 `@prisma/client` 没有生成 client(postinstall 只跑 patch-package),`pnpm seed` 报 `does not provide an export named 'Prisma'`。test job 在迁移前补显式 `prisma generate`(无需 DB,与 dev-up.sh "显式跑一次保险" 同理)。**DB schema / migrations: 无变化**;纯 CI 配置改动,无需部署。
+
+- **测试**:yaml 语法校验通过;待 CI 三跑确认全绿
+
 ## v0.19.7(2026-08-17)CI 修复:fresh DB 迁移重放雷区自动化 + 测试 fixture 自愈
 
 CI 首跑暴露两个 fresh DB 才能发现的问题,均已修复并全流程本地彩排(scratch PG 16 从建库到 775 用例全绿)。**DB schema / migrations: 无变化**;CI/脚本/测试/docs 改动,不影响运行时,无需部署。

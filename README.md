@@ -257,6 +257,10 @@ nginx 反代下上游异常时,由 `public/502.html` 静态页与 `app/502/page.
 
 最近 5 个版本,完整历史见 [CHANGELOG.md](CHANGELOG.md)。
 
+### v0.19.8(2026-08-17)CI 修复:seed 前补 prisma generate
+
+fresh node_modules 的 `@prisma/client` 未生成 client 导致 seed 报错,test job 迁移前补显式 generate;迁移 resolve 路径与 build job 已验证通过。**DB schema 无变化**,纯 CI 配置无需部署。
+
 ### v0.19.7(2026-08-17)CI 修复:fresh DB 迁移重放雷区自动化 + 测试 fixture 自愈
 
 CI 首跑抓到两个 fresh DB 限定问题:迁移重放撞 20260630 已知雷区(封装 `scripts/shared/migrate-deploy.sh` 自动 resolve,dev:setup 同入口,弃用 migrate dev)、测试依赖环境已有客户(改为自建 fixture)。scratch PG 全新库彩排 775/775 全绿。**DB schema 无变化**,不影响运行时无需部署。
@@ -276,23 +280,6 @@ eslint 9.18→9.39.5 后 `declare global` 中的 `var` 不再触发 `no-var`,删
 - **feat**:Content 顶部 sticky 搜索条(top=Header 高度,实色背景遮挡);顶栏右侧只留消息+头像
 - **feat**:GlobalSearch 新增 block 全宽模式;手机端不再走"图标→展开"两步流程,隐藏无意义的 Ctrl K 徽标
 - **test(e2e)**:登录 timeout 放宽(dev 编译压力容错);三项目 e2e 全过;sticky 滚动截图验证
-
-### v0.19.3(2026-08-16)全局搜索框外观与实用性优化
-
-顶栏聚合搜索框升级:Ctrl+K 快捷键唤起、搜索历史(最近 5 条)、Enter 直达列表页、分组彩色图标、「查看全部」整行醒目化、空态/失败态带图标可重试。**DB schema 无变化**。
-
-- **feat**:Ctrl+K/⌘K 聚焦 + kbd 徽标;搜索历史(仅跳转时写入,单条可删);Enter 未导航时跳「查看全部」;1 字符输入提示
-- **style**:分组彩色图标(客户/合同/发票/回款);「查看全部 N 条」主色+虚线+箭头;输入框加宽至 280px
-- **fix**:下拉闪烁竞态(防抖窗口内闪关锁死 open,e2e 实测复现)——trimmedLen>=1 常开
-- **测试**:e2e 新增 2 用例;typecheck / lint / vitest 全绿(775 用例);playwright 3 用例全过
-
-### v0.19.1(2026-08-16)全局搜索对齐 read-open 权限口径
-
-全局搜索从行级隔离改为读开放(read-open),与列表页读口径一致(v0.18.4 Wave 3 同策略):SALES/EXPERT 可跨 owner 搜索客户/合同/发票/回款。**DB schema 无变化**。
-
-- **fix(search)**:search 服务去掉 ownerEq/ownerViaContract 行级隔离注入;逐组 READ 权限门禁、LIKE 转义、分组 total 统计保留
-- **fix(search)**:GlobalSearch 恢复自管理组件(防抖/高亮/分组/移动端),清理合并混入的受控弹窗残留
-- **测试**:typecheck / lint / vitest 全绿(96 文件,775 用例)
 
 ### v0.18.10(2026-08-14)工作台客户区域分布柱状图恢复按镇街彩虹色
 

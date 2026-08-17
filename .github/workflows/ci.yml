@@ -72,6 +72,9 @@ jobs:
       - name: 建 qt_app 角色
         run: echo "CREATE ROLE qt_app BYPASSRLS NOLOGIN;" | pnpm exec prisma db execute --stdin
 
+      - name: prisma generate(postinstall 只跑 patch-package,必须显式生成 client)
+        run: pnpm exec prisma generate
+
       - name: 应用迁移(fresh DB 自动走 20260630 resolve 路径,见 scripts/shared/migrate-deploy.sh)
         run: bash scripts/shared/migrate-deploy.sh
 
