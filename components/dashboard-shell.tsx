@@ -105,7 +105,8 @@ const MENU: MenuItem[] = [
     icon: <AccountBookOutlined />,
     children: [
       { path: "/invoices", name: "开票管理", permission: { resource: RESOURCE.INVOICE, action: ACTION.READ } },
-      { path: "/payments", name: "回款管理", permission: { resource: RESOURCE.PAYMENT, action: ACTION.READ } }
+      { path: "/payments", name: "回款管理", permission: { resource: RESOURCE.PAYMENT, action: ACTION.READ } },
+      { path: "/payments/reconciliation", name: "对账中心", permission: { resource: RESOURCE.RECONCILIATION, action: ACTION.READ } }
     ]
   },
   {
