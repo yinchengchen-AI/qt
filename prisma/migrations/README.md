@@ -48,19 +48,24 @@
 | 38 | `20260708_report_center_status_default` | 报表 | ReportSnapshot | ReportSnapshot.status 默认值调整为 READY（同步生成后无需 PENDING） |
 | 39 | `20260710_drop_report_center` | 报表 | ReportDefinition / ReportSnapshot | 报表中心下线：DROP 两表 |
 | 40 | `20260711_login_security_hardening` | 认证 | User / PasswordResetToken | User 加 lockedUntil + 失败计数 + 索引；新建 PasswordResetToken 表 + GRANT qt_app |
+| 41 | `20260801151832_user_session_version` | 认证 | User | User.sessionVersion（单点登录：新登录踢旧设备） |
+| 42 | `20260814_aging_snapshot` | 发票/账龄 | AgingSnapshot | 应收账龄日快照预计算表（cron 每日幂等 upsert） |
+| 43 | `20260820_bank_reconciliation` | 对账 | BankTransaction / ReconciliationRule / ReconciliationDiscrepancy | 对账中心 3 张表 + GRANT qt_app。**ReconciliationRule 在 20260821 被下线** |
+| 44 | `20260821_drop_reconciliation_rule` | 对账 | ReconciliationRule | 规则配置下线：DSL 从未接线（引擎不读、无 UI），DROP 整表 |
 
 ## 主题快速跳转
 
 - **基线**：1
 - **客户模块**：3 / 8 / 25 / 28
 - **合同模块**：5 / 7 / 10 / 14 / 19 / 20 / 35
-- **发票 / 回款 / 账龄**：21 / 32 / 33
+- **发票 / 回款 / 账龄**：21 / 32 / 33 / 42
 - **通知 / 消息 / 公告**：22 / 23 / 24 / 29 / 31
 - **员工档案**：16 / 27 / 30
-- **用户 / 认证**：6 / 9 / 40
+- **用户 / 认证**：6 / 9 / 40 / 41
 - **附件**：2 / 17 / 18 / 19 / 26 / 27
 - **发布管理**：34 / 36
 - **报表中心（已下线）**：37 / 38 / 39
+- **对账中心**：43 / 44
 - **项目 / 工作流（已下线）**：4 / 11 / 13 / 15
 - **审计**：12
 

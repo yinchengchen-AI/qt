@@ -62,21 +62,3 @@ export const resolveDiscrepancySchema = z.object({
 });
 
 export type ResolveDiscrepancyInput = z.infer<typeof resolveDiscrepancySchema>;
-
-// =====================================================
-// 规则配置
-// =====================================================
-
-export const reconciliationRuleSchema = z.object({
-  name: z.string().min(1, "规则名称不能为空").max(100),
-  priority: z.number().int().min(0).max(999).default(0),
-  conditions: z.record(z.string(), z.unknown()),
-  action: z.enum(["AUTO_MATCH", "SUGGEST_MATCH", "FLAG_REVIEW"]),
-});
-
-export const reconciliationRuleUpdateSchema = reconciliationRuleSchema.partial().extend({
-  isActive: z.boolean().optional(),
-});
-
-export type ReconciliationRuleInput = z.infer<typeof reconciliationRuleSchema>;
-export type ReconciliationRuleUpdateInput = z.infer<typeof reconciliationRuleUpdateSchema>;

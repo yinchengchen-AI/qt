@@ -2,6 +2,15 @@
 
 本文件记录 qt-biz 每个版本的详细变更。项目快速入口请见 [README.md](README.md)。
 
+## v0.20.2(2026-08-17)对账规则配置（ReconciliationRule）下线
+
+删除 v0.20.0 引入但从未接线的对账规则配置：匹配引擎不读规则表、前端无配置入口、DSL 为拍脑袋设计，表/CRUD API/service 全属死代码。**DB schema 有变化：新增迁移 `20260821_drop_reconciliation_rule`（`DROP TABLE "ReconciliationRule"`）**。
+
+变更:
+- **chore(reconciliation)**:删 `ReconciliationRule` model、`GET/POST /api/reconciliation/rules` 与 `PATCH/DELETE .../rules/[id]` 两组路由、service 的 `listRules/createRule/updateRule/deleteRule`、validators 的规则 schema（约 130 行）
+- **docs(db)**:迁移索引补齐 41-44 号（user_session_version / aging_snapshot / bank_reconciliation / drop_reconciliation_rule），主题跳转补"对账中心"
+- **测试**:typecheck / lint / vitest 全绿（98 文件，806 用例）;dev 冒烟：rules API 404、对账 summary 正常 401
+
 ## v0.20.1(2026-08-17)对账中心可用性修复与导入增强
 
 对 v0.20.0 对账中心做全链路走查（浏览器实操 + DB 落账核对），修复一批实用性与数据一致性问题：部署后角色权限不同步导致全员 403 且页面静默空数据、取消匹配不回滚回款状态、操作后表格不刷新、导入只支持手贴 JSON 等。**DB schema / migrations: 无变化**。

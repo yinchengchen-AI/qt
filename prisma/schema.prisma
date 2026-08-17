@@ -901,24 +901,8 @@ model BankTransaction {
   @@index([paymentId])
 }
 
-/// 对账规则配置（可扩展）
-model ReconciliationRule {
-  id          String   @id @default(cuid())
-  name        String   @db.VarChar(100)
-  priority    Int      @default(0)
-  isActive    Boolean  @default(true)
-  /// 匹配条件 JSON DSL
-  conditions  Json
-  /// 动作: AUTO_MATCH | SUGGEST_MATCH | FLAG_REVIEW
-  action      String
-  createdById String
-  createdAt   DateTime @default(now()) @db.Timestamptz(6)
-  updatedAt   DateTime @updatedAt @db.Timestamptz(6)
-
-  @@index([isActive, priority])
-}
-
-/// 对账差异记录（金额不符、重复回款等异常情况）
+// =====================================================
+// 对账差异记录（金额不符、重复回款等异常情况）
 model ReconciliationDiscrepancy {
   id                String   @id @default(cuid())
   /// 差异类型
