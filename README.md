@@ -7,6 +7,7 @@
 [![Prisma](https://img.shields.io/badge/Prisma-7.9.1-2d3748)](https://www.prisma.io/)
 [![PostgreSQL](https://img.shields.io/badge/PostgreSQL-16-336791)](https://www.postgresql.org/)
 [![Last Release](https://img.shields.io/badge/release-v0.19.0-blue)](CHANGELOG.md)
+[![CI](https://github.com/yinchengchen-AI/qt/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/yinchengchen-AI/qt/actions/workflows/ci.yml)
 
 > **客户 / 合同 / 开票 / 回款** 一体化管理,附件走 MinIO presigned 直传,服务端 Server Actions + RBAC + 行级隔离。
 >
@@ -256,6 +257,10 @@ nginx 反代下上游异常时,由 `public/502.html` 静态页与 `app/502/page.
 
 最近 5 个版本,完整历史见 [CHANGELOG.md](CHANGELOG.md)。
 
+### v0.19.6(2026-08-17)CI 门禁上线 + CHANGELOG 草稿半自动化
+
+GitHub Actions 每次 push/PR 自动跑真实 PG(迁移+seed)上的 lint/typecheck/vitest + 生产构建冒烟;`npm run changelog:draft` 从 commits 生成 CHANGELOG 草稿(自动检测迁移改动预填 DB 行)。**DB schema 无变化**,不影响运行时无需部署。
+
 ### v0.19.5(2026-08-17)移除失效的 eslint-disable 指令
 
 eslint 9.18→9.39.5 后 `declare global` 中的 `var` 不再触发 `no-var`,删除 `scheduler.ts` 失效的 eslint-disable 注释(否则报未使用指令 warning)。**DB schema 无变化**,注释类改动无需部署。
@@ -288,14 +293,6 @@ eslint 9.18→9.39.5 后 `declare global` 中的 `var` 不再触发 `no-var`,删
 - **fix(search)**:search 服务去掉 ownerEq/ownerViaContract 行级隔离注入;逐组 READ 权限门禁、LIKE 转义、分组 total 统计保留
 - **fix(search)**:GlobalSearch 恢复自管理组件(防抖/高亮/分组/移动端),清理合并混入的受控弹窗残留
 - **测试**:typecheck / lint / vitest 全绿(96 文件,775 用例)
-
-### v0.18.11(2026-08-14)工作台月度/季度/年度 Top 5 客户按区间过滤 + 待审待开票计数修复
-
-修复工作台月/季/年切换时数据不准确:Top 5 客户此前漏传区间参数显示全期数据,「待审/待开票」此前恒为 0。**DB schema 无变化**。
-
-- **Top 5 按区间过滤**:`dashboard/summary` 路由 `getTopCustomers` 补传 `range`,月度/季度/年度切换时 Top 5 客户随区间变化(与统计分析 Top 客户同口径)
-- **待审/待开票修复**:新增 PENDING_FINANCE 发票独立计数(`invoices.pending`),不再被 `actualIssueDate` 区间过滤误伤;KPI「待审 X 张待开票」与「待办预警-待开票」恢复真实存量
-- **测试**:新增 `tests/api/dashboard-summary-range.test.ts`(3 用例);typecheck / lint / vitest 全绿(95 文件,775 用例)
 
 ### v0.18.10(2026-08-14)工作台客户区域分布柱状图恢复按镇街彩虹色
 

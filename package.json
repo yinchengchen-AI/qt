@@ -26,6 +26,7 @@
     "prisma:studio": "prisma studio",
     "db:snapshot": "tsx scripts/shared/dump-current-schema.ts",
     "release:publish": "tsx scripts/release/publish.ts",
+    "changelog:draft": "tsx scripts/release/changelog-draft.ts",
     "reset-password": "tsx scripts/shared/reset-password.ts",
     "seed": "tsx prisma/seed.ts",
     "seed:dev-users": "tsx scripts/shared/seed-test-users.ts",

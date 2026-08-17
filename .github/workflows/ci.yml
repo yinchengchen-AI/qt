@@ -1,0 +1,130 @@
+# CI 门禁:push/PR 到 main 时自动跑
+#   - test  job: 真实 PG 16(迁移 deploy + seed)上跑 lint / typecheck / vitest
+#   - build job: 生产构建冒烟(next build),抓 tsc 查不出的 RSC/构建期错误
+# 定位是"兜底",不替代本地闭环验证(AGENTS.md 代码改动闭环)。
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: lint / typecheck / vitest
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: qitai
+          POSTGRES_PASSWORD: qitai_pass
+          POSTGRES_DB: qt_biz
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U qitai -d qt_biz"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      DATABASE_URL: postgresql://qitai:qitai_pass@localhost:5432/qt_biz?schema=public
+      NEXTAUTH_SECRET: ci-only-nextauth-secret-32chars-pad
+      NEXTAUTH_URL: http://localhost:3000
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.3.0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      # pnpm-workspace.yaml 被 gitignore(存的是本机 approve-builds 状态),
+      # CI 按 allowBuilds 白名单重建,否则 pnpm 11 install 报 ERR_PNPM_IGNORED_BUILDS
+      - name: 生成 pnpm-workspace.yaml(gitignored)
+        run: |
+          cat > pnpm-workspace.yaml <<'EOF'
+          packages:
+            - "."
+
+          allowBuilds:
+            "@prisma/engines": true
+            bcrypt: true
+            esbuild: true
+            prisma: true
+            sharp: true
+            unrs-resolver: true
+          EOF
+
+      - name: 安装依赖
+        run: pnpm install --frozen-lockfile
+
+      # 早期迁移(20260704 / 20260711)含无 DO 块保护的 GRANT ... TO qt_app,
+      # 全新库必须先建角色,否则 migrate deploy 报 42704 role "qt_app" does not exist
+      - name: 建 qt_app 角色
+        run: echo "CREATE ROLE qt_app BYPASSRLS NOLOGIN;" | pnpm exec prisma db execute --stdin
+
+      - name: 应用迁移 + seed(ADMIN/SALES 等测试账号,避免 DB 用例整组 skip)
+        run: |
+          pnpm exec prisma migrate deploy
+          pnpm seed
+          pnpm seed:dev-users
+
+      - name: lint
+        run: pnpm run lint
+
+      - name: typecheck
+        run: pnpm run typecheck
+
+      - name: vitest
+        run: pnpm test
+
+  build:
+    name: next build(生产构建冒烟)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.3.0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: 生成 pnpm-workspace.yaml(gitignored)
+        run: |
+          cat > pnpm-workspace.yaml <<'EOF'
+          packages:
+            - "."
+
+          allowBuilds:
+            "@prisma/engines": true
+            bcrypt: true
+            esbuild: true
+            prisma: true
+            sharp: true
+            unrs-resolver: true
+          EOF
+
+      - name: 安装依赖
+        run: pnpm install --frozen-lockfile
+
+      - name: prisma generate
+        run: pnpm exec prisma generate
+
+      # 构建期无真实环境变量,SKIP_ENV_VALIDATION=1 跳过校验(与 docker/native build 一致)
+      - name: next build
+        run: pnpm run build
+        env:
+          SKIP_ENV_VALIDATION: "1"

@@ -2,6 +2,16 @@
 
 本文件记录 qt-biz 每个版本的详细变更。项目快速入口请见 [README.md](README.md)。
 
+## v0.19.6(2026-08-17)CI 门禁上线 + CHANGELOG 草稿半自动化
+
+发版闭环加固:GitHub Actions CI 在每次 push/PR 时用真实 PG(迁移+seed)跑 lint/typecheck/vitest + 生产构建冒烟;新增 `npm run changelog:draft` 从 commits 生成 CHANGELOG 草稿,不用手翻 git log。**DB schema / migrations: 无变化**;CI/工具/docs 改动,不影响运行时,无需部署,随下次上线顺带同步。
+
+变更:
+- **ci(workflow)**:新增 `.github/workflows/ci.yml`——test job(postgres:16 service → 建 qt_app 角色(20260704/20260711 两个无保护 GRANT 迁移依赖) → migrate deploy → seed + seed:dev-users → lint → typecheck → vitest)与 build job(`SKIP_ENV_VALIDATION=1` next build 冒烟,抓 tsc 查不出的 RSC/构建期错误)并行;`pnpm-workspace.yaml` 是 gitignored 本机文件,CI 按 allowBuilds 白名单重建(否则 pnpm 11 install 报 ERR_PNPM_IGNORED_BUILDS)
+- **feat(dev)**:新增 `scripts/release/changelog-draft.ts` + `npm run changelog:draft`(`--patch/--minor/--major/--from <ref>`),复用 `lib/git` + `lib/release-plan` 与 release:publish 同口径过滤 release 噪音;自动检测 `prisma/migrations` + `schema.prisma` 改动预填 "DB schema" 行
+- **docs(agents)**:闭环粒度明确为"一个功能/修复(或一个工作 session)一次",中间 commit 不强制各自 bump+部署;补充 CI 兜底定位与 changelog:draft 用法
+- **测试**:typecheck / lint / vitest 全绿(96 文件,775 用例);changelog:draft 空区间/正常区间两条路径实测;workflow YAML 语法校验通过
+
 ## v0.19.5(2026-08-17)移除 scheduler.ts 失效的 eslint-disable 指令
 
 依赖按 lockfile 同步后 eslint 9.18→9.39.5,`declare global` 中的 `var` 不再被 `no-var` 命中,`server/notifications/scheduler.ts` 原有 `eslint-disable-next-line no-var` 变成未使用指令并报 warning。**DB schema / migrations: 无变化**;注释类改动,无需部署,随下次上线顺带。
