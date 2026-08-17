@@ -256,6 +256,10 @@ nginx 反代下上游异常时,由 `public/502.html` 静态页与 `app/502/page.
 
 最近 5 个版本,完整历史见 [CHANGELOG.md](CHANGELOG.md)。
 
+### v0.19.5(2026-08-17)移除失效的 eslint-disable 指令
+
+eslint 9.18→9.39.5 后 `declare global` 中的 `var` 不再触发 `no-var`,删除 `scheduler.ts` 失效的 eslint-disable 注释(否则报未使用指令 warning)。**DB schema 无变化**,注释类改动无需部署。
+
 ### v0.19.4(2026-08-16)聚合搜索框移至内容区 sticky 吸附条
 
 搜索框从顶栏右侧移至内容区顶部,sticky 吸附随页面滚动始终可见;居中限宽 720px,手机端直显输入框。**DB schema 无变化**。
@@ -284,16 +288,6 @@ nginx 反代下上游异常时,由 `public/502.html` 静态页与 `app/502/page.
 - **fix(search)**:search 服务去掉 ownerEq/ownerViaContract 行级隔离注入;逐组 READ 权限门禁、LIKE 转义、分组 total 统计保留
 - **fix(search)**:GlobalSearch 恢复自管理组件(防抖/高亮/分组/移动端),清理合并混入的受控弹窗残留
 - **测试**:typecheck / lint / vitest 全绿(96 文件,775 用例)
-
-### v0.19.0(2026-08-14)统计模块收口:业绩排行三维度合并 + 账龄趋势快照预计算
-
-「员工业绩」与「区域统计」合并为统一的「业绩排行」页(员工/签约人/区域三维度);账龄趋势图改读每日快照表。**DB schema 有变化:新增 `AgingSnapshot` 表(迁移 `20260814_aging_snapshot`)**。
-
-- **业绩排行页**:维度 Segmented(默认按签约人)+ 指标单图切换;区间预设(本月/本季/本年)优先;区域维度行下钻客户列表;新 API `/api/statistics/performance` 复用既有三口径,行级隔离天然生效
-- **导出**:新增 `type=performance&dimension=...`;旧 `type=by-region` 保留兼容
-- **账龄快照**:`AgingSnapshot` 表 + 每日 cron 幂等 upsert 近 30 天;非受限角色趋势图 O(N) 读表,受限角色回退实时计算
-- **fix(auth)**:修复快速重登(2s 缓存窗口内)新 token 被旧 sessionVersion 缓存覆盖、随后被单点登录校验误踢的缺陷
-- **测试**:新增 `tests/api/statistics-performance.test.ts`(12 用例);重写两个区域 e2e spec;typecheck / lint / vitest 全绿(96 文件,782 用例)
 
 ### v0.18.11(2026-08-14)工作台月度/季度/年度 Top 5 客户按区间过滤 + 待审待开票计数修复
 

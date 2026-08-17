@@ -2,6 +2,15 @@
 
 本文件记录 qt-biz 每个版本的详细变更。项目快速入口请见 [README.md](README.md)。
 
+## v0.19.5(2026-08-17)移除 scheduler.ts 失效的 eslint-disable 指令
+
+依赖按 lockfile 同步后 eslint 9.18→9.39.5,`declare global` 中的 `var` 不再被 `no-var` 命中,`server/notifications/scheduler.ts` 原有 `eslint-disable-next-line no-var` 变成未使用指令并报 warning。**DB schema / migrations: 无变化**;注释类改动,无需部署,随下次上线顺带。
+
+变更:
+- **chore(lint)**:删除 `server/notifications/scheduler.ts` 中失效的 `eslint-disable-next-line no-var`(新版 eslint 下 `no-var` 不再检查 ambient 声明,指令未使用触发 reportUnusedDisableDirectives 警告)
+- **fix(dev)**:本地 `pnpm-workspace.yaml`(gitignored)`unrs-resolver` 占位符 `set this to true or false` 导致 pnpm 11 install 报 ERR_PNPM_IGNORED_BUILDS,改为 `true` —— 仅本地文件,不进仓库,记录在案供其他机器参考
+- **测试**:typecheck / lint / vitest 全绿(96 文件,775 用例)
+
 ## v0.19.4(2026-08-16)聚合搜索框移至内容区 sticky 吸附条
 
 搜索框从顶栏右侧移至内容区顶部,sticky 吸附在 Header 下方——随页面滚动始终保持可见,任何页面任何滚动位置都能直接搜索。**DB schema / migrations: 无变化**。

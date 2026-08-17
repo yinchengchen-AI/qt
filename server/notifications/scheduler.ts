@@ -13,7 +13,6 @@ import { logger } from "@/lib/logger";
 const KICK_INTERVAL_MS = 5_000;
 
 declare global {
-  // eslint-disable-next-line no-var
   var __qt_notif_kick_scheduler: { interval: ReturnType<typeof setInterval> } | undefined;
 }
 
