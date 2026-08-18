@@ -11,7 +11,7 @@
 
 > **客户 / 合同 / 开票 / 回款** 一体化管理,附件走 MinIO presigned 直传,服务端 Server Actions + RBAC + 行级隔离。
 >
-> **当前版本: v0.21.3**(2026-08-19)。文档地图见 [docs/README.md](docs/README.md),架构与设计见 [docs/architecture/DESIGN-v3.md](docs/architecture/DESIGN-v3.md),用户手册见 [docs/user/USER_MANUAL.md](docs/user/USER_MANUAL.md)。
+> **当前版本: v0.21.4**(2026-08-19)。文档地图见 [docs/README.md](docs/README.md),架构与设计见 [docs/architecture/DESIGN-v3.md](docs/architecture/DESIGN-v3.md),用户手册见 [docs/user/USER_MANUAL.md](docs/user/USER_MANUAL.md)。
 
 ## 目录
 
@@ -257,6 +257,10 @@ nginx 反代下上游异常时,由 `public/502.html` 静态页与 `app/502/page.
 
 最近 5 个版本,完整历史见 [CHANGELOG.md](CHANGELOG.md)。
 
+### v0.21.4(2026-08-19)合同详情页概览金额改用 ¥ 千分位格式
+
+合同详情页概览三卡（合同总额/已开票/已回款）金额从 "X.X 万" 改为 ¥ 千分位两位小数格式（如 ¥2,000.00)，与详细信息 tab 口径一致。**DB schema 无变化**。
+
 ### v0.21.3(2026-08-19)合同详情页概览收敛
 
 合同详情页概览从 4 个堆叠区块收敛为一行三卡：合同总额（带开票/回款计数）、已开票、已回款，后两张带占总额进度条与状态 Tag；删除与统计卡重复的开票/回款状态卡；修正副标题过期文案。**DB schema 无变化**。
@@ -272,10 +276,6 @@ nginx 反代下上游异常时,由 `public/502.html` 静态页与 `app/502/page.
 ### v0.21.0(2026-08-19)操作日志前后端体验优化
 
 操作日志模块升级：修复搜索区时间范围过滤不生效的 bug；列表行内展示关联对象可读名（合同号/客户名/发票号/回款号）并可跳详情；新增 `GET /api/operation-logs/meta` 动态过滤候选与 `keyword` 模糊搜索；操作人改可搜索下拉；失败原因悬停可见；diff 字段中文名 + 请求ID/IP 一键复制；CSV 导出自动翻页（上限 1000 行）；逻辑下沉 `server/services/operation-log.ts`。**DB schema 有变化：迁移 `20260822_operation_log_action_index`（action 索引）**。
-
-### v0.20.3(2026-08-17)对账中心与开票/回款规则对齐修复
-
-对账中心动态走查修复：MessageType PG enum 缺 4 个对账消息值导致通知全部静默丢失（补迁移）、对账确认绕过回款 R-10/R-11/R-12 金额校验与到账通知（重构为与回款模块同规则的共享 writeback）、对账确认终态改 RECONCILED 并支持 paymentPrevStatus 精确回滚、manualMatch 与 confirmMatch 写回对称、补发建议匹配/差异提醒通知、消息中心对账链接可跳转详情抽屉。**DB schema 有变化：迁移 `20260817_reconciliation_fixes`**。
 
 ## 安全提醒
 
