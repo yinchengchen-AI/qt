@@ -25,6 +25,7 @@ import { useUserName } from "@/lib/user-lookup";
 import { PAYMENT_METHOD_MAP, BILLING_STATUS_MAP, PAYMENT_PROGRESS_STATUS_MAP, serviceTypeLabel } from "@/lib/enum-maps";
 import { useResponsive } from "@/lib/use-breakpoint";
 import { useT } from "@/lib/i18n";
+import { formatCurrency } from "@/lib/format";
 import { OperationTimeline } from "@/components/contract/operation-timeline";
 
 const DESC_COL = { xs: 1, sm: 1, md: 2, lg: 2, xl: 3 } as const;
@@ -230,7 +231,6 @@ const handleDelete = () => {
   }
 
   const t = overview?.totals;
-  const fmtWan = (v: number) => (v / 10000).toFixed(1);
 
   // 状态机 3 态: DRAFT/ACTIVE/CLOSED. 业务基本无需手动操作, 自动化处理常见流转.
   // 这里只暴露 admin 兜底入口:
@@ -367,21 +367,18 @@ const handleDelete = () => {
             items={[
               {
                 label: "合同总额",
-                value: t ? fmtWan(t.totalAmount) : 0,
-                suffix: "万",
+                value: formatCurrency(t?.totalAmount ?? 0),
                 description: `开票 ${t?.invoiceCount ?? 0} 张 · 回款 ${t?.paymentCount ?? 0} 笔`
               },
               {
                 label: "已开票",
-                value: t ? fmtWan(t.invoicedAmount) : 0,
-                suffix: "万",
+                value: formatCurrency(t?.invoicedAmount ?? 0),
                 progress: pct(t?.invoicedAmount ?? 0),
                 description: statusTag(t?.billingStatus, BILLING_STATUS_MAP)
               },
               {
                 label: "已回款",
-                value: t ? fmtWan(t.paidAmount) : 0,
-                suffix: "万",
+                value: formatCurrency(t?.paidAmount ?? 0),
                 progress: pct(t?.paidAmount ?? 0),
                 description: statusTag(t?.paymentStatus, PAYMENT_PROGRESS_STATUS_MAP)
               }
