@@ -11,7 +11,7 @@
 
 > **客户 / 合同 / 开票 / 回款** 一体化管理,附件走 MinIO presigned 直传,服务端 Server Actions + RBAC + 行级隔离。
 >
-> **当前版本: v0.21.0**(2026-08-19)。文档地图见 [docs/README.md](docs/README.md),架构与设计见 [docs/architecture/DESIGN-v3.md](docs/architecture/DESIGN-v3.md),用户手册见 [docs/user/USER_MANUAL.md](docs/user/USER_MANUAL.md)。
+> **当前版本: v0.21.1**(2026-08-19)。文档地图见 [docs/README.md](docs/README.md),架构与设计见 [docs/architecture/DESIGN-v3.md](docs/architecture/DESIGN-v3.md),用户手册见 [docs/user/USER_MANUAL.md](docs/user/USER_MANUAL.md)。
 
 ## 目录
 
@@ -257,6 +257,10 @@ nginx 反代下上游异常时,由 `public/502.html` 静态页与 `app/502/page.
 
 最近 5 个版本,完整历史见 [CHANGELOG.md](CHANGELOG.md)。
 
+### v0.21.1(2026-08-19)框架内容页宽度提高 15%
+
+桌面端框架内容区最大宽度由 1280px 提高到 1472px(+15%),移动端仍 100% 铺开。**DB schema 无变化**。
+
 ### v0.21.0(2026-08-19)操作日志前后端体验优化
 
 操作日志模块升级：修复搜索区时间范围过滤不生效的 bug；列表行内展示关联对象可读名（合同号/客户名/发票号/回款号）并可跳详情；新增 `GET /api/operation-logs/meta` 动态过滤候选与 `keyword` 模糊搜索；操作人改可搜索下拉；失败原因悬停可见；diff 字段中文名 + 请求ID/IP 一键复制；CSV 导出自动翻页（上限 1000 行）；逻辑下沉 `server/services/operation-log.ts`。**DB schema 有变化：迁移 `20260822_operation_log_action_index`（action 索引）**。
@@ -272,19 +276,6 @@ nginx 反代下上游异常时,由 `public/502.html` 静态页与 `app/502/page.
 ### v0.20.1(2026-08-17)对账中心可用性修复与导入增强
 
 对账中心全链路走查修复：部署后角色权限不同步全员 403（deploy.sh 补 seed-roles 幂等步骤）、取消匹配不回滚回款状态（事务内回滚 bankRefNo/PLANNED）、回款重复占用无防护（422 拦截）、操作后表格不刷新（actionRef 统一 reload）、搜索区无效字段瘦身、新增"建议匹配"筛选/标签；导入升级为 .xlsx/.csv 文件上传 + Excel 复制粘贴 + JSON 三通道。**DB schema 无变化**。
-
-### v0.20.0(2026-08-20)发票与回款自动对账匹配
-
-新增对账中心模块：银行流水导入、多维度自动匹配引擎、差异处理与对账确认全流程。**DB schema 有变化：新增 `BankTransaction`/`ReconciliationRule`/`ReconciliationDiscrepancy` 3 张表（迁移 `20260820_bank_reconciliation`，含 `GRANT ALL ... TO qt_app`）**。
-
-- **feat(reconciliation)**：银行流水 Excel/CSV 导入（`POST /api/reconciliation/import`），支持中文字段映射、同批次去重、跨批次唯一约束防重复
-- **feat(reconciliation)**：多维度自动匹配引擎（金额 40% / 日期 20% / 客户名 25% / 摘要关键词 15% / 历史模式 5%），高置信度（≥80 分且领先第二名 ≥20 分）自动匹配，中置信度（60-79 分）标记建议
-- **feat(reconciliation)**：对账中心页面 `/payments/reconciliation` — 统计卡片、流水列表（筛选/分页）、详情 Drawer（候选匹配列表）、批量自动匹配、差异处理标记
-- **feat(reconciliation)**：匹配操作 API — 自动匹配 / 确认匹配（更新 Payment 流水号+状态） / 手动匹配 / 取消匹配 / 忽略流水
-- **feat(reconciliation)**：差异记录（`ReconciliationDiscrepancy`）— 金额不符自动检测，支持标记处理
-- **feat(permissions)**：新增 `RECONCILIATION` 资源权限 — ADMIN/FINANCE CRUD+导出，SALES/OPS/EXPERT 只读
-- **feat(messages)**：新增 4 类对账消息 — `RECONCILIATION_AUTO_MATCHED` / `RECONCILIATION_SUGGESTION` / `RECONCILIATION_DISCREPANCY` / `RECONCILIATION_WEEKLY_REPORT`
-- **测试**：新增 `tests/api/reconciliation.test.ts` 20 用例（解析/导入/匹配/操作/查询/权限）;typecheck / lint / vitest 全绿（97 文件，795 用例）
 
 ## 安全提醒
 

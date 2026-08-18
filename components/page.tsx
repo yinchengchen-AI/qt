@@ -12,11 +12,11 @@ type Props = {
 
 export function Page({ children, compact, centered, className }: Props) {
   const { isMobile } = useResponsive();
-  // 桌面端保持 24/24 与 1280 max;移动端收紧到 12/12,放开宽度限制,允许内容铺到 100%
+  // 桌面端保持 24/24 与 1472 max(1280 提高 15%);移动端收紧到 12/12,放开宽度限制,允许内容铺到 100%
   const padding = isMobile
     ? (compact ? "12px 12px" : "16px 12px 24px")
     : (compact ? "16px 24px" : "24px 24px 32px");
-  const maxWidth = isMobile ? undefined : 1280;
+  const maxWidth = isMobile ? undefined : 1472;
   return (
     <div
       style={{
