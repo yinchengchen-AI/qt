@@ -1,6 +1,7 @@
 "use client";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { useState } from "react";
 import useSWR from "swr";
 import { Button, Card } from "antd";
 import {
@@ -16,10 +17,12 @@ import { StatGrid } from "@/components/stat-grid";
 import { StatusTag } from "@/components/status-tag";
 import { WorkbenchTodoList } from "@/components/workbench/workbench-todo-list";
 import { ExpiryBadge } from "@/components/workbench/expiry-badge";
+import { RiskDrawer, RiskTag } from "@/components/workbench/risk-drawer";
 import { DateCell, CurrencyCell } from "@/components/table-cells";
 import { makeListRequest } from "@/lib/use-list-request";
 import { useStatusValueEnum } from "@/lib/use-status-enum";
 import { useResponsive } from "@/lib/use-breakpoint";
+import type { ContractRisk } from "@/server/services/contract/risk-score";
 
 type MyStats = {
   active: number;
@@ -52,6 +55,7 @@ export default function ContractWorkbenchPage() {
   const router = useRouter();
   const { isMobile } = useResponsive();
   const statusEnum = useStatusValueEnum("contract");
+  const [riskDrawerOpen, setRiskDrawerOpen] = useState(false);
   const { data: stats, isLoading: statsLoading } = useSWR<MyStats>(
     "/api/contracts/my-stats",
     fetcher
@@ -60,6 +64,9 @@ export default function ContractWorkbenchPage() {
     "/api/contracts/my-todos",
     fetcher
   );
+  // 我的风险合同 (MEDIUM+): 给"我的合同"表的风险列提供 contractId → level/score 映射
+  const { data: risks = [] } = useSWR<ContractRisk[]>("/api/contracts/my-risk", fetcher);
+  const riskByContract = new Map(risks.map((r) => [r.contractId, r]));
 
   return (
     <Page>
@@ -97,7 +104,12 @@ export default function ContractWorkbenchPage() {
             label: "风险预警",
             value: stats?.risk ?? "—",
             icon: <CheckCircleOutlined />,
-            tooltip: "风险引擎待接入（下一阶段上线）"
+            tooltip: "我的活跃合同中风险等级为高/严重的数量（实时计算）",
+            description: (
+              <Button type="link" size="small" style={{ padding: 0, height: "auto", fontSize: 12 }} onClick={() => setRiskDrawerOpen(true)}>
+                查看风险合同 ›
+              </Button>
+            )
           }
         ]}
       />
@@ -167,9 +179,29 @@ export default function ContractWorkbenchPage() {
             width: 110,
             valueEnum: statusEnum,
             render: (_, r) => <StatusTag status={r.status} domain="contract" />
+          },
+          {
+            title: "风险",
+            dataIndex: "risk",
+            width: 100,
+            render: (_, r) => {
+              const risk = riskByContract.get(r.id);
+              if (!risk) return <span style={{ color: "rgba(0,0,0,0.25)" }}>—</span>;
+              return (
+                <Button
+                  type="text"
+                  size="small"
+                  style={{ padding: 0 }}
+                  onClick={() => setRiskDrawerOpen(true)}
+                >
+                  <RiskTag level={risk.level} score={risk.score} />
+                </Button>
+              );
+            }
           }
         ]}
       />
+      <RiskDrawer open={riskDrawerOpen} onClose={() => setRiskDrawerOpen(false)} />
     </Page>
   );
 }

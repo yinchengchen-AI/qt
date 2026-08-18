@@ -120,6 +120,8 @@ export const MESSAGE_TYPE = [
   "RECONCILIATION_SUGGESTION",
   "RECONCILIATION_DISCREPANCY",
   "RECONCILIATION_WEEKLY_REPORT",
+  // 合同风险等级上调 (risk-score-snapshot job 快照比对触发; PG enum 迁移 20260822_message_type_risk_level_up)
+  "RISK_LEVEL_UP",
 ] as const;
 
 // 5 个内置角色

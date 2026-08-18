@@ -6,19 +6,33 @@
 //   - 即将到期     = ACTIVE 且 endDate ∈ [now, now + 7d]
 //   - 逾期合同     = ACTIVE 且 endDate < now (宽限期窗口内未被强关、也未双足额自动完结的)
 //                   + CLOSED 且 reviewComment = "overdue_terminated" (已强关待善后)
-//   - 风险预警     = Phase 2 交付前固定 0 (卡片显示 "—")
+//   - 风险预警     = 我的 ACTIVE 合同中风险等级 HIGH/CRITICAL 的数量 (Phase 2 实时计算)
 //
 // 安全: 所有查询的 ownerUserId 一律从 session 取, 不接受客户端传入; 只读操作不写审计日志.
 import { prisma } from "@/lib/prisma";
 import { requirePermission, RESOURCE, ACTION } from "@/lib/permissions";
 import type { SessionUser } from "@/lib/session";
 import { INVOICE_ISSUED_AMOUNT_STATUSES } from "@/lib/invoice-amounts";
+import { computeContractRisks, RISK_LEVEL_ORDER, type ContractRisk } from "@/server/services/contract/risk-score";
 
 const DAY_MS = 86_400_000;
 /** 即将到期窗口 (天), 与 spec §3.5 的 0-7 天一致 */
 const EXPIRING_WINDOW_DAYS = 7;
 /** 生效多久无已开票发票才算 "未开票" 待办 (天), 与 Phase 3 超期未开票口径同源 */
 const NO_INVOICE_GRACE_DAYS = 30;
+
+/** getMyStats 需要的 ACTIVE 合同字段 (risk 批量算分复用) */
+const ACTIVE_RISK_SELECT = {
+  id: true,
+  contractNo: true,
+  customerId: true,
+  customerName: true,
+  title: true,
+  totalAmount: true,
+  startDate: true,
+  endDate: true,
+  ownerUserId: true
+} as const;
 
 export type MyStats = {
   /** status = ACTIVE 的合同数 (含逾期窗口内的) */
@@ -27,7 +41,7 @@ export type MyStats = {
   expiringSoon: number;
   /** ACTIVE 且 endDate < now + CLOSED 且 reviewComment="overdue_terminated" */
   overdue: number;
-  /** Phase 2 风险引擎交付前固定 0, 前端卡片显示 "—" */
+  /** 我的 ACTIVE 合同中风险等级 HIGH/CRITICAL 的数量 (实时计算) */
   risk: number;
 };
 
@@ -37,11 +51,11 @@ export async function getMyStats(user: SessionUser): Promise<MyStats> {
   const now = new Date();
   const in7Days = new Date(now.getTime() + EXPIRING_WINDOW_DAYS * DAY_MS);
 
-  // 一次查询拿所有 ACTIVE 合同, 在 JS 里按 endDate 分桶 (避免 3 次 count / N+1)
+  // 一次查询拿所有 ACTIVE 合同 (含 risk 算分需要的字段), 在 JS 里按 endDate 分桶 (避免 3 次 count / N+1)
   const [activeContracts, forceClosed] = await Promise.all([
     prisma.contract.findMany({
       where: { ownerUserId: user.id, status: "ACTIVE", deletedAt: null },
-      select: { id: true, endDate: true }
+      select: ACTIVE_RISK_SELECT
     }),
     // 已强关待善后: 宽限期强关 (reason 存在 reviewComment) 的合同
     // 口径与 status.ts tryAutoCloseOnOverdue 一致; 统计区间内强关的按 endDate 窗口过滤
@@ -64,11 +78,68 @@ export async function getMyStats(user: SessionUser): Promise<MyStats> {
     else if (c.endDate.getTime() <= in7Days.getTime()) expiringSoon++;
   }
 
+  const risks = await computeContractRisks(activeContracts, now);
+  const risk = risks.filter((r) => RISK_LEVEL_ORDER[r.level] >= RISK_LEVEL_ORDER.HIGH).length;
+
   return {
     active: activeContracts.length,
     expiringSoon,
     overdue: overdueActive + forceClosed,
-    risk: 0
+    risk
+  };
+}
+
+/** 我的 MEDIUM+ 风险合同 (实时计算, 按分数降序); 工作台风险抽屉列表数据源 */
+export async function getMyRisks(user: SessionUser): Promise<ContractRisk[]> {
+  requirePermission(user.roleCode, RESOURCE.CONTRACT, ACTION.READ);
+  const activeContracts = await prisma.contract.findMany({
+    where: { ownerUserId: user.id, status: "ACTIVE", deletedAt: null },
+    select: ACTIVE_RISK_SELECT
+  });
+  const risks = await computeContractRisks(activeContracts);
+  return risks
+    .filter((r) => RISK_LEVEL_ORDER[r.level] >= RISK_LEVEL_ORDER.MEDIUM)
+    .sort((a, b) => b.score - a.score);
+}
+
+/** 单合同风险详情: 实时算分 + 近 30 天快照趋势 + 建议操作 (spec §5.5) */
+export type RiskTrendPoint = { date: Date; score: number; level: string };
+export type ContractRiskDetail = ContractRisk & { trend: RiskTrendPoint[]; recommendations: string[] };
+
+export async function getContractRisk(user: SessionUser, contractId: string): Promise<ContractRiskDetail | null> {
+  requirePermission(user.roleCode, RESOURCE.CONTRACT, ACTION.READ);
+  const contract = await prisma.contract.findFirst({
+    where: { id: contractId, deletedAt: null },
+    select: ACTIVE_RISK_SELECT
+  });
+  if (!contract) return null;
+
+  const [risk] = await computeContractRisks([contract]);
+  if (!risk) return null;
+  const since = new Date();
+  since.setHours(0, 0, 0, 0);
+  since.setDate(since.getDate() - 30);
+  const snapshots = await prisma.riskScoreSnapshot.findMany({
+    where: { contractId, snapshotDate: { gte: since } },
+    orderBy: { snapshotDate: "asc" },
+    select: { snapshotDate: true, score: true, level: true }
+  });
+
+  // 建议操作: 按得分最高的维度映射 (spec §5.5)
+  const topDimension = (Object.entries(risk.dimensions) as [keyof typeof risk.dimensions, { score: number }][])
+    .reduce((a, b) => (b[1].score > a[1].score ? b : a))[0];
+  const RECOMMENDATIONS: Record<keyof typeof risk.dimensions, string> = {
+    expiry: "合同已逾期：优先续签或归档处理",
+    payment: "付款进度落后最严重：建议立即发起催款",
+    invoicing: "开票进度落后：请尽快补开发票",
+    customerCredit: "该客户历史强关率偏高：后续合作建议缩短账期或预付",
+    amountAnomaly: "合同金额偏离客户正常区间：建议复核金额"
+  };
+
+  return {
+    ...risk,
+    trend: snapshots.map((s) => ({ date: s.snapshotDate, score: s.score, level: s.level })),
+    recommendations: [RECOMMENDATIONS[topDimension]]
   };
 }
 

@@ -10,6 +10,7 @@ import { runCertificateExpiryCheck } from "@/server/jobs/certificate-expiry-chec
 import { tickStaleContracts } from "@/server/jobs/stale-contract";
 import { runMessageArchive } from "@/server/jobs/message-archive";
 import { runAgingSnapshot } from "@/server/jobs/aging-snapshot";
+import { runRiskScoreSnapshot } from "@/server/jobs/risk-score-snapshot";
 
 /**
  * 单个 job 一次执行的统计。
@@ -82,7 +83,9 @@ export async function runAllJobs(now = new Date()): Promise<JobResult[]> {
           durationMs: 0
         };
       }
-    }
+    },
+    // Phase 2: 合同风险评分日快照 + 升档消息 (RISK_LEVEL_UP)
+    { name: "risk-score-snapshot", run: () => runRiskScoreSnapshot(now) }
   ] as const;
   const settled = await Promise.allSettled(jobs.map((j) => j.run()));
   return settled.map((s, i) => {

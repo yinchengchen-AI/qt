@@ -225,6 +225,30 @@ function buildMessage(uid: string, ev: DomainEvent): ResolvedMessage {
         content: `待确认 ${p.pendingCount} 条，差异 ${p.discrepancyCount} 条，请前往对账中心查看`,
         link: { kind: "reconciliation" }
       };
+    case "RISK_LEVEL_UP": {
+      // 合同风险等级上调 (risk-score-snapshot job 快照比对触发)
+      // 两种 payload:
+      //   单合同升档: { contractId, contractNo, level, score, prevLevel, prevScore }
+      //   admin 每日汇总: { summary: true, high, critical, topContractNo?, topScore? } (无 link)
+      const LEVEL_LABEL: Record<string, string> = { LOW: "低", MEDIUM: "中", HIGH: "高", CRITICAL: "严重" };
+      if (p.summary) {
+        return {
+          receiverUserId: uid,
+          title: `风险合同日报：高风险 ${Number(p.high ?? 0)} 份，严重 ${Number(p.critical ?? 0)} 份`,
+          content: p.topContractNo
+            ? `最高分合同 ${p.topContractNo}（${Number(p.topScore ?? 0)} 分），请登录合同工作台跟进`
+            : "请登录合同工作台跟进风险合同"
+        };
+      }
+      const level = String(p.level ?? "");
+      const prevLevel = String(p.prevLevel ?? "");
+      return {
+        receiverUserId: uid,
+        title: `合同 ${p.contractNo} 风险等级上调为${LEVEL_LABEL[level] ?? level}（${Number(p.score ?? 0)} 分）`,
+        content: `原等级：${LEVEL_LABEL[prevLevel] ?? prevLevel}（${Number(p.prevScore ?? 0)} 分），请尽快处理`,
+        link: { kind: "contract", id: p.contractId }
+      };
+    }
     default:
       // 历史消息 fallback: deprecated 事件类型 (CUSTOMER_STATUS_SUGGEST 等) 保留在 enum 但不再 emit
       // 偶有历史 row 会落在这里, 渲染为占位 + 提示

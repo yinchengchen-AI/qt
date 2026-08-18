@@ -14,7 +14,7 @@
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { prisma } from "@/lib/prisma";
 import type { SessionUser } from "@/lib/session";
-import { getMyStats, getMyTodos } from "@/server/services/contract/workbench";
+import { getMyStats, getMyTodos, getMyRisks } from "@/server/services/contract/workbench";
 import { listContracts } from "@/server/services/contract";
 
 let dbReachable = false;
@@ -79,15 +79,23 @@ beforeAll(async () => {
     dbReachable = false;
     return;
   }
-  const salesRow = await prisma.user.findFirst({
-    where: { role: { code: "SALES" }, deletedAt: null, status: "ACTIVE" },
+  // 并发隔离: 新建专属 SALES 用户 (不用 seed 共享账号) — 其它测试文件也给 seed sales
+  // 名下挂 ACTIVE 合同 (如 contract-risk), 共享账号会让 exact-count 断言互相踩
+  const salesRow = await prisma.user.create({
+    data: {
+      employeeNo: `${TAG}-S`,
+      name: `${TAG}-销售`,
+      email: `${TAG}-sales@example.com`,
+      passwordHash: "not-valid",
+      role: { connect: { code: "SALES" } }
+    },
     select: { id: true, employeeNo: true, name: true, email: true }
   });
   const adminRow = await prisma.user.findFirst({
     where: { role: { code: "ADMIN" }, deletedAt: null, status: "ACTIVE" },
     select: { id: true, employeeNo: true, name: true, email: true }
   });
-  if (!salesRow || !adminRow) {
+  if (!adminRow) {
     dbReachable = false;
     return;
   }
@@ -172,14 +180,19 @@ beforeAll(async () => {
 afterAll(async () => {
   if (!dbReachable) return;
   if (invoiceId) await prisma.invoice.delete({ where: { id: invoiceId } }).catch(() => {});
-  for (const id of [
+  const contractIds = [
     cActiveLongId, cExpiringId, cOverdueId, cForceClosedId, cInvoicedId, cNoInvoiceId, cOthersId
-  ]) {
-    if (id) await prisma.contract.delete({ where: { id } }).catch(() => {});
+  ].filter((x): x is string => !!x);
+  // 并发跑 risk-score-snapshot job 会给本组 fixture 写快照; FK RESTRICT 要求先删快照再删合同
+  await prisma.riskScoreSnapshot.deleteMany({ where: { contractId: { in: contractIds } } }).catch(() => {});
+  for (const id of contractIds) {
+    await prisma.contract.delete({ where: { id } }).catch(() => {});
   }
   for (const id of [salesCustomerId, adminCustomerId]) {
     if (id) await prisma.customer.delete({ where: { id } }).catch(() => {});
   }
+  // 清理本组专用 SALES 用户
+  if (salesUser) await prisma.user.delete({ where: { id: salesUser.id } }).catch(() => {});
 });
 
 describe("getMyStats 我的统计", () => {
@@ -206,10 +219,14 @@ describe("getMyStats 我的统计", () => {
     expect(s.overdue).toBe(2);
   });
 
-  it("risk 在 Phase 2 前固定为 0", async () => {
+  it("risk = 我的 HIGH/CRITICAL 合同计数 (与 getMyRisks 同源一致)", async () => {
     if (!dbReachable || !salesUser) return;
     const s = await getMyStats(salesUser);
-    expect(s.risk).toBe(0);
+    // 不断言固定值 (dev 库/并发测试文件可能给同一 sales 用户加别的 ACTIVE 合同),
+    // 只验证 my-stats 与 my-risk 走同一评分引擎结果一致
+    const risks = await getMyRisks(salesUser);
+    const expected = risks.filter((r) => r.level === "HIGH" || r.level === "CRITICAL").length;
+    expect(s.risk).toBe(expected);
   });
 });
 

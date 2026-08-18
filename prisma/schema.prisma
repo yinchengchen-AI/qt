@@ -55,6 +55,8 @@ enum MessageType {
   // 客户状态机自动化: 系统自动写状态 (§1.2 / §3.1)
   CUSTOMER_STATUS_AUTO_APPLIED
   CUSTOMER_STATUS_AUTO_REVERTED
+  // 合同风险等级上调 (risk-score-snapshot job 快照比对触发, 升档到 HIGH/CRITICAL 时发)
+  RISK_LEVEL_UP
 }
 
 model User {
@@ -424,6 +426,7 @@ model Contract {
   invoices       Invoice[]
   reviewLogs     ContractReviewLog[]
   attachmentRefs Attachment[]        @relation("ContractAttachments")
+  riskSnapshots  RiskScoreSnapshot[]
   signer         User                @relation("ContractSigner", fields: [signerId], references: [id])
   owner          User                @relation("ContractOwner", fields: [ownerUserId], references: [id])
 
@@ -791,6 +794,24 @@ model AgingSnapshot {
 
   @@unique([asOfDate, basis])
   @@index([basis, asOfDate])
+}
+
+// RiskScoreSnapshot (合同风险评分日快照 / Phase 2 风险预警引擎)
+// 每日 risk-score-snapshot job 对全部 ACTIVE 合同算分并 upsert (幂等, 按 @@unique 去重);
+// 用途: (1) 30 天趋势折线数据源 (2) 升档检测 (今日 level > 昨日 level 且达 HIGH/CRITICAL 发 RISK_LEVEL_UP)
+// dimensions 存五维度原始分 JSON, 供风险详情抽屉复用, 避免回放历史重算
+model RiskScoreSnapshot {
+  id           String   @id @default(cuid())
+  contractId   String
+  contract     Contract @relation(fields: [contractId], references: [id])
+  score        Int
+  level        String // LOW | MEDIUM | HIGH | CRITICAL
+  dimensions   Json
+  snapshotDate DateTime @db.Date
+  createdAt    DateTime @default(now()) @db.Timestamptz(6)
+
+  @@unique([contractId, snapshotDate])
+  @@index([snapshotDate, level])
 }
 
 // =====================================================
