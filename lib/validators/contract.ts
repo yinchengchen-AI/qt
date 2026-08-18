@@ -101,4 +101,6 @@ export const contractListQuerySchema = z.object({
   town: z.string().optional(),
   // 含历史占位合同: 默认 false, 列表隐藏 legacy-fineui.mjs 写的 0.01 占位合同; 审计/对账时手动打开
   includeLegacyZeroAmount: z.string().optional(),
+  // 个人工作台: mine=true 时服务端从 session 注入 ownerUserId, 忽略客户端传入的任何他人 id
+  mine: z.string().optional(),
 });

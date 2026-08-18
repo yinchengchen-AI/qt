@@ -96,6 +96,7 @@ const MENU: MenuItem[] = [
     icon: <AppstoreOutlined />,
     children: [
       { path: "/customers", name: "客户管理", permission: { resource: RESOURCE.CUSTOMER, action: ACTION.READ } },
+      { path: "/contracts/workbench", name: "合同工作台", permission: { resource: RESOURCE.CONTRACT, action: ACTION.READ } },
       { path: "/contracts", name: "合同管理", permission: { resource: RESOURCE.CONTRACT, action: ACTION.READ } }
     ]
   },

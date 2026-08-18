@@ -10,7 +10,11 @@ export async function GET(req: Request) {
       const user = await requireSession();
       const url = new URL(req.url);
       const params = contractListQuerySchema.parse(Object.fromEntries(url.searchParams));
-      const data = await listContracts(user, params);
+      const data = await listContracts(user, {
+        ...params,
+        // mine=true 时服务端从 session 注入 ownerUserId, 忽略客户端传入的任何他人 id (防越权枚举)
+        ownerUserId: params.mine === "true" ? user.id : undefined,
+      });
       return ok(data);
     } catch (e) {
       return err(e);

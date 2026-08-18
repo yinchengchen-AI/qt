@@ -45,10 +45,12 @@ export async function listContracts(
     includeLegacyZeroAmount?: boolean | string;
     // 是否需要 total: 默认 true; 导出等只消费 list 的场景传 false, 跳过白跑的 count (此时 total 固定为 0)
     countTotal?: boolean;
+    // 个人工作台 mine 过滤: 由路由层从 session 注入当前用户 id, 不接受客户端直接传 ownerUserId
+    ownerUserId?: string;
   }
 ) {
   requirePermission(user.roleCode, RESOURCE.CONTRACT, ACTION.READ);
-  const { page, pageSize, keyword, status, customerId, province, city, district, town, includeLegacyZeroAmount, countTotal = true } = params;
+  const { page, pageSize, keyword, status, customerId, province, city, district, town, includeLegacyZeroAmount, countTotal = true, ownerUserId } = params;
   const includeLegacy = includeLegacyZeroAmount === true || includeLegacyZeroAmount === "true" || includeLegacyZeroAmount === "1";
   const statusList = parseStatusList(status);
   const regionWhere = buildRegionWhere({ province, city, district, town });
@@ -59,6 +61,8 @@ export async function listContracts(
     deletedAt: null,
     ...(statusList ? { status: { in: statusList } } : {}),
     ...(customerId ? { customerId } : {}),
+    // 个人工作台: ownerUserId 由路由层从 session 注入 (mine=true), 服务端强制过滤
+    ...(ownerUserId ? { ownerUserId } : {}),
     // 客户区域: 多对一关系过滤, equals+insensitive 与客户列表同口径
     ...(regionWhere ? { customer: regionWhere } : {}),
     ...(keyword
