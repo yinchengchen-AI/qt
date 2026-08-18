@@ -2,6 +2,20 @@
 
 本文件记录 qt-biz 每个版本的详细变更。项目快速入口请见 [README.md](README.md)。
 
+## v0.20.5(2026-08-18)续签跟进 + 联动补盲（Phase 1.5/3）
+
+合同深化路线图 Phase 1.5 与 Phase 3 落地：续签链路（`renewedFromId` 自关联 + 每周提醒 + 工作台一键续签 Modal），联动补盲两条每日检查（超期未开票 / 开票-回款偏差）+ 详情页概览增强（双进度条、预警 Alert、续签链链接）。**DB schema 有变化：迁移 `20260822_contract_renewed_from`（`Contract.renewedFromId` + FK `ON DELETE SET NULL` + 索引）+ `20260822_message_type_renewal_linkage`（`MessageType` 追加 `CONTRACT_RENEWAL_REMIND` / `LINKAGE_NO_INVOICE` / `LINKAGE_INVOICE_PAYMENT_GAP` 三个值）**。
+
+变更:
+- **feat(renewal)**:`Contract.renewedFromId` 续签链路（不加 RENEWED 状态，源合同走既有自动完结/强关收尾，状态机零改动）；`contract-renewal-remind` job 对到期超 30 天未续签合同每周提醒（entityKey `合同:ISO周` 同周去重，owner+admin）
+- **feat(renewal)**:创建接口接受 `renewedFromId`（源合同存在性 404 校验，审计快照带上）；工作台待办 overdue/expiring 项旁「续签」按钮 → RenewalModal 预填源合同字段（日期默认原 endDate+1 起同跨度可编辑）→ 走正常 DRAFT 创建流程；创建成功后源合同待办消失（服务端按 renewal 记录排除）
+- **feat(linkage)**:`linkage-checks.ts` 共享判定模块（job 与详情页 overview 同源，防口径漂移）——超期未开票（生效 30 天无已开票发票）与开票-回款偏差（已开票≥1万 且回款缺口>20% 且最新发票开具超 30 天，与 INVOICE_OVERDUE_PAYMENT 按发票粒度互补）
+- **feat(linkage)**:`daily-linkage-check` job 按日 entityKey 去重；未开票提醒发 owner，偏差提醒发 owner+财务
+- **feat(detail)**:合同详情页概览区新增开票/回款双进度条、未结预警 Alert（点击锚跳发票/回款列表）、续签链「续签自/续签至」双向链接
+- **fix(test-infra)**:`RiskScoreSnapshot` FK 由 RESTRICT 改 CASCADE（迁移未上 main，合规编辑；快照为纯派生数据，合同硬删随之清理）——根治并发测试 fixture 清理撞 FK；三个新 job 的 emit 加 P2003 容忍（并发测试清理竞态，生产全软删不触发）；`payment-browse-permissions` 的 EXPERT 解析钉到种子账号 employeeNo（原 `findFirst` 无序匹配会撞并发临时用户）
+- **test**:新增 `tests/api/contract-renewal.test.ts` 8 用例、`tests/api/linkage-check.test.ts` 13 用例（纯函数边界 + job 去重 + overview 透出）、`tests/e2e/18-renewal-linkage.spec.ts` 5 用例（续签 Modal 全流程 + 详情页增强，Prisma 直造 fixture）
+- **测试**:typecheck / lint / vitest 全绿（104 文件，892 用例 × 3 连跑）；E2E 三 spec（16/17/18）全 project 18 通过 / 24 跳过 / 0 失败
+
 ## v0.20.4(2026-08-18)合同风险预警引擎（Phase 2）
 
 合同风险五维度评分引擎上线：到期/付款/开票/客户信用/金额异常加权总分映射四级（低/中/高/严重），每日快照支撑趋势与升档检测，工作台风险卡接入真实计数，风险抽屉展示雷达图 + 30 天趋势 + 建议操作。**DB schema 有变化：迁移 `20260822_risk_score_snapshot`（新表 `RiskScoreSnapshot`，含 `GRANT ALL ... TO qt_app`）+ `20260822_message_type_risk_level_up`（`MessageType` 追加 `RISK_LEVEL_UP`，走 20260724 已验证的 ALTER TYPE 路径）**。
