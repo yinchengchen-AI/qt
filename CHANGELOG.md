@@ -2,6 +2,19 @@
 
 本文件记录 qt-biz 每个版本的详细变更。项目快速入口请见 [README.md](README.md)。
 
+## v0.20.4(2026-08-18)合同风险预警引擎（Phase 2）
+
+合同风险五维度评分引擎上线：到期/付款/开票/客户信用/金额异常加权总分映射四级（低/中/高/严重），每日快照支撑趋势与升档检测，工作台风险卡接入真实计数，风险抽屉展示雷达图 + 30 天趋势 + 建议操作。**DB schema 有变化：迁移 `20260822_risk_score_snapshot`（新表 `RiskScoreSnapshot`，含 `GRANT ALL ... TO qt_app`）+ `20260822_message_type_risk_level_up`（`MessageType` 追加 `RISK_LEVEL_UP`，走 20260724 已验证的 ALTER TYPE 路径）**。
+
+变更:
+- **feat(risk)**:`server/services/contract/risk-score.ts` — 五维度分段函数纯计算（逾期 30 天满分 / 进度落后 50pp 满分 / 客户样本<3 固定 20 分 / 金额偏离 50%-200% 线性）+ 批量预聚合入口（payment/invoice/客户历史各一次查询，禁 N+1）
+- **feat(risk)**:`server/jobs/risk-score-snapshot.ts` 挂入 `runAllJobs` — 每日对全部 ACTIVE 合同算分幂等 upsert 快照；与昨日快照比对，升档至 HIGH/CRITICAL 发 `RISK_LEVEL_UP` 站内信（owner+admin，entityKey 同日同档去重，降档再升档会重发属有意为之）；job 完成后给 admin 发当日汇总一条
+- **feat(api)**:`GET /api/contracts/my-risk`（我的 MEDIUM+ 风险合同降序）+ `GET /api/contracts/[id]/risk`（单合同实时分 + 五维明细 + 近 30 天趋势 + 建议操作）；`/api/contracts/my-stats` 的 risk 从占位 0 改为真实 HIGH+CRITICAL 计数
+- **feat(workbench)**:风险抽屉组件（列表 → 详情：Radar 五维 + Line 趋势 + 建议，图表库 dynamic import 不拖工作台首屏）；风险卡真实计数 +「查看风险合同」入口；我的合同表新增风险列（中/高/严重标色）
+- **fix(e2e)**:`tests/e2e/_auth.ts` 进程内共享登录态 — 根治 proxy.ts 登录限速（5 次/分钟/IP）导致的多 spec 并发登录 429；桌面用例在移动端 project 跳过（侧边栏分组/跳转属桌面交互，移动端由专项 viewport 用例覆盖）
+- **test**:新增 `tests/unit/server/risk-score.test.ts` 36 用例（分段函数边界 + spec §7.2 验算口径）、`tests/api/contract-risk.test.ts` 8 用例（快照幂等/升档去重/汇总去重/my-risk/my-stats/越权 null）、`tests/risk-score-snapshot-schema.test.ts` 9 用例（迁移回归）、`tests/e2e/17-contract-risk.spec.ts`；workbench 测试改独立用户 fixture（并发文件隔离）
+- **测试**:typecheck / lint / vitest 全绿（102 文件，871 用例）；E2E 三 project 13 通过 / 14 跳过 / 0 失败
+
 ## v0.20.3(2026-08-18)个人合同工作台 Phase 1
 
 新增个人合同工作台页面，集成统计卡、待办列表、我的合同表格，支持按 ownerUserId 行级隔离过滤合同（mine=true），防止越权枚举。**DB schema / migrations: 无变化**。
