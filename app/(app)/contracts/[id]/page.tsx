@@ -1,6 +1,6 @@
 "use client";
 import { ProCard, ProDescriptions, ProTable } from "@ant-design/pro-components";
-import { Alert, App as AntdApp, Button, Col, Empty, Row, Space, Tabs, Tag } from "antd";
+import { Alert, App as AntdApp, Button, Empty, Space, Tabs, Tag } from "antd";
 import { CloudUploadOutlined, DeleteOutlined, FilePdfOutlined } from "@ant-design/icons";
 import { useParams, useRouter } from "next/navigation";
 import { useGoBack } from "@/lib/navigation";
@@ -348,61 +348,47 @@ const handleDelete = () => {
     {
       key: "info",
       label: <span>概览</span>,
-      children: (
-        <Row gutter={[16, 16]}>
-          <Col xs={24}>
-            <StatGrid
-              columns={3}
-              items={[
-                { label: "合同总额", value: t ? fmtWan(t.totalAmount) : 0, suffix: "万" },
-                { label: "已开票", value: t ? fmtWan(t.invoicedAmount) : 0, suffix: "万" },
-                { label: "已回款", value: t ? fmtWan(t.paidAmount) : 0, suffix: "万" }
-              ]}
-            />
-          </Col>
-          <Col xs={24}>
-            <ProCard>
-              <div style={{ display: "flex", alignItems: "center", gap: 16, flexWrap: "wrap" }}>
-                <span style={{ fontSize: 13, color: "var(--qt-text-hint)" }}>开票状态</span>
-                <Tag
-                  color={t?.billingStatus === "COMPLETED" ? "success" : t?.billingStatus === "IN_PROGRESS" ? "processing" : "default"}
-                  style={{ fontSize: 14, padding: "4px 12px" }}
-                >
-                  {BILLING_STATUS_MAP[t?.billingStatus ?? "NOT_STARTED"] ?? t?.billingStatus}
-                </Tag>
-                <span style={{ fontSize: 13, color: "var(--qt-text-faint)" }}>
-                  已开票 {t ? fmtWan(t.invoicedAmount) : 0} 万 / 合同总额 {t ? fmtWan(t.totalAmount) : 0} 万
-                </span>
-              </div>
-            </ProCard>
-          </Col>
-          <Col xs={24}>
-            <ProCard>
-              <div style={{ display: "flex", alignItems: "center", gap: 16, flexWrap: "wrap" }}>
-                <span style={{ fontSize: 13, color: "var(--qt-text-hint)" }}>回款状态</span>
-                <Tag
-                  color={t?.paymentStatus === "COMPLETED" ? "success" : t?.paymentStatus === "IN_PROGRESS" ? "processing" : "default"}
-                  style={{ fontSize: 14, padding: "4px 12px" }}
-                >
-                  {PAYMENT_PROGRESS_STATUS_MAP[t?.paymentStatus ?? "NOT_STARTED"] ?? t?.paymentStatus}
-                </Tag>
-                <span style={{ fontSize: 13, color: "var(--qt-text-faint)" }}>
-                  已回款 {t ? fmtWan(t.paidAmount) : 0} 万 / 合同总额 {t ? fmtWan(t.totalAmount) : 0} 万
-                </span>
-              </div>
-            </ProCard>
-          </Col>
-          <Col xs={24}>
-            <StatGrid
-              columns={2}
-              items={[
-                { label: "开票数", value: t?.invoiceCount ?? 0 },
-                { label: "回款数", value: t?.paymentCount ?? 0 }
-              ]}
-            />
-          </Col>
-        </Row>
-      )
+      children: (() => {
+        // 概览收敛为 1 行 3 卡: 总额(带计数) / 已开票(进度+状态) / 已回款(进度+状态)
+        // progress 除零保护: totalAmount>0 才给百分比; 状态 Tag 颜色沿用原独立卡片逻辑
+        const total = t?.totalAmount ?? 0;
+        const pct = (v: number) => (total > 0 ? (v / total) * 100 : 0);
+        const statusTag = (status: string | undefined, map: Record<string, string>) => (
+          <Tag
+            color={status === "COMPLETED" ? "success" : status === "IN_PROGRESS" ? "processing" : "default"}
+            style={{ marginInlineEnd: 0 }}
+          >
+            {map[status ?? "NOT_STARTED"] ?? status}
+          </Tag>
+        );
+        return (
+          <StatGrid
+            columns={3}
+            items={[
+              {
+                label: "合同总额",
+                value: t ? fmtWan(t.totalAmount) : 0,
+                suffix: "万",
+                description: `开票 ${t?.invoiceCount ?? 0} 张 · 回款 ${t?.paymentCount ?? 0} 笔`
+              },
+              {
+                label: "已开票",
+                value: t ? fmtWan(t.invoicedAmount) : 0,
+                suffix: "万",
+                progress: pct(t?.invoicedAmount ?? 0),
+                description: statusTag(t?.billingStatus, BILLING_STATUS_MAP)
+              },
+              {
+                label: "已回款",
+                value: t ? fmtWan(t.paidAmount) : 0,
+                suffix: "万",
+                progress: pct(t?.paidAmount ?? 0),
+                description: statusTag(t?.paymentStatus, PAYMENT_PROGRESS_STATUS_MAP)
+              }
+            ]}
+          />
+        );
+      })()
     },
     {
       key: "basic",
@@ -525,7 +511,7 @@ const handleDelete = () => {
       <PageHeader
         back={goBack}
         title={`${contract.title} · ${contract.contractNo}`}
-        subtitle="合同 360 度视图：概览 / 基本信息 / 项目 / 开票 / 回款 / 操作记录 / 附件"
+        subtitle="合同 360 度视图：概览 / 详细信息 / 交付物 / 开票 / 回款 / 操作记录 / 附件"
         meta={
           <Space size={8} wrap>
             <StatusTag status={contract.status} domain="contract" />
