@@ -137,12 +137,17 @@ COMPOSE="docker compose -f docker-compose.prod.yml"
 log "==> $COMPOSE up -d postgres minio"
 $COMPOSE up -d postgres minio
 
-# ---- prisma migrate deploy (native, 降权账号) ----
+# ---- prisma migrate deploy (native, MIGRATION_DATABASE_URL) ----
 log "==> prisma migrate deploy (native, MIGRATION_DATABASE_URL)"
+# 迁移必须以 MIGRATION_DATABASE_URL (qitai, DB owner) 执行:
+# prisma.config.ts 的 datasource.url 默认读 DATABASE_URL (qt_app 降权账号),
+# ALTER TYPE / ALTER TABLE OWNER 等 owner-only DDL 会被 42501 拒 (v0.20.3 事故:
+# MessageType enum 补值报 must be owner of type)。
+: "${MIGRATION_DATABASE_URL:?MIGRATION_DATABASE_URL 未设置, 无法以 owner 身份跑迁移}"
 # 已知问题兜底: 20260630_message_type_enum_index 想 CREATE TYPE MessageType,
 # 但 20260627_message_type_enum_bootstrap 已经预创建, fresh DB 撞 "type already exists".
 set +e
-npx prisma migrate deploy 2>&1 | tee /tmp/migrate.log
+DATABASE_URL="$MIGRATION_DATABASE_URL" npx prisma migrate deploy 2>&1 | tee /tmp/migrate.log
 EXIT1=${PIPESTATUS[0]}
 set -e
 if [ $EXIT1 -eq 0 ]; then
@@ -160,13 +165,13 @@ elif grep -q "20260630_message_type_enum_index" /tmp/migrate.log; then
     -c 'DROP INDEX IF EXISTS "Message_type_idx";' \
     -c 'CREATE INDEX "Message_type_receiverUserId_createdAt_idx" ON "Message"("type", "receiverUserId", "createdAt");'
   set +e
-  npx prisma migrate resolve --applied 20260630_message_type_enum_index
+  DATABASE_URL="$MIGRATION_DATABASE_URL" npx prisma migrate resolve --applied 20260630_message_type_enum_index
   RESOLVE_EXIT=$?
   set -e
   if [ $RESOLVE_EXIT -ne 0 ]; then
     log_warn "prisma resolve --applied 返回 $RESOLVE_EXIT (可能 migration 不在 failed 状态, 继续)"
   fi
-  npx prisma migrate deploy
+  DATABASE_URL="$MIGRATION_DATABASE_URL" npx prisma migrate deploy
   log_ok "fallback 成功"
 else
   log_err "prisma deploy 失败但不是已知 20260630 enum 冲突, 不走 fallback"
