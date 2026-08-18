@@ -10,6 +10,8 @@ import { Prisma } from "@prisma/client";
 import { audit } from "@/server/audit";
 import { emit } from "@/server/events/bus";
 import { listAdminUserIds } from "@/server/events/bus";
+import { flushPendingKicks } from "@/server/notifications/hub";
+import { MONEY_TOLERANCE } from "@/lib/money-tolerance";
 import type { BankTransaction, Payment, Invoice, Contract, Customer } from "@prisma/client";
 import type ExcelJS from "exceljs";
 
@@ -545,6 +547,26 @@ export async function autoMatchTransaction(
         matchReason: `建议匹配: ${best.reasons.join("; ")}`,
       },
     });
+
+    // 通知财务人工确认 (失败不阻断主流程)
+    try {
+      const admins = await listAdminUserIds(prisma);
+      await emit(prisma, {
+        type: "RECONCILIATION_SUGGESTION",
+        payload: {
+          transactionId: tx.id,
+          bankRefNo: tx.bankRefNo,
+          amount: Number(tx.amount),
+          customerName: best.payment.customer?.name ?? "",
+          candidateCount: scored.length,
+        },
+        entityKey: `RECONCILIATION_SUGGESTION:${tx.id}`,
+        receivers: Array.from(new Set([user.id, ...admins])),
+      });
+    } catch (e) {
+      console.warn("[reconciliation] emit RECONCILIATION_SUGGESTION failed:", e instanceof Error ? e.message : e);
+    }
+
     return {
       action: "SUGGESTED",
       transaction: updated,
@@ -625,6 +647,162 @@ async function assertPaymentNotOccupied(
 }
 
 /**
+ * 匹配写回共享逻辑 — confirmMatch / manualMatch 的唯一差异是流水终态与审计动作。
+ * 对 Payment 的写回与 payment.ts 的 confirm/reconcile 动作对齐:
+ *   - 金额守门: R-10 流水号唯一 / R-11 累计≤发票 / R-12 累计≤合同 (仅 PLANNED 新入账时校验 R-11/R-12)
+ *   - 终态一律 RECONCILED (对账中心确认 = 已对账), 记 reconcileUserId/reconciledAt
+ *   - PLANNED → RECONCILED 时补发 PAYMENT_RECEIVED 事件 (与回款页确认一致)
+ *   - 原状态记入 BankTransaction.paymentPrevStatus, 供 unmatch 精确回滚
+ *   - 金额不一致 (>0.01) 记 AMOUNT_MISMATCH 差异并发 RECONCILIATION_DISCREPANCY 通知
+ */
+async function writebackPaymentOnMatch(
+  tx: Prisma.TransactionClient,
+  user: SessionUser,
+  transaction: BankTransaction,
+  payment: Payment,
+  matchedStatus: "CONFIRMED_MATCHED" | "MANUAL_MATCHED",
+  auditAction: "RECONCILIATION_CONFIRM_MATCH" | "RECONCILIATION_MANUAL_MATCH"
+): Promise<BankTransaction> {
+  await assertPaymentNotOccupied(tx, transaction.id, payment.id);
+
+  if (payment.status !== "PLANNED" && payment.status !== "CONFIRMED") {
+    throw new ApiError(ERROR_CODES.VALIDATION_FAILED, `回款当前状态 ${payment.status}，不可匹配`, 422);
+  }
+
+  // 金额一致性校验（容差 0.01）, 不一致记差异
+  const amountDiff = Math.abs(Number(transaction.amount) - Number(payment.amount));
+  let discrepancy: { id: string; severity: string; description: string } | null = null;
+  if (amountDiff > 0.01) {
+    discrepancy = await tx.reconciliationDiscrepancy.create({
+      data: {
+        type: "AMOUNT_MISMATCH",
+        severity: amountDiff > 100 ? "HIGH" : "MEDIUM",
+        bankTransactionId: transaction.id,
+        paymentId: payment.id,
+        invoiceId: payment.invoiceId,
+        expectedAmount: payment.amount,
+        actualAmount: transaction.amount,
+        difference: new Prisma.Decimal(amountDiff),
+        description: `银行流水金额 ¥${transaction.amount} 与回款金额 ¥${payment.amount} 不一致，差额 ¥${amountDiff.toFixed(2)}`,
+      },
+    });
+  }
+
+  const wasPlanned = payment.status === "PLANNED";
+  const ref = transaction.bankRefNo;
+
+  // 与 payment.ts confirm 同款的并发与金额守门
+  // 加分布式锁防止同一流水号并发确认导致重复
+  await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${ref})::bigint)`;
+  // 对合同/发票行加锁, 序列化同一合同/发票下的并发确认, 防止累计金额超限
+  await tx.$queryRaw`SELECT id FROM "Contract" WHERE id = ${payment.contractId} AND "deletedAt" IS NULL FOR UPDATE`;
+  if (payment.invoiceId) {
+    await tx.$queryRaw`SELECT id FROM "Invoice" WHERE id = ${payment.invoiceId} AND "deletedAt" IS NULL FOR UPDATE`;
+  }
+  // R-10: 流水号唯一 (在 CONFIRMED/RECONCILED 池里, 已删除记录不占号)
+  const dup = await tx.payment.findFirst({
+    where: { bankRefNo: ref, status: { in: ["CONFIRMED", "RECONCILED"] }, deletedAt: null, NOT: { id: payment.id } },
+  });
+  if (dup) throw new ApiError(ERROR_CODES.PAYMENT_DUPLICATE_REF, `流水号 ${ref} 已存在`, 409);
+
+  if (wasPlanned) {
+    // R-11/R-12 仅在新入账 (PLANNED → 入池) 时校验; 已 CONFIRMED 的回款在原 confirm 时已校验过
+    const TOL = MONEY_TOLERANCE;
+    // R-11 (若挂发票): 累计回款 ≤ 发票金额
+    if (payment.invoiceId) {
+      const inv = await tx.invoice.findUniqueOrThrow({ where: { id: payment.invoiceId } });
+      const sum = await tx.payment.aggregate({
+        where: { invoiceId: payment.invoiceId, status: { in: ["CONFIRMED", "RECONCILED"] }, NOT: { id: payment.id } },
+        _sum: { amount: true },
+      });
+      const sumAmt = new Prisma.Decimal(sum._sum.amount?.toString() ?? "0");
+      const invAmt = new Prisma.Decimal(inv.amount.toString());
+      if (sumAmt.plus(payment.amount.toString()).greaterThan(invAmt.plus(TOL))) {
+        throw new ApiError(ERROR_CODES.PAYMENT_OVER_INVOICE, "该发票累计回款将超过发票金额", 422);
+      }
+    }
+    // R-12: 累计回款 ≤ 合同总额
+    const sumC = await tx.payment.aggregate({
+      where: { contractId: payment.contractId, status: { in: ["CONFIRMED", "RECONCILED"] }, NOT: { id: payment.id } },
+      _sum: { amount: true },
+    });
+    const contract = await tx.contract.findUniqueOrThrow({ where: { id: payment.contractId } });
+    const sumCAmt = new Prisma.Decimal(sumC._sum.amount?.toString() ?? "0");
+    const contractAmt = new Prisma.Decimal(contract.totalAmount.toString());
+    if (sumCAmt.plus(payment.amount.toString()).greaterThan(contractAmt.plus(TOL))) {
+      throw new ApiError(ERROR_CODES.PAYMENT_OVER_CONTRACT, "该合同累计回款将超过合同总额", 422);
+    }
+  }
+
+  // 更新流水状态 (记 paymentPrevStatus 供 unmatch 回滚)
+  const updated = await tx.bankTransaction.update({
+    where: { id: transaction.id },
+    data: {
+      matchStatus: matchedStatus,
+      paymentId: payment.id,
+      paymentPrevStatus: payment.status,
+      matchedAt: new Date(),
+      matchedById: user.id,
+    },
+  });
+
+  // 更新 Payment: 补录银行流水号, 终态 RECONCILED (对账完成);
+  // PLANNED 新入账时把 receivedAt 更正为流水交易日期 (同 payment.ts confirm 语义)
+  await tx.payment.update({
+    where: { id: payment.id },
+    data: {
+      bankRefNo: ref,
+      status: "RECONCILED",
+      reconcileUserId: user.id,
+      reconciledAt: new Date(),
+      ...(wasPlanned ? { receivedAt: transaction.transactionDate } : {}),
+    },
+  });
+
+  // 审计
+  await audit(tx, {
+    actorId: user.id,
+    action: auditAction,
+    entity: "BankTransaction",
+    entityId: transaction.id,
+    before: { matchStatus: transaction.matchStatus, paymentStatus: payment.status },
+    after: { matchStatus: matchedStatus, paymentId: payment.id, paymentStatus: "RECONCILED" },
+  });
+
+  // 事件: PLANNED 新入账 → 回款到账通知 (与回款页 confirm 一致);
+  // 有差异 → 差异提醒. 事件在事务内 emit, 由调用方 flushPendingKicks 推送.
+  if (wasPlanned || discrepancy) {
+    const admins = await listAdminUserIds(tx);
+    if (wasPlanned) {
+      const ct = await tx.contract.findUniqueOrThrow({ where: { id: payment.contractId }, select: { ownerUserId: true } });
+      const customer = await tx.customer.findUniqueOrThrow({ where: { id: payment.customerId }, select: { name: true } });
+      await emit(tx, {
+        type: "PAYMENT_RECEIVED",
+        payload: { paymentId: payment.id, paymentNo: payment.paymentNo, amount: Number(payment.amount), customerName: customer.name },
+        entityKey: `PAYMENT_RECEIVED:${payment.id}`,
+        receivers: Array.from(new Set([ct.ownerUserId, payment.recorderUserId, ...admins])),
+      });
+    }
+    if (discrepancy) {
+      await emit(tx, {
+        type: "RECONCILIATION_DISCREPANCY",
+        payload: {
+          discrepancyId: discrepancy.id,
+          bankTransactionId: transaction.id,
+          type: "AMOUNT_MISMATCH",
+          severity: discrepancy.severity,
+          description: discrepancy.description,
+        },
+        entityKey: `RECONCILIATION_DISCREPANCY:${discrepancy.id}`,
+        receivers: Array.from(new Set([user.id, ...admins])),
+      });
+    }
+  }
+
+  return updated;
+}
+
+/**
  * 确认匹配（财务复核后确认）
  */
 export async function confirmMatch(
@@ -635,7 +813,7 @@ export async function confirmMatch(
   requireReconciliationPermission(user, ACTION.UPDATE);
   requireFinanceOrAdmin(user);
 
-  return prisma.$transaction(async (tx) => {
+  const result = await prisma.$transaction(async (tx) => {
     const transaction = await tx.bankTransaction.findFirst({
       where: { id: transactionId, deletedAt: null },
     });
@@ -646,63 +824,10 @@ export async function confirmMatch(
     });
     if (!payment) throw new ApiError(ERROR_CODES.NOT_FOUND, "回款记录不存在", 404);
 
-    await assertPaymentNotOccupied(tx, transactionId, paymentId);
-
-    // 校验金额一致性（容差 0.01）
-    const amountDiff = Math.abs(Number(transaction.amount) - Number(payment.amount));
-    if (amountDiff > 0.01) {
-      // 创建差异记录
-      await tx.reconciliationDiscrepancy.create({
-        data: {
-          type: "AMOUNT_MISMATCH",
-          severity: amountDiff > 100 ? "HIGH" : "MEDIUM",
-          bankTransactionId: transaction.id,
-          paymentId: payment.id,
-          invoiceId: payment.invoiceId,
-          expectedAmount: payment.amount,
-          actualAmount: transaction.amount,
-          difference: new Prisma.Decimal(amountDiff),
-          description: `银行流水金额 ¥${transaction.amount} 与回款金额 ¥${payment.amount} 不一致，差额 ¥${amountDiff.toFixed(2)}`,
-        },
-      });
-    }
-
-    // 更新流水状态
-    const updated = await tx.bankTransaction.update({
-      where: { id: transactionId },
-      data: {
-        matchStatus: "CONFIRMED_MATCHED",
-        paymentId: payment.id,
-        matchedAt: new Date(),
-        matchedById: user.id,
-      },
-    });
-
-    // 更新 Payment: 补录银行流水号，状态推进到 CONFIRMED
-    const updateData: Prisma.PaymentUpdateInput = {
-      bankRefNo: transaction.bankRefNo,
-    };
-    if (payment.status === "PLANNED") {
-      updateData.status = "CONFIRMED";
-      updateData.receivedAt = transaction.transactionDate;
-    }
-    await tx.payment.update({
-      where: { id: payment.id },
-      data: updateData,
-    });
-
-    // 审计
-    await audit(tx, {
-      actorId: user.id,
-      action: "RECONCILIATION_CONFIRM_MATCH",
-      entity: "BankTransaction",
-      entityId: transactionId,
-      before: { matchStatus: transaction.matchStatus },
-      after: { matchStatus: "CONFIRMED_MATCHED", paymentId: payment.id },
-    });
-
-    return updated;
+    return writebackPaymentOnMatch(tx, user, transaction, payment, "CONFIRMED_MATCHED", "RECONCILIATION_CONFIRM_MATCH");
   });
+  flushPendingKicks();
+  return result;
 }
 
 /**
@@ -716,7 +841,7 @@ export async function manualMatch(
   requireReconciliationPermission(user, ACTION.UPDATE);
   requireFinanceOrAdmin(user);
 
-  return prisma.$transaction(async (tx) => {
+  const result = await prisma.$transaction(async (tx) => {
     const transaction = await tx.bankTransaction.findFirst({
       where: { id: transactionId, deletedAt: null },
     });
@@ -727,28 +852,10 @@ export async function manualMatch(
     });
     if (!payment) throw new ApiError(ERROR_CODES.NOT_FOUND, "回款记录不存在", 404);
 
-    await assertPaymentNotOccupied(tx, transactionId, paymentId);
-
-    const updated = await tx.bankTransaction.update({
-      where: { id: transactionId },
-      data: {
-        matchStatus: "MANUAL_MATCHED",
-        paymentId: payment.id,
-        matchedAt: new Date(),
-        matchedById: user.id,
-      },
-    });
-
-    await audit(tx, {
-      actorId: user.id,
-      action: "RECONCILIATION_MANUAL_MATCH",
-      entity: "BankTransaction",
-      entityId: transactionId,
-      after: { paymentId: payment.id },
-    });
-
-    return updated;
+    return writebackPaymentOnMatch(tx, user, transaction, payment, "MANUAL_MATCHED", "RECONCILIATION_MANUAL_MATCH");
   });
+  flushPendingKicks();
+  return result;
 }
 
 /**
@@ -772,6 +879,7 @@ export async function unmatchTransaction(
       data: {
         matchStatus: "UNMATCHED",
         paymentId: null,
+        paymentPrevStatus: null,
         matchScore: null,
         matchReason: null,
         matchedAt: null,
@@ -779,25 +887,31 @@ export async function unmatchTransaction(
       },
     });
 
-    // 回滚 confirmMatch 对 Payment 的副作用, 避免孤儿状态:
+    // 回滚匹配对 Payment 的副作用, 避免孤儿状态:
     //   - bankRefNo 是本流水写入的 → 清空
-    //   - status 是本流水从 PLANNED 推进到 CONFIRMED 的 → 退回 PLANNED
-    // confirmMatch 只在推进状态时把 receivedAt 覆写为流水交易日期,
-    // 因此 "bankRefNo 匹配 且 receivedAt == 交易日期" 即本次对账写入的签名;
-    // 原本就 CONFIRMED 的回款不会被误退。
+    //   - status 是本次匹配推进到 RECONCILED 的 → 退回 paymentPrevStatus 记的原状态,
+    //     并清掉 reconcileUserId/reconciledAt
+    // 旧数据 (paymentPrevStatus 为 null, 修复前匹配的) 退化到原启发式:
+    //   confirmMatch 只在推进状态时把 receivedAt 覆写为流水交易日期,
+    //   因此 "bankRefNo 匹配 且 receivedAt == 交易日期 且仍在 CONFIRMED" 即当时写入的签名;
+    //   原本就 CONFIRMED/RECONCILED 的回款不会被误退。
     if (transaction.paymentId) {
       const payment = await tx.payment.findFirst({
         where: { id: transaction.paymentId, deletedAt: null },
       });
       if (payment && payment.bankRefNo === transaction.bankRefNo) {
-        const advancedByThisMatch =
+        const prev = transaction.paymentPrevStatus;
+        const legacyAdvanced =
           payment.status === "CONFIRMED" &&
           payment.receivedAt.getTime() === transaction.transactionDate.getTime();
+        const rollbackStatus = prev ?? (legacyAdvanced ? "PLANNED" : null);
         await tx.payment.update({
           where: { id: payment.id },
           data: {
             bankRefNo: null,
-            ...(advancedByThisMatch ? { status: "PLANNED" } : {}),
+            ...(rollbackStatus
+              ? { status: rollbackStatus, reconcileUserId: null, reconciledAt: null }
+              : {}),
           },
         });
       }

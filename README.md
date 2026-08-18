@@ -11,7 +11,7 @@
 
 > **客户 / 合同 / 开票 / 回款** 一体化管理,附件走 MinIO presigned 直传,服务端 Server Actions + RBAC + 行级隔离。
 >
-> **当前版本: v0.19.0**(2026-08-14)。文档地图见 [docs/README.md](docs/README.md),架构与设计见 [docs/architecture/DESIGN-v3.md](docs/architecture/DESIGN-v3.md),用户手册见 [docs/user/USER_MANUAL.md](docs/user/USER_MANUAL.md)。
+> **当前版本: v0.20.3**(2026-08-17)。文档地图见 [docs/README.md](docs/README.md),架构与设计见 [docs/architecture/DESIGN-v3.md](docs/architecture/DESIGN-v3.md),用户手册见 [docs/user/USER_MANUAL.md](docs/user/USER_MANUAL.md)。
 
 ## 目录
 
@@ -257,6 +257,10 @@ nginx 反代下上游异常时,由 `public/502.html` 静态页与 `app/502/page.
 
 最近 5 个版本,完整历史见 [CHANGELOG.md](CHANGELOG.md)。
 
+### v0.20.3(2026-08-17)对账中心与开票/回款规则对齐修复
+
+对账中心动态走查修复：MessageType PG enum 缺 4 个对账消息值导致通知全部静默丢失（补迁移）、对账确认绕过回款 R-10/R-11/R-12 金额校验与到账通知（重构为与回款模块同规则的共享 writeback）、对账确认终态改 RECONCILED 并支持 paymentPrevStatus 精确回滚、manualMatch 与 confirmMatch 写回对称、补发建议匹配/差异提醒通知、消息中心对账链接可跳转详情抽屉。**DB schema 有变化：迁移 `20260817_reconciliation_fixes`**。
+
 ### v0.20.2(2026-08-17)对账规则配置（ReconciliationRule）下线
 
 删除从未接线的对账规则配置（引擎不读、无 UI 的死代码）：DROP 整表 + 删 CRUD API/service/validators。**DB schema 有变化：迁移 `20260821_drop_reconciliation_rule`**。
@@ -281,154 +285,6 @@ nginx 反代下上游异常时,由 `public/502.html` 静态页与 `app/502/page.
 ### v0.19.9(2026-08-17)账龄分析明细列表翻页失效修复
 
 明细分页的 page/pageSize 只存在组件本地 state、从未进查询串(恒拉第 1 页),翻页点击无效;提升到页面层进 `/api/statistics/invoice-aging` 参数,filter 变化自动重置页码。**DB schema 无变化**。
-
-### v0.19.8(2026-08-17)CI 修复:seed 前补 prisma generate
-
-fresh node_modules 的 `@prisma/client` 未生成 client 导致 seed 报错,test job 迁移前补显式 generate;迁移 resolve 路径与 build job 已验证通过。**DB schema 无变化**,纯 CI 配置无需部署。
-
-### v0.19.7(2026-08-17)CI 修复:fresh DB 迁移重放雷区自动化 + 测试 fixture 自愈
-
-CI 首跑抓到两个 fresh DB 限定问题:迁移重放撞 20260630 已知雷区(封装 `scripts/shared/migrate-deploy.sh` 自动 resolve,dev:setup 同入口,弃用 migrate dev)、测试依赖环境已有客户(改为自建 fixture)。scratch PG 全新库彩排 775/775 全绿。**DB schema 无变化**,不影响运行时无需部署。
-
-### v0.19.6(2026-08-17)CI 门禁上线 + CHANGELOG 草稿半自动化
-
-GitHub Actions 每次 push/PR 自动跑真实 PG(迁移+seed)上的 lint/typecheck/vitest + 生产构建冒烟;`npm run changelog:draft` 从 commits 生成 CHANGELOG 草稿(自动检测迁移改动预填 DB 行)。**DB schema 无变化**,不影响运行时无需部署。
-
-### v0.19.5(2026-08-17)移除失效的 eslint-disable 指令
-
-eslint 9.18→9.39.5 后 `declare global` 中的 `var` 不再触发 `no-var`,删除 `scheduler.ts` 失效的 eslint-disable 注释(否则报未使用指令 warning)。**DB schema 无变化**,注释类改动无需部署。
-
-### v0.19.4(2026-08-16)聚合搜索框移至内容区 sticky 吸附条
-
-搜索框从顶栏右侧移至内容区顶部,sticky 吸附随页面滚动始终可见;居中限宽 720px,手机端直显输入框。**DB schema 无变化**。
-
-- **feat**:Content 顶部 sticky 搜索条(top=Header 高度,实色背景遮挡);顶栏右侧只留消息+头像
-- **feat**:GlobalSearch 新增 block 全宽模式;手机端不再走"图标→展开"两步流程,隐藏无意义的 Ctrl K 徽标
-- **test(e2e)**:登录 timeout 放宽(dev 编译压力容错);三项目 e2e 全过;sticky 滚动截图验证
-
-### v0.18.9(2026-08-14)工作台客户区域分布柱状图视觉打磨
-
-工作台「客户区域分布」柱状图视觉打磨:去彩虹色与巨型图例,改单色;按数量聚合 Top 10 + 其他,未录入镇街标「未录入」,x 轴标签防重叠。**DB schema 无变化**。
-
-- **单色替代彩虹**:去掉 `colorField="town"` 几十项图例,改用品牌主色 + `legend: false`
-- **Top 10 + 其他**:后端 `townDistribution` 已按数量降序,前端聚合前 10 与「其他」,空镇街标「未录入」
-- **测试**:typecheck / lint / vitest 全绿(94 文件,772 用例)
-
-### v0.18.8(2026-08-14)合同详情页操作记录动作中文标签 + 语义色
-
-合同详情页「操作记录」时间线 + 点击节点打开的详情抽屉,动作标识从英文原始码统一改为中文标签 + 语义色 Tag(正向绿 / 负向红 / 进行中蓝 / 待定橙 / 中性灰)。**DB schema 无变化**。
-
-- **合同操作记录中文标签**:`operation-timeline.tsx` 与 `operation-log-drawer.tsx` 动作改用 `<Tag color={shortActionTone(action)}>{shortActionLabel(action)}</Tag>`
-- **`lib/operation-log-format.ts` 重构**:`ACTION_LABELS` 升级为 `ACTION_META`(label + tone 语义色),新增 `shortActionTone()`
-- **测试**:typecheck / lint / vitest 全绿(94 文件,772 用例)
-
-### v0.18.7(2026-08-14)消息中心前端显示优化 (Wave 2)
-
-消息中心前端打磨:抽屉补齐「加载更多」与「置顶公告」,类型标签统一为 StatusTag,消息页合并标题/内容冗余列,单条已读后不再跳回第 1 页。**DB schema 无变化**。
-
-- **抽屉加载更多**:补齐分页,带 loading 态
-- **抽屉置顶公告**:打开抽屉 / 收到推送时拉取并展示 pinned 公告
-- **消息页合并冗余列**:标题 + 内容 + 详情气泡 → 单一「消息」列(标题加粗 + 内容两行截断预览)
-- **类型标签统一**:抽屉改用 `<StatusTag domain="message">`,与消息页一致
-- **单条已读保留分页**:标记已读 / 删除 / 清空不再 `reloadAndRest` 跳页
-
-### v0.18.5(2026-08-13)行级隔离前端收口 (Wave 3)
-
-页面层对齐行级隔离:非管理员查看/编辑他人数据的入口全部按 owner 判定,直接访问 URL 也有 403/降级兜底。**DB schema 无变化**。
-
-- **客户/合同/发票编辑入口 owner 判定**:详情页编辑按钮仅本人(SALES/EXPERT)可见,编辑页直接访问兜底
-- **发票/回款新建合同选择器过滤**:只列本人负责的合同
-- **员工档案 403 降级**:无权查看他人档案时显示基本联系卡,敏感区仅 ADMIN 可见
-- **证书到期页 OPS 门禁**:仅 ADMIN / OPS 可查看
-
-### v0.18.4(2026-08-11)全局搜索
-
-新增全局搜索功能，支持跨客户/合同/发票/回款快速检索。
-
-- **触发方式**:Header 右侧搜索图标 + `Cmd+K` / `Ctrl+K` 快捷键
-- **搜索范围**:客户(名称/编号/联系人/电话)、合同(合同号/标题/客户名)、发票(发票号/代码/客户名)、回款(回款号/流水号/客户名)
-- **实时搜索**:300ms 防抖，按实体类型分组展示，键盘导航(↑↓ / Enter / Esc)
-- **权限控制**:RBAC + 行级隔离(SALES/EXPERT 只能搜自己负责的数据)
-
-### v0.18.3(2026-08-02)ADMIN 可直接调整角色权限 (运行时真源翻到 DB)
-
-把运行时权限真源从 `lib/permissions.ts` 硬编码矩阵翻到 DB `Role.permissions`,admin 在 `/admin/roles` 直接编辑 (含系统角色),保存后 ≤2s 全员生效. 完整动机 / 安全护栏 / 缓存失效策略见 [CHANGELOG.md](CHANGELOG.md) v0.18.3 段.
-
-- **`lib/permissions.ts`**: 新增 `runtimePermissions` 进程级缓存; `hasPermission` / `requirePermission` 先查缓存, 兜底查 `ROLE_PERMISSIONS`. 现有 173 处调用零改动.
-- **`lib/auth.ts`**: `session` callback 每次请求 `loadRolePermissions(roleCode)` 从 DB 拉 (2s TTL), 灌进 `runtimePermissions` + `session.user.permissions`.
-- **`server/services/role.ts#updateRole`**: 放开系统角色编辑; 加 **ADMIN 锁死护栏** (ADMIN 必须保留 [角色] 资源的读+改, 否则后续无人能调回) + 空权限 400 + code 改名冲突 409 + 系统角色 code 改名超 RoleCode 联合 400.
-- **缓存失效**: `updateRole` 改权限 / code → `User.roleVersion + 1` (全员) + `invalidateAuthCache(uid)` + `setRuntimePermissions(newCode, newPerms)`.
-- **新页面** `/admin/roles/[id]/edit`: 名称/说明/权限矩阵受控编辑, dirty 检测 + ADMIN 锁死护栏前端兜底, 保存 → 详情页.
-- **测试**: `tests/unit/server/role-update.test.ts` (15 条) + `tests/permissions-runtime.test.ts` (7 条); 全量 683/683 绿; dev server + curl E2E 跑通 (admin PATCH → sales 重登看到新权限 → restore → 护栏 403).
-- **`createRole` 仍 403**: 自定义角色另行单独做, 不是本次范围.
-- **DB schema / migrations**: 无变化 (纯运行时逻辑).
-
-### v0.18.2(2026-08-02)修复 deploy.sh 的 npm ci devDeps 漏装
-
-v0.18.1 首次部署定位与修复: 服务器 `.env` 把 `NODE_ENV=production` 注入 npm ci, npm 自动 omit=dev, prisma / tsx / vitest 等 devDeps 全跳过, `npx prisma` 临时下载又找不到 `prisma/config`。
-
-- `scripts/prod/deploy.sh`: `npm ci` 前 `unset NODE_ENV`、完后 `export` 回去, 保 Next runtime 的 production 语义
-- 不动 `.env` / `.npmrc` (NODE_ENV=production 是 Next + systemd 的运行时配置)
-- 验证: 服务器重跑 `npm ci` 后 prisma generate 通过, typecheck / lint / test 全绿
-
-### v0.18.1(2026-08-02)权限细化 + 数据字典只读/拒写
-
-v0.18.0 权限收紧的延伸 — EXPERT/OPS 行级再细一刀, 字典 9 类枚举约束只读 + service 拒写, 修复 `refreshDict` 不生效等 4 个字典 bug, 字典种子双源并一.
-
-- **EXPERT 行级收紧**: PAYMENT `CR+导出` → `R+导出`, DUNNING `CR` → `R` (钱相关只读, 商业动作归 SALES)
-- **OPS 行级收紧**: CUSTOMER `CRU+导出` → `R+导出` (客户资料 owner 是销售)
-- **`/admin/roles` 只读化**: service 拒写系统角色, 列表页加 Alert 说明运行时真源是 `lib/permissions.ts`, 删两个编辑子页面
-- **字典 9 类只读**: CUSTOMER_TYPE/SCALE/CONTRACT_PAYMENT_METHOD/INVOICE_TYPE/PAYMENT_RECEIVE_METHOD/REVIEW_ACTION/CONTRACT_STATUS/INVOICE_STATUS/PAYMENT_STATUS 的 code 由 zod 枚举或状态机硬约束, 字典页只读展示 + service 拒写 (403)
-- **`refreshDict` 真正生效**: SWR `mutate` 替代死代码 `subs/notify`, admin 写后同标签页其他页面下拉即时刷新 (跨标签页不广播, 已知限制)
-- **字典种子双源合一**: 新增唯一定义源 `scripts/shared/dict-defs.ts`, 消除 seed.ts 与 seed-dicts.ts 的 SERVICE_TYPE label 漂移, 移除已下线的 CUSTOMER_STATUS / PROJECT_STATUS
-- **code 正则放宽**: 字典 code 允许点号 (匹配存量树形 code 如 `R2.30`)
-- **DB schema**: 无变化 (纯 role 矩阵细化 + 字典旁路拒绝 + 文档同步)
-
-### v0.18.0(2026-08-02)非 ADMIN 权限矩阵重排 + 三处 service 守门加固
-
-非 ADMIN 四个角色的权限做了重新分配, 同时 3 处 service 入口补强 (避免菜单绕过). 详见 `docs/history/security/permissions-audit-2026-08-02.md`.
-
-- DUNNING (催收): SALES / EXPERT 从 CRUD 降为 CR; FINANCE 从 CRU 升为 CRUD
-- EXPERT.INVOICE: 从 CRU+导出 降为 R+导出
-- 回收站 (trash): service 入口硬卡 ADMIN
-- 公告 (announcement): update / delete 限制发布人或 ADMIN
-
-### v0.17.1(2026-08-02)全链路标 DEPRECATED(应急 docker fallback 路径)
-
-v0.17.0 仅清掉了镜像与 `rollback.sh --docker` flag, 文档/代码里仍有引用。v0.17.1 统一补 `**DEPRECATED**` 标签, 行为不变。
-
-- `Dockerfile` / `docker-compose.prod.yml` / `deploy.sh:62` / `rollback.sh:33` / `remote-deploy.sh:32` 顶部加 `~~~~~~~~~~~~~~~~~~~~ DEPRECATED ~~~~~~~~~~~~~~~~~~~~` banner
-- `AGENTS.md` / `README.md` / `docs/ops/deploy-current.md` 同步加 `**DEPRECATED**` 标记
-- 历史档案 (`CHANGELOG.md` v0.16 及更早, `docs/ops/deploy-history/*.md`) **不动**
-
-### v0.16.0(2026-08-02)部署提速:native systemd 主路径,14min → 秒级
-
-**单次部署从 ~14 分钟压到 30s–2min**,架构变化:
-
-- **App 切 native systemd**:qt-app 走 `qt-app.service`(`node node_modules/next/dist/bin/next start`),不再每部署 docker build
-- **关键加速**: `.next/cache` 持久化后 Turbopack 增量复用,改动小秒级,大改 1–2min;`npm ci` 仅在 lockfile/patches/prisma 变化时跑(常规部署 0s)
-- **postgres / minio 仍 docker**:数据卷( `/opt/qt/docker-data/` )继续走容器,不重 init
-- **`scripts/prod/switch-to-native.sh`** 一键从 docker qt-app 切到 native:停容器 → enable systemd → smoke test → 备份原 compose
-- **`scripts/prod/rollback.sh --docker`** (**DEPRECATED**): 应急入口已移除 — qt-app:latest 镜像已删, native 是唯一路径
-- **AGENTS.md / docs/ops/deploy-current.md** 重写 deploy 流程说明
-
-为什么换:3.5GB ECS 内存吃紧,dockerd 自占 1.7GB + hermes 0.5GB,build 阶段可用只剩 ~425MB,`next build` 直接 swap,14min。native 拿回 dockerd 占的 1.7GB + .next/cache 增量 ≈ 10× 提升。
-
-### v0.13.8(2026-08-01)部署链路优化:远端触发 + preflight + 一键回滚
-
-`scripts/prod/_lib.sh` 抽出公共 `log / preflight_check / smoke_test`;`deploy.sh` 加 preflight(`.env` 8 个关键 key / git 干净 / 磁盘 ≥ 3G / 内存预警 / 容器健康),持久化日志 `/var/log/qt-deploy.log`;新增 `scripts/prod/remote-deploy.sh` 从本地 Mac 一键触发远端 deploy;新增 `scripts/prod/rollback.sh` 默认切到上一版(`--list` / `--to v0.13.6` / `--skip-smoke`),smoke 失败自动回滚。原 2077 行 `docs/ops/deploy-ecs.md` 拆为 `deploy-current.md` + `deploy-history/`。
-
-### v0.13.7(2026-07-31)合同编辑支持管理员变更签订人 + 依赖升级
-
-合同编辑页新增「签订人」字段:管理员可搜索改为任意在职员工(代录修正),非 admin 只读展示;服务端与负责人变更同口径(非 admin 变更 422、目标员工非 ACTIVE 400),变更纳入合同更新审计 diff。依赖升级:next 16.2.12 / prisma 7.9.1 / eslint 9.39.5 等。
-
-### v0.13.6(2026-07-29)统计分析 4 页视觉 + 布局改版
-
-综合看板移除与工作台重复的区域分布图;区域统计删除常驻 Alert;KPI 全面接入图标与开票率/回款率进度条;账龄分析筛选卡默认折叠;员工业绩 4 个同构柱状图合并为单图 + Segmented 切换指标。**无 API / schema 变更**。
-
-### v0.13.5(2026-07-29)工作台视觉 + 布局改版
-
-Dashboard 改版:月/季/年切换移入页头右侧;KPI 卡加图标与底部细进度条(`StatGrid` 新增可选 `icon` / `progress`);新增「待办预警」条(待开票 / 90+ 账龄 / 催收中 / 法务介入);镇街分布降为 16 栏,合同状态改 donut,开票/回款概况 12/12 分栏加金额占比细条,Top 客户加占比条形背景,账龄 90+ 红框强化。**数据获取与 API 不变**。
 
 ## 安全提醒
 

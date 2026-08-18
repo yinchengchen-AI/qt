@@ -2,6 +2,20 @@
 
 本文件记录 qt-biz 每个版本的详细变更。项目快速入口请见 [README.md](README.md)。
 
+## v0.20.3(2026-08-17)对账中心与开票/回款规则对齐修复
+
+对账中心上线后做动态走查（真实 DB 跑 service 全链路），发现并修复一批与回款/开票模块的耦合缺口：对账通知因 PG enum 缺值全部静默丢失、对账确认绕过回款确认的金额校验与到账通知、`RECONCILED` 状态无人驱动、手动匹配不回写流水号、消息中心通知点击无跳转。**DB schema 有变化：新增迁移 `20260817_reconciliation_fixes`（`MessageType` 补 4 个 `RECONCILIATION_*` 枚举值 + `BankTransaction.paymentPrevStatus` 列）**。
+
+变更:
+- **fix(messages)**:MessageType PG enum 补 `RECONCILIATION_AUTO_MATCHED`/`SUGGESTION`/`DISCREPANCY`/`WEEKLY_REPORT`——v0.20.0 误判"生产 qt_app 非 enum owner"而只注册应用层枚举，但 `Message.type` 列仍是原生 enum，Prisma 写库被拒且被 service try/catch 吞掉，对账通知全部静默丢失；迁移以 `MIGRATION_DATABASE_URL`（qitai，DB owner）执行，与 20260701/20260702/20260724 三个历史 ALTER TYPE 迁移同路径
+- **fix(reconciliation)**:`confirmMatch`/`manualMatch` 重构为共享 writeback，与回款模块 confirm 同规则——R-10 流水号唯一（409）/ R-11 累计≤发票金额 / R-12 累计≤合同总额（PLANNED 新入账时校验）+ advisory lock + 合同/发票行锁；此前对账确认直接 `payment.update` 绕过全部校验，超额回款可确认入账
+- **fix(reconciliation)**:对账确认终态改为 `RECONCILED`（记 `reconcileUserId`/`reconciledAt`），对账中心成为"对账"动作的实际驱动者；PLANNED→RECONCILED 补发 `PAYMENT_RECEIVED` 到账通知（合同 owner/登记人/管理员），已 CONFIRMED 的不重复发
+- **fix(reconciliation)**:`manualMatch` 与 `confirmMatch` 写回对称——回写 `bankRefNo`、推进状态、金额不一致同样记 `AMOUNT_MISMATCH` 差异
+- **fix(reconciliation)**:`unmatch` 用新增 `paymentPrevStatus` 列精确回滚（PLANNED/CONFIRMED 各归各位并清对账人/对账时间），修复前的旧数据退化到原启发式（bankRefNo+receivedAt 签名）
+- **feat(messages)**:补发 `RECONCILIATION_SUGGESTION`（建议匹配）与 `RECONCILIATION_DISCREPANCY`（差异提醒）通知；差异通知链接指向关联流水
+- **fix(messages)**:消息链接 `kind=reconciliation` 接入 `MESSAGE_LINK_PATH`，新增 `/payments/reconciliation/[id]` 重定向到列表页 `?txId=` 并自动打开详情抽屉——此前通知点击无跳转
+- **测试**:一致性测试移除对账类型豁免（4 个类型纳入 PG enum 校验 + 落库 smoke）；新增 7 个回归用例（R-10/R-11/R-12 拦截、RECONCILED 终态与 receivedAt 语义、PAYMENT_RECEIVED 发送与去重、差异通知、终态回款拒绝匹配、CONFIRMED 精确回滚）;typecheck / lint / vitest 全绿（98 文件，813 用例）；生产 build 通过；真实 DB 动态复验 7 项全过（自动匹配通知落库 / R-11 拦截 / 到账通知 / RECONCILED 终态 / unmatch 回滚 / manualMatch 对称 / 链接生成）
+
 ## v0.20.2(2026-08-17)对账规则配置（ReconciliationRule）下线
 
 删除 v0.20.0 引入但从未接线的对账规则配置：匹配引擎不读规则表、前端无配置入口、DSL 为拍脑袋设计，表/CRUD API/service 全属死代码。**DB schema 有变化：新增迁移 `20260821_drop_reconciliation_rule`（`DROP TABLE "ReconciliationRule"`）**。

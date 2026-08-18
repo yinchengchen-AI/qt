@@ -55,6 +55,12 @@ enum MessageType {
   // 客户状态机自动化: 系统自动写状态 (§1.2 / §3.1)
   CUSTOMER_STATUS_AUTO_APPLIED
   CUSTOMER_STATUS_AUTO_REVERTED
+  // 对账中心消息 (v0.20.x 曾尝试应用层枚举不扩展 PG enum, 导致通知静默丢失;
+  // v0.20.3 起补回 PG enum, 迁移 20260817_reconciliation_fixes)
+  RECONCILIATION_AUTO_MATCHED
+  RECONCILIATION_SUGGESTION
+  RECONCILIATION_DISCREPANCY
+  RECONCILIATION_WEEKLY_REPORT
 }
 
 model User {
@@ -886,6 +892,8 @@ model BankTransaction {
   /// 匹配结果
   paymentId           String?
   payment             Payment? @relation(fields: [paymentId], references: [id], onDelete: SetNull)
+  /// 匹配时回款的原始状态(PLANNED/CONFIRMED), unmatch 回滚用
+  paymentPrevStatus   String?
   matchScore          Decimal? @db.Decimal(5, 2)
   matchReason         String?  @db.VarChar(200)
   /// 审计

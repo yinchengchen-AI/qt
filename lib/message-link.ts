@@ -14,6 +14,8 @@ export const MESSAGE_LINK_PATH: Record<string, string> = {
   payment: "/payments",
   project: "/projects",
   customer: "/customers",
+  // 对账中心: 无独立详情路由, 由 [id]/page.tsx 重定向到列表页 ?txId=<id> 打开详情抽屉
+  reconciliation: "/payments/reconciliation",
 };
 
 export type MessageLink = { kind: string; id?: string | null } & Record<string, unknown>;
