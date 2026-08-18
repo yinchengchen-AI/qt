@@ -2,6 +2,18 @@
 
 本文件记录 qt-biz 每个版本的详细变更。项目快速入口请见 [README.md](README.md)。
 
+## v0.20.3(2026-08-18)个人合同工作台 Phase 1
+
+新增个人合同工作台页面，集成统计卡、待办列表、我的合同表格，支持按 ownerUserId 行级隔离过滤合同（mine=true），防止越权枚举。**DB schema / migrations: 无变化**。
+
+变更:
+- **feat(workbench)**:新增 `/api/contracts/my-stats`（活跃/即将到期/逾期/风险预警）和 `/api/contracts/my-todos`（优先级排序待办：逾期 > 7 天内到期 > 未开票）两个薄壳 API
+- **feat(workbench)**:工作台页面 `/contracts/workbench` — StatGrid 四卡片 + WorkbenchTodoList + ProTable（mine=true 复用合同列表列）
+- **feat(workbench)**:侧边栏「合同工作台」菜单项（业务组内）
+- **feat(contracts)**:合同列表支持 `mine=true` 按 ownerUserId 过滤，服务端从 session 注入（忽略客户端传入的他人 id）
+- **test**:新增 `tests/api/contract-workbench.test.ts` 12 用例（mock + DB-reachable 双层）+ `tests/e2e/16-contract-workbench.spec.ts` 5 用例
+- **测试**:typecheck / lint / vitest 全绿（99 文件，818 用例）
+
 ## v0.20.2(2026-08-17)对账规则配置（ReconciliationRule）下线
 
 删除 v0.20.0 引入但从未接线的对账规则配置：匹配引擎不读规则表、前端无配置入口、DSL 为拍脑袋设计，表/CRUD API/service 全属死代码。**DB schema 有变化：新增迁移 `20260821_drop_reconciliation_rule`（`DROP TABLE "ReconciliationRule"`）**。
