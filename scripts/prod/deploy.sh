@@ -83,6 +83,10 @@ log "==> 版本: $APP_VERSION"
 #   (b) npm ci 仅在 lockfile/patches/prisma/schema 变化时跑 → 常规部署 0s
 #   (c) 没有 docker layer cache 失效, 源代码变只重编变化模块
 log "==> native build (npm ci + prisma generate + next build)"
+# NODE_ENV 保存移到分支外公共路径: 否则 lockfile 稳定走 else 跳过 npm ci 时
+# save_NODE_ENV 未赋值, 后面 export NODE_ENV="$save_NODE_ENV" 在 set -u 下报
+# unbound variable (v0.20.3 部署实测 exit 1)
+save_NODE_ENV="${NODE_ENV:-}"
 NEED_FULL_CI=0
 if git diff --name-only HEAD@{1} HEAD -- package.json package-lock.json patches/ prisma/ 2>/dev/null | grep -q .; then
   NEED_FULL_CI=1
@@ -92,7 +96,7 @@ if [ "$NEED_FULL_CI" -eq 1 ]; then
   # .env 里 NODE_ENV=production (供 Next 运行时用), 但 npm ci 看到 production 会自动
   # omit devDependencies → prisma / tsx / vitest 等开发工具都不装, 导致 npx prisma
   # 临时下载 prisma@x 但找不到 prisma.config.ts 依赖. 临时清掉再装.
-  save_NODE_ENV="$NODE_ENV"; unset NODE_ENV
+  unset NODE_ENV
   set +e
   # npm 10 在 3.5GB 机器上 (memory 可用 ~1.3GB) 跑 npm ci 时,
   # bin 链接和 postinstall 顺序有 bug: postinstall 的 patch-package
