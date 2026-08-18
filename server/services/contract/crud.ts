@@ -258,6 +258,14 @@ export async function createContract(user: SessionUser, input: ContractCreateInp
     ?? (user.roleCode === "ADMIN" ? customer.ownerUserId : user.id);
   await assertActiveUser(ownerUserId, "负责人");
   assertDateOrder(input.startDate, input.endDate);
+  // 续签链路 (Phase 1.5): 源合同必须存在且未删除; 续签不改动源合同 (由既有自动完结/强关收尾)
+  if (input.renewedFromId) {
+    const source = await prisma.contract.findFirst({
+      where: { id: input.renewedFromId, deletedAt: null },
+      select: { id: true }
+    });
+    if (!source) throw new ApiError(ERROR_CODES.NOT_FOUND, "续签源合同不存在", 404);
+  }
   // 合同编号唯一性:DB 上是部分唯一索引 WHERE "deletedAt" IS NULL, 软删合同不阻塞同号新建.
   // 活动行唯一性在这里显式预校验, 提前抛 422; 事务内 create 仍可能因并发竞态触发 P2002, 在下面 catch 兜底.
   const existingNo = await prisma.contract.findFirst({ where: { contractNo: input.contractNo, deletedAt: null } });
@@ -286,6 +294,7 @@ export async function createContract(user: SessionUser, input: ContractCreateInp
         signerId,
         ownerUserId,
         remark: input.remark ?? null,
+        renewedFromId: input.renewedFromId ?? null,
         installmentPlan: (input.installmentPlan ?? null) as Prisma.InputJsonValue,
         // 合同结构化交付物 (JSON) 已下线; 实际交付文件走 Attachment.isDeliverable
         status: "DRAFT",
@@ -322,7 +331,8 @@ export async function createContract(user: SessionUser, input: ContractCreateInp
         taxRate: created.taxRate,
         status: publishResult === "PUBLISHED" ? "ACTIVE" : created.status,
         ownerUserId: created.ownerUserId,
-        signerId: created.signerId
+        signerId: created.signerId,
+        renewedFromId: created.renewedFromId
       })
     });
     return { id: created.id };

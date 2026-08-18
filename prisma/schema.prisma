@@ -57,6 +57,12 @@ enum MessageType {
   CUSTOMER_STATUS_AUTO_REVERTED
   // 合同风险等级上调 (risk-score-snapshot job 快照比对触发, 升档到 HIGH/CRITICAL 时发)
   RISK_LEVEL_UP
+  // 合同到期超 30 天未续签提醒 (contract-renewal-remind job, 每周一次)
+  CONTRACT_RENEWAL_REMIND
+  // 联动补盲 (daily-linkage-check job): 生效 30 天无已开票发票
+  LINKAGE_NO_INVOICE
+  // 联动补盲 (daily-linkage-check job): 已开票>=1万 且回款缺口>20% 且最新发票开具超 30 天
+  LINKAGE_INVOICE_PAYMENT_GAP
 }
 
 model User {
@@ -416,6 +422,9 @@ model Contract {
   // legacy-fineui.mjs 迁移时把 ContractAmount<=0 的合同 totalAmount 写成 0.01 占位值,
   // 这里标 true 让统计/列表默认排除(可经 includeLegacyZeroAmount=true 显式包含). 详见 migration 20260705.
   isLegacyZeroAmount     Boolean   @default(false)
+  // 续签链路 (Phase 1.5): NULL = 非续签合同; 指向源合同 id。不加 RENEWED 状态,
+  // 源合同走既有自动完结/强关路径收尾, 状态机零改动 (spec §4.1)
+  renewedFromId          String?
   createdAt              DateTime  @default(now()) @db.Timestamptz(6)
   updatedAt              DateTime  @updatedAt @db.Timestamptz(6)
   createdById            String
@@ -427,6 +436,8 @@ model Contract {
   reviewLogs     ContractReviewLog[]
   attachmentRefs Attachment[]        @relation("ContractAttachments")
   riskSnapshots  RiskScoreSnapshot[]
+  renewedFrom    Contract?           @relation("ContractRenewal", fields: [renewedFromId], references: [id])
+  renewals       Contract[]          @relation("ContractRenewal")
   signer         User                @relation("ContractSigner", fields: [signerId], references: [id])
   owner          User                @relation("ContractOwner", fields: [ownerUserId], references: [id])
 
@@ -436,6 +447,7 @@ model Contract {
   @@index([signDate])
   @@index([signerId])
   @@index([isLegacyZeroAmount])
+  @@index([renewedFromId])
 }
 
 model ContractReviewLog {
@@ -803,7 +815,8 @@ model AgingSnapshot {
 model RiskScoreSnapshot {
   id           String   @id @default(cuid())
   contractId   String
-  contract     Contract @relation(fields: [contractId], references: [id])
+  // ON DELETE CASCADE: 快照是纯派生数据 (每日 job 可重算), 合同硬删 (测试清理/回收站) 时随主表走
+  contract     Contract @relation(fields: [contractId], references: [id], onDelete: Cascade)
   score        Int
   level        String // LOW | MEDIUM | HIGH | CRITICAL
   dimensions   Json

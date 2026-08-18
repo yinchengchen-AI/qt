@@ -1,7 +1,8 @@
 "use client";
 import { ProCard, ProDescriptions, ProTable } from "@ant-design/pro-components";
-import { Alert, App as AntdApp, Button, Col, Empty, Row, Space, Tabs, Tag } from "antd";
+import { Alert, App as AntdApp, Button, Col, Empty, Progress, Row, Space, Tabs, Tag } from "antd";
 import { CloudUploadOutlined, DeleteOutlined, FilePdfOutlined } from "@ant-design/icons";
+import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { useGoBack } from "@/lib/navigation";
 import type { Contract as ContractEntity } from "@/lib/types/entities";
@@ -46,6 +47,11 @@ type Overview = {
   invoices: Array<{ id: string; invoiceNo: string; status: string; amount: string; applyDate: string; actualIssueDate: string | null }>;
   payments: Array<{ id: string; paymentNo: string; status: string; amount: string; receiveDate: string }>;
   totals: { invoiceCount: number; paymentCount: number; totalAmount: number; invoicedAmount: number; paidAmount: number; billingStatus: BillingStatus; paymentStatus: PaymentProgressStatus };
+  // 联动补盲预警 (Phase 3, 服务端与 daily-linkage-check job 同源判定)
+  warnings: { noInvoice: boolean; invoicePaymentGap: boolean };
+  // 续签链 (Phase 1.5)
+  renewedFrom: { id: string; contractNo: string; status: string } | null;
+  renewals: Array<{ id: string; contractNo: string; status: string }>;
 };
 
 // 交付物附件写权限: admin / 合同签订人 / 合同负责人
@@ -350,6 +356,52 @@ const handleDelete = () => {
       label: <span>概览</span>,
       children: (
         <Row gutter={[16, 16]}>
+          {/* 联动补盲预警 (Phase 3): 超期未开票 / 开票-回款偏差, 点击锚跳对应列表 tab */}
+          {overview?.warnings.noInvoice ? (
+            <Col xs={24}>
+              <Alert
+                type="warning"
+                showIcon
+                title="该合同生效已超过 30 天，仍无已开票发票"
+                description="请确认服务进度并及时开票"
+                style={{ cursor: "pointer" }}
+                onClick={() => document.getElementById("contract-invoices-tab")?.scrollIntoView({ behavior: "smooth" })}
+              />
+            </Col>
+          ) : null}
+          {overview?.warnings.invoicePaymentGap ? (
+            <Col xs={24}>
+              <Alert
+                type="error"
+                showIcon
+                title="开票-回款偏差超过 20%"
+                description="已开票金额与已确认回款差距较大且最新发票开具超 30 天，请跟进催收"
+                style={{ cursor: "pointer" }}
+                onClick={() => document.getElementById("contract-payments-tab")?.scrollIntoView({ behavior: "smooth" })}
+              />
+            </Col>
+          ) : null}
+          {/* 续签链 (Phase 1.5): 续签自 / 续签至 */}
+          {overview?.renewedFrom || (overview?.renewals && overview.renewals.length > 0) ? (
+            <Col xs={24}>
+              <ProCard size="small">
+                <Space wrap size={16}>
+                  {overview.renewedFrom ? (
+                    <span style={{ fontSize: 13 }}>
+                      续签自：<Link href={`/contracts/${overview.renewedFrom.id}`}>{overview.renewedFrom.contractNo}</Link>
+                      <Tag style={{ marginLeft: 6 }}>{overview.renewedFrom.status}</Tag>
+                    </span>
+                  ) : null}
+                  {overview.renewals?.map((r) => (
+                    <span key={r.id} style={{ fontSize: 13 }}>
+                      续签至：<Link href={`/contracts/${r.id}`}>{r.contractNo}</Link>
+                      <Tag style={{ marginLeft: 6 }}>{r.status}</Tag>
+                    </span>
+                  ))}
+                </Space>
+              </ProCard>
+            </Col>
+          ) : null}
           <Col xs={24}>
             <StatGrid
               columns={3}
@@ -374,6 +426,13 @@ const handleDelete = () => {
                   已开票 {t ? fmtWan(t.invoicedAmount) : 0} 万 / 合同总额 {t ? fmtWan(t.totalAmount) : 0} 万
                 </span>
               </div>
+              {/* 开票进度条 (Phase 3): 金额口径与 StatGrid 一致 */}
+              <Progress
+                percent={t && t.totalAmount > 0 ? Math.min(100, Math.round((t.invoicedAmount / t.totalAmount) * 100)) : 0}
+                size="small"
+                status={t?.billingStatus === "COMPLETED" ? "success" : "active"}
+                style={{ marginTop: 8, marginBottom: 0 }}
+              />
             </ProCard>
           </Col>
           <Col xs={24}>
@@ -390,6 +449,13 @@ const handleDelete = () => {
                   已回款 {t ? fmtWan(t.paidAmount) : 0} 万 / 合同总额 {t ? fmtWan(t.totalAmount) : 0} 万
                 </span>
               </div>
+              {/* 回款进度条 (Phase 3) */}
+              <Progress
+                percent={t && t.totalAmount > 0 ? Math.min(100, Math.round((t.paidAmount / t.totalAmount) * 100)) : 0}
+                size="small"
+                status={t?.paymentStatus === "COMPLETED" ? "success" : "active"}
+                style={{ marginTop: 8, marginBottom: 0 }}
+              />
             </ProCard>
           </Col>
           <Col xs={24}>

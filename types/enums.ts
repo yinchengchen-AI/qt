@@ -122,6 +122,11 @@ export const MESSAGE_TYPE = [
   "RECONCILIATION_WEEKLY_REPORT",
   // 合同风险等级上调 (risk-score-snapshot job 快照比对触发; PG enum 迁移 20260822_message_type_risk_level_up)
   "RISK_LEVEL_UP",
+  // 到期超 30 天未续签 (contract-renewal-remind job, 每周; PG enum 迁移 20260822_message_type_renewal_linkage)
+  "CONTRACT_RENEWAL_REMIND",
+  // 联动补盲 (daily-linkage-check job; 同迁移文件)
+  "LINKAGE_NO_INVOICE",
+  "LINKAGE_INVOICE_PAYMENT_GAP",
 ] as const;
 
 // 5 个内置角色

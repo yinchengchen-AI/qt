@@ -90,20 +90,26 @@ export async function runRiskScoreSnapshot(now = new Date()): Promise<JobResult>
     const prev = prevByContract.get(r.contractId);
     const prevOrder = prev ? RISK_LEVEL_ORDER[prev.level as RiskLevel] : -1;
     if (prevOrder >= RISK_LEVEL_ORDER[r.level]) continue;
-    await emit(prisma, {
-      type: "RISK_LEVEL_UP",
-      payload: {
-        contractId: r.contractId,
-        contractNo: r.contractNo,
-        level: r.level,
-        score: r.score,
-        prevLevel: prev?.level ?? null,
-        prevScore: prev?.score ?? null
-      },
-      entityKey: `RISK_LEVEL_UP:${r.contractId}:${r.level}:${isoDate(today)}`,
-      receivers: Array.from(new Set([r.ownerUserId, ...admins]))
-    });
-    created++;
+    // P2003 容忍: 并发测试清理会硬删 owner 用户/合同 (生产全软删, 正常路径不触发)
+    try {
+      await emit(prisma, {
+        type: "RISK_LEVEL_UP",
+        payload: {
+          contractId: r.contractId,
+          contractNo: r.contractNo,
+          level: r.level,
+          score: r.score,
+          prevLevel: prev?.level ?? null,
+          prevScore: prev?.score ?? null
+        },
+        entityKey: `RISK_LEVEL_UP:${r.contractId}:${r.level}:${isoDate(today)}`,
+        receivers: Array.from(new Set([r.ownerUserId, ...admins]))
+      });
+      created++;
+    } catch (e) {
+      if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === "P2003") continue;
+      throw e;
+    }
   }
 
   // admin 当日汇总 (有 HIGH/CRITICAL 才发)

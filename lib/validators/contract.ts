@@ -43,6 +43,8 @@ export const contractCreateSchema = z.object({
   // 合同备注: 自由文本, 跟 reviewComment (审批意见) 区分; 500 字符上限跟付款备注对齐
   // 允许 null: PATCH 时传 {remark: null} 表示显式清空; 不传 / undefined 表示不动
   remark: z.union([z.string().max(500), z.null()]).optional(),
+  // 续签链路 (Phase 1.5): 仅在创建时接受, 指向源合同 id; 存在性/未删/非自身在 service 层校验
+  renewedFromId: z.string().min(1).optional(),
   installmentPlan: z
     .array(
       z.object({

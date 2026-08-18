@@ -39,12 +39,15 @@ beforeAll(async () => {
     dbReachable = false;
     return;
   }
-  const load = async (code: RoleCode) =>
+  // 按 employeeNo 钉到种子账号: findFirst 仅按 role 无序匹配, 会撞到其它测试文件并发
+  // 创建的同角色临时用户 (如 employee-profile-visibility 的 role.findFirst 任意角色),
+  // 对方 afterAll 删除后本文件用其 id 建合同触发 Contract_signerId_fkey 23503
+  const load = async (code: RoleCode, employeeNo: string) =>
     prisma.user.findFirst({
-      where: { role: { code }, deletedAt: null },
+      where: { role: { code }, employeeNo, deletedAt: null },
       select: { id: true, employeeNo: true, name: true, email: true, role: { select: { code: true } } }
     });
-  const [adminRow, salesRow, expertRow] = await Promise.all([load("ADMIN"), load("SALES"), load("EXPERT")]);
+  const [adminRow, salesRow, expertRow] = await Promise.all([load("ADMIN", "admin"), load("SALES", "sales"), load("EXPERT", "expert")]);
   if (!adminRow || !salesRow || !expertRow) return;
   adminUser = { id: adminRow.id, employeeNo: adminRow.employeeNo, name: adminRow.name, email: adminRow.email, roleCode: "ADMIN" };
   salesUser = { id: salesRow.id, employeeNo: salesRow.employeeNo, name: salesRow.name, email: salesRow.email, roleCode: "SALES" };

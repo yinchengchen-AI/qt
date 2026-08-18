@@ -5,6 +5,7 @@ import { type SessionUser } from "@/lib/session";
 import { requirePermission, RESOURCE, ACTION } from "@/lib/permissions";
 
 import { INVOICE_ISSUED_AMOUNT_STATUSES } from "@/lib/invoice-amounts";
+import { isNoInvoiceOverdue, isInvoicePaymentGap } from "@/server/services/contract/linkage-checks";
 import { getBillingStatus, getPaymentStatus } from "@/lib/contract-billing";
 import type { BillingStatus, PaymentProgressStatus } from "@/types/enums";
 import { Prisma } from "@prisma/client";
@@ -42,6 +43,16 @@ export type ContractOverview = {
     comment: string | null;
     at: string;
   }>;
+  // 联动补盲预警 (Phase 3, 与 daily-linkage-check job 同源判定, 防口径漂移)
+  warnings: {
+    /** 生效 30 天无已开票发票 */
+    noInvoice: boolean;
+    /** 已开票>=1万 且回款缺口>20% 且最新发票开具超 30 天 */
+    invoicePaymentGap: boolean;
+  };
+  // 续签链 (Phase 1.5): 本合同续签自哪个合同 / 被哪些合同续签
+  renewedFrom: { id: string; contractNo: string; status: string } | null;
+  renewals: Array<{ id: string; contractNo: string; status: string }>;
   // 合同交付物附件清单 (扁平列表; 已软删的附件不出现)
   // 来自合同详情"交付物"tab 的上传, 写权限仅 admin / 签订人 / 负责人
   deliverableAttachments: Array<{
@@ -72,7 +83,7 @@ export async function getContractOverview(
   const c = await prisma.contract.findFirst({ where: { id: contractId, deletedAt: null } });
   if (!c) throw new ApiError(ERROR_CODES.NOT_FOUND, "合同不存在", 404);
 
-  const [invoices, payments, reviewLogs, deliverableAttachments] = await Promise.all([
+  const [invoices, payments, reviewLogs, deliverableAttachments, renewedFrom, renewals] = await Promise.all([
     prisma.invoice.findMany({
       where: { contractId, deletedAt: null },
       orderBy: { applyDate: "desc" }
@@ -90,6 +101,18 @@ export async function getContractOverview(
     prisma.attachment.findMany({
       where: { contractId, deletedAt: null, isDeliverable: true },
       orderBy: { uploadedAt: "desc" }
+    }),
+    // 续签链: 源合同 (若本合同是续签) + 续签本合同的合同列表
+    c.renewedFromId
+      ? prisma.contract.findFirst({
+          where: { id: c.renewedFromId, deletedAt: null },
+          select: { id: true, contractNo: true, status: true }
+        })
+      : Promise.resolve(null),
+    prisma.contract.findMany({
+      where: { renewedFromId: contractId, deletedAt: null },
+      select: { id: true, contractNo: true, status: true },
+      orderBy: { createdAt: "desc" }
     })
   ]);
 
@@ -101,6 +124,24 @@ export async function getContractOverview(
   for (const inv of invoices) if ((INVOICE_ISSUED_AMOUNT_STATUSES as readonly string[]).includes(inv.status)) invoicedAmount = invoicedAmount.plus(inv.amount.toString());
   let paidAmount = new Prisma.Decimal(0);
   for (const p of payments) if (p.status === "CONFIRMED" || p.status === "RECONCILED") paidAmount = paidAmount.plus(p.amount.toString());
+
+  // 联动预警判定 (与 daily-linkage-check job 同源): 最新已开票发票的开具日
+  const issuedInvoices = invoices.filter((i) =>
+    (INVOICE_ISSUED_AMOUNT_STATUSES as readonly string[]).includes(i.status)
+  );
+  const latestInvoiceDate = issuedInvoices.reduce<Date | null>(
+    (max, i) => (i.actualIssueDate && (!max || i.actualIssueDate > max) ? i.actualIssueDate : max),
+    null
+  );
+  const warnings = {
+    noInvoice: isNoInvoiceOverdue({ status: c.status, startDate: c.startDate }, issuedInvoices.length > 0, new Date()),
+    invoicePaymentGap: isInvoicePaymentGap({
+      status: c.status,
+      invoicedAmount,
+      paidAmount,
+      latestInvoiceDate
+    }, new Date())
+  };
 
   // 交付物附件扁平列表 (按 uploadedAt 倒序)
   const deliverableAttachmentList: Array<{ id: string; name: string; mimeType: string; size: number; uploadedBy: string; uploadedAt: string }> = deliverableAttachments.map((a) => ({
@@ -139,6 +180,9 @@ export async function getContractOverview(
       comment: r.comment,
       at: r.at.toISOString()
     })),
+    warnings,
+    renewedFrom: renewedFrom ?? null,
+    renewals: renewals.map((r) => ({ id: r.id, contractNo: r.contractNo, status: r.status })),
     totals: {
       invoiceCount: invoices.length,
       paymentCount: payments.length,

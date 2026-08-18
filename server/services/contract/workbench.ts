@@ -181,11 +181,20 @@ export async function getMyTodos(user: SessionUser): Promise<TodoItem[]> {
     }
   });
 
+  // 已续签合同的 overdue/expiring 待办消失 (Phase 1.5 spec §4.4: 创建续签后该项不再出现)
+  // 一次预取 renewal 集合, 禁 N+1
+  const renewals = await prisma.contract.findMany({
+    where: { renewedFromId: { in: contracts.map((c) => c.id) }, deletedAt: null },
+    select: { renewedFromId: true }
+  });
+  const renewedSourceIds = new Set(renewals.map((r) => r.renewedFromId));
+
   const todos: TodoItem[] = [];
 
   for (const c of contracts) {
+    const renewed = renewedSourceIds.has(c.id);
     // 逾期 (priority 1) — 逾期合同不重复产生其他类型待办
-    if (c.endDate && c.endDate.getTime() < now.getTime()) {
+    if (!renewed && c.endDate && c.endDate.getTime() < now.getTime()) {
       const daysOverdue = Math.floor((now.getTime() - c.endDate.getTime()) / DAY_MS);
       todos.push({
         id: `overdue-${c.id}`,
@@ -202,7 +211,7 @@ export async function getMyTodos(user: SessionUser): Promise<TodoItem[]> {
     }
 
     // 7 天内到期 (priority 2)
-    if (c.endDate && c.endDate.getTime() <= in7Days.getTime()) {
+    if (!renewed && c.endDate && c.endDate.getTime() <= in7Days.getTime()) {
       const daysLeft = Math.ceil((c.endDate.getTime() - now.getTime()) / DAY_MS);
       todos.push({
         id: `expiring-${c.id}`,

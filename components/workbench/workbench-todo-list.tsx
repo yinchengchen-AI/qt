@@ -1,6 +1,6 @@
 "use client";
 import Link from "next/link";
-import { List, Space, Tag, Typography } from "antd";
+import { Button, List, Space, Tag, Typography } from "antd";
 import { RightOutlined } from "@ant-design/icons";
 import { EmptyState } from "@/components/empty-state";
 import type { TodoItem } from "@/server/services/contract/workbench";
@@ -16,10 +16,12 @@ const TYPE_META: Record<TodoItem["type"], { color: string; label: string }> = {
 type Props = {
   todos: TodoItem[];
   loading?: boolean;
+  /** 点「续签」时回调 (仅 overdue/expiring 项显示该按钮); 不传则不显示 */
+  onRenew?: (contractId: string) => void;
 };
 
 /** 工作台待办列表: 按优先级排序 (逾期 > 7 天内到期 > 未开票), 空态用 EmptyState */
-export function WorkbenchTodoList({ todos, loading }: Props) {
+export function WorkbenchTodoList({ todos, loading, onRenew }: Props) {
   if (loading) {
     return <EmptyState loading title="加载待办中…" height="small" />;
   }
@@ -35,6 +37,14 @@ export function WorkbenchTodoList({ todos, loading }: Props) {
         return (
           <List.Item
             actions={[
+              // 续签入口 (Phase 1.5): 到期/逾期待办可一键续签, 预填源合同字段
+              ...(onRenew && (t.type === "overdue" || t.type === "expiring")
+                ? [
+                    <Button key="renew" size="small" onClick={() => onRenew(t.contractId)}>
+                      续签
+                    </Button>
+                  ]
+                : []),
               <Link key="go" href={t.href} style={{ fontSize: 13, color: "#1677ff" }}>
                 查看 <RightOutlined style={{ fontSize: 10 }} />
               </Link>

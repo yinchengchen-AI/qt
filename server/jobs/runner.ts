@@ -11,6 +11,8 @@ import { tickStaleContracts } from "@/server/jobs/stale-contract";
 import { runMessageArchive } from "@/server/jobs/message-archive";
 import { runAgingSnapshot } from "@/server/jobs/aging-snapshot";
 import { runRiskScoreSnapshot } from "@/server/jobs/risk-score-snapshot";
+import { runContractRenewalRemind } from "@/server/jobs/contract-renewal-remind";
+import { runDailyLinkageCheck } from "@/server/jobs/daily-linkage-check";
 
 /**
  * 单个 job 一次执行的统计。
@@ -85,7 +87,11 @@ export async function runAllJobs(now = new Date()): Promise<JobResult[]> {
       }
     },
     // Phase 2: 合同风险评分日快照 + 升档消息 (RISK_LEVEL_UP)
-    { name: "risk-score-snapshot", run: () => runRiskScoreSnapshot(now) }
+    { name: "risk-score-snapshot", run: () => runRiskScoreSnapshot(now) },
+    // Phase 1.5: 到期超 30 天未续签提醒 (按周 entityKey 去重)
+    { name: "contract-renewal-remind", run: () => runContractRenewalRemind(now) },
+    // Phase 3: 联动补盲 (超期未开票 / 开票-回款偏差, 按日 entityKey 去重)
+    { name: "daily-linkage-check", run: () => runDailyLinkageCheck(now) }
   ] as const;
   const settled = await Promise.allSettled(jobs.map((j) => j.run()));
   return settled.map((s, i) => {

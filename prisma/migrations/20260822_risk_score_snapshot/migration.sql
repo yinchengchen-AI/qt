@@ -18,7 +18,7 @@ CREATE TABLE "RiskScoreSnapshot" (
 CREATE UNIQUE INDEX "RiskScoreSnapshot_contractId_snapshotDate_key" ON "RiskScoreSnapshot"("contractId", "snapshotDate");
 CREATE INDEX "RiskScoreSnapshot_snapshotDate_level_idx" ON "RiskScoreSnapshot"("snapshotDate", "level");
 
-ALTER TABLE "RiskScoreSnapshot" ADD CONSTRAINT "RiskScoreSnapshot_contractId_fkey" FOREIGN KEY ("contractId") REFERENCES "Contract"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+ALTER TABLE "RiskScoreSnapshot" ADD CONSTRAINT "RiskScoreSnapshot_contractId_fkey" FOREIGN KEY ("contractId") REFERENCES "Contract"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 
 -- AGENTS.md 强制要求: 新表必须显式 GRANT 给 qt_app (BYPASSRLS 不旁路表级权限)
 GRANT ALL ON TABLE "RiskScoreSnapshot" TO qt_app;

@@ -18,6 +18,7 @@ import { StatusTag } from "@/components/status-tag";
 import { WorkbenchTodoList } from "@/components/workbench/workbench-todo-list";
 import { ExpiryBadge } from "@/components/workbench/expiry-badge";
 import { RiskDrawer, RiskTag } from "@/components/workbench/risk-drawer";
+import { RenewalModal } from "@/components/workbench/renewal-modal";
 import { DateCell, CurrencyCell } from "@/components/table-cells";
 import { makeListRequest } from "@/lib/use-list-request";
 import { useStatusValueEnum } from "@/lib/use-status-enum";
@@ -56,11 +57,12 @@ export default function ContractWorkbenchPage() {
   const { isMobile } = useResponsive();
   const statusEnum = useStatusValueEnum("contract");
   const [riskDrawerOpen, setRiskDrawerOpen] = useState(false);
+  const [renewSourceId, setRenewSourceId] = useState<string | null>(null);
   const { data: stats, isLoading: statsLoading } = useSWR<MyStats>(
     "/api/contracts/my-stats",
     fetcher
   );
-  const { data: todos = [], isLoading: todosLoading } = useSWR<import("@/server/services/contract/workbench").TodoItem[]>(
+  const { data: todos = [], isLoading: todosLoading, mutate: mutateTodos } = useSWR<import("@/server/services/contract/workbench").TodoItem[]>(
     "/api/contracts/my-todos",
     fetcher
   );
@@ -114,7 +116,7 @@ export default function ContractWorkbenchPage() {
         ]}
       />
       <Card size="small" title="我的待办" style={{ marginTop: isMobile ? 8 : 16 }} styles={{ body: { paddingTop: 4, paddingBottom: 4 } }}>
-        <WorkbenchTodoList todos={todos} loading={todosLoading} />
+        <WorkbenchTodoList todos={todos} loading={todosLoading} onRenew={(id) => setRenewSourceId(id)} />
       </Card>
       <ProTable<ContractRow>
         rowKey="id"
@@ -202,6 +204,15 @@ export default function ContractWorkbenchPage() {
         ]}
       />
       <RiskDrawer open={riskDrawerOpen} onClose={() => setRiskDrawerOpen(false)} />
+      <RenewalModal
+        sourceContractId={renewSourceId}
+        onClose={() => setRenewSourceId(null)}
+        onSuccess={() => {
+          setRenewSourceId(null);
+          // 续签创建后源合同待办消失 (服务端按 renewal 记录排除), 刷新待办
+          void mutateTodos();
+        }}
+      />
     </Page>
   );
 }

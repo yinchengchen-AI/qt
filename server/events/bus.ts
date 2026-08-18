@@ -249,6 +249,33 @@ function buildMessage(uid: string, ev: DomainEvent): ResolvedMessage {
         link: { kind: "contract", id: p.contractId }
       };
     }
+    case "CONTRACT_RENEWAL_REMIND":
+      // 到期超 30 天未续签 (contract-renewal-remind job, 每周一次)
+      // payload: contractId, contractNo, customerName, endDate, daysExpired
+      return {
+        receiverUserId: uid,
+        title: `合同 ${p.contractNo} 已到期 ${Number(p.daysExpired ?? 0)} 天，仍未续签`,
+        content: `客户：${p.customerName ?? "-"}，到期日：${formatDate(p.endDate)}；如不再合作请归档处理，否则请尽快发起续签`,
+        link: { kind: "contract", id: p.contractId }
+      };
+    case "LINKAGE_NO_INVOICE":
+      // 生效 30 天无已开票发票 (daily-linkage-check job)
+      // payload: contractId, contractNo, customerName, daysSinceStart
+      return {
+        receiverUserId: uid,
+        title: `合同 ${p.contractNo} 生效 ${Number(p.daysSinceStart ?? 0)} 天未开票`,
+        content: `客户：${p.customerName ?? "-"}，请确认服务进度并及时开票`,
+        link: { kind: "contract", id: p.contractId }
+      };
+    case "LINKAGE_INVOICE_PAYMENT_GAP":
+      // 开票-回款偏差 (daily-linkage-check job): 已开票>=1万 且缺口>20% 且最新发票超 30 天
+      // payload: contractId, contractNo, customerName, invoicedAmount, paidAmount, gapAmount, gapRatio
+      return {
+        receiverUserId: uid,
+        title: `合同 ${p.contractNo} 开票-回款偏差 ${Number(p.gapRatio ?? 0)}%（缺口 ¥${p.gapAmount ?? "-"}）`,
+        content: `客户：${p.customerName ?? "-"}，已开票 ¥${p.invoicedAmount ?? "-"} / 已回款 ¥${p.paidAmount ?? "-"}，请跟进催收`,
+        link: { kind: "contract", id: p.contractId }
+      };
     default:
       // 历史消息 fallback: deprecated 事件类型 (CUSTOMER_STATUS_SUGGEST 等) 保留在 enum 但不再 emit
       // 偶有历史 row 会落在这里, 渲染为占位 + 提示
