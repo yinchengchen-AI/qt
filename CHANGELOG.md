@@ -2,6 +2,16 @@
 
 本文件记录 qt-biz 每个版本的详细变更。项目快速入口请见 [README.md](README.md)。
 
+## v0.21.3(2026-08-19)合同详情页概览收敛
+
+合同详情页「概览」tab 从 4 个堆叠区块收敛为一行三卡，消除重复信息。**DB schema 无变化**。
+
+变更:
+- **feat(contract)**：概览合并为一个 `StatGrid columns=3`——合同总额（description 带开票/回款计数）、已开票、已回款；后两张卡底部带占合同总额百分比的细进度条（除零保护）,description 内嵌状态 Tag（沿用 COMPLETED→success / IN_PROGRESS→processing 配色）
+- **feat(contract)**：删除与统计卡数字完全重复的「开票状态 / 回款状态」独立卡片，以及开票数/回款数计数卡（tab 标签已带计数）
+- **fix(contract)**:PageHeader 副标题过期文案修正——原列了不存在的「项目」tab，改为真实 7 个 tab（概览/详细信息/交付物/开票/回款/操作记录/附件）
+- **测试**:typecheck / lint / vitest 全绿（100 文件，829 用例）
+
 ## v0.21.2(2026-08-19)操作日志时间段选择与查询再优化
 
 操作日志的时间交互收敛进搜索表单：RangePicker 内置预设取代头部快捷按钮；列表补列头排序；keyword 搜索扩展到对象可读名。**DB schema 无变化**。

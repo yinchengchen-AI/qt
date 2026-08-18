@@ -11,7 +11,7 @@
 
 > **客户 / 合同 / 开票 / 回款** 一体化管理,附件走 MinIO presigned 直传,服务端 Server Actions + RBAC + 行级隔离。
 >
-> **当前版本: v0.21.2**(2026-08-19)。文档地图见 [docs/README.md](docs/README.md),架构与设计见 [docs/architecture/DESIGN-v3.md](docs/architecture/DESIGN-v3.md),用户手册见 [docs/user/USER_MANUAL.md](docs/user/USER_MANUAL.md)。
+> **当前版本: v0.21.3**(2026-08-19)。文档地图见 [docs/README.md](docs/README.md),架构与设计见 [docs/architecture/DESIGN-v3.md](docs/architecture/DESIGN-v3.md),用户手册见 [docs/user/USER_MANUAL.md](docs/user/USER_MANUAL.md)。
 
 ## 目录
 
@@ -257,6 +257,10 @@ nginx 反代下上游异常时,由 `public/502.html` 静态页与 `app/502/page.
 
 最近 5 个版本,完整历史见 [CHANGELOG.md](CHANGELOG.md)。
 
+### v0.21.3(2026-08-19)合同详情页概览收敛
+
+合同详情页概览从 4 个堆叠区块收敛为一行三卡：合同总额（带开票/回款计数）、已开票、已回款，后两张带占总额进度条与状态 Tag；删除与统计卡重复的开票/回款状态卡；修正副标题过期文案。**DB schema 无变化**。
+
 ### v0.21.2(2026-08-19)操作日志时间段选择与查询再优化
 
 时间范围 RangePicker 内置 10 个预设（近 1 小时 ~ 本年）取代头部快捷按钮；时间/动作/对象列头排序（默认时间倒序）;keyword 新增命中对象可读名（合同号/客户名/发票号/回款号/用户名等）,CSV 导出同步生效。**DB schema 无变化**。
@@ -272,10 +276,6 @@ nginx 反代下上游异常时,由 `public/502.html` 静态页与 `app/502/page.
 ### v0.20.3(2026-08-17)对账中心与开票/回款规则对齐修复
 
 对账中心动态走查修复：MessageType PG enum 缺 4 个对账消息值导致通知全部静默丢失（补迁移）、对账确认绕过回款 R-10/R-11/R-12 金额校验与到账通知（重构为与回款模块同规则的共享 writeback）、对账确认终态改 RECONCILED 并支持 paymentPrevStatus 精确回滚、manualMatch 与 confirmMatch 写回对称、补发建议匹配/差异提醒通知、消息中心对账链接可跳转详情抽屉。**DB schema 有变化：迁移 `20260817_reconciliation_fixes`**。
-
-### v0.20.2(2026-08-17)对账规则配置（ReconciliationRule）下线
-
-删除从未接线的对账规则配置（引擎不读、无 UI 的死代码）：DROP 整表 + 删 CRUD API/service/validators。**DB schema 有变化：迁移 `20260821_drop_reconciliation_rule`**。
 
 ## 安全提醒
 
