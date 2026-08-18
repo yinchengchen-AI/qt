@@ -3,6 +3,7 @@ import type { StatusDomain } from "@/lib/status";
 /** 把 ENTITY 字符串映射成人类可读中文标签（用于表格 / 抽屉） */
 export const ENTITY_LABELS: Record<string, string> = {
   Announcement: "公告",
+  Auth: "认证",
   Asset: "企业资产",
   AssetImport: "资产导入",
   Attachment: "附件",
@@ -93,4 +94,79 @@ export function shortActionLabel(action: string): string {
 
 export function shortActionTone(action: string): ActionTone {
   return ACTION_META[shortAction(action)]?.tone ?? "default";
+}
+
+/** diff 字段名 -> 中文标签（覆盖各实体高频字段；未命中时回退原始字段名） */
+export const FIELD_LABELS: Record<string, string> = {
+  // 通用
+  status: "状态",
+  remark: "备注",
+  attachments: "附件",
+  createdAt: "创建时间",
+  updatedAt: "更新时间",
+  deletedAt: "删除时间",
+  createdById: "创建人",
+  updatedById: "更新人",
+  // 客户
+  code: "客户编号",
+  name: "名称",
+  customerType: "客户类型",
+  province: "省份",
+  city: "城市",
+  contactPerson: "联系人",
+  contactPhone: "联系电话",
+  ownerUserId: "负责人",
+  level: "客户等级",
+  source: "客户来源",
+  industry: "行业",
+  address: "地址",
+  // 合同
+  contractNo: "合同编号",
+  title: "标题",
+  totalAmount: "合同总额",
+  signDate: "签订日期",
+  startDate: "开始日期",
+  endDate: "结束日期",
+  customerId: "客户",
+  salespersonId: "销售",
+  autoCompleteEnabled: "自动完成",
+  // 开票
+  invoiceNo: "发票号码",
+  invoiceCode: "发票代码",
+  invoiceType: "发票类型",
+  amount: "金额",
+  taxRate: "税率",
+  taxAmount: "税额",
+  amountExcludingTax: "不含税金额",
+  applyDate: "申请日期",
+  expectedIssueDate: "预计开具日期",
+  actualIssueDate: "实际开具日期",
+  dueDate: "约定付款日",
+  titleType: "抬头类型",
+  titleName: "发票抬头",
+  applicantUserId: "申请人",
+  financeUserId: "财务处理人",
+  reviewComment: "审核意见",
+  // 回款
+  paymentNo: "回款编号",
+  receivedAt: "到账日期",
+  method: "收款方式",
+  bankRefNo: "银行流水号",
+  bankName: "开户行",
+  recorderUserId: "登记人",
+  reconcileUserId: "对账人",
+  reconciledAt: "对账时间",
+  invoiceId: "关联发票",
+  contractId: "关联合同",
+  // 用户 / 组织
+  employeeNo: "工号",
+  email: "邮箱",
+  roleId: "角色",
+  departmentId: "部门",
+  isActive: "是否启用",
+  permissions: "权限",
+};
+
+export function fieldLabel(key: string): string {
+  return FIELD_LABELS[key] ?? key;
 }

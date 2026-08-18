@@ -21,6 +21,7 @@ import { useResponsive } from "@/lib/use-breakpoint";
 import {
   shortActionLabel,
   shortActionTone,
+  fieldLabel,
 } from "@/lib/operation-log-format";
 import { SYSTEM_USER_ID } from "@/lib/system";
 import { formatDateTime } from "@/lib/format";
@@ -194,6 +195,12 @@ function DetailBody({ data }: { data: OperationLogDetail }) {
             children: (
               <Space size={6} wrap>
                 <Tag style={{ margin: 0 }}>{data.entityLabel}</Tag>
+                <Tooltip title={`ID: ${data.entityId}`}>
+                  <Text
+                    copyable={{ text: data.entityId, tooltips: ["复制 ID", "已复制"] }}
+                    style={{ fontSize: 12 }}
+                  />
+                </Tooltip>
                 {data.entityHref ? (
                   <a
                     href={data.entityHref}
@@ -218,7 +225,10 @@ function DetailBody({ data }: { data: OperationLogDetail }) {
             key: "ip",
             label: "客户端 IP",
             children: data.ip ? (
-              <Text style={{ fontFamily: "ui-monospace, Menlo, monospace" }}>
+              <Text
+                copyable={{ tooltips: ["复制 IP", "已复制"] }}
+                style={{ fontFamily: "ui-monospace, Menlo, monospace" }}
+              >
                 {data.ip}
               </Text>
             ) : (
@@ -272,6 +282,7 @@ function DetailBody({ data }: { data: OperationLogDetail }) {
             label: "请求 ID",
             children: data.requestId ? (
               <Text
+                copyable={{ tooltips: ["复制请求 ID", "已复制"] }}
                 style={{
                   fontFamily: "ui-monospace, Menlo, monospace",
                   fontSize: 12,
@@ -436,12 +447,22 @@ function DiffView({ diff }: { diff: DiffRow[] }) {
             style={{
               padding: "8px 12px",
               borderRight: "1px solid #f0f0f0",
-              fontFamily: "ui-monospace, Menlo, monospace",
               wordBreak: "break-all",
               color: "#333",
             }}
           >
-            {row.key}
+            <div>{fieldLabel(row.key)}</div>
+            {fieldLabel(row.key) !== row.key && (
+              <div
+                style={{
+                  fontFamily: "ui-monospace, Menlo, monospace",
+                  fontSize: 11,
+                  color: "#999",
+                }}
+              >
+                {row.key}
+              </div>
+            )}
           </div>
           <div
             style={{

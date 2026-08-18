@@ -643,6 +643,7 @@ model OperationLog {
 
   @@index([actorId])
   @@index([entity, entityId])
+  @@index([action])
   @@index([at])
   @@index([requestId])
   @@index([status])

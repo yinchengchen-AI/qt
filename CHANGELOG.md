@@ -4,6 +4,22 @@
 
 ## v0.20.3(2026-08-17)对账中心与开票/回款规则对齐修复
 
+## v0.21.0(2026-08-19)操作日志前后端体验优化
+
+操作日志模块整体升级：列表行内直接展示关联对象可读名并可跳转详情、过滤候选值改为日志中真实出现过的数据、新增关键字模糊搜索，并修复搜索区时间范围过滤长期不生效的 bug。**DB schema 有变化：新增迁移 `20260822_operation_log_action_index`（`OperationLog(action)` 索引，无新表无需 GRANT）**。
+
+变更:
+- **fix(operation-log)**:列表搜索区"时间范围"过滤长期不生效——列 transform 返回 `from/to` 而 request 读的是 `atRange`,条件被静默丢弃；现统一由 request 读 `from/to`,快速区间按钮改用 dayjs 对象回填表单
+- **feat(operation-log)**:列表行内展示关联对象可读名（合同号+标题 / 客户编号+名称 / 发票号 / 回款号 / 用户）,批量分组查询避免 N+1;有详情页的对象可直接点击跳转
+- **feat(operation-log)**:新增 `GET /api/operation-logs/meta`——返回日志里真实出现过的 entity / action / actor,前端"对象 / 动作 / 操作人"过滤从硬编码候选改为动态下拉(可搜索),操作人不再要求手填用户 ID
+- **feat(operation-log)**:新增 `keyword` 模糊过滤(不区分大小写),一条关键字同时匹配 对象ID / 请求路径 / 请求ID / 失败原因
+- **feat(operation-log)**:失败行"失败"标签悬停显示失败原因;详情抽屉 diff 字段名带中文映射(状态/金额/合同编号等 50+ 高频字段,未命中回退原名);请求 ID / IP / 对象 ID 一键复制
+- **feat(operation-log)**:CSV 导出自动翻页(上限 1000 行,带进度提示),导出内容补 对象可读名 / 失败原因两列
+- **refactor(operation-log)**:列表/详情逻辑下沉到 `server/services/operation-log.ts`(薄路由+可测 service),回款详情可读名从内部 id 改为 paymentNo
+- **perf(operation-log)**:`OperationLog(action)` 补索引,动作过滤不再全表扫描
+- **测试**:新增 `tests/unit/server/operation-log-where.test.ts`(where 构建纯函数 6 例)与 `tests/api/operation-logs.test.ts`(真实 DB:权限 403 / keyword 命中 path+errorMessage+entityId / entityDisplay 解析 / meta 动态候选 / detail 404,5 例);typecheck / lint / vitest 全绿(100 文件,824 用例);dev 冒烟 meta/list/detail 401、页面 307 正常
+
+
 对账中心上线后做动态走查（真实 DB 跑 service 全链路），发现并修复一批与回款/开票模块的耦合缺口：对账通知因 PG enum 缺值全部静默丢失、对账确认绕过回款确认的金额校验与到账通知、`RECONCILED` 状态无人驱动、手动匹配不回写流水号、消息中心通知点击无跳转。**DB schema 有变化：新增迁移 `20260817_reconciliation_fixes`（`MessageType` 补 4 个 `RECONCILIATION_*` 枚举值 + `BankTransaction.paymentPrevStatus` 列）**。
 
 变更:
