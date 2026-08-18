@@ -17,8 +17,11 @@ const query = z.object({
   entityId: z.string().optional(),
   ip: z.string().optional(),
   status: z.enum(["SUCCESS", "FAILURE"]).optional(),
-  // 模糊关键字：对象ID / 请求路径 / 请求ID / 失败原因
+  // 模糊关键字：对象ID / 请求路径 / 请求ID / 失败原因 / 对象可读名
   keyword: z.string().trim().min(1).max(100).optional(),
+  // 排序(白名单):sortBy 缺省 at,sortOrder 缺省 desc
+  sortBy: z.enum(["at", "action", "entity"]).optional(),
+  sortOrder: z.enum(["asc", "desc"]).optional(),
   // 时间范围筛选(对应 `at` 字段)
   from: z.string().optional(),
   to: z.string().optional(),

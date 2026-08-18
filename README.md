@@ -11,7 +11,7 @@
 
 > **客户 / 合同 / 开票 / 回款** 一体化管理,附件走 MinIO presigned 直传,服务端 Server Actions + RBAC + 行级隔离。
 >
-> **当前版本: v0.21.1**(2026-08-19)。文档地图见 [docs/README.md](docs/README.md),架构与设计见 [docs/architecture/DESIGN-v3.md](docs/architecture/DESIGN-v3.md),用户手册见 [docs/user/USER_MANUAL.md](docs/user/USER_MANUAL.md)。
+> **当前版本: v0.21.2**(2026-08-19)。文档地图见 [docs/README.md](docs/README.md),架构与设计见 [docs/architecture/DESIGN-v3.md](docs/architecture/DESIGN-v3.md),用户手册见 [docs/user/USER_MANUAL.md](docs/user/USER_MANUAL.md)。
 
 ## 目录
 
@@ -257,6 +257,10 @@ nginx 反代下上游异常时,由 `public/502.html` 静态页与 `app/502/page.
 
 最近 5 个版本,完整历史见 [CHANGELOG.md](CHANGELOG.md)。
 
+### v0.21.2(2026-08-19)操作日志时间段选择与查询再优化
+
+时间范围 RangePicker 内置 10 个预设（近 1 小时 ~ 本年）取代头部快捷按钮；时间/动作/对象列头排序（默认时间倒序）;keyword 新增命中对象可读名（合同号/客户名/发票号/回款号/用户名等）,CSV 导出同步生效。**DB schema 无变化**。
+
 ### v0.21.1(2026-08-19)框架内容页宽度提高 15%
 
 桌面端框架内容区最大宽度由 1280px 提高到 1472px(+15%),移动端仍 100% 铺开。**DB schema 无变化**。
@@ -272,10 +276,6 @@ nginx 反代下上游异常时,由 `public/502.html` 静态页与 `app/502/page.
 ### v0.20.2(2026-08-17)对账规则配置（ReconciliationRule）下线
 
 删除从未接线的对账规则配置（引擎不读、无 UI 的死代码）：DROP 整表 + 删 CRUD API/service/validators。**DB schema 有变化：迁移 `20260821_drop_reconciliation_rule`**。
-
-### v0.20.1(2026-08-17)对账中心可用性修复与导入增强
-
-对账中心全链路走查修复：部署后角色权限不同步全员 403（deploy.sh 补 seed-roles 幂等步骤）、取消匹配不回滚回款状态（事务内回滚 bankRefNo/PLANNED）、回款重复占用无防护（422 拦截）、操作后表格不刷新（actionRef 统一 reload）、搜索区无效字段瘦身、新增"建议匹配"筛选/标签；导入升级为 .xlsx/.csv 文件上传 + Excel 复制粘贴 + JSON 三通道。**DB schema 无变化**。
 
 ## 安全提醒
 

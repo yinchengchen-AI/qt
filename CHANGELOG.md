@@ -2,6 +2,16 @@
 
 本文件记录 qt-biz 每个版本的详细变更。项目快速入口请见 [README.md](README.md)。
 
+## v0.21.2(2026-08-19)操作日志时间段选择与查询再优化
+
+操作日志的时间交互收敛进搜索表单：RangePicker 内置预设取代头部快捷按钮；列表补列头排序；keyword 搜索扩展到对象可读名。**DB schema 无变化**。
+
+变更:
+- **feat(operation-log)**:时间范围 RangePicker 内置 10 个预设（近 1 小时 / 近 24 小时 / 今天 / 昨天 / 近 7 天 / 近 30 天 / 本周（周一起算，手动计算不依赖 dayjs locale)/ 本月 / 上月 / 本年），移除头部快捷按钮；预设 value 用函数形式，点击时才取当前时间，长开页面不会拿到过期区间
+- **feat(operation-log)**：时间（默认倒序）/ 动作 / 对象列头排序，后端 `sortBy`/`sortOrder` 白名单 + id 同向兜底保证分页稳定；操作人列不支持排序（actorId 无关联表，按 id 排序无意义）
+- **feat(operation-log)**:`keyword` 除 对象ID / 请求路径 / 请求ID / 失败原因 外，新增命中对象可读名（合同号 / 合同标题 / 客户编号 / 客户名 / 发票号 / 回款号 / 用户名 / 工号，每类实体 id 上限 200 防 in 列表过大）;CSV 导出走同一查询自动生效
+- **测试**:`operation-log-where.test.ts` 补 `buildOperationLogOrderBy` 3 例（缺省 / 白名单 / 非法值回退）;`tests/api/operation-logs.test.ts` 补 keyword 命中客户可读名、action asc/desc 排序与缺省 at desc 2 例；typecheck / lint / vitest 全绿（100 文件，829 用例）
+
 ## v0.21.1(2026-08-19)框架内容页宽度提高 15%
 
 桌面端框架内容区最大宽度由 1280px 提高到 1472px(+15%),移动端逻辑不变(仍放开限制铺到 100%)。**DB schema 无变化**。

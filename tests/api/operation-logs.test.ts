@@ -7,6 +7,8 @@
 //   4) entityDisplay:Customer 解析为 "code name"; 未知实体回退 entityId
 //   5) getOperationLogMeta 返回日志里真实出现过的 entity / action / actor
 //   6) getOperationLogDetail:存在则带 entityDisplay, 不存在抛 404
+//   7) keyword 命中对象可读名:客户名能捞出挂在该客户上的日志
+//   8) 排序:sortBy=action asc/desc 生效;缺省 at desc
 //
 // DB 不可达时整组 skip；数据用唯一 TAG 前缀，跑完自清理。
 
@@ -201,6 +203,70 @@ describe("operation-log service", () => {
       expect(entities).toContain("Customer");
       const sys = meta.actors.find((a) => a.value === SYSTEM_USER_ID);
       expect(sys?.isSystem).toBe(true);
+    }),
+  );
+
+  it(
+    "keyword 命中对象可读名(客户名/客户编号)",
+    guard(async () => {
+      // 客户名只存在于 Customer.name,日志的 entityId 是 cuid 不含 TAG —— 只能靠可读名解析命中
+      const byName = await listOperationLogs(adminUser!, {
+        page: 1,
+        pageSize: 20,
+        keyword: `${TAG}-客户`,
+      });
+      expect(byName.list).toHaveLength(1);
+      expect(byName.list[0]!.entity).toBe("Customer");
+      expect(byName.list[0]!.entityId).toBe(customerId);
+
+      const byCode = await listOperationLogs(adminUser!, {
+        page: 1,
+        pageSize: 20,
+        keyword: `${TAG}-C`,
+      });
+      expect(byCode.list.some((l) => l.entityId === customerId)).toBe(true);
+    }),
+  );
+
+  it(
+    "排序:sortBy=action asc/desc;缺省 at desc",
+    guard(async () => {
+      // keyword=TAG 命中 d1/d2/d4(entityId contains) + 客户日志(可读名解析),共 4 条
+      const asc = await listOperationLogs(adminUser!, {
+        page: 1,
+        pageSize: 20,
+        keyword: TAG,
+        sortBy: "action",
+        sortOrder: "asc",
+      });
+      expect(asc.list.map((l) => l.action)).toEqual([
+        `${TAG}_ACTION_A`,
+        `${TAG}_ACTION_B`,
+        `${TAG}_ACTION_C`,
+        `${TAG}_ACTION_D`,
+      ]);
+
+      const desc = await listOperationLogs(adminUser!, {
+        page: 1,
+        pageSize: 20,
+        keyword: TAG,
+        sortBy: "action",
+        sortOrder: "desc",
+      });
+      expect(desc.list.map((l) => l.action)).toEqual([
+        `${TAG}_ACTION_D`,
+        `${TAG}_ACTION_C`,
+        `${TAG}_ACTION_B`,
+        `${TAG}_ACTION_A`,
+      ]);
+
+      // 缺省 at desc:最后创建的 ACTION_D 在最前
+      const byDefault = await listOperationLogs(adminUser!, {
+        page: 1,
+        pageSize: 20,
+        keyword: TAG,
+      });
+      expect(byDefault.list[0]!.action).toBe(`${TAG}_ACTION_D`);
     }),
   );
 

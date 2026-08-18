@@ -1,6 +1,9 @@
-// buildOperationLogWhere 纯函数单测：查询参数 -> Prisma where 的映射
+// buildOperationLogWhere / buildOperationLogOrderBy 纯函数单测：查询参数 -> Prisma where/orderBy 的映射
 import { describe, it, expect } from "vitest";
-import { buildOperationLogWhere } from "@/server/services/operation-log";
+import {
+  buildOperationLogWhere,
+  buildOperationLogOrderBy,
+} from "@/server/services/operation-log";
 
 describe("buildOperationLogWhere", () => {
   it("空参数 -> 空 where", () => {
@@ -57,5 +60,35 @@ describe("buildOperationLogWhere", () => {
     expect(w.entity).toBe("Invoice");
     expect(Array.isArray(w.OR)).toBe(true);
     expect(w.OR).toHaveLength(4);
+  });
+});
+
+describe("buildOperationLogOrderBy", () => {
+  it("缺省:at desc + id desc 兜底", () => {
+    expect(buildOperationLogOrderBy({})).toEqual([
+      { at: "desc" },
+      { id: "desc" },
+    ]);
+  });
+
+  it("白名单字段:action / entity", () => {
+    expect(buildOperationLogOrderBy({ sortBy: "action", sortOrder: "asc" })).toEqual([
+      { action: "asc" },
+      { id: "asc" },
+    ]);
+    expect(buildOperationLogOrderBy({ sortBy: "entity", sortOrder: "desc" })).toEqual([
+      { entity: "desc" },
+      { id: "desc" },
+    ]);
+  });
+
+  it("非法/缺省值回退 at desc", () => {
+    expect(
+      buildOperationLogOrderBy({ sortBy: "actorId" as never, sortOrder: "asc" }),
+    ).toEqual([{ at: "asc" }, { id: "asc" }]);
+    expect(buildOperationLogOrderBy({ sortBy: "at" })).toEqual([
+      { at: "desc" },
+      { id: "desc" },
+    ]);
   });
 });

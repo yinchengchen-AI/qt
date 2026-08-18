@@ -5,6 +5,9 @@
 //
 // 能力：
 //   - listOperationLogs:  分页 + entity/action/actorId/entityId/ip/status/keyword/时间范围过滤，
+//                         keyword 除 对象ID/路径/请求ID/失败原因 外还命中关联实体可读名
+//                         （合同号/合同标题/客户编号/客户名/发票号/回款号/用户名/工号），
+//                         支持 at/action/entity 白名单排序（默认 at desc，id 做分页稳定兜底），
 //                         行内补 actor 信息 + 关联实体可读名（entityDisplay）+ 详情跳转（entityHref）
 //   - getOperationLogMeta: 过滤下拉元数据（日志里真实出现过的 entity / action / actor）
 //   - getOperationLogDetail: 单条详情（含关联实体可读名 best-effort 查找）
@@ -26,8 +29,12 @@ export type OperationLogQuery = {
   entityId?: string;
   ip?: string;
   status?: "SUCCESS" | "FAILURE";
-  /** 模糊关键字：匹配 对象ID / 请求路径 / 请求ID / 失败原因（不区分大小写） */
+  /** 模糊关键字：匹配 对象ID / 请求路径 / 请求ID / 失败原因 + 关联实体可读名（不区分大小写） */
   keyword?: string;
+  /** 排序字段白名单，缺省 at */
+  sortBy?: "at" | "action" | "entity";
+  /** 排序方向，缺省 desc */
+  sortOrder?: "asc" | "desc";
   from?: Date;
   to?: Date;
 };
@@ -96,6 +103,67 @@ export function buildOperationLogWhere(
         }
       : {}),
   };
+}
+
+/** 纯函数：排序参数 -> Prisma orderBy（白名单 at/action/entity，id 做分页稳定兜底）。导出供单测直接断言 */
+export function buildOperationLogOrderBy(
+  p: Pick<OperationLogQuery, "sortBy" | "sortOrder">,
+): Prisma.OperationLogOrderByWithRelationInput[] {
+  const order = p.sortOrder === "asc" ? ("asc" as const) : ("desc" as const);
+  const primary: Prisma.OperationLogOrderByWithRelationInput =
+    p.sortBy === "action"
+      ? { action: order }
+      : p.sortBy === "entity"
+        ? { entity: order }
+        : { at: order };
+  return [primary, { id: order }];
+}
+
+// 单次 keyword 可读名解析的每类实体 id 上限,防止 in 列表过大
+const DISPLAY_MATCH_TAKE = 200;
+
+/** keyword 命中关联实体可读名时,解析出对应 (entity, entityId in ...) 条件并入 keyword 的 OR */
+async function resolveDisplayMatchConditions(
+  keyword: string,
+): Promise<Prisma.OperationLogWhereInput[]> {
+  const contains = { contains: keyword, mode: "insensitive" as const };
+  const [contracts, customers, invoices, payments, users] = await Promise.all([
+    prisma.contract.findMany({
+      where: { OR: [{ contractNo: contains }, { title: contains }] },
+      select: { id: true },
+      take: DISPLAY_MATCH_TAKE,
+    }),
+    prisma.customer.findMany({
+      where: { OR: [{ code: contains }, { name: contains }] },
+      select: { id: true },
+      take: DISPLAY_MATCH_TAKE,
+    }),
+    prisma.invoice.findMany({
+      where: { invoiceNo: contains },
+      select: { id: true },
+      take: DISPLAY_MATCH_TAKE,
+    }),
+    prisma.payment.findMany({
+      where: { paymentNo: contains },
+      select: { id: true },
+      take: DISPLAY_MATCH_TAKE,
+    }),
+    prisma.user.findMany({
+      where: { OR: [{ name: contains }, { employeeNo: contains }] },
+      select: { id: true },
+      take: DISPLAY_MATCH_TAKE,
+    }),
+  ]);
+  const conds: Prisma.OperationLogWhereInput[] = [];
+  const push = (entity: string, ids: string[]) => {
+    if (ids.length > 0) conds.push({ entity, entityId: { in: ids } });
+  };
+  push("Contract", contracts.map((r) => r.id));
+  push("Customer", customers.map((r) => r.id));
+  push("Invoice", invoices.map((r) => r.id));
+  push("Payment", payments.map((r) => r.id));
+  push("User", users.map((r) => r.id));
+  return conds;
 }
 
 const ROW_SELECT = {
@@ -221,10 +289,18 @@ export async function listOperationLogs(
 ): Promise<OperationLogPage> {
   requirePermission(user.roleCode, RESOURCE.OPERATION_LOG, ACTION.READ);
   const where = buildOperationLogWhere(p);
+  if (p.keyword) {
+    // keyword 额外命中关联实体可读名(合同号/客户名/发票号等),并入同一个 OR
+    const extra = await resolveDisplayMatchConditions(p.keyword);
+    if (extra.length > 0) {
+      const or = Array.isArray(where.OR) ? where.OR : [];
+      where.OR = [...or, ...extra];
+    }
+  }
   const [list, total] = await Promise.all([
     prisma.operationLog.findMany({
       where,
-      orderBy: { at: "desc" },
+      orderBy: buildOperationLogOrderBy(p),
       skip: (p.page - 1) * p.pageSize,
       take: p.pageSize,
       select: ROW_SELECT,
