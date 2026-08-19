@@ -2,6 +2,17 @@
 
 本文件记录 qt-biz 每个版本的详细变更。项目快速入口请见 [README.md](README.md)。
 
+## v0.20.7(2026-08-19)移动端适配 + PWA（Phase 5）
+
+移动端体验补齐：PWA 可添加到主屏幕（standalone 启动、应用壳缓存 + 离线兜底，Service Worker 不拦截 API 防陈旧数据），手机端底部固定导航（工作台/合同/消息/我的 + 未读角标），风险报告雷达图窄屏降级条形图，工作台统计卡 2×2 网格。**DB schema / migrations: 无变化**。
+
+变更:
+- **feat(pwa)**:`app/manifest.ts`（standalone、品牌主题色）+ `public/sw.js`（应用壳缓存 + 离线回退，明确不拦截 `/api` 与非 GET——会话与业务数据永远走网络）+ `PwaRegister`（仅生产注册，dev 不污染调试）+ 图标 192/512（品牌 SVG 经 Playwright 截图生成）；推送不在本期——spec §8.3 明确 PWA 推送仅作站内信增强通道，关键提醒以站内信为准
+- **feat(mobile)**:`MobileBottomNav` 底部固定导航（工作台 `/dashboard` / 合同 `/contracts` / 消息 `/messages`（未读角标）/ 我的 `/contracts/workbench`），仅手机断点渲染，主内容区底部留 64px 占位防遮挡
+- **feat(mobile)**:风险报告 `RiskReportView` 手机端 Radar 雷达图降级为 Column 纵向条形图（spec §8.2：窄屏雷达标签重叠不可读）；`StatGrid` 新增 `mobileColumns` 属性（默认 1 零影响），合同工作台统计卡手机端 2×2
+- **test**:`tests/e2e/20-mobile-pwa.spec.ts` 5 用例（manifest/SW 可达、2×2 网格、底部导航可见可跳转、图表降级渲染、非手机断点不渲染导航；iPad project 虽是 isMobile 但 820px 走侧边栏——guard 按视口宽度区分）
+- **测试**:typecheck / lint / vitest 全绿（105 文件，902 用例 × 2 连跑）；E2E 五 spec（16-20）全 project 29 通过 / 20 跳过 / 0 失败
+
 ## v0.20.6(2026-08-19)规则引擎风险报告（Phase 4a）
 
 合同风险报告上线：基于 Phase 2 评分与快照，纯本地计算输出结构化报告（五维度明细、加权公式串、多条业务化建议、30 天趋势与主因维度），工作台风险抽屉与合同详情页「风险分析」区块共用同一视图。**DB schema / migrations: 无变化**。
