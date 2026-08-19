@@ -2,6 +2,17 @@
 
 本文件记录 qt-biz 每个版本的详细变更。项目快速入口请见 [README.md](README.md)。
 
+## v0.20.6(2026-08-19)规则引擎风险报告（Phase 4a）
+
+合同风险报告上线：基于 Phase 2 评分与快照，纯本地计算输出结构化报告（五维度明细、加权公式串、多条业务化建议、30 天趋势与主因维度），工作台风险抽屉与合同详情页「风险分析」区块共用同一视图。**DB schema / migrations: 无变化**。
+
+变更:
+- **feat(risk)**:`server/services/contract/risk-report.ts` 纯函数报告构建器（spec §7.2 契约）——`weightedScore` 公式串与示例逐字符一致（`67×0.30 + 80×0.25 + 60×0.20 + 33×0.15 + 0×0.10 = 57.1 → 四舍五入 57`）；建议升级为多条（原始分 ≥50 的维度降序取 Top 3，催款带剩余金额、逾期带宽限期倒数、开票带缺口，趋势上升 ≥10 分追加主因建议）；`trendSummary { days, from, to, mainDriver }`（窗口内各维度增量最大者，快照 < 2 个时为 null 显示「数据积累中」）
+- **feat(risk)**:`computeContractRisks` 透出 `totalAmount / paidAmount / invoicedAmount / daysOverdue` 与 `dimensionRaw`（报告构建免二次查询）；`GET /api/contracts/[id]/risk` 响应追加 `weightedScore / trendSummary / asOf`，`recommendations` 升级为多条（向后兼容）
+- **feat(detail)**:抽取 `RiskReportView` 共享组件（雷达 + 维度明细 + 加权公式 + 趋势折线 + 建议列表），工作台风险抽屉与合同详情页概览 tab 新增「风险分析」区块复用（不新增 Tab）
+- **test**:`tests/unit/server/risk-report.test.ts` 10 用例（§7.2 公式串验算 / mainDriver 判定 / 建议排序与文案）；API 测试补报告契约断言；`tests/e2e/19-risk-report.spec.ts` 3 用例
+- **测试**:typecheck / lint / vitest 全绿（105 文件，902 用例 × 2 连跑）；E2E 四 spec（16-19）全 project 21 通过 / 30 跳过 / 0 失败
+
 ## v0.20.5(2026-08-18)续签跟进 + 联动补盲（Phase 1.5/3）
 
 合同深化路线图 Phase 1.5 与 Phase 3 落地：续签链路（`renewedFromId` 自关联 + 每周提醒 + 工作台一键续签 Modal），联动补盲两条每日检查（超期未开票 / 开票-回款偏差）+ 详情页概览增强（双进度条、预警 Alert、续签链链接）。**DB schema 有变化：迁移 `20260822_contract_renewed_from`（`Contract.renewedFromId` + FK `ON DELETE SET NULL` + 索引）+ `20260822_message_type_renewal_linkage`（`MessageType` 追加 `CONTRACT_RENEWAL_REMIND` / `LINKAGE_NO_INVOICE` / `LINKAGE_INVOICE_PAYMENT_GAP` 三个值）**。
