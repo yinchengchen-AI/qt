@@ -4,6 +4,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useMessageStream } from "@/lib/use-message-stream";
 import { useUnreadCount, refreshUnread } from "@/lib/message-unread";
+import { MobileBottomNav } from "@/components/mobile-bottom-nav";
 import Link from "next/link";
 import { useRouter, usePathname } from "next/navigation";
 import { signOut } from "next-auth/react";
@@ -636,7 +637,9 @@ export function DashboardShell({ user, children }: Props) {
           className="app-anim-in"
           style={{
             padding: 0,
-            minHeight: isMobile ? "calc(100vh - 56px)" : "calc(100vh - 64px)"
+            minHeight: isMobile ? "calc(100vh - 56px)" : "calc(100vh - 64px)",
+            // 手机端底部固定导航占位 (nav ~54px + safe-area)
+            paddingBottom: isPhone ? 64 : 0
           }}
         >
           {/* 聚合搜索条: sticky 吸附在 Header 下方, 随页面滚动保持可见;
@@ -659,6 +662,7 @@ export function DashboardShell({ user, children }: Props) {
           </div>
           {children}
         </Content>
+        {isPhone ? <MobileBottomNav unreadMessages={unread} /> : null}
       </Layout>
 
       <Drawer

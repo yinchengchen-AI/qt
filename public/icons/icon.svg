@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="企泰安全">
+  <defs>
+    <mask id="qitai-cutout-icon">
+      <rect width="48" height="48" fill="white" />
+      <rect x="24" y="14" width="24" height="20" fill="black" />
+    </mask>
+  </defs>
+  <!-- 浅色底, maskable 安全区内居中 Mark (品牌横版 logo 的图形部分, viewBox 240x56 左 48x48) -->
+  <rect width="512" height="512" rx="96" fill="#F5F7FA"/>
+  <g transform="translate(121, 121) scale(5.625)">
+    <rect width="48" height="48" rx="6" fill="#0A1C33" mask="url(#qitai-cutout-icon)" />
+    <rect x="32" y="28" width="20" height="20" rx="3" fill="#E11A2A" />
+    <rect x="58" y="14" width="6" height="6" rx="1" fill="#0A1C33" />
+  </g>
+</svg>

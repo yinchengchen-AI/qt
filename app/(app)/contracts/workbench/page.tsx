@@ -83,6 +83,7 @@ export default function ContractWorkbenchPage() {
       />
       <StatGrid
         loading={statsLoading}
+        mobileColumns={2}
         items={[
           {
             label: "我的活跃合同",

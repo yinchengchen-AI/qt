@@ -4,12 +4,14 @@ import { List, Space, Typography } from "antd";
 import dynamic from "next/dynamic";
 import { EmptyState } from "@/components/empty-state";
 import { RiskTag } from "@/components/workbench/risk-drawer";
+import { useResponsive } from "@/lib/use-breakpoint";
 import type { ContractRiskDetail } from "@/server/services/contract/workbench";
 import type { RiskLevel } from "@/server/services/contract/risk-score";
 
 // 图表库体积大 (~1MB), 报告区块可见时才加载 (抽屉/详情页按需)
 const Radar = dynamic(() => import("@ant-design/charts").then((m) => m.Radar), { ssr: false });
 const Line = dynamic(() => import("@ant-design/charts").then((m) => m.Line), { ssr: false });
+const Column = dynamic(() => import("@ant-design/charts").then((m) => m.Column), { ssr: false });
 
 const { Text } = Typography;
 
@@ -32,6 +34,7 @@ type Props = { contractId: string };
 
 /** 风险报告视图 (Phase 4a): 雷达 + 维度明细 + 加权公式 + 趋势 + 建议; 工作台抽屉与合同详情页共用 */
 export function RiskReportView({ contractId }: Props) {
+  const { isPhone } = useResponsive();
   const { data, error, isLoading } = useSWR<ContractRiskDetail>(`/api/contracts/${contractId}/risk`, fetcher);
   if (isLoading) return <EmptyState loading title="计算风险分…" height="small" />;
   if (error || !data) return <EmptyState error={{ message: error?.message ?? "加载失败" }} height="small" />;
@@ -48,15 +51,27 @@ export function RiskReportView({ contractId }: Props) {
         <RiskTag level={data.level as RiskLevel} />
         <Text type="secondary" style={{ fontSize: 12 }}>截至 {data.asOf}</Text>
       </Space>
-      <Radar
-        data={radarData}
-        xField="dim"
-        yField="score"
-        height={220}
-        meta={{ score: { min: 0, max: 100 } }}
-        point={{ size: 3 }}
-        area={{ style: { fillOpacity: 0.2 } }}
-      />
+      {/* 手机端雷达降级为纵向条形图 (spec §8.2): 窄屏雷达标签重叠不可读 */}
+      {isPhone ? (
+        <Column
+          data={radarData}
+          xField="dim"
+          yField="score"
+          height={180}
+          meta={{ score: { min: 0, max: 100 } }}
+          label={{ position: "top", style: { fontSize: 10 } }}
+        />
+      ) : (
+        <Radar
+          data={radarData}
+          xField="dim"
+          yField="score"
+          height={220}
+          meta={{ score: { min: 0, max: 100 } }}
+          point={{ size: 3 }}
+          area={{ style: { fillOpacity: 0.2 } }}
+        />
+      )}
       <List
         size="small"
         dataSource={Object.entries(data.dimensions)}

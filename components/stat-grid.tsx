@@ -24,6 +24,8 @@ type Props = {
   items: StatItem[];
   /** 桌面列数:2 / 3 / 4 / 5 / 6,默认 4 */
   columns?: 2 | 3 | 4 | 5 | 6;
+  /** 手机端列数: 1 (默认, 单列) / 2 (2×2 网格, 卡片少时更紧凑); 仅影响 xs 断点 */
+  mobileColumns?: 1 | 2;
   loading?: boolean;
   className?: string;
 };
@@ -37,10 +39,10 @@ const SPAN_MAP: Record<number, { xs: number; sm: number; md: number; lg: number;
   6: { xs: 24, sm: 12, md: 8,  lg: 8,  xl: 4  }
 };
 
-export function StatGrid({ items, columns = 4, loading, className }: Props) {
+export function StatGrid({ items, columns = 4, mobileColumns = 1, loading, className }: Props) {
   const { isMobile } = useResponsive();
   const span = SPAN_MAP[columns] ?? SPAN_MAP[4]!;
-  const s = { xs: span.xs ?? 24, sm: span.sm ?? 12, md: span.md ?? 12, lg: span.lg ?? 12, xl: span.xl ?? 12 };
+  const s = { xs: mobileColumns === 2 ? 12 : (span.xs ?? 24), sm: span.sm ?? 12, md: span.md ?? 12, lg: span.lg ?? 12, xl: span.xl ?? 12 };
   const cardPadding = isMobile ? 14 : 20;
   const valueFontSize = isMobile ? 22 : 26;
   return (
