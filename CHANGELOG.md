@@ -2,6 +2,16 @@
 
 本文件记录 qt-biz 每个版本的详细变更。项目快速入口请见 [README.md](README.md)。
 
+## v0.21.5(2026-08-19)主线整合：远端 v0.21.x + 合同深化路线图
+
+并行开发汇合：远端 v0.21.0-v0.21.4（操作日志体验、框架加宽、详情页概览收敛）与合同深化路线图 v0.20.3-v0.20.8（工作台/风险引擎/续签/联动补盲/风险报告/移动端/DeepSeek AI）合并为一条主线。**注：因并行开发，历史中同时存在两个 v0.20.3（本线"个人合同工作台"与远线"对账修复"），git tag 与 CHANGELOG 均按实际发生保留；此后版本号回到单一递增序列**。
+
+整合要点:
+- **详情页概览**:采用远端一行三卡 StatGrid（进度条内建于卡片）+ 保留路线图的预警 Alert（超期未开票/开票-回款偏差）、续签链「续签自/至」链接、「风险分析」区块——双方设计语义兼容，无功能丢失
+- **schema**:`MessageType` 取双方枚举并集（`RECONCILIATION_*` 4 值 + `RISK_LEVEL_UP`/`CONTRACT_RENEWAL_REMIND`/`LINKAGE_NO_INVOICE`/`LINKAGE_INVOICE_PAYMENT_GAP` 4 值）
+- **fix(migrate)**:`scripts/shared/migrate-deploy.sh` 扩展第二个 fresh-DB 重放雷区处理——`20260817_reconciliation_fixes` 文件名排序先于 `20260820_bank_reconciliation` 建表迁移，全新库重放必报 42P01（relation "BankTransaction" does not exist）；按 20260630 既有模式自动处理（幂等 enum DDL → `migrate resolve --applied` → 续跑建表 → 幂等补列），scratch 库完整重放验证 56 迁移全过。**此问题在远线 v0.21.x 上 CI fresh replay 必现，本修复随整合生效**
+- **测试**:typecheck / lint 全绿；vitest 939 用例全绿（双方测试合集）
+
 ## v0.21.4(2026-08-19)合同详情页概览金额改用 ¥ 千分位格式
 
 **DB schema 无变化**。
