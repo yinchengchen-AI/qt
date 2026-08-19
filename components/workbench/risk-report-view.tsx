@@ -1,11 +1,14 @@
 "use client";
+import { useState } from "react";
 import useSWR from "swr";
-import { List, Space, Typography } from "antd";
+import { Alert, Button, List, Space, Typography } from "antd";
+import { RobotOutlined } from "@ant-design/icons";
 import dynamic from "next/dynamic";
 import { EmptyState } from "@/components/empty-state";
 import { RiskTag } from "@/components/workbench/risk-drawer";
 import { useResponsive } from "@/lib/use-breakpoint";
 import type { ContractRiskDetail } from "@/server/services/contract/workbench";
+import type { ContractAiAnalysis } from "@/server/services/contract-ai";
 import type { RiskLevel } from "@/server/services/contract/risk-score";
 
 // 图表库体积大 (~1MB), 报告区块可见时才加载 (抽屉/详情页按需)
@@ -120,6 +123,67 @@ export function RiskReportView({ contractId }: Props) {
           </List.Item>
         )}
       />
+      <AiAnalysisSection contractId={contractId} />
+    </div>
+  );
+}
+
+/** AI 分析区 (Phase 4b): 按钮触发生成 (不自动调 LLM, 省 token); 无 key 时服务端 503 降级提示 */
+function AiAnalysisSection({ contractId }: { contractId: string }) {
+  const [loading, setLoading] = useState(false);
+  const [result, setResult] = useState<ContractAiAnalysis | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  const generate = async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const res = await fetch(`/api/contracts/${contractId}/ai-analysis`, { credentials: "include" });
+      const j = await res.json();
+      if (j.code !== 0) throw new Error(j.message);
+      setResult(j.data as ContractAiAnalysis);
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div style={{ marginTop: 16 }}>
+      <Typography.Title level={5}>
+        <RobotOutlined style={{ marginRight: 6 }} />
+        AI 分析
+      </Typography.Title>
+      {result ? (
+        <div>
+          <Alert
+            type="info"
+            title={result.summary}
+            style={{ marginBottom: 8 }}
+          />
+          <List
+            size="small"
+            header={<Text strong style={{ fontSize: 13 }}>跟进话术</Text>}
+            dataSource={result.talkTracks}
+            renderItem={(t) => (
+              <List.Item style={{ paddingLeft: 0 }}>
+                <Text style={{ fontSize: 13 }}>· {t}</Text>
+              </List.Item>
+            )}
+          />
+          <div style={{ fontSize: 11, color: "rgba(0,0,0,0.35)", marginTop: 4 }}>
+            {result.model} · {new Date(result.generatedAt).toLocaleString("zh-CN")}
+          </div>
+        </div>
+      ) : (
+        <div>
+          {error ? <Alert type="warning" title={error} style={{ marginBottom: 8 }} /> : null}
+          <Button size="small" loading={loading} onClick={generate}>
+            {error ? "重试 AI 分析" : "生成 AI 分析"}
+          </Button>
+        </div>
+      )}
     </div>
   );
 }

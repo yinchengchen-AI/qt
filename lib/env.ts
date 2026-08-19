@@ -34,6 +34,11 @@ export const env = createEnv({
     // 由 tryAutoCloseOnOverdue 自动关闭 (reason=overdue_terminated).
     // 默认 60 天,允许 0 表示"立即强关"(不推荐,会留下大量财务缺口).
     CONTRACT_OVERDUE_GRACE_DAYS: z.coerce.number().int().min(0).max(3650).default(60),
+    // DeepSeek LLM (Phase 4b AI 风险分析); 留空 = 未配置, AI 端点降级 503
+    // key 只在服务端使用 (spec §10), 不落库不前端可见
+    DEEPSEEK_API_KEY: z.string().min(1).optional(),
+    DEEPSEEK_BASE_URL: z.string().url().default("https://api.deepseek.com"),
+    DEEPSEEK_MODEL: z.string().min(1).default("deepseek-chat"),
   },
   client: {},
   runtimeEnv: {
@@ -53,6 +58,9 @@ export const env = createEnv({
     MINIO_PUBLIC_BASE_URL: process.env.MINIO_PUBLIC_BASE_URL,
     CONTRACT_COMPLETION_INVOICE_RATIO: process.env.CONTRACT_COMPLETION_INVOICE_RATIO,
     CONTRACT_OVERDUE_GRACE_DAYS: process.env.CONTRACT_OVERDUE_GRACE_DAYS,
+    DEEPSEEK_API_KEY: process.env.DEEPSEEK_API_KEY,
+    DEEPSEEK_BASE_URL: process.env.DEEPSEEK_BASE_URL,
+    DEEPSEEK_MODEL: process.env.DEEPSEEK_MODEL,
   },
   // Docker 镜像构建期(next build 收集页面数据时会 import 路由模块)没有真实环境变量,
   // 构建阶段设 SKIP_ENV_VALIDATION=1 跳过校验;运行时(含容器)不设,保持 fail-fast。

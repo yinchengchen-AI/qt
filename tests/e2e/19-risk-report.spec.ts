@@ -110,4 +110,17 @@ test.describe.serial("场景 19: 风险报告 E2E", () => {
     // 建议操作区渲染
     await expect(page.getByText("建议操作")).toBeVisible();
   });
+
+  test("19.4 AI 分析区: 按钮触发生成, 结果或降级错误都正常呈现", async ({ page, isMobile }) => {
+    test.skip(Boolean(isMobile), "桌面端用例");
+    await loginAsSales(page);
+    await page.goto(`/contracts/${contractId}`);
+    await page.waitForLoadState("domcontentloaded");
+    await expect(page.getByRole("heading", { name: "AI 分析" })).toBeVisible({ timeout: 30000 });
+    await page.getByRole("button", { name: "生成 AI 分析" }).click();
+    // 有 key+网络 → 摘要 Alert(info); 无 key/限流 → 降级 Alert(warning); 两者必居其一, 页面不白屏
+    const summary = page.locator(".ant-alert-info");
+    const degraded = page.locator(".ant-alert-warning");
+    await expect(summary.or(degraded).first()).toBeVisible({ timeout: 60000 });
+  });
 });
