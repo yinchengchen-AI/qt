@@ -1,5 +1,6 @@
 "use client";
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import { Page } from "@/components/page";
 import { PageHeader } from "@/components/page-header";
 import { StatGrid } from "@/components/stat-grid";
@@ -113,6 +114,31 @@ export default function ReconciliationPage() {
   );
 
   const isFinance = session?.user?.roleCode === "FINANCE" || session?.user?.roleCode === "ADMIN";
+
+  // 深链支持: /payments/reconciliation?txId=<id> (消息中心跳转 / [id] 重定向过来)
+  // 自动拉详情并打开 Drawer, 与列表里点流水号的行为一致
+  const searchParams = useSearchParams();
+  const focusHandledRef = useRef<string | null>(null);
+  useEffect(() => {
+    const txId = searchParams.get("txId");
+    if (!txId || focusHandledRef.current === txId) return;
+    focusHandledRef.current = txId;
+    (async () => {
+      try {
+        const res = await fetch(`/api/reconciliation/transactions/${txId}`, { credentials: "include" });
+        const j = await res.json();
+        if (j.code === 0) {
+          setSelectedTx(j.data);
+          setCandidates(j.data.candidates ?? []);
+          setDrawerOpen(true);
+        } else {
+          message.error("打开流水详情失败: " + (j.message ?? "未知错误"));
+        }
+      } catch (e) {
+        message.error("打开流水详情失败: " + (e as Error).message);
+      }
+    })();
+  }, [searchParams, message]);
 
   // 所有写操作后统一刷新: 统计卡 + 流水表格
   const reloadAll = () => {

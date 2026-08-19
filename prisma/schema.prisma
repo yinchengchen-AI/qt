@@ -63,6 +63,12 @@ enum MessageType {
   LINKAGE_NO_INVOICE
   // 联动补盲 (daily-linkage-check job): 已开票>=1万 且回款缺口>20% 且最新发票开具超 30 天
   LINKAGE_INVOICE_PAYMENT_GAP
+  // 对账中心消息 (v0.20.x 曾尝试应用层枚举不扩展 PG enum, 导致通知静默丢失;
+  // v0.20.3 起补回 PG enum, 迁移 20260817_reconciliation_fixes)
+  RECONCILIATION_AUTO_MATCHED
+  RECONCILIATION_SUGGESTION
+  RECONCILIATION_DISCREPANCY
+  RECONCILIATION_WEEKLY_REPORT
 }
 
 model User {
@@ -652,6 +658,7 @@ model OperationLog {
 
   @@index([actorId])
   @@index([entity, entityId])
+  @@index([action])
   @@index([at])
   @@index([requestId])
   @@index([status])
@@ -920,6 +927,8 @@ model BankTransaction {
   /// 匹配结果
   paymentId           String?
   payment             Payment? @relation(fields: [paymentId], references: [id], onDelete: SetNull)
+  /// 匹配时回款的原始状态(PLANNED/CONFIRMED), unmatch 回滚用
+  paymentPrevStatus   String?
   matchScore          Decimal? @db.Decimal(5, 2)
   matchReason         String?  @db.VarChar(200)
   /// 审计

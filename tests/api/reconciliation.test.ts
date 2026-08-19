@@ -97,8 +97,26 @@ afterAll(async () => {
     if (testCustomerId) {
       await prisma.customer.delete({ where: { id: testCustomerId } });
     }
-    await prisma.reconciliationDiscrepancy.deleteMany({ where: { description: { contains: TAG } } });
-    await prisma.message.deleteMany({ where: { entityKey: { contains: TAG } } });
+    await prisma.reconciliationDiscrepancy.deleteMany({
+      where: {
+        OR: [
+          { description: { contains: TAG } },
+          { bankTransactionId: { in: createdTxIds } },
+          { paymentId: { in: createdPaymentIds } },
+        ],
+      },
+    });
+    // emit 产生的消息: entityKey 是业务 id (不含 TAG), 但 title/content 里的
+    // 回款号/流水号/差异描述带 TAG, 三个字段一起兜住
+    await prisma.message.deleteMany({
+      where: {
+        OR: [
+          { entityKey: { contains: TAG } },
+          { title: { contains: TAG } },
+          { content: { contains: TAG } },
+        ],
+      },
+    });
   } catch {
     // ignore
   }
@@ -425,6 +443,12 @@ describe("match operations", () => {
 
     const result = await manualMatch(buildFinance(), tx.id, payment.id);
     expect(result.matchStatus).toBe("MANUAL_MATCHED");
+
+    // 与 confirmMatch 对称: 回写 bankRefNo 并推进到 RECONCILED
+    const updatedPayment = await prisma.payment.findUnique({ where: { id: payment.id } });
+    expect(updatedPayment?.bankRefNo).toBe(`${TAG}-MANUAL-001`);
+    expect(updatedPayment?.status).toBe("RECONCILED");
+    expect(updatedPayment?.reconcileUserId).toBe(financeUser!.id);
   }));
 
   it("unmatch 取消匹配", guard(async () => {
@@ -514,15 +538,158 @@ describe("match operations", () => {
 
     await confirmMatch(buildFinance(), tx.id, payment.id);
     const afterConfirm = await prisma.payment.findUnique({ where: { id: payment.id } });
-    expect(afterConfirm?.status).toBe("CONFIRMED");
+    // 对账确认 = 已对账, 终态 RECONCILED
+    expect(afterConfirm?.status).toBe("RECONCILED");
     expect(afterConfirm?.bankRefNo).toBe(`${TAG}-ROLLBACK-001`);
+    expect(afterConfirm?.reconcileUserId).toBe(financeUser!.id);
 
     await unmatchTransaction(buildFinance(), tx.id);
     const afterUnmatch = await prisma.payment.findUnique({ where: { id: payment.id } });
     expect(afterUnmatch?.bankRefNo).toBeNull();
     expect(afterUnmatch?.status).toBe("PLANNED");
+    expect(afterUnmatch?.reconcileUserId).toBeNull();
+    expect(afterUnmatch?.reconciledAt).toBeNull();
   }));
 });
+
+// =====================================================
+// 4.5 回归: 对账确认与回款 confirm 规则对齐 (v0.20.3)
+//   修复前: confirmMatch 直接 payment.update, 绕过 R-10/R-11/R-12,
+//           不发 PAYMENT_RECEIVED, 不驱动 RECONCILED, manualMatch 不回写
+// =====================================================
+
+describe("match writeback 与回款模块规则对齐", () => {
+  // 直接插库造 PLANNED 回款, 绕过 createPayment 登记预检 (模拟异常/历史数据路径)
+  async function mkRawPayment(
+    contractId: string, customerId: string, invoiceId: string | null,
+    amount: string, suffix: string, status = "PLANNED"
+  ) {
+    const p = await prisma.payment.create({
+      data: {
+        paymentNo: `${TAG}-RAW-${suffix}`, customerId, contractId, invoiceId,
+        amount, receivedAt: new Date("2026-08-10T00:00:00Z"), method: "BANK_TRANSFER",
+        status, recorderUserId: adminUser!.id,
+        createdById: adminUser!.id, updatedById: adminUser!.id,
+      },
+    });
+    createdPaymentIds.push(p.id);
+    return p;
+  }
+  async function mkTx(refNo: string, amount: number, date?: Date) {
+    const tx = await prisma.bankTransaction.create({
+      data: {
+        bankRefNo: refNo, transactionDate: date ?? new Date(), amount,
+        importBatchId: `${TAG}-BATCH`, importedById: financeUser!.id,
+      },
+    });
+    createdTxIds.push(tx.id);
+    return tx;
+  }
+
+  it("R-11: 超发票金额的 PLANNED 回款不可通过对账确认", guard(async () => {
+    const contract = await mkContract("100000", "R11");
+    const inv = await mkIssuedInvoice(contract.id, 100, "R11");
+    // 登记预检会拦 5000>100, 这里直插模拟漏网数据
+    const payment = await mkRawPayment(contract.id, testCustomerId!, inv.id, "5000", "R11");
+    const tx = await mkTx(`${TAG}-R11-001`, 5000);
+
+    await expect(confirmMatch(buildFinance(), tx.id, payment.id)).rejects.toThrow(/超过发票金额/);
+    const after = await prisma.payment.findUnique({ where: { id: payment.id } });
+    expect(after?.status).toBe("PLANNED"); // 未推进
+  }));
+
+  it("R-12: 超合同总额的 PLANNED 回款不可通过对账确认", guard(async () => {
+    const contract = await mkContract("1000", "R12");
+    const payment = await mkRawPayment(contract.id, testCustomerId!, null, "5000", "R12");
+    const tx = await mkTx(`${TAG}-R12-001`, 5000);
+
+    await expect(confirmMatch(buildFinance(), tx.id, payment.id)).rejects.toThrow(/超过合同总额/);
+  }));
+
+  it("PLANNED 回款对账确认后发 PAYMENT_RECEIVED 且终态 RECONCILED", guard(async () => {
+    const contract = await mkContract("100000", "EVT");
+    const inv = await mkIssuedInvoice(contract.id, 8000, "EVT");
+    const payment = await mkRawPayment(contract.id, testCustomerId!, inv.id, "8000", "EVT");
+    const tx = await mkTx(`${TAG}-EVT-001`, 8000);
+
+    await confirmMatch(buildFinance(), tx.id, payment.id);
+
+    const after = await prisma.payment.findUnique({ where: { id: payment.id } });
+    expect(after?.status).toBe("RECONCILED");
+    expect(after?.reconcileUserId).toBe(financeUser!.id);
+    expect(after?.reconciledAt).not.toBeNull();
+    // receivedAt 更正为流水交易日
+    expect(after?.receivedAt.getTime()).toBe(tx.transactionDate.getTime());
+    // paymentPrevStatus 记录原状态
+    const txAfter = await prisma.bankTransaction.findUnique({ where: { id: tx.id } });
+    expect(txAfter?.paymentPrevStatus).toBe("PLANNED");
+
+    const msg = await prisma.message.count({ where: { entityKey: `PAYMENT_RECEIVED:${payment.id}` } });
+    expect(msg).toBeGreaterThan(0);
+  }));
+
+  it("CONFIRMED 回款对账确认: 推进 RECONCILED, 不动 receivedAt, 不重复发 PAYMENT_RECEIVED", guard(async () => {
+    const contract = await mkContract("100000", "CONF2");
+    const receivedAt = new Date("2026-08-10T00:00:00Z");
+    const payment = await mkRawPayment(contract.id, testCustomerId!, null, "8000", "CONF2", "CONFIRMED");
+    const tx = await mkTx(`${TAG}-CONF2-001`, 8000, new Date("2026-08-12T00:00:00Z"));
+
+    await confirmMatch(buildFinance(), tx.id, payment.id);
+
+    const after = await prisma.payment.findUnique({ where: { id: payment.id } });
+    expect(after?.status).toBe("RECONCILED");
+    expect(after?.receivedAt.getTime()).toBe(receivedAt.getTime());
+    expect(after?.bankRefNo).toBe(`${TAG}-CONF2-001`);
+    // 已在回款模块确认过, 不补发到账通知
+    const msg = await prisma.message.count({ where: { entityKey: `PAYMENT_RECEIVED:${payment.id}` } });
+    expect(msg).toBe(0);
+
+    // unmatch 精确回滚到 CONFIRMED
+    await unmatchTransaction(buildFinance(), tx.id);
+    const reverted = await prisma.payment.findUnique({ where: { id: payment.id } });
+    expect(reverted?.status).toBe("CONFIRMED");
+    expect(reverted?.bankRefNo).toBeNull();
+    expect(reverted?.reconcileUserId).toBeNull();
+  }));
+
+  it("金额不一致: 记 AMOUNT_MISMATCH 差异并发 RECONCILIATION_DISCREPANCY 通知", guard(async () => {
+    const contract = await mkContract("100000", "DISC");
+    const inv = await mkIssuedInvoice(contract.id, 20000, "DISC");
+    const payment = await mkRawPayment(contract.id, testCustomerId!, inv.id, "20000", "DISC");
+    const tx = await mkTx(`${TAG}-DISC-001`, 21000);
+
+    await confirmMatch(buildFinance(), tx.id, payment.id);
+
+    const disc = await prisma.reconciliationDiscrepancy.findFirst({
+      where: { bankTransactionId: tx.id, type: "AMOUNT_MISMATCH" },
+    });
+    expect(disc).not.toBeNull();
+    expect(disc?.severity).toBe("HIGH"); // 差额 1000 > 100
+    const msg = await prisma.message.count({
+      where: { entityKey: `RECONCILIATION_DISCREPANCY:${disc!.id}` },
+    });
+    expect(msg).toBeGreaterThan(0);
+  }));
+
+  it("R-10: 流水号已被其它 CONFIRMED/RECONCILED 回款占用时拒绝匹配", guard(async () => {
+    const contract = await mkContract("100000", "R10");
+    const occupied = await mkRawPayment(contract.id, testCustomerId!, null, "8000", "R10-A", "CONFIRMED");
+    await prisma.payment.update({ where: { id: occupied.id }, data: { bankRefNo: `${TAG}-R10-REF` } });
+    const payment = await mkRawPayment(contract.id, testCustomerId!, null, "8000", "R10-B");
+    const tx = await mkTx(`${TAG}-R10-REF`, 8000);
+
+    await expect(manualMatch(buildFinance(), tx.id, payment.id)).rejects.toThrow(/已存在/);
+  }));
+
+  it("已终态 (REFUNDED/CANCELLED/RECONCILED) 回款拒绝匹配", guard(async () => {
+    const contract = await mkContract("100000", "STATUS");
+    const payment = await mkRawPayment(contract.id, testCustomerId!, null, "8000", "STATUS", "REFUNDED");
+    const tx = await mkTx(`${TAG}-STATUS-001`, 8000);
+
+    await expect(confirmMatch(buildFinance(), tx.id, payment.id)).rejects.toThrow(/不可匹配/);
+  }));
+});
+
 
 // =====================================================
 // 5. 查询服务测试

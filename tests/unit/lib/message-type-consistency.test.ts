@@ -12,16 +12,13 @@ import { MESSAGE_TYPE } from "@/types/enums";
 import { prisma } from "@/lib/prisma";
 
 // v0.5.0 起客户状态机下线,以下类型不再 emit,但保留在 PG enum 供历史消息可读
-// v0.20.0 起对账消息类型走应用层枚举,不扩展 PG enum (生产 qt_app 非 owner, ALTER TYPE 42501)
+// 注: v0.20.0 曾把 4 个 RECONCILIATION_* 留在应用层枚举不扩 PG enum,
+//     导致对账通知写库被 Prisma 拒、静默丢失; v0.20.3 起已补回 PG enum
+//     (迁移 20260817_reconciliation_fixes), 不再享受豁免。
 const DEPRECATED_MESSAGE_TYPES: string[] = [
   "CUSTOMER_STATUS_SUGGEST",
   "CUSTOMER_STATUS_AUTO_APPLIED",
   "CUSTOMER_STATUS_AUTO_REVERTED",
-  // 对账中心: 应用层枚举, PG enum 不扩展 (见 migration 20260820_bank_reconciliation)
-  "RECONCILIATION_AUTO_MATCHED",
-  "RECONCILIATION_SUGGESTION",
-  "RECONCILIATION_DISCREPANCY",
-  "RECONCILIATION_WEEKLY_REPORT",
 ];
 
 describe("MESSAGE_TYPE / Prisma MessageType 一致性", () => {
@@ -33,15 +30,7 @@ describe("MESSAGE_TYPE / Prisma MessageType 一致性", () => {
     `;
     const dbLabels = rows.map((r) => r.enumlabel);
     const appValues = [...MESSAGE_TYPE];
-    // 应用层扩展类型（不落在 PG enum 中）: 对账消息走应用层枚举, 与 v0.19.9 历史处理一致
-    const APP_LAYER_ONLY = new Set([
-      "RECONCILIATION_AUTO_MATCHED",
-      "RECONCILIATION_SUGGESTION",
-      "RECONCILIATION_DISCREPANCY",
-      "RECONCILIATION_WEEKLY_REPORT",
-    ]);
     for (const v of appValues) {
-      if (APP_LAYER_ONLY.has(v)) continue;
       expect(dbLabels).toContain(v);
     }
   });
@@ -69,20 +58,12 @@ describe("MESSAGE_TYPE / Prisma MessageType 一致性", () => {
     // 真正尝试用每个 type 写一行,失败的话会抛 PG enum 错误
     // 写完立刻删,不留垃圾
     const receiverId = (await prisma.user.findFirst({ where: { isSystem: true }, select: { id: true } }))?.id;
+    // 没 system 用户就跳过(没有 system 种子数据)
     if (!receiverId) {
-      // 没 system 用户就跳过(没有 system 种子数据)
       return;
     }
-    // 应用层扩展类型（不落在 PG enum 中）: 对账消息走应用层枚举
-    const APP_LAYER_ONLY = new Set([
-      "RECONCILIATION_AUTO_MATCHED",
-      "RECONCILIATION_SUGGESTION",
-      "RECONCILIATION_DISCREPANCY",
-      "RECONCILIATION_WEEKLY_REPORT",
-    ]);
     try {
       for (const t of MESSAGE_TYPE) {
-        if (APP_LAYER_ONLY.has(t)) continue;
         const m = await prisma.message.create({
           data: { receiverUserId: receiverId, type: t as never, title: "consistency-test", content: "x" }
         });

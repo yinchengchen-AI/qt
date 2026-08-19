@@ -660,8 +660,10 @@ PLANNED ─confirm─▶ CONFIRMED ─reconcile─▶ RECONCILED
 ### 12.5 操作日志
 
 - 写入时机:**所有 CUD 操作**(Customer / Contract / Invoice / Payment / User / Role / Department / Dictionary / EmployeeProfile ...)
-- 字段:操作人、操作类型(模块)、实体 ID、变更 diff、IP、时间
-- 支持按 **操作人 / 模块 / 时间区间** 检索
+- 字段:操作人、操作类型(模块)、实体 ID、变更 diff、IP、时间、请求路径/请求 ID、结果(成功/失败)与失败原因
+- 支持按 **操作人 / 模块 / 动作 / IP / 结果 / 关键字(对象 ID、请求路径、请求 ID、失败原因) / 时间区间** 检索;快速时间区间(今天 / 近 7 天 / 近 30 天 / 本月 / 本年 / 全部)一键切换
+- 列表直接显示关联对象可读名(合同号 / 客户名 / 发票号 / 回款号),点击可跳到对应详情页;点击行打开抽屉查看字段级 before/after 差异(字段带中文名),请求 ID / IP / 对象 ID 可一键复制
+- 支持当前过滤集 **导出 CSV**(自动翻页,单次上限 1000 行)
 - 不可手工删除
 
 ### 12.6 公告管理

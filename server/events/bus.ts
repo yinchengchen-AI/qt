@@ -211,11 +211,12 @@ function buildMessage(uid: string, ev: DomainEvent): ResolvedMessage {
       };
     case "RECONCILIATION_DISCREPANCY":
       // 对账差异提醒
+      // link 指向关联流水 (对账中心详情抽屉); 无关联流水时退化到无跳转
       return {
         receiverUserId: uid,
         title: `对账差异提醒：${p.description}`,
         content: `类型：${p.type}，严重程度：${p.severity}，请及时处理`,
-        link: { kind: "reconciliation-discrepancy", id: p.discrepancyId }
+        link: { kind: "reconciliation", id: p.bankTransactionId }
       };
     case "RECONCILIATION_WEEKLY_REPORT":
       // 每周对账汇总报告

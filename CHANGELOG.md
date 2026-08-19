@@ -2,6 +2,72 @@
 
 本文件记录 qt-biz 每个版本的详细变更。项目快速入口请见 [README.md](README.md)。
 
+## v0.21.4(2026-08-19)合同详情页概览金额改用 ¥ 千分位格式
+
+**DB schema 无变化**。
+
+变更:
+- **feat(contract)**：概览三卡（合同总额 / 已开票 / 已回款）金额从 "X.X 万" 改为 `formatCurrency` 的 ¥ 千分位两位小数格式（如 ¥2,000.00)，与详细信息 tab 的 `CurrencyCell` 口径一致；删除 `fmtWan` 辅助函数
+- **测试**:typecheck / lint / vitest 全绿（100 文件，829 用例）
+
+## v0.21.3(2026-08-19)合同详情页概览收敛
+
+合同详情页「概览」tab 从 4 个堆叠区块收敛为一行三卡，消除重复信息。**DB schema 无变化**。
+
+变更:
+- **feat(contract)**：概览合并为一个 `StatGrid columns=3`——合同总额（description 带开票/回款计数）、已开票、已回款；后两张卡底部带占合同总额百分比的细进度条（除零保护）,description 内嵌状态 Tag（沿用 COMPLETED→success / IN_PROGRESS→processing 配色）
+- **feat(contract)**：删除与统计卡数字完全重复的「开票状态 / 回款状态」独立卡片，以及开票数/回款数计数卡（tab 标签已带计数）
+- **fix(contract)**:PageHeader 副标题过期文案修正——原列了不存在的「项目」tab，改为真实 7 个 tab（概览/详细信息/交付物/开票/回款/操作记录/附件）
+- **测试**:typecheck / lint / vitest 全绿（100 文件，829 用例）
+
+## v0.21.2(2026-08-19)操作日志时间段选择与查询再优化
+
+操作日志的时间交互收敛进搜索表单：RangePicker 内置预设取代头部快捷按钮；列表补列头排序；keyword 搜索扩展到对象可读名。**DB schema 无变化**。
+
+变更:
+- **feat(operation-log)**:时间范围 RangePicker 内置 10 个预设（近 1 小时 / 近 24 小时 / 今天 / 昨天 / 近 7 天 / 近 30 天 / 本周（周一起算，手动计算不依赖 dayjs locale)/ 本月 / 上月 / 本年），移除头部快捷按钮；预设 value 用函数形式，点击时才取当前时间，长开页面不会拿到过期区间
+- **feat(operation-log)**：时间（默认倒序）/ 动作 / 对象列头排序，后端 `sortBy`/`sortOrder` 白名单 + id 同向兜底保证分页稳定；操作人列不支持排序（actorId 无关联表，按 id 排序无意义）
+- **feat(operation-log)**:`keyword` 除 对象ID / 请求路径 / 请求ID / 失败原因 外，新增命中对象可读名（合同号 / 合同标题 / 客户编号 / 客户名 / 发票号 / 回款号 / 用户名 / 工号，每类实体 id 上限 200 防 in 列表过大）;CSV 导出走同一查询自动生效
+- **测试**:`operation-log-where.test.ts` 补 `buildOperationLogOrderBy` 3 例（缺省 / 白名单 / 非法值回退）;`tests/api/operation-logs.test.ts` 补 keyword 命中客户可读名、action asc/desc 排序与缺省 at desc 2 例；typecheck / lint / vitest 全绿（100 文件，829 用例）
+
+## v0.21.1(2026-08-19)框架内容页宽度提高 15%
+
+桌面端框架内容区最大宽度由 1280px 提高到 1472px(+15%),移动端逻辑不变(仍放开限制铺到 100%)。**DB schema 无变化**。
+
+变更:
+- **feat(layout)**:`components/page.tsx` 的 `Page` 组件桌面端 `maxWidth` 1280 → 1472,所有使用该组件的业务页面统一生效
+- **测试**:typecheck / lint / vitest 全绿(100 文件,824 用例)
+
+## v0.20.3(2026-08-17)对账中心与开票/回款规则对齐修复
+
+## v0.21.0(2026-08-19)操作日志前后端体验优化
+
+操作日志模块整体升级：列表行内直接展示关联对象可读名并可跳转详情、过滤候选值改为日志中真实出现过的数据、新增关键字模糊搜索，并修复搜索区时间范围过滤长期不生效的 bug。**DB schema 有变化：新增迁移 `20260822_operation_log_action_index`（`OperationLog(action)` 索引，无新表无需 GRANT）**。
+
+变更:
+- **fix(operation-log)**:列表搜索区"时间范围"过滤长期不生效——列 transform 返回 `from/to` 而 request 读的是 `atRange`,条件被静默丢弃；现统一由 request 读 `from/to`,快速区间按钮改用 dayjs 对象回填表单
+- **feat(operation-log)**:列表行内展示关联对象可读名（合同号+标题 / 客户编号+名称 / 发票号 / 回款号 / 用户）,批量分组查询避免 N+1;有详情页的对象可直接点击跳转
+- **feat(operation-log)**:新增 `GET /api/operation-logs/meta`——返回日志里真实出现过的 entity / action / actor,前端"对象 / 动作 / 操作人"过滤从硬编码候选改为动态下拉(可搜索),操作人不再要求手填用户 ID
+- **feat(operation-log)**:新增 `keyword` 模糊过滤(不区分大小写),一条关键字同时匹配 对象ID / 请求路径 / 请求ID / 失败原因
+- **feat(operation-log)**:失败行"失败"标签悬停显示失败原因;详情抽屉 diff 字段名带中文映射(状态/金额/合同编号等 50+ 高频字段,未命中回退原名);请求 ID / IP / 对象 ID 一键复制
+- **feat(operation-log)**:CSV 导出自动翻页(上限 1000 行,带进度提示),导出内容补 对象可读名 / 失败原因两列
+- **refactor(operation-log)**:列表/详情逻辑下沉到 `server/services/operation-log.ts`(薄路由+可测 service),回款详情可读名从内部 id 改为 paymentNo
+- **perf(operation-log)**:`OperationLog(action)` 补索引,动作过滤不再全表扫描
+- **测试**:新增 `tests/unit/server/operation-log-where.test.ts`(where 构建纯函数 6 例)与 `tests/api/operation-logs.test.ts`(真实 DB:权限 403 / keyword 命中 path+errorMessage+entityId / entityDisplay 解析 / meta 动态候选 / detail 404,5 例);typecheck / lint / vitest 全绿(100 文件,824 用例);dev 冒烟 meta/list/detail 401、页面 307 正常
+
+
+对账中心上线后做动态走查（真实 DB 跑 service 全链路），发现并修复一批与回款/开票模块的耦合缺口：对账通知因 PG enum 缺值全部静默丢失、对账确认绕过回款确认的金额校验与到账通知、`RECONCILED` 状态无人驱动、手动匹配不回写流水号、消息中心通知点击无跳转。**DB schema 有变化：新增迁移 `20260817_reconciliation_fixes`（`MessageType` 补 4 个 `RECONCILIATION_*` 枚举值 + `BankTransaction.paymentPrevStatus` 列）**。
+
+变更:
+- **fix(messages)**:MessageType PG enum 补 `RECONCILIATION_AUTO_MATCHED`/`SUGGESTION`/`DISCREPANCY`/`WEEKLY_REPORT`——v0.20.0 误判"生产 qt_app 非 enum owner"而只注册应用层枚举，但 `Message.type` 列仍是原生 enum，Prisma 写库被拒且被 service try/catch 吞掉，对账通知全部静默丢失；迁移以 `MIGRATION_DATABASE_URL`（qitai，DB owner）执行，与 20260701/20260702/20260724 三个历史 ALTER TYPE 迁移同路径
+- **fix(reconciliation)**:`confirmMatch`/`manualMatch` 重构为共享 writeback，与回款模块 confirm 同规则——R-10 流水号唯一（409）/ R-11 累计≤发票金额 / R-12 累计≤合同总额（PLANNED 新入账时校验）+ advisory lock + 合同/发票行锁；此前对账确认直接 `payment.update` 绕过全部校验，超额回款可确认入账
+- **fix(reconciliation)**:对账确认终态改为 `RECONCILED`（记 `reconcileUserId`/`reconciledAt`），对账中心成为"对账"动作的实际驱动者；PLANNED→RECONCILED 补发 `PAYMENT_RECEIVED` 到账通知（合同 owner/登记人/管理员），已 CONFIRMED 的不重复发
+- **fix(reconciliation)**:`manualMatch` 与 `confirmMatch` 写回对称——回写 `bankRefNo`、推进状态、金额不一致同样记 `AMOUNT_MISMATCH` 差异
+- **fix(reconciliation)**:`unmatch` 用新增 `paymentPrevStatus` 列精确回滚（PLANNED/CONFIRMED 各归各位并清对账人/对账时间），修复前的旧数据退化到原启发式（bankRefNo+receivedAt 签名）
+- **feat(messages)**:补发 `RECONCILIATION_SUGGESTION`（建议匹配）与 `RECONCILIATION_DISCREPANCY`（差异提醒）通知；差异通知链接指向关联流水
+- **fix(messages)**:消息链接 `kind=reconciliation` 接入 `MESSAGE_LINK_PATH`，新增 `/payments/reconciliation/[id]` 重定向到列表页 `?txId=` 并自动打开详情抽屉——此前通知点击无跳转
+- **测试**:一致性测试移除对账类型豁免（4 个类型纳入 PG enum 校验 + 落库 smoke）；新增 7 个回归用例（R-10/R-11/R-12 拦截、RECONCILED 终态与 receivedAt 语义、PAYMENT_RECEIVED 发送与去重、差异通知、终态回款拒绝匹配、CONFIRMED 精确回滚）;typecheck / lint / vitest 全绿（98 文件，813 用例）；生产 build 通过；真实 DB 动态复验 7 项全过（自动匹配通知落库 / R-11 拦截 / 到账通知 / RECONCILED 终态 / unmatch 回滚 / manualMatch 对称 / 链接生成）
+
 ## v0.20.8(2026-08-19)DeepSeek 合同风险 AI 分析（Phase 4b）
 
 风险报告接入 DeepSeek LLM：详情页与工作台抽屉的「AI 分析」区一键生成自然语言风险摘要与跟进话术，出域数据最小化（仅合同号/客户名/金额/评分，不含个人敏感字段），key 走 `lib/env.ts` 校验仅服务端可见。**DB schema / migrations: 无变化**。
@@ -75,7 +141,6 @@
 - **feat(contracts)**:合同列表支持 `mine=true` 按 ownerUserId 过滤，服务端从 session 注入（忽略客户端传入的他人 id）
 - **test**:新增 `tests/api/contract-workbench.test.ts` 12 用例（mock + DB-reachable 双层）+ `tests/e2e/16-contract-workbench.spec.ts` 5 用例
 - **测试**:typecheck / lint / vitest 全绿（99 文件，818 用例）
-
 ## v0.20.2(2026-08-17)对账规则配置（ReconciliationRule）下线
 
 删除 v0.20.0 引入但从未接线的对账规则配置：匹配引擎不读规则表、前端无配置入口、DSL 为拍脑袋设计，表/CRUD API/service 全属死代码。**DB schema 有变化：新增迁移 `20260821_drop_reconciliation_rule`（`DROP TABLE "ReconciliationRule"`）**。

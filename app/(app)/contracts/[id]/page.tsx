@@ -1,6 +1,6 @@
 "use client";
 import { ProCard, ProDescriptions, ProTable } from "@ant-design/pro-components";
-import { Alert, App as AntdApp, Button, Col, Empty, Progress, Row, Space, Tabs, Tag } from "antd";
+import { Alert, App as AntdApp, Button, Empty, Space, Tabs, Tag } from "antd";
 import { CloudUploadOutlined, DeleteOutlined, FilePdfOutlined } from "@ant-design/icons";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
@@ -26,6 +26,7 @@ import { useUserName } from "@/lib/user-lookup";
 import { PAYMENT_METHOD_MAP, BILLING_STATUS_MAP, PAYMENT_PROGRESS_STATUS_MAP, serviceTypeLabel } from "@/lib/enum-maps";
 import { useResponsive } from "@/lib/use-breakpoint";
 import { useT } from "@/lib/i18n";
+import { formatCurrency } from "@/lib/format";
 import { OperationTimeline } from "@/components/contract/operation-timeline";
 import { RiskReportView } from "@/components/workbench/risk-report-view";
 
@@ -237,7 +238,6 @@ const handleDelete = () => {
   }
 
   const t = overview?.totals;
-  const fmtWan = (v: number) => (v / 10000).toFixed(1);
 
   // 状态机 3 态: DRAFT/ACTIVE/CLOSED. 业务基本无需手动操作, 自动化处理常见流转.
   // 这里只暴露 admin 兜底入口:
@@ -355,36 +355,40 @@ const handleDelete = () => {
     {
       key: "info",
       label: <span>概览</span>,
-      children: (
-        <Row gutter={[16, 16]}>
-          {/* 联动补盲预警 (Phase 3): 超期未开票 / 开票-回款偏差, 点击锚跳对应列表 tab */}
-          {overview?.warnings.noInvoice ? (
-            <Col xs={24}>
+      children: (() => {
+        // 概览收敛为 1 行 3 卡: 总额(带计数) / 已开票(进度+状态) / 已回款(进度+状态)
+        // progress 除零保护: totalAmount>0 才给百分比; 状态 Tag 颜色沿用原独立卡片逻辑
+        const total = t?.totalAmount ?? 0;
+        const pct = (v: number) => (total > 0 ? (v / total) * 100 : 0);
+        const statusTag = (status: string | undefined, map: Record<string, string>) => (
+          <Tag
+            color={status === "COMPLETED" ? "success" : status === "IN_PROGRESS" ? "processing" : "default"}
+            style={{ marginInlineEnd: 0 }}
+          >
+            {map[status ?? "NOT_STARTED"] ?? status}
+          </Tag>
+        );
+        return (
+          <Space direction="vertical" size={16} style={{ width: "100%" }}>
+            {/* 联动补盲预警 (Phase 3): 超期未开票 / 开票-回款偏差 */}
+            {overview?.warnings.noInvoice ? (
               <Alert
                 type="warning"
                 showIcon
                 title="该合同生效已超过 30 天，仍无已开票发票"
                 description="请确认服务进度并及时开票"
-                style={{ cursor: "pointer" }}
-                onClick={() => document.getElementById("contract-invoices-tab")?.scrollIntoView({ behavior: "smooth" })}
               />
-            </Col>
-          ) : null}
-          {overview?.warnings.invoicePaymentGap ? (
-            <Col xs={24}>
+            ) : null}
+            {overview?.warnings.invoicePaymentGap ? (
               <Alert
                 type="error"
                 showIcon
                 title="开票-回款偏差超过 20%"
                 description="已开票金额与已确认回款差距较大且最新发票开具超 30 天，请跟进催收"
-                style={{ cursor: "pointer" }}
-                onClick={() => document.getElementById("contract-payments-tab")?.scrollIntoView({ behavior: "smooth" })}
               />
-            </Col>
-          ) : null}
-          {/* 续签链 (Phase 1.5): 续签自 / 续签至 */}
-          {overview?.renewedFrom || (overview?.renewals && overview.renewals.length > 0) ? (
-            <Col xs={24}>
+            ) : null}
+            {/* 续签链 (Phase 1.5): 续签自 / 续签至 */}
+            {overview?.renewedFrom || (overview?.renewals && overview.renewals.length > 0) ? (
               <ProCard size="small">
                 <Space wrap size={16}>
                   {overview.renewedFrom ? (
@@ -401,81 +405,36 @@ const handleDelete = () => {
                   ))}
                 </Space>
               </ProCard>
-            </Col>
-          ) : null}
-          <Col xs={24}>
+            ) : null}
             <StatGrid
               columns={3}
               items={[
-                { label: "合同总额", value: t ? fmtWan(t.totalAmount) : 0, suffix: "万" },
-                { label: "已开票", value: t ? fmtWan(t.invoicedAmount) : 0, suffix: "万" },
-                { label: "已回款", value: t ? fmtWan(t.paidAmount) : 0, suffix: "万" }
+                {
+                  label: "合同总额",
+                  value: formatCurrency(t?.totalAmount ?? 0),
+                  description: `开票 ${t?.invoiceCount ?? 0} 张 · 回款 ${t?.paymentCount ?? 0} 笔`
+                },
+                {
+                  label: "已开票",
+                  value: formatCurrency(t?.invoicedAmount ?? 0),
+                  progress: pct(t?.invoicedAmount ?? 0),
+                  description: statusTag(t?.billingStatus, BILLING_STATUS_MAP)
+                },
+                {
+                  label: "已回款",
+                  value: formatCurrency(t?.paidAmount ?? 0),
+                  progress: pct(t?.paidAmount ?? 0),
+                  description: statusTag(t?.paymentStatus, PAYMENT_PROGRESS_STATUS_MAP)
+                }
               ]}
             />
-          </Col>
-          {/* 风险分析区块 (Phase 4a): 报告与工作台抽屉同源 (RiskReportView), 不新增 Tab */}
-          <Col xs={24}>
+            {/* 风险分析区块 (Phase 4a): 报告与工作台抽屉同源 (RiskReportView), 不新增 Tab */}
             <ProCard title="风险分析" size="small">
               <RiskReportView contractId={id} />
             </ProCard>
-          </Col>
-          <Col xs={24}>
-            <ProCard>
-              <div style={{ display: "flex", alignItems: "center", gap: 16, flexWrap: "wrap" }}>
-                <span style={{ fontSize: 13, color: "var(--qt-text-hint)" }}>开票状态</span>
-                <Tag
-                  color={t?.billingStatus === "COMPLETED" ? "success" : t?.billingStatus === "IN_PROGRESS" ? "processing" : "default"}
-                  style={{ fontSize: 14, padding: "4px 12px" }}
-                >
-                  {BILLING_STATUS_MAP[t?.billingStatus ?? "NOT_STARTED"] ?? t?.billingStatus}
-                </Tag>
-                <span style={{ fontSize: 13, color: "var(--qt-text-faint)" }}>
-                  已开票 {t ? fmtWan(t.invoicedAmount) : 0} 万 / 合同总额 {t ? fmtWan(t.totalAmount) : 0} 万
-                </span>
-              </div>
-              {/* 开票进度条 (Phase 3): 金额口径与 StatGrid 一致 */}
-              <Progress
-                percent={t && t.totalAmount > 0 ? Math.min(100, Math.round((t.invoicedAmount / t.totalAmount) * 100)) : 0}
-                size="small"
-                status={t?.billingStatus === "COMPLETED" ? "success" : "active"}
-                style={{ marginTop: 8, marginBottom: 0 }}
-              />
-            </ProCard>
-          </Col>
-          <Col xs={24}>
-            <ProCard>
-              <div style={{ display: "flex", alignItems: "center", gap: 16, flexWrap: "wrap" }}>
-                <span style={{ fontSize: 13, color: "var(--qt-text-hint)" }}>回款状态</span>
-                <Tag
-                  color={t?.paymentStatus === "COMPLETED" ? "success" : t?.paymentStatus === "IN_PROGRESS" ? "processing" : "default"}
-                  style={{ fontSize: 14, padding: "4px 12px" }}
-                >
-                  {PAYMENT_PROGRESS_STATUS_MAP[t?.paymentStatus ?? "NOT_STARTED"] ?? t?.paymentStatus}
-                </Tag>
-                <span style={{ fontSize: 13, color: "var(--qt-text-faint)" }}>
-                  已回款 {t ? fmtWan(t.paidAmount) : 0} 万 / 合同总额 {t ? fmtWan(t.totalAmount) : 0} 万
-                </span>
-              </div>
-              {/* 回款进度条 (Phase 3) */}
-              <Progress
-                percent={t && t.totalAmount > 0 ? Math.min(100, Math.round((t.paidAmount / t.totalAmount) * 100)) : 0}
-                size="small"
-                status={t?.paymentStatus === "COMPLETED" ? "success" : "active"}
-                style={{ marginTop: 8, marginBottom: 0 }}
-              />
-            </ProCard>
-          </Col>
-          <Col xs={24}>
-            <StatGrid
-              columns={2}
-              items={[
-                { label: "开票数", value: t?.invoiceCount ?? 0 },
-                { label: "回款数", value: t?.paymentCount ?? 0 }
-              ]}
-            />
-          </Col>
-        </Row>
-      )
+          </Space>
+        );
+      })()
     },
     {
       key: "basic",
@@ -598,7 +557,7 @@ const handleDelete = () => {
       <PageHeader
         back={goBack}
         title={`${contract.title} · ${contract.contractNo}`}
-        subtitle="合同 360 度视图：概览 / 基本信息 / 项目 / 开票 / 回款 / 操作记录 / 附件"
+        subtitle="合同 360 度视图：概览 / 详细信息 / 交付物 / 开票 / 回款 / 操作记录 / 附件"
         meta={
           <Space size={8} wrap>
             <StatusTag status={contract.status} domain="contract" />

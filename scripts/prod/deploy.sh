@@ -83,6 +83,10 @@ log "==> 版本: $APP_VERSION"
 #   (b) npm ci 仅在 lockfile/patches/prisma/schema 变化时跑 → 常规部署 0s
 #   (c) 没有 docker layer cache 失效, 源代码变只重编变化模块
 log "==> native build (npm ci + prisma generate + next build)"
+# NODE_ENV 保存移到分支外公共路径: 否则 lockfile 稳定走 else 跳过 npm ci 时
+# save_NODE_ENV 未赋值, 后面 export NODE_ENV="$save_NODE_ENV" 在 set -u 下报
+# unbound variable (v0.20.3 部署实测 exit 1)
+save_NODE_ENV="${NODE_ENV:-}"
 NEED_FULL_CI=0
 if git diff --name-only HEAD@{1} HEAD -- package.json package-lock.json patches/ prisma/ 2>/dev/null | grep -q .; then
   NEED_FULL_CI=1
@@ -92,7 +96,7 @@ if [ "$NEED_FULL_CI" -eq 1 ]; then
   # .env 里 NODE_ENV=production (供 Next 运行时用), 但 npm ci 看到 production 会自动
   # omit devDependencies → prisma / tsx / vitest 等开发工具都不装, 导致 npx prisma
   # 临时下载 prisma@x 但找不到 prisma.config.ts 依赖. 临时清掉再装.
-  save_NODE_ENV="$NODE_ENV"; unset NODE_ENV
+  unset NODE_ENV
   set +e
   # npm 10 在 3.5GB 机器上 (memory 可用 ~1.3GB) 跑 npm ci 时,
   # bin 链接和 postinstall 顺序有 bug: postinstall 的 patch-package
@@ -137,12 +141,17 @@ COMPOSE="docker compose -f docker-compose.prod.yml"
 log "==> $COMPOSE up -d postgres minio"
 $COMPOSE up -d postgres minio
 
-# ---- prisma migrate deploy (native, 降权账号) ----
+# ---- prisma migrate deploy (native, MIGRATION_DATABASE_URL) ----
 log "==> prisma migrate deploy (native, MIGRATION_DATABASE_URL)"
+# 迁移必须以 MIGRATION_DATABASE_URL (qitai, DB owner) 执行:
+# prisma.config.ts 的 datasource.url 默认读 DATABASE_URL (qt_app 降权账号),
+# ALTER TYPE / ALTER TABLE OWNER 等 owner-only DDL 会被 42501 拒 (v0.20.3 事故:
+# MessageType enum 补值报 must be owner of type)。
+: "${MIGRATION_DATABASE_URL:?MIGRATION_DATABASE_URL 未设置, 无法以 owner 身份跑迁移}"
 # 已知问题兜底: 20260630_message_type_enum_index 想 CREATE TYPE MessageType,
 # 但 20260627_message_type_enum_bootstrap 已经预创建, fresh DB 撞 "type already exists".
 set +e
-npx prisma migrate deploy 2>&1 | tee /tmp/migrate.log
+DATABASE_URL="$MIGRATION_DATABASE_URL" npx prisma migrate deploy 2>&1 | tee /tmp/migrate.log
 EXIT1=${PIPESTATUS[0]}
 set -e
 if [ $EXIT1 -eq 0 ]; then
@@ -160,13 +169,13 @@ elif grep -q "20260630_message_type_enum_index" /tmp/migrate.log; then
     -c 'DROP INDEX IF EXISTS "Message_type_idx";' \
     -c 'CREATE INDEX "Message_type_receiverUserId_createdAt_idx" ON "Message"("type", "receiverUserId", "createdAt");'
   set +e
-  npx prisma migrate resolve --applied 20260630_message_type_enum_index
+  DATABASE_URL="$MIGRATION_DATABASE_URL" npx prisma migrate resolve --applied 20260630_message_type_enum_index
   RESOLVE_EXIT=$?
   set -e
   if [ $RESOLVE_EXIT -ne 0 ]; then
     log_warn "prisma resolve --applied 返回 $RESOLVE_EXIT (可能 migration 不在 failed 状态, 继续)"
   fi
-  npx prisma migrate deploy
+  DATABASE_URL="$MIGRATION_DATABASE_URL" npx prisma migrate deploy
   log_ok "fallback 成功"
 else
   log_err "prisma deploy 失败但不是已知 20260630 enum 冲突, 不走 fallback"
