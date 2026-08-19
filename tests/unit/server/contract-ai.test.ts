@@ -1,6 +1,13 @@
 // DeepSeek AI 风险分析服务单测 (Phase 4b)
 // mock global fetch, 不打真实 API; 覆盖 prompt 结构 / 解析 / 错误映射 / 无 key 降级
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+
+// env 在模块 import 时一次性求值 (t3-env), 必须在被测模块加载前注入测试 key,
+// 否则 CI (无 .env) 下所有用例都会走"未配置 503"分支; vi.hoisted 保证先于 import 执行
+vi.hoisted(() => {
+  process.env.DEEPSEEK_API_KEY = "test-key";
+});
+
 import { analyzeContractRisk, parseAiJson } from "@/server/services/contract-ai";
 import type { RiskReport } from "@/server/services/contract/risk-report";
 
