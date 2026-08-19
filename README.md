@@ -257,6 +257,10 @@ nginx 反代下上游异常时,由 `public/502.html` 静态页与 `app/502/page.
 
 最近 5 个版本,完整历史见 [CHANGELOG.md](CHANGELOG.md)。
 
+### v0.20.8(2026-08-19)DeepSeek 合同风险 AI 分析（Phase 4b）
+
+风险报告接入 DeepSeek LLM：「AI 分析」区一键生成自然语言摘要与跟进话术，出域数据最小化，key 仅服务端可见（本地 `.env`，gitignored）。**DB schema 无变化**。
+
 ### v0.20.7(2026-08-19)移动端适配 + PWA（Phase 5）
 
 PWA 可添加到主屏幕（standalone、应用壳缓存 + 离线兜底，Service Worker 不拦截 API），手机端底部固定导航（工作台/合同/消息/我的 + 未读角标），风险报告雷达图窄屏降级条形图，工作台统计卡 2×2。**DB schema 无变化**。
