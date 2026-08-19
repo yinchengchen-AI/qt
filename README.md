@@ -257,6 +257,26 @@ nginx 反代下上游异常时,由 `public/502.html` 静态页与 `app/502/page.
 
 最近 5 个版本,完整历史见 [CHANGELOG.md](CHANGELOG.md)。
 
+### v0.20.7(2026-08-19)移动端适配 + PWA（Phase 5）
+
+PWA 可添加到主屏幕（standalone、应用壳缓存 + 离线兜底，Service Worker 不拦截 API），手机端底部固定导航（工作台/合同/消息/我的 + 未读角标），风险报告雷达图窄屏降级条形图，工作台统计卡 2×2。**DB schema 无变化**。
+
+### v0.20.6(2026-08-19)规则引擎风险报告（Phase 4a）
+
+合同风险报告：五维度明细 + 加权公式串（spec §7.2 逐字符验算）+ 多条业务化建议（催款带剩余金额/逾期带宽限期倒数）+ 30 天趋势与主因维度；工作台抽屉与详情页「风险分析」区块共用视图。**DB schema 无变化**。
+
+### v0.20.5(2026-08-18)续签跟进 + 联动补盲（Phase 1.5/3）
+
+续签链路（`Contract.renewedFromId` 自关联 + 每周提醒 + 待办一键续签 Modal）；联动补盲两条每日检查（超期未开票 / 开票-回款偏差）+ 详情页双进度条/预警 Alert/续签链链接。**DB schema 有变化：迁移 `20260822_contract_renewed_from` + `20260822_message_type_renewal_linkage`（3 个新枚举值）**。
+
+### v0.20.4(2026-08-18)合同风险预警引擎（Phase 2）
+
+五维度风险评分（到期/付款/开票/客户信用/金额异常）+ 每日快照 + 等级升档站内信；工作台风险卡真实计数 + 风险抽屉（雷达+趋势）。**DB schema 有变化：新表 `RiskScoreSnapshot`（含 GRANT qt_app）+ `RISK_LEVEL_UP` 枚举**。
+
+### v0.20.3(2026-08-18)个人合同工作台（Phase 1）
+
+新增「合同工作台」页：我的统计卡（活跃/即将到期/逾期/风险）+ 待办列表（逾期>7天内到期>未开票优先级）+ 我的合同 ProTable；合同列表支持 `mine=true` 服务端注入 ownerUserId 行级隔离防越权。**DB schema 无变化**。
+
 ### v0.20.2(2026-08-17)对账规则配置（ReconciliationRule）下线
 
 删除从未接线的对账规则配置（引擎不读、无 UI 的死代码）：DROP 整表 + 删 CRUD API/service/validators。**DB schema 有变化：迁移 `20260821_drop_reconciliation_rule`**。
