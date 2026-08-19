@@ -2,6 +2,19 @@
 
 本文件记录 qt-biz 每个版本的详细变更。项目快速入口请见 [README.md](README.md)。
 
+## v0.20.8(2026-08-19)DeepSeek 合同风险 AI 分析（Phase 4b）
+
+风险报告接入 DeepSeek LLM：详情页与工作台抽屉的「AI 分析」区一键生成自然语言风险摘要与跟进话术，出域数据最小化（仅合同号/客户名/金额/评分，不含个人敏感字段），key 走 `lib/env.ts` 校验仅服务端可见。**DB schema / migrations: 无变化**。
+
+变更:
+- **feat(ai)**:`server/services/contract-ai.ts` — DeepSeek chat/completions 封装（OpenAI 兼容）；结构化 prompt 要求 `json_object` 输出并稳健解析（容忍 markdown 包裹/首尾杂讯）；20s 超时；401/429/5xx/网络错误分类映射 502，未配置 key 明确 503（不伪装本地生成）；错误信息永不携带 key
+- **feat(api)**:`GET /api/contracts/[id]/ai-analysis` 薄壳路由（requireSession → getContractRisk 复用行级读权限 → LLM），返回 `{ summary, talkTracks[], model, generatedAt }`
+- **feat(ui)**:`RiskReportView` 底部「AI 分析」区——按钮触发生成（不自动调用省 token），loading / 摘要 Alert / 话术列表 / 错误可重试；工作台抽屉与合同详情页共用自动获得
+- **chore(env)**:新增 `DEEPSEEK_API_KEY`（可选）/ `DEEPSEEK_BASE_URL` / `DEEPSEEK_MODEL`（默认 `deepseek-chat`）；key 仅入本地 `.env`（gitignored），`.env.example` 占位
+- **test**:`tests/unit/server/contract-ai.test.ts` 11 用例（mock fetch：prompt 结构含报告字段、JSON 解析、401/429/500/空返回/解析失败/网络超时/无 key 503）；E2E 19.4（结果或降级错误均正常呈现不白屏）；真实 smoke 经 dev 路由调用 DeepSeek 成功（摘要与话术贴合风险数据）
+- **明确不做**:条款合规检查（需条款文本 + 附件 OCR，spec 注明单独立项）；结果缓存与计费统计
+- **测试**:typecheck / lint / vitest 全绿（106 文件，913 用例 × 3 连跑）；E2E 五 spec 全 project 32 通过 / 37 跳过 / 0 失败
+
 ## v0.20.7(2026-08-19)移动端适配 + PWA（Phase 5）
 
 移动端体验补齐：PWA 可添加到主屏幕（standalone 启动、应用壳缓存 + 离线兜底，Service Worker 不拦截 API 防陈旧数据），手机端底部固定导航（工作台/合同/消息/我的 + 未读角标），风险报告雷达图窄屏降级条形图，工作台统计卡 2×2 网格。**DB schema / migrations: 无变化**。
