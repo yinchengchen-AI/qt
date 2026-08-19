@@ -27,6 +27,7 @@ import { PAYMENT_METHOD_MAP, BILLING_STATUS_MAP, PAYMENT_PROGRESS_STATUS_MAP, se
 import { useResponsive } from "@/lib/use-breakpoint";
 import { useT } from "@/lib/i18n";
 import { OperationTimeline } from "@/components/contract/operation-timeline";
+import { RiskReportView } from "@/components/workbench/risk-report-view";
 
 const DESC_COL = { xs: 1, sm: 1, md: 2, lg: 2, xl: 3 } as const;
 
@@ -411,6 +412,12 @@ const handleDelete = () => {
                 { label: "已回款", value: t ? fmtWan(t.paidAmount) : 0, suffix: "万" }
               ]}
             />
+          </Col>
+          {/* 风险分析区块 (Phase 4a): 报告与工作台抽屉同源 (RiskReportView), 不新增 Tab */}
+          <Col xs={24}>
+            <ProCard title="风险分析" size="small">
+              <RiskReportView contractId={id} />
+            </ProCard>
           </Col>
           <Col xs={24}>
             <ProCard>

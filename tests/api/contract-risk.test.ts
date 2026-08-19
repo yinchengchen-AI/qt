@@ -223,14 +223,20 @@ describe("getMyRisks / getMyStats.risk", () => {
 });
 
 describe("getContractRisk 单合同详情", () => {
-  it("返回 score/level/trend/recommendations", async () => {
+  it("返回 score/level/trend/recommendations/weightedScore (Phase 4a 报告契约)", async () => {
     if (!dbReachable || !salesUser) return;
     const r = await getContractRisk(salesUser, cHighId!);
     expect(r).not.toBeNull();
     expect(r!.level).toBe("HIGH");
     expect(r!.score).toBe(78);
     expect(r!.dimensions.expiry.detail).toContain("已逾期 60 天");
-    expect(r!.recommendations.length).toBe(1);
+    // Phase 4a: 建议升级为多条 (维度 ≥50 各一条 + 趋势建议), 内容带业务数据
+    expect(r!.recommendations.length).toBeGreaterThanOrEqual(3);
+    expect(r!.recommendations.some((x) => x.includes("催款"))).toBe(true);
+    expect(r!.recommendations.some((x) => x.includes("强关"))).toBe(true);
+    // weightedScore 公式串 (spec §7.2 契约)
+    expect(r!.weightedScore).toMatch(/^100×0\.30 \+ 100×0\.25 \+ 100×0\.20 \+ 20×0\.15 \+ 0×0\.10 = 78 → 四舍五入 78$/);
+    expect(r!.asOf).toMatch(/^\d{4}-\d{2}-\d{2}$/);
     expect(r!.trend.length).toBeGreaterThan(0); // 前面用例已写今日快照
   });
 

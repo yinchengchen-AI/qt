@@ -32,6 +32,8 @@ export type RiskScoreResult = {
   score: number;
   level: RiskLevel;
   dimensions: Record<RiskDimensionKey, RiskDimension>;
+  /** 各维度未取整原始分 (weightedScore 公式串验算用, spec §7.2); 不落快照 JSON */
+  dimensionRaw: Record<RiskDimensionKey, number>;
 };
 
 export type RiskScoreInput = {
@@ -124,6 +126,13 @@ export function computeRiskScore(input: RiskScoreInput): RiskScoreResult {
   return {
     score,
     level: riskLevel(score),
+    dimensionRaw: {
+      expiry: expiry.score,
+      payment,
+      invoicing,
+      customerCredit: credit,
+      amountAnomaly: anomaly
+    },
     dimensions: {
       expiry: {
         score: round1(expiry.score),
@@ -175,6 +184,12 @@ export type ContractRisk = RiskScoreResult & {
   title: string;
   ownerUserId: string;
   endDate: Date;
+  /** 报告构建器用 (Phase 4a): 合同金额与已确认回款/已开票聚合, 批量查询时已算出, 透出免二次查询 */
+  totalAmount: number;
+  paidAmount: number;
+  invoicedAmount: number;
+  /** 逾期天数 (未到期为 0) */
+  daysOverdue: number;
 };
 
 /**
@@ -229,13 +244,16 @@ export async function computeContractRisks(
 
   return contracts.map((c) => {
     const credit = creditByCustomer.get(c.customerId) ?? { total: 0, forceClosed: 0, pricedCount: 0, mean: null };
+    const paidAmount = paidByContract.get(c.id) ?? 0;
+    const invoicedAmount = invoicedByContract.get(c.id) ?? 0;
+    const totalAmount = Number(c.totalAmount);
     const result = computeRiskScore({
       now,
       startDate: c.startDate,
       endDate: c.endDate,
-      totalAmount: Number(c.totalAmount),
-      paidAmount: paidByContract.get(c.id) ?? 0,
-      invoicedAmount: invoicedByContract.get(c.id) ?? 0,
+      totalAmount,
+      paidAmount,
+      invoicedAmount,
       customerTotalContracts: credit.total,
       customerForceClosed: credit.forceClosed,
       customerAmountMean: credit.mean,
@@ -248,7 +266,11 @@ export async function computeContractRisks(
       customerName: c.customerName,
       title: c.title,
       ownerUserId: c.ownerUserId,
-      endDate: c.endDate
+      endDate: c.endDate,
+      totalAmount,
+      paidAmount,
+      invoicedAmount,
+      daysOverdue: Math.max(0, Math.floor((now.getTime() - c.endDate.getTime()) / DAY_MS))
     };
   });
 }

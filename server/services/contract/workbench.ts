@@ -14,6 +14,8 @@ import { requirePermission, RESOURCE, ACTION } from "@/lib/permissions";
 import type { SessionUser } from "@/lib/session";
 import { INVOICE_ISSUED_AMOUNT_STATUSES } from "@/lib/invoice-amounts";
 import { computeContractRisks, RISK_LEVEL_ORDER, type ContractRisk } from "@/server/services/contract/risk-score";
+import { buildRiskReport } from "@/server/services/contract/risk-report";
+import { env } from "@/lib/env";
 
 const DAY_MS = 86_400_000;
 /** 即将到期窗口 (天), 与 spec §3.5 的 0-7 天一致 */
@@ -102,9 +104,16 @@ export async function getMyRisks(user: SessionUser): Promise<ContractRisk[]> {
     .sort((a, b) => b.score - a.score);
 }
 
-/** 单合同风险详情: 实时算分 + 近 30 天快照趋势 + 建议操作 (spec §5.5) */
+/** 单合同风险详情: 实时算分 + 近 30 天快照趋势 + 报告 (Phase 4a, spec §7.2) */
 export type RiskTrendPoint = { date: Date; score: number; level: string };
-export type ContractRiskDetail = ContractRisk & { trend: RiskTrendPoint[]; recommendations: string[] };
+export type ContractRiskDetail = ContractRisk & {
+  trend: RiskTrendPoint[];
+  recommendations: string[];
+  /** Phase 4a: 加权公式串 / 趋势汇总 / 报告日期 (抽屉与详情页共用) */
+  weightedScore: string;
+  trendSummary: import("@/server/services/contract/risk-report").RiskTrendSummary | null;
+  asOf: string;
+};
 
 export async function getContractRisk(user: SessionUser, contractId: string): Promise<ContractRiskDetail | null> {
   requirePermission(user.roleCode, RESOURCE.CONTRACT, ACTION.READ);
@@ -119,27 +128,21 @@ export async function getContractRisk(user: SessionUser, contractId: string): Pr
   const since = new Date();
   since.setHours(0, 0, 0, 0);
   since.setDate(since.getDate() - 30);
+  // 快照带 dimensions (trendSummary 的 mainDriver 需要比对各维度增量)
   const snapshots = await prisma.riskScoreSnapshot.findMany({
     where: { contractId, snapshotDate: { gte: since } },
     orderBy: { snapshotDate: "asc" },
-    select: { snapshotDate: true, score: true, level: true }
+    select: { snapshotDate: true, score: true, level: true, dimensions: true }
   });
 
-  // 建议操作: 按得分最高的维度映射 (spec §5.5)
-  const topDimension = (Object.entries(risk.dimensions) as [keyof typeof risk.dimensions, { score: number }][])
-    .reduce((a, b) => (b[1].score > a[1].score ? b : a))[0];
-  const RECOMMENDATIONS: Record<keyof typeof risk.dimensions, string> = {
-    expiry: "合同已逾期：优先续签或归档处理",
-    payment: "付款进度落后最严重：建议立即发起催款",
-    invoicing: "开票进度落后：请尽快补开发票",
-    customerCredit: "该客户历史强关率偏高：后续合作建议缩短账期或预付",
-    amountAnomaly: "合同金额偏离客户正常区间：建议复核金额"
-  };
-
+  const report = buildRiskReport(risk, snapshots, env.CONTRACT_OVERDUE_GRACE_DAYS);
   return {
     ...risk,
     trend: snapshots.map((s) => ({ date: s.snapshotDate, score: s.score, level: s.level })),
-    recommendations: [RECOMMENDATIONS[topDimension]]
+    recommendations: report.recommendations,
+    weightedScore: report.weightedScore,
+    trendSummary: report.trendSummary,
+    asOf: report.asOf
   };
 }
 
