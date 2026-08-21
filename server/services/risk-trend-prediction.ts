@@ -31,11 +31,25 @@ export type TrendPrediction = {
   };
 };
 
+function validateSnapshots(snapshots: TrendPoint[]) {
+  if (snapshots.length < 2) return { valid: false, reason: "样本不足" } as const;
+  for (const s of snapshots) {
+    if (!(s.date instanceof Date) || Number.isNaN(s.date.getTime())) {
+      return { valid: false, reason: "包含非法日期" } as const;
+    }
+    if (!Number.isFinite(s.score) || s.score < 0 || s.score > 100) {
+      return { valid: false, reason: "风险分必须在 0-100 之间" } as const;
+    }
+  }
+  return { valid: true, reason: undefined } as const;
+}
+
 export function identifyTrendPattern(
   snapshots: TrendPoint[],
   lookbackDays = 30
 ): { pattern: TrendPattern; strength: number; slope: number } {
-  if (snapshots.length < 2) {
+  const validation = validateSnapshots(snapshots);
+  if (!validation.valid || lookbackDays <= 0) {
     return { pattern: "STABLE", strength: 0, slope: 0 };
   }
   const sorted = [...snapshots].sort((a, b) => a.date.getTime() - b.date.getTime());
@@ -76,7 +90,8 @@ export function predictFutureScore(
   daysAhead: number,
   confidenceDecay = 0.95
 ): { predictedScore: number; confidence: number } {
-  if (snapshots.length < 2) {
+  const validation = validateSnapshots(snapshots);
+  if (!validation.valid || daysAhead < 0 || confidenceDecay <= 0 || confidenceDecay > 1) {
     return { predictedScore: 50, confidence: 0.3 };
   }
   const sorted = [...snapshots].sort((a, b) => a.date.getTime() - b.date.getTime());

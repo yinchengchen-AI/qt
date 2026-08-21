@@ -9,7 +9,9 @@
 // 安全: API key 只走 lib/env.ts 服务端读取; 出域数据最小化
 // 降级: 未配置 key → 使用本地规则引擎生成话术
 
+import { ApiError } from "@/lib/api";
 import { env } from "@/lib/env";
+import { ERROR_CODES } from "@/types/errors";
 
 // =====================================================
 // 类型定义
@@ -213,7 +215,7 @@ export function generateSmartCollectionAdvice(
       
       return {
         contractId: habit.contractId,
-        contractNo: habit.contractId, // 实际应用中从合同数据获取
+        contractNo: habit.contractNo,
         customerName: habit.customerName,
         outstandingAmount: habit.outstandingAmount,
         overdueDays: habit.overdueDays,
@@ -261,19 +263,13 @@ export async function generateLLMCollectionAdvice(
   habit: PaymentHabit,
   pattern?: CustomerPaymentPattern
 ): Promise<{ talkTracks: string[]; internalNotes: string[]; suggestedApproach: string }> {
-  // 降级: 未配置 API key 时使用本地规则
+  // 与 contract-ai.ts 保持一致：未配置 key 时明确报错，不伪装成本地生成
   if (!env.DEEPSEEK_API_KEY) {
-    return {
-      talkTracks: generateSmartTalkTracks(habit, pattern),
-      internalNotes: generateInternalNotes(habit, pattern),
-      suggestedApproach: getApproachByUrgency(
-        calculateUrgencyLevel(habit.overdueDays, habit.outstandingAmount, pattern)
-      )
-    };
+    throw new ApiError(ERROR_CODES.INTERNAL_ERROR, "AI 催款建议未配置 (DEEPSEEK_API_KEY 未设置)", 503);
   }
-  
-  // 实际实现中调用 DeepSeek API
-  // 这里先返回本地规则引擎的结果作为降级
+
+  // TODO: 接入 DeepSeek API 实现真正的 LLM 增强
+  // 当前先返回本地规则引擎结果（已配置 key 时作为兜底，避免阻塞业务）
   return {
     talkTracks: generateSmartTalkTracks(habit, pattern),
     internalNotes: generateInternalNotes(habit, pattern),

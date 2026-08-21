@@ -85,10 +85,14 @@ export function analyzeWorkPattern(behavior: UserBehavior): UserWorkPattern {
     ? completedTasks / behavior.currentTasks.length
     : 0.5;
 
+  // 根据用户设置的工作时长估算平均响应时间（小时）
+  const { start: workStart, end: workEnd } = behavior.preferences.workingHours;
+  const workingHours = workEnd > workStart ? workEnd - workStart : 8;
+
   return {
     peakHours,
     preferredTaskTypes,
-    avgResponseTime: 24, // 默认 24 小时
+    avgResponseTime: workingHours,
     completionRate
   };
 }
@@ -172,7 +176,9 @@ export function generatePersonalizedRecommendations(
     .sort((a, b) => (a.dueDate?.getTime() ?? Infinity) - (b.dueDate?.getTime() ?? Infinity));
 
   for (const task of upcomingTasks.slice(0, 3)) {
-    const daysUntilDue = Math.ceil((task.dueDate!.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
+    const dueDate = task.dueDate;
+    if (!dueDate) continue;
+    const daysUntilDue = Math.ceil((dueDate.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
     const smartPriority = calculateSmartPriority(task, pattern, now);
     
     recommendations.push({

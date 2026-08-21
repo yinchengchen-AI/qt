@@ -2,6 +2,27 @@
 
 本文件记录 qt-biz 每个版本的详细变更。项目快速入口请见 [README.md](README.md)。
 
+## v0.21.7(2026-08-21)智能化增强模块修复
+
+修复 v0.21.6 引入的六个 Phase 5 智能服务模块的质量问题，并接入首个调用方。**DB schema 无变化**。
+
+### 修复
+- **fix(risk)**：`risk-score-enhanced.ts` 移除 `Math.random()`，行业风险评分改为确定性映射（LOW=20 / MEDIUM=50 / HIGH=85），保证同输入同输出、可审计、可测试
+- **fix(risk)**：统一增强版权重与文档一致——新维度 5%+5%+3%=13%，原五维度等比例压缩为 87%
+- **refactor(risk)**：`risk-score-enhanced.ts` 复用 `risk-score.ts#computeRiskScore`，消除约 100 行重复逻辑
+- **fix(collection)**：`smart-collection.ts` 正确返回 `contractNo`（不再误传 `contractId`）
+- **fix(ai)**：`smart-collection.ts` / `ai-report-generation.ts` 未配置 `DEEPSEEK_API_KEY` 时明确抛 503，不再伪装成本地生成
+- **fix(nlp)**：`natural-language-search.ts#toSearchParams` 按 category（contract/customer/invoice/payment）返回对应模型的 where 条件
+- **fix(prediction)**：`risk-trend-prediction.ts` 增加输入校验（非法日期、越界分数、负 lookback/daysAhead 等回退到安全默认值）
+- **fix(recommendation)**：`personalized-recommendations.ts` 根据 `workingHours` 计算 `avgResponseTime`，并移除 `dueDate` 非空断言
+
+### 接入
+- **feat(api)**：新增 `GET /api/contracts/[id]/risk/enhanced`，暴露 Phase 5 增强风险评分，供详情页后续接入
+
+### 测试
+- **test(intelligent)**：新增 `tests/unit/server/intelligent-enhancements.test.ts`（21 例），覆盖增强评分确定性、权重、催款 `contractNo`、趋势校验、自然语言分类 where、个性化工作时长、LLM 未配置报错
+- typecheck / lint / vitest 全绿（110 文件，960 用例）
+
 ## v0.21.6(2026-08-21)智能化增强模块
 
 新增六个智能化服务模块，覆盖风险预测增强与用户体验优化。**DB schema 无变化**。

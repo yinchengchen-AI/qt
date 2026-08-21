@@ -263,10 +263,34 @@ export function parseNaturalLanguageQuery(query: string): ParsedQuery {
   };
 }
 
+export type CategorySearchParams =
+  | { category: "contract"; where: Record<string, unknown> }
+  | { category: "customer"; where: Record<string, unknown> }
+  | { category: "invoice"; where: Record<string, unknown> }
+  | { category: "payment"; where: Record<string, unknown> }
+  | { category: undefined; where: Record<string, unknown> };
+
 /**
  * 将解析结果转换为数据库查询条件
+ * 注意：返回的 where 按 category 区分，调用方需使用对应模型（Contract/Customer/Invoice/Payment）查询
  */
-export function toSearchParams(parsed: ParsedQuery): Record<string, unknown> {
+export function toSearchParams(parsed: ParsedQuery): CategorySearchParams {
+  const category = parsed.category ?? "contract";
+
+  switch (category) {
+    case "customer":
+      return { category, where: buildCustomerWhere(parsed) };
+    case "invoice":
+      return { category, where: buildInvoiceWhere(parsed) };
+    case "payment":
+      return { category, where: buildPaymentWhere(parsed) };
+    case "contract":
+    default:
+      return { category: "contract", where: buildContractWhere(parsed) };
+  }
+}
+
+function buildContractWhere(parsed: ParsedQuery): Record<string, unknown> {
   const params: Record<string, unknown> = {};
 
   if (parsed.timeRange) {
@@ -276,12 +300,8 @@ export function toSearchParams(parsed: ParsedQuery): Record<string, unknown> {
 
   if (parsed.amountRange) {
     const amountFilter: Record<string, number> = {};
-    if (parsed.amountRange.min !== undefined) {
-      amountFilter.gte = parsed.amountRange.min;
-    }
-    if (parsed.amountRange.max !== undefined) {
-      amountFilter.lte = parsed.amountRange.max;
-    }
+    if (parsed.amountRange.min !== undefined) amountFilter.gte = parsed.amountRange.min;
+    if (parsed.amountRange.max !== undefined) amountFilter.lte = parsed.amountRange.max;
     params.totalAmount = amountFilter;
   }
 
@@ -294,6 +314,81 @@ export function toSearchParams(parsed: ParsedQuery): Record<string, unknown> {
       OR: [
         { title: { contains: kw, mode: "insensitive" } },
         { contractNo: { contains: kw, mode: "insensitive" } },
+        { customerName: { contains: kw, mode: "insensitive" } }
+      ]
+    }));
+  }
+
+  return params;
+}
+
+function buildCustomerWhere(parsed: ParsedQuery): Record<string, unknown> {
+  const params: Record<string, unknown> = {};
+
+  if (parsed.keywords.length > 0) {
+    params.OR = parsed.keywords.map(kw => ({
+      OR: [
+        { name: { contains: kw, mode: "insensitive" } },
+        { code: { contains: kw, mode: "insensitive" } }
+      ]
+    }));
+  }
+
+  return params;
+}
+
+function buildInvoiceWhere(parsed: ParsedQuery): Record<string, unknown> {
+  const params: Record<string, unknown> = {};
+
+  if (parsed.timeRange) {
+    params.applyDate = { gte: parsed.timeRange.from, lte: parsed.timeRange.to };
+  }
+
+  if (parsed.amountRange) {
+    const amountFilter: Record<string, number> = {};
+    if (parsed.amountRange.min !== undefined) amountFilter.gte = parsed.amountRange.min;
+    if (parsed.amountRange.max !== undefined) amountFilter.lte = parsed.amountRange.max;
+    params.amount = amountFilter;
+  }
+
+  if (parsed.status) {
+    params.status = { in: parsed.status };
+  }
+
+  if (parsed.keywords.length > 0) {
+    params.OR = parsed.keywords.map(kw => ({
+      OR: [
+        { invoiceNo: { contains: kw, mode: "insensitive" } },
+        { customerName: { contains: kw, mode: "insensitive" } }
+      ]
+    }));
+  }
+
+  return params;
+}
+
+function buildPaymentWhere(parsed: ParsedQuery): Record<string, unknown> {
+  const params: Record<string, unknown> = {};
+
+  if (parsed.timeRange) {
+    params.receivedAt = { gte: parsed.timeRange.from, lte: parsed.timeRange.to };
+  }
+
+  if (parsed.amountRange) {
+    const amountFilter: Record<string, number> = {};
+    if (parsed.amountRange.min !== undefined) amountFilter.gte = parsed.amountRange.min;
+    if (parsed.amountRange.max !== undefined) amountFilter.lte = parsed.amountRange.max;
+    params.amount = amountFilter;
+  }
+
+  if (parsed.status) {
+    params.status = { in: parsed.status };
+  }
+
+  if (parsed.keywords.length > 0) {
+    params.OR = parsed.keywords.map(kw => ({
+      OR: [
+        { paymentNo: { contains: kw, mode: "insensitive" } },
         { customerName: { contains: kw, mode: "insensitive" } }
       ]
     }));

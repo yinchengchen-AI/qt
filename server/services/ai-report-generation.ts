@@ -9,7 +9,9 @@
 // 安全: API key 只走 lib/env.ts 服务端读取; 出域数据最小化
 // 降级: 未配置 key → 使用本地规则引擎生成摘要
 
+import { ApiError } from "@/lib/api";
 import { env } from "@/lib/env";
+import { ERROR_CODES } from "@/types/errors";
 
 // =====================================================
 // 类型定义
@@ -170,16 +172,14 @@ function formatAmount(amount: number): string {
 export async function generateLLMReport(
   data: BusinessData
 ): Promise<AnalysisReport> {
-  // 降级: 未配置 API key 时使用本地规则
+  // 与 contract-ai.ts 保持一致：未配置 key 时明确报错，不伪装成本地生成
   if (!env.DEEPSEEK_API_KEY) {
-    return generateLocalSummary(data);
+    throw new ApiError(ERROR_CODES.INTERNAL_ERROR, "AI 报表生成未配置 (DEEPSEEK_API_KEY 未设置)", 503);
   }
 
-  // 实际实现中调用 DeepSeek API
-  // 这里先返回本地规则引擎的结果作为降级
+  // TODO: 接入 DeepSeek API 实现真正的 LLM 增强
+  // 当前先返回本地规则引擎结果（已配置 key 时作为兜底，避免阻塞业务）
   const localReport = generateLocalSummary(data);
-  
-  // 模拟 LLM 增强 (实际应用中替换为 API 调用)
   return {
     ...localReport,
     confidence: 0.9,

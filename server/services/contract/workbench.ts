@@ -15,6 +15,11 @@ import type { SessionUser } from "@/lib/session";
 import { INVOICE_ISSUED_AMOUNT_STATUSES } from "@/lib/invoice-amounts";
 import { computeContractRisks, RISK_LEVEL_ORDER, type ContractRisk } from "@/server/services/contract/risk-score";
 import { buildRiskReport } from "@/server/services/contract/risk-report";
+import {
+  computeEnhancedRiskScore,
+  type EnhancedRiskScoreInput,
+  type EnhancedRiskScoreResult
+} from "@/server/services/contract/risk-score-enhanced";
 import { env } from "@/lib/env";
 
 const DAY_MS = 86_400_000;
@@ -143,6 +148,83 @@ export async function getContractRisk(user: SessionUser, contractId: string): Pr
     weightedScore: report.weightedScore,
     trendSummary: report.trendSummary,
     asOf: report.asOf
+  };
+}
+
+/** Phase 5 增强风险详情: 在原五维度基础上加入行业、历史逾期、季节性三维度 */
+export type ContractEnhancedRiskDetail = {
+  contractId: string;
+  contractNo: string;
+  customerName: string;
+  title: string;
+  enhancedScore: number;
+  enhancedLevel: string;
+  dimensions: EnhancedRiskScoreResult["dimensions"];
+  enhancedDetails: EnhancedRiskScoreResult["enhancedDetails"];
+};
+
+export async function getContractEnhancedRisk(
+  user: SessionUser,
+  contractId: string
+): Promise<ContractEnhancedRiskDetail | null> {
+  requirePermission(user.roleCode, RESOURCE.CONTRACT, ACTION.READ);
+
+  const contract = await prisma.contract.findFirst({
+    where: { id: contractId, deletedAt: null },
+    select: {
+      ...ACTIVE_RISK_SELECT,
+      customer: { select: { industry: true } }
+    }
+  });
+  if (!contract) return null;
+
+  const [risk] = await computeContractRisks([contract]);
+  if (!risk) return null;
+
+  // 客户历史数据：用于增强风险评分的客户信用与历史逾期维度
+  const customerContracts = await prisma.contract.findMany({
+    where: { customerId: contract.customerId, deletedAt: null },
+    select: { status: true, reviewComment: true, endDate: true, totalAmount: true }
+  });
+  const forceClosed = customerContracts.filter(
+    (c) => c.status === "CLOSED" && c.reviewComment === "overdue_terminated"
+  );
+  const totalOverdueDays = forceClosed.reduce(
+    (sum, c) => sum + Math.max(0, Math.floor((Date.now() - c.endDate.getTime()) / DAY_MS)),
+    0
+  );
+  const priced = customerContracts.filter((c) => Number(c.totalAmount) > 0).map((c) => Number(c.totalAmount));
+
+  const enhancedInput: EnhancedRiskScoreInput = {
+    now: new Date(),
+    startDate: contract.startDate,
+    endDate: contract.endDate,
+    totalAmount: risk.totalAmount,
+    paidAmount: risk.paidAmount,
+    invoicedAmount: risk.invoicedAmount,
+    customerTotalContracts: customerContracts.length,
+    customerForceClosed: forceClosed.length,
+    customerAmountMean: priced.length > 0 ? priced.reduce((a, b) => a + b, 0) / priced.length : null,
+    customerPricedContracts: priced.length,
+    customerIndustry: contract.customer?.industry ?? undefined,
+    customerOverdueHistory: {
+      totalContracts: customerContracts.length,
+      overdueContracts: forceClosed.length,
+      totalOverdueDays
+    }
+  };
+
+  const enhanced = computeEnhancedRiskScore(enhancedInput);
+
+  return {
+    contractId: risk.contractId,
+    contractNo: risk.contractNo,
+    customerName: risk.customerName,
+    title: risk.title,
+    enhancedScore: enhanced.score,
+    enhancedLevel: enhanced.level,
+    dimensions: enhanced.dimensions,
+    enhancedDetails: enhanced.enhancedDetails
   };
 }
 

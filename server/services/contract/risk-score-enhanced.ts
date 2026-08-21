@@ -4,11 +4,11 @@
 //   2) 历史逾期率 (historicalOverdue) - 客户历史合同的逾期比例
 //   3) 季节性因素 (seasonalFactor) - 考虑行业淡旺季对付款的影响
 //
-// 新维度权重: 行业风险 5%, 历史逾期率 5%, 季节性因素 3%
-// 原五维度权重调整: 总和从 100% 调整为 87%, 新增 13%
+// 新维度权重: 行业风险 5%, 历史逾期率 5%, 季节性因素 3% (合计 13%)
+// 原五维度权重调整: 等比例压缩为原来的 87% (合计 87%)
 //
 // 安全: 纯函数，不触库；所有输入显式传入
-import { RISK_WEIGHTS, type RiskDimensionKey, type RiskLevel } from "./risk-score";
+import { computeRiskScore, riskLevel, type RiskDimensionKey, type RiskLevel } from "./risk-score";
 
 // =====================================================
 // 增强维度定义
@@ -86,23 +86,16 @@ export function industryRiskScore(
   const data = industryData ?? INDUSTRY_DEFAULT_RISK;
   const industryInfo = data[industry ?? "其他"] ?? data["其他"] ?? { defaultLevel: "MEDIUM" as IndustryRiskLevel, avgOverdueDays: 15 };
   
-  let score: number;
-  switch (industryInfo.defaultLevel) {
-    case "LOW":
-      score = 10 + Math.random() * 20; // 10-30
-      break;
-    case "MEDIUM":
-      score = 40 + Math.random() * 20; // 40-60
-      break;
-    case "HIGH":
-      score = 70 + Math.random() * 30; // 70-100
-      break;
-    default:
-      score = 50;
-  }
+  // 确定性评分：同级别内固定中点，保证同输入同输出，可审计、可测试
+  const scoreByLevel: Record<IndustryRiskLevel, number> = {
+    LOW: 20,
+    MEDIUM: 50,
+    HIGH: 85
+  };
+  const score = scoreByLevel[industryInfo.defaultLevel] ?? 50;
   
   return {
-    score: Math.round(score),
+    score,
     level: industryInfo.defaultLevel,
     detail: `行业「${industry ?? "未知"}」历史平均逾期 ${industryInfo.avgOverdueDays} 天，风险等级 ${industryInfo.defaultLevel === "HIGH" ? "高" : industryInfo.defaultLevel === "MEDIUM" ? "中" : "低"}`
   };
@@ -188,14 +181,14 @@ export function seasonalFactorScore(
 
 // 增强维度权重
 export const ENHANCED_RISK_WEIGHTS: Record<EnhancedDimensionKey, number> = {
-  expiry: 0.25,           // 从 30% 调整为 25%
-  payment: 0.20,          // 从 25% 调整为 20%
-  invoicing: 0.18,        // 从 20% 调整为 18%
-  customerCredit: 0.12,   // 从 15% 调整为 12%
-  amountAnomaly: 0.08,    // 从 10% 调整为 8%
+  expiry: 0.26,           // 30% * 0.87
+  payment: 0.22,          // 25% * 0.87
+  invoicing: 0.17,        // 20% * 0.87
+  customerCredit: 0.13,   // 15% * 0.87
+  amountAnomaly: 0.09,    // 10% * 0.87
   industryRisk: 0.05,     // 新增: 5%
-  historicalOverdue: 0.07, // 新增: 7%
-  seasonalFactor: 0.05    // 新增: 5%
+  historicalOverdue: 0.05, // 新增: 5%
+  seasonalFactor: 0.03    // 新增: 3%
 };
 
 export type EnhancedRiskDimension = { score: number; detail: string };
@@ -223,6 +216,9 @@ export function computeEnhancedRiskScore(input: EnhancedRiskScoreInput): Enhance
   
   // 2. 计算新增维度
   const industryResult = industryRiskScore(input.customerIndustry);
+  const industryInfo =
+    INDUSTRY_DEFAULT_RISK[input.customerIndustry ?? "其他"] ??
+    INDUSTRY_DEFAULT_RISK["其他"] ?? { defaultLevel: "MEDIUM" as IndustryRiskLevel, avgOverdueDays: 15 };
   const overdueResult = historicalOverdueScore(input.customerOverdueHistory);
   const seasonalResult = seasonalFactorScore(input.now, input.contractSeason);
   
@@ -271,7 +267,7 @@ export function computeEnhancedRiskScore(input: EnhancedRiskScoreInput): Enhance
     enhancedDetails: {
       industry: {
         level: industryResult.level,
-        avgOverdueDays: parseInt(industryResult.detail.match(/平均逾期 (\d+) 天/)?.[1] ?? "0")
+        avgOverdueDays: industryInfo.avgOverdueDays
       },
       overdueHistory: { rate: overdueRate, avgDays: avgOverdueDays },
       season: { name: seasonalResult.season, adjustment: seasonalResult.adjustment }
@@ -283,106 +279,7 @@ export function computeEnhancedRiskScore(input: EnhancedRiskScoreInput): Enhance
 // 辅助函数 (复用 risk-score.ts 逻辑)
 // =====================================================
 
-const DAY_MS = 86_400_000;
-const clamp01 = (v: number) => Math.min(1, Math.max(0, v));
-const round1 = (v: number) => Math.round(v * 10) / 10;
-
-function riskLevel(score: number): RiskLevel {
-  if (score <= 30) return "LOW";
-  if (score <= 60) return "MEDIUM";
-  if (score <= 80) return "HIGH";
-  return "CRITICAL";
-}
-
 /** 复用 risk-score.ts 的原五维度计算 */
 function computeBaseRiskScore(input: EnhancedRiskScoreInput) {
-  const t = timeProgress(input.startDate, input.endDate, input.now);
-  const expiry = expiryScore(input.endDate, input.now);
-  const paymentRatio = amountRatio(input.paidAmount, input.totalAmount);
-  const invoiceRatio = amountRatio(input.invoicedAmount, input.totalAmount);
-  const payment = progressScore(t, paymentRatio);
-  const invoicing = progressScore(t, invoiceRatio);
-  const credit = customerCreditScore(input.customerTotalContracts, input.customerForceClosed);
-  const anomaly = amountAnomalyScore(input.totalAmount, input.customerAmountMean, input.customerPricedContracts);
-
-  const weighted =
-    expiry.score * RISK_WEIGHTS.expiry +
-    payment * RISK_WEIGHTS.payment +
-    invoicing * RISK_WEIGHTS.invoicing +
-    credit * RISK_WEIGHTS.customerCredit +
-    anomaly * RISK_WEIGHTS.amountAnomaly;
-  const score = Math.round(weighted);
-
-  return {
-    score,
-    level: riskLevel(score),
-    dimensionRaw: {
-      expiry: expiry.score,
-      payment,
-      invoicing,
-      customerCredit: credit,
-      amountAnomaly: anomaly
-    },
-    dimensions: {
-      expiry: {
-        score: round1(expiry.score),
-        detail: expiry.daysOverdue > 0 ? `已逾期 ${expiry.daysOverdue} 天` : "未到期"
-      },
-      payment: {
-        score: round1(payment),
-        detail: `时间进度 ${round1(t * 100)}%，回款进度 ${round1(paymentRatio * 100)}%`
-      },
-      invoicing: {
-        score: round1(invoicing),
-        detail: `时间进度 ${round1(t * 100)}%，开票进度 ${round1(invoiceRatio * 100)}%`
-      },
-      customerCredit: {
-        score: round1(credit),
-        detail:
-          input.customerTotalContracts < 3
-            ? `客户历史合同仅 ${input.customerTotalContracts} 份（样本不足按 20 分计）`
-            : `客户 ${input.customerTotalContracts} 份合同中 ${input.customerForceClosed} 份被强关（${round1(credit)}%）`
-      },
-      amountAnomaly: {
-        score: round1(anomaly),
-        detail:
-          input.customerPricedContracts < 3 || input.customerAmountMean === null
-            ? "客户合同样本不足，不评估金额偏离"
-            : `金额偏离客户均值 ${round1(input.customerAmountMean > 0 ? (Math.abs(input.totalAmount - input.customerAmountMean) / input.customerAmountMean) * 100 : 0)}%`
-      }
-    }
-  };
-}
-
-function expiryScore(endDate: Date, now: Date): { score: number; daysOverdue: number } {
-  const daysOverdue = Math.floor((now.getTime() - endDate.getTime()) / DAY_MS);
-  if (daysOverdue <= 0) return { score: 0, daysOverdue: 0 };
-  return { score: Math.min(100, (daysOverdue / 30) * 100), daysOverdue };
-}
-
-function progressScore(t: number, r: number): number {
-  return Math.min(100, (Math.max(0, t - r) / 0.5) * 100);
-}
-
-function timeProgress(startDate: Date, endDate: Date, now: Date): number {
-  const total = Math.max(1, endDate.getTime() - startDate.getTime());
-  return clamp01((now.getTime() - startDate.getTime()) / total);
-}
-
-function amountRatio(amount: number, total: number): number {
-  if (total <= 0) return 1;
-  return amount / total;
-}
-
-function customerCreditScore(totalContracts: number, forceClosed: number): number {
-  if (totalContracts < 3) return 20;
-  return (forceClosed / totalContracts) * 100;
-}
-
-function amountAnomalyScore(amount: number, mean: number | null, pricedCount: number): number {
-  if (pricedCount < 3 || mean === null || mean <= 0) return 0;
-  const r = Math.abs(amount - mean) / mean;
-  if (r <= 0.5) return 0;
-  if (r >= 2) return 100;
-  return ((r - 0.5) / 1.5) * 100;
+  return computeRiskScore(input);
 }
