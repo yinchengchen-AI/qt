@@ -11,7 +11,7 @@
 
 > **客户 / 合同 / 开票 / 回款** 一体化管理,附件走 MinIO presigned 直传,服务端 Server Actions + RBAC + 行级隔离。
 >
-> **当前版本: v0.21.4**(2026-08-19)。文档地图见 [docs/README.md](docs/README.md),架构与设计见 [docs/architecture/DESIGN-v3.md](docs/architecture/DESIGN-v3.md),用户手册见 [docs/user/USER_MANUAL.md](docs/user/USER_MANUAL.md)。
+> **当前版本: v0.21.6**(2026-08-21)。文档地图见 [docs/README.md](docs/README.md),架构与设计见 [docs/architecture/DESIGN-v3.md](docs/architecture/DESIGN-v3.md),用户手册见 [docs/user/USER_MANUAL.md](docs/user/USER_MANUAL.md)。
 
 ## 目录
 
@@ -256,6 +256,17 @@ nginx 反代下上游异常时,由 `public/502.html` 静态页与 `app/502/page.
 ## 最近更新
 
 最近 5 个版本,完整历史见 [CHANGELOG.md](CHANGELOG.md)。
+
+### v0.21.6(2026-08-21)智能化增强模块
+
+新增六个智能化服务模块，覆盖风险预测增强与用户体验优化。**DB schema 无变化**。
+
+- **风险评分增强**：新增行业风险、历史逾期率、季节性因素三个维度
+- **智能催款**：基于客户付款习惯生成个性化话术，智能计算催款紧急度
+- **趋势预测**：基于历史快照预测未来 7/14/30 天风险走势
+- **自然语言搜索**：支持"找去年Q3的合同"等自然语言查询
+- **AI 报表**：基于业务数据生成自然语言分析摘要
+- **个性化推荐**：分析用户工作模式，智能排序待办优先级
 
 ### v0.21.4(2026-08-19)合同详情页概览金额改用 ¥ 千分位格式
 
