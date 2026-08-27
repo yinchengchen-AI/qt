@@ -11,7 +11,7 @@
 
 > **客户 / 合同 / 开票 / 回款** 一体化管理,附件走 MinIO presigned 直传,服务端 Server Actions + RBAC + 行级隔离。
 >
-> **当前版本: v0.21.6**(2026-08-21)。文档地图见 [docs/README.md](docs/README.md),架构与设计见 [docs/architecture/DESIGN-v3.md](docs/architecture/DESIGN-v3.md),用户手册见 [docs/user/USER_MANUAL.md](docs/user/USER_MANUAL.md)。
+> **当前版本: v0.21.8**(2026-08-27)。文档地图见 [docs/README.md](docs/README.md),架构与设计见 [docs/architecture/DESIGN-v3.md](docs/architecture/DESIGN-v3.md),用户手册见 [docs/user/USER_MANUAL.md](docs/user/USER_MANUAL.md)。
 
 ## 目录
 
@@ -256,6 +256,14 @@ nginx 反代下上游异常时,由 `public/502.html` 静态页与 `app/502/page.
 ## 最近更新
 
 最近 5 个版本,完整历史见 [CHANGELOG.md](CHANGELOG.md)。
+
+### v0.21.8(2026-08-27)自然语言搜索 + 智能催款接线(Phase 5 落地第一批)
+
+v0.21.6 的智能化模块接上真实入口:全局搜索框支持"找去年Q3的合同"等自然语言查询(自动解析时间/金额/类别并回显);账龄分析页新增「催款建议」Tab,按客户付款习惯生成紧急度排序的催款话术,一键复制/一键记催收。顺带修复 NL 模块三个接线时暴露的潜伏 bug。**DB schema 无变化**。
+
+### v0.21.7(2026-08-21)智能化增强模块质量修复
+
+修复 v0.21.6 六个 Phase 5 模块的质量问题(确定性评分/权重对齐/503 契约等),新增 `/api/contracts/[id]/risk/enhanced` 路由。**DB schema 无变化**。
 
 ### v0.21.6(2026-08-21)智能化增强模块
 

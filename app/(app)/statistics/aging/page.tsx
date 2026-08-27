@@ -17,6 +17,7 @@ import { Page } from "@/components/page";
 import { PageHeader } from "@/components/page-header";
 import { AgingSummary } from "@/components/aging-summary";
 import { DunningDrawer, DunningBadge } from "@/components/dunning-drawer";
+import { CollectionAdviceTab } from "@/components/collection-advice-tab";
 import { Authority } from "@/components/authority";
 import { EmptyState } from "@/components/empty-state";
 import { HintBox } from "@/components/callout";
@@ -417,6 +418,20 @@ export default function AgingPage() {
                   key: "uninvoiced",
                   label: "未开票合同",
                   children: <UninvoicedTable isMobile={isMobile} />
+                },
+                {
+                  key: "collection",
+                  label: "催款建议",
+                  children: (
+                    <ProCard>
+                      <CollectionAdviceTab
+                        onOpenDunning={(id, no) => {
+                          setDunningInvoiceId(id);
+                          setDunningInvoiceNo(no);
+                        }}
+                      />
+                    </ProCard>
+                  )
                 }
               ]}
             />

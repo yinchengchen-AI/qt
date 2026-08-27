@@ -293,9 +293,10 @@ export function toSearchParams(parsed: ParsedQuery): CategorySearchParams {
 function buildContractWhere(parsed: ParsedQuery): Record<string, unknown> {
   const params: Record<string, unknown> = {};
 
+  // 时间口径: startDate 落在区间内 ("找去年Q3的合同" = 该季度开始履约的合同);
+  // 旧口径 startDate>=from AND endDate<=to 要求合同完整落在区间内, 跨季长合同会全部漏掉
   if (parsed.timeRange) {
-    params.startDate = { gte: parsed.timeRange.from };
-    params.endDate = { lte: parsed.timeRange.to };
+    params.startDate = { gte: parsed.timeRange.from, lte: parsed.timeRange.to };
   }
 
   if (parsed.amountRange) {
@@ -389,12 +390,51 @@ function buildPaymentWhere(parsed: ParsedQuery): Record<string, unknown> {
     params.OR = parsed.keywords.map(kw => ({
       OR: [
         { paymentNo: { contains: kw, mode: "insensitive" } },
-        { customerName: { contains: kw, mode: "insensitive" } }
+        // Payment 无 customerName 列, 客户名走 customer 关系 (与 search.ts 纯关键词路径同口径)
+        { customer: { name: { contains: kw, mode: "insensitive" } } }
       ]
     }));
   }
 
   return params;
+}
+
+/**
+ * 从自然语言查询中提取"残余关键词" — 剥离已识别的 时间/金额/状态/类别 词与语气词,
+ * 剩下的才作为 ILIKE 关键词参与检索。
+ * 动机: ParsedQuery.keywords 只是按空白/标点切分, 中文查询 "找去年Q3的合同" 会得到
+ * 单个整串关键词, 直接拼进 where 必然零命中。
+ * 注意: "的" 只在紧贴类别词时剥离 (的+合同/客户/...), 避免误伤 "美的集团" 这类品牌名。
+ */
+export function extractResidualKeyword(query: string): string {
+  let s = query;
+  // 时间关键词
+  for (const kw of Object.keys(TIME_KEYWORDS)) s = s.split(kw).join(" ");
+  // 季度 (Q3 / 去年Q3 / Q3去年 两种语序都覆盖: TIME_KEYWORDS 已吃掉 去年 等)
+  s = s.replace(/Q[1-4]/gi, " ");
+  // 显式年份 (2025年)
+  s = s.replace(/\d{4}\s*年/g, " ");
+  // 金额关键词 + 数字金额 (50万 / 100万)
+  for (const kw of Object.keys(AMOUNT_KEYWORDS)) s = s.split(kw).join(" ");
+  s = s.replace(/\d+(?:\.\d+)?\s*(百万|亿|万|千)/g, " ");
+  // 状态关键词
+  for (const kw of Object.keys(STATUS_KEYWORDS)) s = s.split(kw).join(" ");
+  // 的+类别词 组合先剥 (的合同/的客户), 再剥裸类别词
+  const categoryWords = ["客户", "公司", "单位", "合同", "协议", "发票", "开票", "回款", "收款"];
+  for (const w of categoryWords) s = s.split(`的${w}`).join(" ");
+  for (const w of categoryWords) s = s.split(w).join(" ");
+  // 语气词 (不放 "的": 单独出现太常见, 误伤品牌名风险大于收益)
+  for (const w of ["帮我", "找", "查", "搜索", "查询", "一下", "所有", "全部", "给我", "请问"]) {
+    s = s.split(w).join(" ");
+  }
+  // 分词后处理残留的 "的": 丢弃独立 "的", 剥掉 token 开头的 "的" ("去年Q3的企泰合同" → "的企泰" → "企泰");
+  // 词内部的 "的" 保留 ("美的集团" 不以"的"开头, 不受影响)
+  return s
+    .split(/[\s,，。！？、]+/)
+    .map((tok) => tok.replace(/^的+/, ""))
+    .filter((tok) => tok.length > 0)
+    .join(" ")
+    .trim();
 }
 
 /**

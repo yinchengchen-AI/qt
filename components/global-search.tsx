@@ -29,6 +29,21 @@ type SearchData = {
   contracts: Group<{ id: string; contractNo: string; title: string; customerName: string; status: string }>;
   invoices: Group<{ id: string; invoiceNo: string; customerName: string; amount: string; status: string }>;
   payments: Group<{ id: string; paymentNo: string; customerName: string; amount: string; status: string }>;
+  // 自然语言结构化条件的回显 (server/services/search.ts buildNlPlan)
+  nl?: {
+    timeLabel?: string;
+    amountLabel?: string;
+    category?: "customer" | "contract" | "invoice" | "payment";
+    status?: string[];
+    keyword?: string;
+  };
+};
+
+const NL_CATEGORY_LABEL: Record<string, string> = {
+  customer: "客户",
+  contract: "合同",
+  invoice: "发票",
+  payment: "回款"
 };
 
 type Category = "customers" | "contracts" | "invoices" | "payments";
@@ -256,6 +271,27 @@ export function GlobalSearch({ block }: { block?: boolean }) {
     }
     if (!data) return [];
     const q = data.q;
+    // 自然语言条件回显: 让用户知道系统按什么条件过滤了 (如 "本月 · 大额 · 合同")
+    const nl = data.nl;
+    const nlHint = nl
+      ? (() => {
+          const parts: string[] = [];
+          if (nl.timeLabel) parts.push(`时间: ${nl.timeLabel}`);
+          if (nl.amountLabel) parts.push(`金额: ${nl.amountLabel}`);
+          if (nl.category) parts.push(`类别: ${NL_CATEGORY_LABEL[nl.category] ?? nl.category}`);
+          if (nl.keyword) parts.push(`关键词: ${nl.keyword}`);
+          return {
+            value: "__nl",
+            disabled: true,
+            label: (
+              <div style={{ display: "flex", alignItems: "center", gap: 6, padding: "4px 2px", borderBottom: `1px dashed ${token.colorSplit}` }}>
+                <SearchOutlined style={{ fontSize: 12, color: token.colorPrimary }} />
+                <Text type="secondary" style={{ fontSize: 12 }}>智能筛选: {parts.join(" · ")}</Text>
+              </div>
+            )
+          };
+        })()
+      : null;
     const groups = CATEGORIES.map((cat) => {
       const g = data[cat];
       const meta = CATEGORY_META[cat];
@@ -304,7 +340,8 @@ export function GlobalSearch({ block }: { block?: boolean }) {
         };
       });
       // "查看全部"整行醒目化: 主色 + 虚线分隔 + 右箭头, 不再混在条目里难以发现
-      if (g.total > g.items.length) {
+      // NL 模式下隐藏: 落地列表页只认 keyword, 不认时间/金额等结构化条件, 跳过去口径会不一致
+      if (!nl && g.total > g.items.length) {
         items.push({
           value: `more:${cat}`,
           label: (
@@ -343,6 +380,7 @@ export function GlobalSearch({ block }: { block?: boolean }) {
     const totalHits = CATEGORIES.reduce((n, cat) => n + data[cat].total, 0);
     if (totalHits === 0) {
       return [
+        ...(nlHint ? [nlHint] : []),
         {
           value: "__empty",
           disabled: true,
@@ -356,7 +394,7 @@ export function GlobalSearch({ block }: { block?: boolean }) {
         }
       ];
     }
-    return groups;
+    return nlHint ? [nlHint, ...groups] : groups;
   };
 
   // 快捷键徽标: 空输入且非加载时显示, 提示可 Ctrl+K 唤起 (手机端无物理键盘, 不显示)
@@ -429,6 +467,8 @@ export function GlobalSearch({ block }: { block?: boolean }) {
           // Enter: 未用 ↑↓ 导航时跳"查看全部"列表页 (antd 只在有 active 项时才触发 onSelect,
           // 没有时 Enter 是哑键); 用过 ↑↓ 则交给 antd 默认选中, 两者不冲突
           if (e.key === "Enter" && !navUsedRef.current && data) {
+            // NL 模式不跳"查看全部": 列表页只认 keyword, 不认结构化条件
+            if (data.nl) return;
             const firstCat = CATEGORIES.find((c) => data[c].total > 0);
             if (firstCat) {
               e.preventDefault();

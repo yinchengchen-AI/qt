@@ -297,4 +297,25 @@ describe("searchAll 聚合搜索", () => {
       _resetRuntimePermissionsForTests();
     }
   });
+
+  it("自然语言结构化条件: 本月+合同类别收窄到 contracts 组, 残余关键词命中并回显 nl", async () => {
+    if (!dbReachable || !adminUser) return;
+    // 合同A startDate = 创建当天 → "本月" 区间内 (startDate 口径见 natural-language-search.ts)
+    const r = await searchAll(adminUser, `${TAG}-HT-001 本月合同`);
+    expect(r.nl).toBeDefined();
+    expect(r.nl!.category).toBe("contract");
+    expect(r.nl!.timeLabel).toBe("本月");
+    expect(r.contracts.items.some((c) => c.id === contractId)).toBe(true);
+    // NL 类别收窄: 其它组不查库返回空分组
+    expect(r.customers.total).toBe(0);
+    expect(r.invoices.total).toBe(0);
+    expect(r.payments.total).toBe(0);
+  });
+
+  it("纯关键词查询不触发 NL (无结构化条件 → nl 为空)", async () => {
+    if (!dbReachable || !adminUser) return;
+    const r = await searchAll(adminUser, `${TAG}-HT-001`);
+    expect(r.nl).toBeUndefined();
+    expect(r.contracts.items.some((c) => c.id === contractId)).toBe(true);
+  });
 });

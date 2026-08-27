@@ -2,6 +2,30 @@
 
 本文件记录 qt-biz 每个版本的详细变更。项目快速入口请见 [README.md](README.md)。
 
+## v0.21.8(2026-08-27)自然语言搜索 + 智能催款接线(Phase 5 落地第一批)
+
+把 v0.21.6 引入的六个智能化服务模块中的两个接上真实入口,其余四个仍无调用方(见文末备注)。**DB schema 无变化**。
+
+### 新增
+- **feat(search)**:全局搜索框接入自然语言检索——"找去年Q3的合同""本月大额合同"等查询自动解析 时间/金额/状态/类别 条件并按类别收窄查库,下拉顶部回显已识别条件("智能筛选: 本月 · 大额 · 合同");无结构化条件的查询行为与原来完全一致
+- **feat(aging)**:账龄分析页新增「催款建议」Tab——按合同聚合逾期发票,结合客户付款习惯(按时率/平均延迟/偏好付款方式/催收响应率)生成紧急度排序的催款建议;话术 Popover 一键复制,「记录催收」一键打开催收 Drawer
+- **feat(api)**:新增 `GET /api/statistics/aging/collection-advice`(DUNNING.READ 鉴权;SALES/EXPERT 行级隔离与账龄页同口径);数据组装层 `server/services/collection-advice.ts`,口径与 `getInvoiceAging(basis=due)` 一致
+
+### 修复(Phase 5 模块潜伏 bug,接线时暴露)
+- **fix(nlp)**:`natural-language-search.ts` Payment where 误用不存在的 `customerName` 列 → 改走 `customer.name` 关系(此前一旦带关键词查回款必 Prisma 报错)
+- **fix(nlp)**:合同时间条件由"合同完整落在区间内"(startDate≥from AND endDate≤to)改为"startDate 落在区间内",跨季长合同不再全部漏掉
+- **fix(nlp)**:新增 `extractResidualKeyword`——剥离已识别的 时间/金额/状态/类别词与语气词后的残余才作 ILIKE 关键词(旧 `keywords` 按空白切分,"找去年Q3的合同"会整串进 where 必零命中);残余关键词经 LIKE 通配符转义;"的"只在紧贴类别词或 token 开头时剥离,不误伤"美的集团"类品牌名
+- **fix(search)**:NL 命中时下拉隐藏"查看全部"并禁用 Enter 跳列表页(列表页只认 keyword,不认结构化条件,跳转会口径不一致)
+
+### 测试
+- **test(nlp)**:新增 `tests/unit/server/nl-search.test.ts`(10 例纯函数:残余关键词提取、计划生成、类别收窄、状态词不串域、通配符转义)
+- **test(api)**:`tests/api/search.test.ts` 新增 2 例 NL 集成;新增 `tests/api/collection-advice.test.ts`(4 例:合同聚合/已付清·未到期·DRAFT 排除/SALES 行级隔离/权限收窄 403),DB 不可达自动 skip
+- typecheck 0 errors / lint 0 warnings / vitest 969 通过(4 例失败为本地 .env 数据库凭证失效的既有 DB 测试,与本次改动无关)
+
+### 备注
+- `smart-collection` 话术规则消费的付款方式取值(snake_case)与 `Payment.method` 的 DB 值(BANK_TRANSFER 等)不一致,组装层 `collection-advice.ts#normalizeMethod` 负责归一化
+- Phase 5 其余模块状态:`risk-score-enhanced` 有路由 `/api/contracts/[id]/risk/enhanced` 但无前端调用;`risk-trend-prediction` / `ai-report-generation` / `personalized-recommendations` 仍无任何调用方
+
 ## v0.21.7(2026-08-21)智能化增强模块修复
 
 修复 v0.21.6 引入的六个 Phase 5 智能服务模块的质量问题，并接入首个调用方。**DB schema 无变化**。
