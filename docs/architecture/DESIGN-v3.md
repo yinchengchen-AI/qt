@@ -524,7 +524,8 @@ PLANNED ─confirm(finance)─▶ CONFIRMED ─reconcile(finance)─▶ RECONCIL
 - `GET /api/statistics/employee-performance?userId=&from=&to=`
   - `userId` 不传时全员(非系统、非 ADMIN、ACTIVE);业务人员 (SALES) 强制只看自己
 - `GET /api/statistics/performance?dimension=owner|signer|region&preset=month|quarter|year&from=&to=&limit=`(统一业绩排行,原 by-region 页并入 dimension=region)
-- `GET /api/statistics/export?type=overview|top-customers|employee-performance|aging|by-region|performance&metric=&from=&to=&preset=&dimension=&userId=&basis=&customerId=&ownerUserId=&contractId=&buckets=&minAmount=`
+- `GET /api/statistics/performance/pdf?dimension=owner|signer|region&preset=&from=&to=`(业绩排行打印页 HTML,浏览器「另存为 PDF」;与页面表格 / xlsx 导出同口径,需 `STATISTICS:EXPORT`)
+- `GET /api/statistics/export?type=overview|top-customers|aging|by-region|performance&metric=&from=&to=&preset=&dimension=&userId=&basis=&customerId=&ownerUserId=&contractId=&buckets=&minAmount=`
   - 需 `STATISTICS:EXPORT` 权限;单次最多 `exportMaxRows()` 行
   - `type=aging` 时额外接受账龄专属参数(basis / customerId / ownerUserId / contractId / buckets / minAmount),
     文件名 `账龄分析_<basis>_<YYYY-MM-DD>.xlsx`

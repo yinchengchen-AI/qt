@@ -1476,6 +1476,119 @@ export async function getPerformanceRanking(
   return rows.slice(0, Math.max(1, limit)).map((r, i) => ({ ...r, rank: i + 1 }));
 }
 
+// 业绩排行导出 - 业务明细 (合同级)
+// 与 getPerformanceRanking 同维度同口径,供导出 xlsx 的第二个 sheet 使用:
+//   - owner/signer 维度按员工分组, region 维度按客户区域分组
+//   - 合同过滤口径对齐各维度排行服务: owner/region 排除 isLegacyZeroAmount
+//     (aggregatePerformance / getRegionStatistics), signer 维度与 getSignerSummary
+//     历史口径一致不排除 (改动会破坏排行与明细对账)
+//   - 行级隔离与 getSignerContractDetail 一致 (受限角色 owner/signer 任一匹配)
+//   - 组排序与排行表一致: 合同额降序, 平手按工号/区域名 zh-CN
+export type PerformanceDetailRow = {
+  contractId: string;
+  contractNo: string;
+  region: string;              // 展示用 "区 镇街" / 仅镇街 / 仅区 / "未填写"
+  customerName: string;
+  serviceTypeLabel: string;    // 中文 label
+  ownerName: string;           // 负责人
+  signerName: string;          // 签约人
+  signDate: string;            // ISO
+  totalAmount: number;
+};
+
+export type PerformanceDetailGroup = {
+  key: string;                 // 分组键: userId (owner/signer) 或区域名 (region)
+  label: string;               // 组标题: 员工姓名或区域名
+  employeeNo: string;          // owner/signer 维度有值, region 维度为 ""
+  rows: PerformanceDetailRow[];
+  contractAmount: number;      // 组内合同额小计
+};
+
+export async function getPerformanceContractDetail(
+  user: SessionUser,
+  dimension: RankingDimension = "owner",
+  range?: DateRange
+): Promise<PerformanceDetailGroup[]> {
+  requirePermission(user.roleCode, RESOURCE.STATISTICS, ACTION.READ);
+  const isRestricted = isRowRestricted(user);
+  const where: Prisma.ContractWhereInput = {
+    deletedAt: null,
+    status: { in: ["ACTIVE", "CLOSED"] },
+    ...(dimension === "signer" ? {} : { isLegacyZeroAmount: false }),
+    ...(range ? { signDate: dateWhere(range) } : {}),
+    ...(isRestricted ? { OR: [{ ownerUserId: user.id }, { signerId: user.id }] } : ownerEq(user)),
+  };
+
+  const contracts = await prisma.contract.findMany({
+    where,
+    select: {
+      id: true,
+      contractNo: true,
+      customerName: true,
+      serviceType: true,
+      signDate: true,
+      totalAmount: true,
+      customer: { select: { district: true, town: true } },
+      owner: { select: { id: true, name: true, employeeNo: true } },
+      signer: { select: { id: true, name: true, employeeNo: true } }
+    },
+    orderBy: [{ signDate: "asc" }]
+  });
+  if (contracts.length === 0) return [];
+
+  // serviceType -> 中文 label (内存映射, 免 N+1), 与 getSignerContractDetail 同款
+  const dictRows = await prisma.dictionary.findMany({
+    where: { category: "SERVICE_TYPE", isActive: true },
+    select: { code: true, label: true }
+  });
+  const dictMap = new Map(dictRows.map((d) => [d.code, d.label]));
+
+  const groups = new Map<string, PerformanceDetailGroup>();
+  for (const c of contracts) {
+    const district = c.customer?.district ?? null;
+    const town = c.customer?.town ?? null;
+    const region =
+      district && town ? `${district} ${town}` :
+      town ? town :
+      district ? `${district} (未填镇街)` :
+      "未填写";
+    const row: PerformanceDetailRow = {
+      contractId: c.id,
+      contractNo: c.contractNo,
+      region,
+      customerName: c.customerName,
+      serviceTypeLabel: dictMap.get(c.serviceType) ?? c.serviceType,
+      ownerName: c.owner?.name ?? "",
+      signerName: c.signer?.name ?? "",
+      signDate: c.signDate.toISOString(),
+      totalAmount: round2(c.totalAmount)
+    };
+
+    let key: string, label: string, employeeNo: string;
+    if (dimension === "region") {
+      key = region; label = region; employeeNo = "";
+    } else if (dimension === "signer") {
+      if (!c.signer) continue; // 签约人被软删/缺失, 跳过
+      key = c.signer.id; label = c.signer.name; employeeNo = c.signer.employeeNo;
+    } else {
+      if (!c.owner) continue;
+      key = c.owner.id; label = c.owner.name; employeeNo = c.owner.employeeNo;
+    }
+    let g = groups.get(key);
+    if (!g) {
+      g = { key, label, employeeNo, rows: [], contractAmount: 0 };
+      groups.set(key, g);
+    }
+    g.rows.push(row);
+    g.contractAmount = round2(new Prisma.Decimal(g.contractAmount).plus(row.totalAmount));
+  }
+
+  return Array.from(groups.values()).sort((a, b) =>
+    b.contractAmount - a.contractAmount ||
+    (a.employeeNo || a.label).localeCompare(b.employeeNo || b.label, "zh-CN")
+  );
+}
+
 function round2(v: number | Prisma.Decimal): number {
   return new Prisma.Decimal(v).toDecimalPlaces(2).toNumber();
 }

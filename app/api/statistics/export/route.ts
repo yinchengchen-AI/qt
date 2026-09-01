@@ -9,33 +9,39 @@ import {
   getOverview,
   getRegionStatistics,
   getInvoiceAging,
-  getSignerSummary,
-  getSignerContractDetail,
-  getPerformanceRanking
+  getPerformanceRanking,
+  getPerformanceContractDetail
 } from "@/server/services/statistics";
+import type { PerformanceRankingRow, PerformanceDetailGroup } from "@/server/services/statistics";
 import ExcelJS from "exceljs";
 import { exportToXlsx, exportMaxRows, attachmentHeader } from "@/lib/excel";
 import { parseDateRangeQuery, exportFileTimestamp, resolveStatsRange } from "@/lib/date-range";
 
-// 员工业绩 xlsx 导出: 2 sheet, 含分组小计 + 总计
-//   Sheet 1 「员工业绩汇总」: 一员工一行, 末行总计
-//   Sheet 2 「签约明细」: 按签约人分组, 组末小计 + 末行总计
-// 样式: 表头加粗; 总计行深灰底加粗; 小计行浅灰底加粗
-async function buildEmployeePerformanceXlsx(
-  summary: Array<{ userId: string; name: string; employeeNo: string; contractCount: number; contractAmount: number; invoiceAmount: number; paymentAmount: number }>,
-  detail: Array<{ signerId: string; signerName: string; signerEmployeeNo: string; rows: Array<{ contractId: string; contractNo: string; region: string; customerName: string; serviceTypeLabel: string; signDate: string | Date; totalAmount: number }>; contractAmount: number; subtotalWan: number }>
+// 小计/总计行底色: 浅灰 (#E5E7EB) = 小计, 深灰 (#D1D5DB) = 总计, 均加粗
+const FILL_SUBTOTAL: ExcelJS.Fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFE5E7EB" } };
+const FILL_TOTAL: ExcelJS.Fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFD1D5DB" } };
+
+// 业绩排行 xlsx 导出: 2 sheet
+//   Sheet 1 「业绩排行」: 排行表 (名次 + 金额 + 开票率/回款率), 与页面同口径
+//   Sheet 2 「业务明细」: 合同级明细, 按排行维度分组 (owner/signer → 员工, region → 区域),
+//     组末小计 + 末行总计; 明细行数受 maxRows 兜底防 OOM, 截断时总计行标注
+async function buildPerformanceRankingXlsx(
+  dimension: "owner" | "signer" | "region",
+  ranking: PerformanceRankingRow[],
+  detail: PerformanceDetailGroup[],
+  maxRows: number
 ): Promise<Buffer> {
   const wb = new ExcelJS.Workbook();
+  const showRegion = dimension === "region";
 
-  // 浅灰底 (#E5E7EB) + 加粗 = 小计
-  // 深灰底 (#D1D5DB) + 加粗 = 总计
-  const FILL_SUBTOTAL: ExcelJS.Fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFE5E7EB" } };
-  const FILL_TOTAL: ExcelJS.Fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFD1D5DB" } };
-
-  // ==== Sheet 1: 员工业绩汇总 ====
-  const ws1 = wb.addWorksheet("员工业绩汇总");
+  // ==== Sheet 1: 业绩排行 ====
+  const ws1 = wb.addWorksheet("业绩排行");
   ws1.columns = [
-    { header: "姓名", key: "name", width: 14 },
+    { header: "名次", key: "rank", width: 8 },
+    { header: showRegion ? "区域" : "姓名", key: "name", width: 20 },
+    showRegion
+      ? { header: "客户数", key: "customerCount", width: 10 }
+      : { header: "工号", key: "employeeNo", width: 14 },
     { header: "合同数", key: "contractCount", width: 10 },
     { header: "合同额", key: "contractAmount", width: 18 },
     { header: "已开票额", key: "invoiceAmount", width: 18 },
@@ -46,101 +52,101 @@ async function buildEmployeePerformanceXlsx(
   ];
   ws1.getRow(1).font = { bold: true };
   ws1.getRow(1).alignment = { vertical: "middle" };
-  ws1.getColumn(3).numFmt = "#,##0.00";
-  ws1.getColumn(4).numFmt = "#,##0.00";
   ws1.getColumn(5).numFmt = "#,##0.00";
   ws1.getColumn(6).numFmt = "#,##0.00";
-  ws1.getColumn(7).numFmt = "0.0";
-  ws1.getColumn(8).numFmt = "0.0";
-  let t1Count = 0, t1Amount = 0, t1Inv = 0, t1Pay = 0;
-  for (const r of summary) {
-    const unpaid = Math.max(r.contractAmount - r.paymentAmount, 0);
-    const invRate = r.contractAmount > 0 ? (r.invoiceAmount / r.contractAmount) * 100 : 0;
-    const payRate = r.invoiceAmount > 0 ? (r.paymentAmount / r.invoiceAmount) * 100 : 0;
+  ws1.getColumn(7).numFmt = "#,##0.00";
+  ws1.getColumn(8).numFmt = "#,##0.00";
+  ws1.getColumn(9).numFmt = "0.00";
+  ws1.getColumn(10).numFmt = "0.00";
+  for (const r of ranking) {
     ws1.addRow({
+      rank: r.rank,
       name: r.name,
+      ...(showRegion ? { customerCount: r.customerCount ?? 0 } : { employeeNo: r.employeeNo ?? "" }),
       contractCount: r.contractCount,
       contractAmount: r.contractAmount,
       invoiceAmount: r.invoiceAmount,
       paymentAmount: r.paymentAmount,
-      unpaidAmount: unpaid,
-      invoiceRate: Number(invRate.toFixed(1)),
-      paymentRate: Number(payRate.toFixed(1))
+      unpaidAmount: r.unpaidAmount,
+      invoiceRate: r.invoiceRate,
+      paymentRate: r.paymentRate
     });
-    t1Count += r.contractCount;
-    t1Amount += r.contractAmount;
-    t1Inv += r.invoiceAmount;
-    t1Pay += r.paymentAmount;
   }
-  // 总计行 (深灰底加粗)
-  const t1Unpaid = Math.max(t1Amount - t1Pay, 0);
-  const t1InvRate = t1Amount > 0 ? (t1Inv / t1Amount) * 100 : 0;
-  const t1PayRate = t1Inv > 0 ? (t1Pay / t1Inv) * 100 : 0;
-  const totalRow1 = ws1.addRow({
-    name: `总计 (${summary.length} 人)`,
-    contractCount: t1Count,
-    contractAmount: t1Amount,
-    invoiceAmount: t1Inv,
-    paymentAmount: t1Pay,
-    unpaidAmount: t1Unpaid,
-    invoiceRate: Number(t1InvRate.toFixed(1)),
-    paymentRate: Number(t1PayRate.toFixed(1))
-  });
-  totalRow1.font = { bold: true };
-  totalRow1.eachCell((c) => { c.fill = FILL_TOTAL; });
 
-  // ==== Sheet 2: 签约明细 ====
-  const ws2 = wb.addWorksheet("签约明细");
+  // ==== Sheet 2: 业务明细 ====
+  // 行数兜底: 超出 maxRows 的明细直接截断 (排行 sheet 不受影响), 总计行如实标注
+  const totalContracts = detail.reduce((s, g) => s + g.rows.length, 0);
+  const truncated = totalContracts > maxRows;
+  let remaining = maxRows;
+  const shownGroups = detail
+    .map((g) => {
+      const rows = g.rows.slice(0, Math.max(remaining, 0));
+      remaining -= rows.length;
+      return { ...g, rows };
+    })
+    .filter((g) => g.rows.length > 0);
+
+  const ws2 = wb.addWorksheet("业务明细");
   ws2.columns = [
     { header: "所属区域", key: "region", width: 20 },
     { header: "企业名称", key: "customerName", width: 30 },
     { header: "服务项目", key: "serviceTypeLabel", width: 20 },
-    { header: "签约人", key: "signer", width: 14 },
+    { header: "负责人", key: "ownerName", width: 12 },
+    { header: "签约人", key: "signerName", width: 12 },
     { header: "合同号", key: "contractNo", width: 18 },
     { header: "签约日期", key: "signDate", width: 14 },
     { header: "合同金额", key: "totalAmount", width: 16 }
   ];
   ws2.getRow(1).font = { bold: true };
   ws2.getRow(1).alignment = { vertical: "middle" };
-  ws2.getColumn(6).numFmt = "yyyy-mm-dd";
-  ws2.getColumn(7).numFmt = "#,##0.00";
+  ws2.getColumn(7).numFmt = "yyyy-mm-dd";
+  ws2.getColumn(8).numFmt = "#,##0.00";
   let t2Count = 0, t2Amount = 0;
-  for (const g of detail) {
+  for (const g of shownGroups) {
+    // 小计按实际显示的明细行重算 (截断时与 sheet 所见一致)
+    let gAmount = 0;
     for (const r of g.rows) {
       ws2.addRow({
         region: r.region,
         customerName: r.customerName,
         serviceTypeLabel: r.serviceTypeLabel,
-        signer: g.signerName,                                // 只显姓名, 不带工号
+        ownerName: r.ownerName,
+        signerName: r.signerName,
         contractNo: r.contractNo,
-        signDate: new Date(r.signDate),                     // 转 Date 对象让 numFmt "yyyy-mm-dd" 生效
+        signDate: new Date(r.signDate),             // 转 Date 让 numFmt "yyyy-mm-dd" 生效
         totalAmount: r.totalAmount
       });
+      gAmount += r.totalAmount;
       t2Count += 1;
       t2Amount += r.totalAmount;
     }
-    // 签约人小计行 (浅灰底加粗)
+    // 分组小计行 (浅灰底加粗)
     const subRow = ws2.addRow({
       region: "",
-      customerName: `小计: ${g.signerName}`,
+      customerName: `小计: ${g.label}`,
       serviceTypeLabel: `${g.rows.length} 份合同`,
-      signer: "",
+      ownerName: "",
+      signerName: "",
       contractNo: "",
       signDate: "",
-      totalAmount: g.contractAmount
+      totalAmount: Number(gAmount.toFixed(2))
     });
     subRow.font = { bold: true };
     subRow.eachCell((c) => { c.fill = FILL_SUBTOTAL; });
   }
   // 全表总计行 (深灰底加粗)
+  const groupUnit = showRegion ? "个区域" : "名员工";
   const totalRow2 = ws2.addRow({
     region: "",
-    customerName: `总计: 全公司 (${t2Count} 份合同)`,
-    serviceTypeLabel: `${detail.length} 名签约人`,
-    signer: "",
+    customerName: truncated
+      ? `总计 (显示 ${t2Count} / 共 ${totalContracts} 份合同)`
+      : `总计 (${t2Count} 份合同)`,
+    serviceTypeLabel: `${shownGroups.length} ${groupUnit}`,
+    ownerName: "",
+    signerName: "",
     contractNo: "",
     signDate: "",
-    totalAmount: t2Amount
+    totalAmount: Number(t2Amount.toFixed(2))
   });
   totalRow2.font = { bold: true };
   totalRow2.eachCell((c) => { c.fill = FILL_TOTAL; });
@@ -150,7 +156,7 @@ async function buildEmployeePerformanceXlsx(
 }
 
 const query = z.object({
-  type: z.enum(["overview", "top-customers", "employee-performance", "by-region", "aging", "performance"]),
+  type: z.enum(["overview", "top-customers", "by-region", "aging", "performance"]),
   metric: z.enum(["contract", "payment"]).optional(),
   from: z.string().optional(),
   to: z.string().optional(),
@@ -310,58 +316,25 @@ export async function GET(req: Request) {
         });
       }
       // performance (统一业绩排行: owner/signer/region 三维度, 支持 preset 快捷区间)
-      // Sheet 1: 排行表 (rank + 金额 + 开票率/回款率), 走 getPerformanceRanking 全量后截断 MAX_ROWS
+      // Sheet 1 「业绩排行」: 排行表 (rank + 金额 + 开票率/回款率), 走 getPerformanceRanking 全量后截断 MAX_ROWS
+      // Sheet 2 「业务明细」: 合同级明细, 按维度分组 + 组末小计 + 末行总计, 走 getPerformanceContractDetail
       if (parsed.type === "performance") {
         const perfRange = resolveStatsRange(parsed);
-        const ranking = await getPerformanceRanking(
-          user,
-          parsed.dimension ?? "owner",
-          perfRange,
-          MAX_ROWS
-        );
-        const showRegion = parsed.dimension === "region";
-        const perfColumns: Array<{ header: string; key: string; width: number; formatter?: (v: unknown) => string }> = [
-          { header: "名次", key: "rank", width: 8 },
-          { header: showRegion ? "区域" : "姓名", key: "name", width: 20 },
-          { header: "工号", key: "employeeNo", width: 14 },
-          { header: "合同数", key: "contractCount", width: 10 },
-          { header: "合同额", key: "contractAmount", width: 18, formatter: num },
-          { header: "已开票额", key: "invoiceAmount", width: 18, formatter: num },
-          { header: "已回款额", key: "paymentAmount", width: 18, formatter: num },
-          { header: "未回款额", key: "unpaidAmount", width: 18, formatter: num },
-          { header: "开票率(%)", key: "invoiceRate", width: 12, formatter: num },
-          { header: "回款率(%)", key: "paymentRate", width: 12, formatter: num }
-        ];
-        if (showRegion) {
-          // 区域维度无工号列, 但保留客户数
-          perfColumns.splice(2, 0, { header: "客户数", key: "customerCount", width: 10 });
-        }
-        const buf = await exportToXlsx(ranking, perfColumns);
+        const dimension = parsed.dimension ?? "owner";
+        const [ranking, detail] = await Promise.all([
+          getPerformanceRanking(user, dimension, perfRange, MAX_ROWS),
+          getPerformanceContractDetail(user, dimension, perfRange)
+        ]);
+        const buf = await buildPerformanceRankingXlsx(dimension, ranking, detail, MAX_ROWS);
         return new Response(new Uint8Array(buf), {
           headers: {
             "Content-Type":
               "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-            "Content-Disposition": attachmentHeader(`业绩排行_${parsed.dimension ?? "owner"}_${ts}.xlsx`),
+            "Content-Disposition": attachmentHeader(`业绩排行_${dimension}_${ts}.xlsx`),
             "Cache-Control": "no-store"
           }
         });
       }
-      // employee-performance (重新设计: 2 sheet, 含小计+总计)
-      // Sheet 1 「员工业绩汇总」: 每员工一行, 末行总计 (与页面表格 / PDF 顶部 KPI 同口径, signer 维度)
-      // Sheet 2 「签约明细」: 按签约人分组, 每组末行小计, 末行总计
-      const [empSummary, empDetail] = await Promise.all([
-        getSignerSummary(user, range),
-        getSignerContractDetail(user, range)
-      ]);
-      const buf = await buildEmployeePerformanceXlsx(empSummary, empDetail);
-      return new Response(new Uint8Array(buf), {
-        headers: {
-          "Content-Type":
-            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-          "Content-Disposition": attachmentHeader(`员工业绩_${ts}.xlsx`),
-          "Cache-Control": "no-store"
-        }
-      });
     } catch (e) {
       return err(e);
     }

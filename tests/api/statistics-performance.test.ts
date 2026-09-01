@@ -19,6 +19,8 @@ import type { SessionUser } from "@/lib/session";
 import { ApiError } from "@/lib/api";
 import { ERROR_CODES } from "@/types/errors";
 import { GET as getPerformance } from "@/app/api/statistics/performance/route";
+import { GET as getPerformancePdf } from "@/app/api/statistics/performance/pdf/route";
+import { getPerformanceContractDetail } from "@/server/services/statistics";
 import { createInvoice, invoiceAction } from "@/server/services/invoice";
 import { createPayment, paymentAction } from "@/server/services/payment";
 
@@ -59,7 +61,7 @@ const buildSales = (): SessionUser => {
   return salesUser;
 };
 
-async function makeContract(customerId: string, customerName: string, ownerId: string, signerId: string, totalAmount: number, suffix: string) {
+async function makeContract(customerId: string, customerName: string, ownerId: string, signerId: string, totalAmount: number, suffix: string, isLegacyZeroAmount = false) {
   const contractNo = `${TAG}-CTR-${suffix}`;
   return prisma.contract.create({
     data: {
@@ -80,6 +82,7 @@ async function makeContract(customerId: string, customerName: string, ownerId: s
       status: "ACTIVE",
       ownerUserId: ownerId,
       signerId,
+      isLegacyZeroAmount,
       attachments: [] as unknown as Parameters<typeof prisma.contract.create>[0]["data"]["attachments"],
       createdById: ownerId,
       updatedById: ownerId
@@ -297,5 +300,95 @@ describe("getPerformanceRanking region 维度", () => {
     expect(row!.customerCount).toBe(1);
     expect(row!.contractAmount).toBe(10000);
     expect(row!.region).toBe("余杭区 闲林街道");
+  });
+});
+
+// 导出 sheet 2 「业务明细」的数据源: getPerformanceContractDetail
+// 注意: 本 describe 会造一份 legacy 零额合同, 必须放在所有排行断言之后
+// (signer 维度排行历史口径不排除 legacy, 提前造会污染上面的基线)
+describe("getPerformanceContractDetail 业务明细 (导出 sheet 2)", () => {
+  it("owner 维度: 按负责人分组, 排除 legacy 零额合同 (同 aggregatePerformance 口径)", async () => {
+    if (!dbReachable || !salesUser || !testCustomerId) return;
+    const legacy = await makeContract(testCustomerId, `${TAG}-客户`, salesUser.id, salesUser.id, 0.01, "legacy", true);
+    createdContractNos.push(legacy.contractNo);
+
+    const groups = await getPerformanceContractDetail(buildSales(), "owner");
+    expect(groups.length).toBe(1);
+    const g = groups[0]!;
+    expect(g.key).toBe(salesUserId);
+    expect(g.label).toBe(salesUser!.name);
+    expect(g.employeeNo).toBe(salesUser!.employeeNo);
+    expect(g.rows.length).toBe(1);
+    expect(g.contractAmount).toBe(10000);
+    const r = g.rows[0]!;
+    expect(r.contractNo).toBe(`${TAG}-CTR-main`);
+    expect(r.region).toBe("余杭区 闲林街道");
+    expect(r.customerName).toBe(`${TAG}-客户`);
+    expect(r.ownerName).toBe(salesUser!.name);
+    expect(r.signerName).toBe(salesUser!.name);
+    expect(r.totalAmount).toBe(10000);
+  });
+
+  it("signer 维度: 与 getSignerSummary 历史口径一致, 包含 legacy 零额合同", async () => {
+    if (!dbReachable || !salesUser) return;
+    const groups = await getPerformanceContractDetail(buildSales(), "signer");
+    expect(groups.length).toBe(1);
+    expect(groups[0]!.rows.length).toBe(2);
+    expect(groups[0]!.contractAmount).toBe(10000.01);
+  });
+
+  it("region 维度: 按客户区域分组, employeeNo 为空, 排除 legacy (同 getRegionStatistics 口径)", async () => {
+    if (!dbReachable || !salesUser) return;
+    const groups = await getPerformanceContractDetail(buildSales(), "region");
+    expect(groups.length).toBe(1);
+    const g = groups[0]!;
+    expect(g.key).toBe("余杭区 闲林街道");
+    expect(g.label).toBe("余杭区 闲林街道");
+    expect(g.employeeNo).toBe("");
+    expect(g.rows.length).toBe(1);
+    expect(g.contractAmount).toBe(10000);
+  });
+});
+
+// 业绩排行打印页 (另存为 PDF): 与页面 / xlsx 同口径, 维度驱动表头
+// 注意: SALES 只有 STATISTICS:READ, 无 EXPORT → 路由打表用 admin actor
+const callPerformancePdf = (qs: string) => {
+  sessionHolder.actor = buildAdmin();
+  return getPerformancePdf(new Request(`http://localhost/api/statistics/performance/pdf?${qs}`));
+};
+
+describe("GET /api/statistics/performance/pdf 路由", () => {
+  it("owner 维度: 打印页含 业绩排行/业务明细/小计/总计, 表头为 姓名/工号", async () => {
+    if (!dbReachable || !adminUser) return;
+    const res = await callPerformancePdf("dimension=owner");
+    expect(res.status).toBe(200);
+    const html = await res.text();
+    expect(html).toContain("业绩排行");
+    expect(html).toContain("工号");
+    expect(html).toContain("业务明细");
+    expect(html).toContain("小计");
+    expect(html).toContain("总计");
+  });
+
+  it("region 维度: 表头切换为 区域/客户数", async () => {
+    if (!dbReachable || !adminUser) return;
+    const res = await callPerformancePdf("dimension=region");
+    expect(res.status).toBe(200);
+    const html = await res.text();
+    expect(html).toContain("区域");
+    expect(html).toContain("客户数");
+  });
+
+  it("非法 dimension → 400", async () => {
+    if (!dbReachable || !adminUser) return;
+    const res = await callPerformancePdf("dimension=nope");
+    expect(res.status).toBe(400);
+  });
+
+  it("SALES 无 STATISTICS:EXPORT → 403", async () => {
+    if (!dbReachable || !salesUser) return;
+    sessionHolder.actor = buildSales();
+    const res = await getPerformancePdf(new Request("http://localhost/api/statistics/performance/pdf?dimension=owner"));
+    expect(res.status).toBe(403);
   });
 });

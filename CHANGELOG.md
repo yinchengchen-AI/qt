@@ -2,6 +2,20 @@
 
 本文件记录 qt-biz 每个版本的详细变更。项目快速入口请见 [README.md](README.md)。
 
+## v0.21.9(2026-09-01)业绩排行导出口径统一(PDF 三维度 + xlsx 明细 sheet)
+
+业绩排行页导出全面切换到统一排行口径,解决「PDF 固定 signer 口径与页面维度不一致」「xlsx 新旧两套实现并存」两个问题。**DB schema 无变化**。
+
+### 新增
+- **feat(statistics)**:xlsx 导出 `type=performance` 新增 Sheet 2「业务明细」——合同级明细按排行维度分组 (owner/signer → 员工, region → 区域),组末小计 + 末行总计,超 `exportMaxRows()` 截断并在总计行如实标注;数据源 `getPerformanceContractDetail` 与各维度排行同口径 (owner/region 排除 legacy 零额合同, signer 沿用 `getSignerSummary` 历史口径不排除)
+- **feat(statistics)**:新增 `GET /api/statistics/performance/pdf?dimension=&preset=&from=&to=` 业绩排行打印页 (浏览器「另存为 PDF」)——支持 owner/signer/region 三维度 + preset 快捷区间,排行表含总计行,明细表分组小计/总计与 xlsx 同款;region 维度下页面「导出 PDF」按钮不再隐藏
+
+### 移除
+- **refactor(statistics)**:删除旧打印端点 `/api/statistics/employee-performance/pdf` (固定 signer 口径,与页面维度不一致时出数对不上) 及 xlsx 导出 `type=employee-performance` 分支 (`buildEmployeePerformanceXlsx`,页面早已无入口);抽屉明细端点 `employee-performance/detail` 与 `by-signer` 保留不动
+
+### 测试
+- **test(statistics)**:`tests/api/statistics-performance.test.ts` 新增 `getPerformanceContractDetail` 3 例 (三维度分组 + legacy 零额口径) 与 PDF 路由 4 例 (owner/region 表头、非法 dimension 400、SALES 无 EXPORT 403)
+
 ## v0.21.8(2026-08-27)自然语言搜索 + 智能催款接线(Phase 5 落地第一批)
 
 把 v0.21.6 引入的六个智能化服务模块中的两个接上真实入口,其余四个仍无调用方(见文末备注)。**DB schema 无变化**。

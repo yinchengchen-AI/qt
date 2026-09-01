@@ -151,7 +151,7 @@ export default function PerformancePage() {
     setDrawerLoading(true);
     try {
       const qs = new URLSearchParams({ userId });
-      // 明细/PDF 旧端点只认 from/to;preset 选中时 range 同步过,口径一致
+      // 明细旧端点只认 from/to;preset 选中时 range 同步过,口径一致
       const { from, to } = toDateRangeQuery(range);
       if (from) qs.set("from", from);
       if (to) qs.set("to", to);
@@ -179,12 +179,10 @@ export default function PerformancePage() {
   }, [router]);
 
   const downloadPdf = () => {
-    const qs = new URLSearchParams();
-    const { from, to } = toDateRangeQuery(range);
-    if (from) qs.set("from", from);
-    if (to) qs.set("to", to);
+    const qs = new URLSearchParams({ dimension });
+    applyRangeParams(qs);
     try {
-      openPrintWindow(`/api/statistics/employee-performance/pdf?${qs}`);
+      openPrintWindow(`/api/statistics/performance/pdf?${qs}`);
     } catch (e) {
       message.error((e as Error).message);
     }
@@ -265,9 +263,7 @@ export default function PerformancePage() {
               onChange={(v) => onRangeChange(v as [Dayjs, Dayjs] | null)}
               allowClear
             />
-            {!isRegion ? (
-              <Button icon={<FilePdfOutlined />} onClick={downloadPdf}>导出 PDF</Button>
-            ) : null}
+            <Button icon={<FilePdfOutlined />} onClick={downloadPdf}>导出 PDF</Button>
             <Button icon={<DownloadOutlined />} onClick={download}>导出 xlsx</Button>
           </Space>
         }
