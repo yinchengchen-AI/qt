@@ -256,7 +256,14 @@ describe("GET /api/statistics/performance 路由", () => {
 describe("getPerformanceRanking owner 维度 (专用 SALES 用户)", () => {
   it("开票率/回款率/未回款口径: contract=10000, invoice=6000, payment=3000", async () => {
     if (!dbReachable || !salesUser) return;
-    const j = await callPerformance("dimension=owner");
+    // 必须显式传 from/to 覆盖 fixture 窗口 (invoice 开于 5 天前):
+    // 不传区间时 resolveStatsRange 兜底为「当月」,每月头几天 invoice 落在上月
+    // 会被 actualIssueDate 过滤漏算 (invoiceAmount=0) — 历史时间炸弹,勿回退
+    // 注: to 用当前时刻的完整 ISO,不要用 YYYY-MM-DD (会按 UTC 零点解析,
+    // 把 beforeAll 里 signDate=now 的合同也过滤掉)
+    const from = new Date(Date.now() - 30 * 86400_000).toISOString();
+    const to = new Date().toISOString();
+    const j = await callPerformance(`dimension=owner&from=${from}&to=${to}`);
     expect(j.code).toBe(0);
     // SALES 行级隔离: 只看到自己一行
     expect(j.data.rows.length).toBe(1);
