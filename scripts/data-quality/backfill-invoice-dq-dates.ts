@@ -29,7 +29,8 @@ type LegacyInvoice = {
 function parseDateToShanghai(value: string): Date | null {
   const text = value.trim();
   if (!text) return null;
-  const normalized = text.includes("T") ? text : text.replace(" ", "T");
+  const normalized = (text.includes("T") ? text : text.replace(" ", "T"))
+    .replace(/\.(\d{3})\d*/, ".$1");
   const date = new Date(`${normalized}+08:00`);
   return Number.isNaN(date.getTime()) ? null : date;
 }
