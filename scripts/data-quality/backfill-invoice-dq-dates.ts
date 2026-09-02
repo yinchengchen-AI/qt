@@ -125,7 +125,7 @@ async function main() {
       continue;
     }
     const actualIssueDate = parseDateToShanghai(source.invoiceDate);
-    if (!actualIssueDate || actualIssueDate >= CUTOFF) {
+    if (!actualIssueDate) {
       skipped += 1;
       continue;
     }
