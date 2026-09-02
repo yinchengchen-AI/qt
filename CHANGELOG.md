@@ -2,6 +2,17 @@
 
 本文件记录 qt-biz 每个版本的详细变更。项目快速入口请见 [README.md](README.md)。
 
+## v0.21.12(2026-09-02)统计分析新增异常数据
+
+统计分析下新增「异常数据」台账页，把发票数据质量问题（占位发票号、内部无票收据、异常账龄日期、历史重复编号）从治理后台变成可视化报表。**DB schema 无变化。**
+
+### 新增
+- **feat(statistics)**：新增 `GET /api/statistics/invoice-data-quality`，按问题类型/状态/关键词/分页返回异常台账，并聚合待处理记录、去重发票数、问题发票金额。
+- **feat(statistics)**：统计分析菜单新增「异常数据」页面 `/statistics/data-quality`，支持待处理/已处理切换、类型与关键词筛选、发票号下钻。
+
+### 测试
+- 新增 `tests/api/invoice-data-quality.test.ts`，覆盖 summary 去重口径、类型/状态/关键词过滤。
+
 ## v0.21.11(2026-09-02)账龄异常日期回填脚本
 
 新增旧 FineUI 发票日期回填脚本，按发票号迁移顺序精确匹配，金额不一致或源日期缺失时跳过，只修正 `INVALID_AGING_DATE` 对应的历史异常日期。**DB schema 无变化。**
