@@ -2,6 +2,13 @@
 
 本文件记录 qt-biz 每个版本的详细变更。项目快速入口请见 [README.md](README.md)。
 
+## v0.21.11(2026-09-02)账龄异常日期回填脚本
+
+新增旧 FineUI 发票日期回填脚本，按发票号迁移顺序精确匹配，金额不一致或源日期缺失时跳过，只修正 `INVALID_AGING_DATE` 对应的历史异常日期。**DB schema 无变化。**
+
+### 新增
+- **feat(data-quality)**：新增 `scripts/data-quality/backfill-invoice-dq-dates.ts`，支持 `--dry-run` / `--apply`。
+
 ## v0.21.10(2026-09-02)应收账龄数据质量隔离
 
 新增发票级数据质量问题表和分类脚本，把 `00000000` 占位发票号、无需发票、异常账龄日期等历史脏数据从应收账龄主口径隔离，避免 90+ 被异常数据抬高。**DB schema 有变化：新增 `InvoiceDataQualityIssue`，`AgingSnapshot` 增加数据质量隔离字段。**
