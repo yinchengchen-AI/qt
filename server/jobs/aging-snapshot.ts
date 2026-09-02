@@ -7,6 +7,7 @@
 import { prisma } from "@/lib/prisma";
 import { Prisma } from "@prisma/client";
 import { MONEY_TOLERANCE } from "@/lib/money-tolerance";
+import { getOpenAgingExcludedIssues } from "@/lib/invoice-data-quality";
 
 export type AgingSnapshotResult = {
   upserted: number;
@@ -42,14 +43,27 @@ function round2(v: Prisma.Decimal | number): number {
 async function computeSnapshotForDate(
   basis: "issue" | "due",
   asOf: Date
-): Promise<{ buckets: AgingBucketTotals; totalReceivable: number; invoiceCount: number }> {
+): Promise<{
+  buckets: AgingBucketTotals;
+  totalReceivable: number;
+  invoiceCount: number;
+  dataQualityExcluded: number;
+  dataQualityInvoiceCount: number;
+}> {
   const invoices = await prisma.invoice.findMany({
     where: { deletedAt: null, status: "ISSUED" },
     select: { id: true, amount: true, actualIssueDate: true, dueDate: true }
   });
   if (invoices.length === 0) {
-    return { buckets: { "0-30": 0, "31-60": 0, "61-90": 0, "90+": 0 }, totalReceivable: 0, invoiceCount: 0 };
+    return {
+      buckets: { "0-30": 0, "31-60": 0, "61-90": 0, "90+": 0 },
+      totalReceivable: 0,
+      invoiceCount: 0,
+      dataQualityExcluded: 0,
+      dataQualityInvoiceCount: 0
+    };
   }
+  const dqMap = await getOpenAgingExcludedIssues(invoices.map((i) => i.id));
   const paid = await prisma.payment.groupBy({
     by: ["invoiceId"],
     where: {
@@ -66,6 +80,8 @@ async function computeSnapshotForDate(
   const buckets: AgingBucketTotals = { "0-30": 0, "31-60": 0, "61-90": 0, "90+": 0 };
   let totalReceivable = 0;
   let invoiceCount = 0;
+  let dataQualityExcluded = 0;
+  let dataQualityInvoiceCount = 0;
   for (const inv of invoices) {
     const basisDate = basis === "issue" ? inv.actualIssueDate : (inv.dueDate ?? inv.actualIssueDate);
     if (!basisDate) continue;
@@ -73,12 +89,17 @@ async function computeSnapshotForDate(
     const days = daysBetweenUtc(asOf, new Date(basisDate));
     const remain = new Prisma.Decimal(inv.amount).minus(paidMap.get(inv.id) ?? 0);
     if (remain.lessThanOrEqualTo(MONEY_TOLERANCE)) continue;
+    if (dqMap.get(inv.id)?.length) {
+      dataQualityExcluded = round2(new Prisma.Decimal(dataQualityExcluded).plus(remain));
+      dataQualityInvoiceCount += 1;
+      continue;
+    }
     const bucket = bucketOf(days);
     buckets[bucket] = round2(new Prisma.Decimal(buckets[bucket]).plus(remain));
     totalReceivable = round2(new Prisma.Decimal(totalReceivable).plus(remain));
     invoiceCount += 1;
   }
-  return { buckets, totalReceivable, invoiceCount };
+  return { buckets, totalReceivable, invoiceCount, dataQualityExcluded, dataQualityInvoiceCount };
 }
 
 /** 每日幂等 upsert 近 days 天 (含今天) 的两个 basis。返回 upsert 条数。 */
@@ -98,7 +119,9 @@ export async function runAgingSnapshot(now: Date = new Date(), days = 30): Promi
           bucket61_90: r.buckets["61-90"],
           bucket90: r.buckets["90+"],
           totalReceivable: r.totalReceivable,
-          invoiceCount: r.invoiceCount
+          invoiceCount: r.invoiceCount,
+          dataQualityExcluded: r.dataQualityExcluded,
+          dataQualityInvoiceCount: r.dataQualityInvoiceCount
         },
         create: {
           asOfDate: asOf,
@@ -108,7 +131,9 @@ export async function runAgingSnapshot(now: Date = new Date(), days = 30): Promi
           bucket61_90: r.buckets["61-90"],
           bucket90: r.buckets["90+"],
           totalReceivable: r.totalReceivable,
-          invoiceCount: r.invoiceCount
+          invoiceCount: r.invoiceCount,
+          dataQualityExcluded: r.dataQualityExcluded,
+          dataQualityInvoiceCount: r.dataQualityInvoiceCount
         }
       });
       upserted += 1;

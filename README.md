@@ -11,7 +11,7 @@
 
 > **客户 / 合同 / 开票 / 回款** 一体化管理,附件走 MinIO presigned 直传,服务端 Server Actions + RBAC + 行级隔离。
 >
-> **当前版本: v0.21.8**(2026-08-27)。文档地图见 [docs/README.md](docs/README.md),架构与设计见 [docs/architecture/DESIGN-v3.md](docs/architecture/DESIGN-v3.md),用户手册见 [docs/user/USER_MANUAL.md](docs/user/USER_MANUAL.md)。
+> **当前版本: v0.21.10**(2026-09-02)。文档地图见 [docs/README.md](docs/README.md),架构与设计见 [docs/architecture/DESIGN-v3.md](docs/architecture/DESIGN-v3.md),用户手册见 [docs/user/USER_MANUAL.md](docs/user/USER_MANUAL.md)。
 
 ## 目录
 
@@ -257,6 +257,10 @@ nginx 反代下上游异常时,由 `public/502.html` 静态页与 `app/502/page.
 
 最近 5 个版本,完整历史见 [CHANGELOG.md](CHANGELOG.md)。
 
+### v0.21.10(2026-09-02)应收账龄数据质量隔离
+
+新增发票级数据质量问题表和分类脚本，把 `00000000` 占位发票号、无需发票、异常账龄日期等历史脏数据从应收账龄主口径隔离，避免 90+ 被异常数据抬高；账龄统计、趋势和快照同步返回 `dataQualityExcluded`。**DB schema 有变化：新增 `InvoiceDataQualityIssue`，`AgingSnapshot` 增加数据质量隔离字段。**
+
 ### v0.21.8(2026-08-27)自然语言搜索 + 智能催款接线(Phase 5 落地第一批)
 
 v0.21.6 的智能化模块接上真实入口:全局搜索框支持"找去年Q3的合同"等自然语言查询(自动解析时间/金额/类别并回显);账龄分析页新增「催款建议」Tab,按客户付款习惯生成紧急度排序的催款话术,一键复制/一键记催收。顺带修复 NL 模块三个接线时暴露的潜伏 bug。**DB schema 无变化**。
@@ -357,4 +361,3 @@ PWA 可添加到主屏幕（standalone、应用壳缓存 + 离线兜底，Servic
 新增「合同工作台」页：我的统计卡（活跃/即将到期/逾期/风险）+ 待办列表（逾期>7天内到期>未开票优先级）+ 我的合同 ProTable；合同列表支持 `mine=true` 服务端注入 ownerUserId 行级隔离防越权。**DB schema 无变化**。
 
 ### v0.20.2(2026-08-17)对账规则配置（ReconciliationRule）下线
-

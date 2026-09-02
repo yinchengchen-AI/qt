@@ -6,6 +6,7 @@ import { Prisma } from "@prisma/client";
 import { isRowRestricted, ownerEq, ownerViaContract } from "@/lib/ownership";
 import { INVOICE_ISSUED_AMOUNT_STATUSES } from "@/lib/invoice-amounts";
 import type { DateRange } from "@/lib/date-range";
+import { getOpenAgingExcludedIssues } from "@/lib/invoice-data-quality";
 
 /**
  * 构造 Prisma DateTimeFilter。fieldName 仅用于在调用处自注释作用字段,
@@ -214,6 +215,14 @@ export type AgingSummary = {
   largestInvoice: { invoiceId: string; invoiceNo: string; remaining: number } | null;
   customerCount: number;
   ownerCount: number;
+  dataQualityExcludedAmount: number;
+  dataQualityExcludedInvoiceCount: number;
+};
+
+export type DataQualityExcluded = {
+  amount: number;
+  invoiceCount: number;
+  byCode: Record<string, { amount: number; invoiceCount: number }>;
 };
 
 export type AgingResult = {
@@ -225,6 +234,7 @@ export type AgingResult = {
   byOwner: AgingDimensionRow[];
   pagination: { page: number; pageSize: number; total: number; totalPages: number };
   basisUsed: "issue" | "due";
+  dataQualityExcluded: DataQualityExcluded;
 };
 
 const _BUCKET_KEYS = ["0-30", "31-60", "61-90", "90+"] as const;
@@ -294,6 +304,7 @@ export async function getInvoiceAging(
       contract: { select: { ownerUserId: true, owner: { select: { name: true } } } }
     }
   });
+  const dqMap = await getOpenAgingExcludedIssues(invoices.map((i) => i.id));
   // 拉合同号(owner 显示需要)
   const contractIds = [...new Set(invoices.map((i) => i.contractId))];
   const contracts = contractIds.length > 0
@@ -345,6 +356,13 @@ export async function getInvoiceAging(
 
   // 4) 计算每张发票的 daysOverdue / remaining / bucket
   const allRows: AgingRow[] = [];
+  const dataQualityExcluded: DataQualityExcluded = {
+    amount: 0,
+    invoiceCount: 0,
+    byCode: {}
+  };
+  const dqInvoiceCountByCode = new Map<string, number>();
+  const dqAmountByCode = new Map<string, number>();
   for (const inv of invoices) {
     // 基准日:basis=issue 用 actualIssueDate;basis=due 用 dueDate,fallback 到 actualIssueDate
     const basisDate =
@@ -355,6 +373,17 @@ export async function getInvoiceAging(
     const days = daysBetween(now, new Date(basisDate));
     const remain = new Prisma.Decimal(inv.amount).minus(paidMap.get(inv.id) ?? 0);
     if (remain.lessThanOrEqualTo(0.01)) continue; // 0.01 容差
+    const dqCodes = dqMap.get(inv.id);
+    if (dqCodes && dqCodes.length > 0) {
+      const amount = round2(remain);
+      dataQualityExcluded.amount = round2(dataQualityExcluded.amount + amount);
+      dataQualityExcluded.invoiceCount += 1;
+      for (const code of dqCodes) {
+        dqAmountByCode.set(code, round2((dqAmountByCode.get(code) ?? 0) + amount));
+        dqInvoiceCountByCode.set(code, (dqInvoiceCountByCode.get(code) ?? 0) + 1);
+      }
+      continue;
+    }
     const bucket = bucketOf(days);
     allRows.push({
       invoiceId: inv.id,
@@ -395,6 +424,13 @@ export async function getInvoiceAging(
   // 7) 分桶汇总(对全量 filtered,不是仅当前页 — KPI 反映全部超期)
   const buckets = { "0-30": 0, "31-60": 0, "61-90": 0, "90+": 0 } as Record<Bucket, number>;
   for (const r of filtered) buckets[r.bucket] = round2(buckets[r.bucket] + r.remaining);
+  const dqByCode = Object.fromEntries(
+    [...dqAmountByCode.entries()].map(([code, amount]) => [
+      code,
+      { amount, invoiceCount: dqInvoiceCountByCode.get(code) ?? 0 }
+    ])
+  );
+  dataQualityExcluded.byCode = dqByCode;
 
   // 8) 维度聚合(byCustomer / byOwner)
   const byCustomer = aggregateByDimension(filtered, "customerId", "customerName");
@@ -425,12 +461,15 @@ export async function getInvoiceAging(
         ? { invoiceId: largest.invoiceId, invoiceNo: largest.invoiceNo, remaining: largest.remaining }
         : null,
       customerCount,
-      ownerCount
+      ownerCount,
+      dataQualityExcludedAmount: dataQualityExcluded.amount,
+      dataQualityExcludedInvoiceCount: dataQualityExcluded.invoiceCount
     },
     byCustomer,
     byOwner,
     pagination: { page, pageSize, total, totalPages },
-    basisUsed: basis
+    basisUsed: basis,
+    dataQualityExcluded
   };
 }
 
@@ -502,6 +541,7 @@ async function getAgingByDimensionGrouped(
     }
   });
   if (invoices.length === 0) return [];
+  const dqMap = await getOpenAgingExcludedIssues(invoices.map((i) => i.id));
   // 2) 一次 groupBy 拿所有"仍生效回款"
   const paid = await prisma.payment.groupBy({
     by: ["invoiceId"],
@@ -518,6 +558,7 @@ async function getAgingByDimensionGrouped(
   const now = new Date();
   const agg = new Map<string, AgingDimensionRow>();
   for (const inv of invoices) {
+    if (dqMap.get(inv.id)?.length) continue;
     const basisDate = basis === "issue" ? inv.actualIssueDate : inv.dueDate ?? inv.actualIssueDate;
     if (!basisDate) continue;
     const remain = new Prisma.Decimal(inv.amount).minus(paidMap.get(inv.id) ?? 0);
@@ -675,7 +716,7 @@ export async function getAgingTrend(
   // 把 now 截到 UTC 0 点,避免漂移
   const todayUtc = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
 
-  const out: Array<{ date: string; total: number; byBucket: Record<Bucket, number> }> = [];
+  const out: Array<{ date: string; total: number; byBucket: Record<Bucket, number>; dataQualityExcluded: number }> = [];
 
   if (isRowRestricted(user)) {
     // 受限角色:快照无 owner 维度,回退实时计算
@@ -688,7 +729,8 @@ export async function getAgingTrend(
       out.push({
         date: asOf.toISOString().slice(0, 10),
         total: round2(point.bucket0_30 + point.bucket31_60 + point.bucket61_90 + point.bucket90),
-        byBucket: { "0-30": point.bucket0_30, "31-60": point.bucket31_60, "61-90": point.bucket61_90, "90+": point.bucket90 }
+        byBucket: { "0-30": point.bucket0_30, "31-60": point.bucket31_60, "61-90": point.bucket61_90, "90+": point.bucket90 },
+        dataQualityExcluded: point.dataQualityExcluded
       });
     }
     return out;
@@ -718,7 +760,8 @@ export async function getAgingTrend(
           "31-60": round2(snap.bucket31_60),
           "61-90": round2(snap.bucket61_90),
           "90+": round2(snap.bucket90)
-        }
+        },
+        dataQualityExcluded: round2(snap.dataQualityExcluded)
       });
       continue;
     }
@@ -727,13 +770,14 @@ export async function getAgingTrend(
     out.push({
       date: dateKey,
       total: round2(point.bucket0_30 + point.bucket31_60 + point.bucket61_90 + point.bucket90),
-      byBucket: { "0-30": point.bucket0_30, "31-60": point.bucket31_60, "61-90": point.bucket61_90, "90+": point.bucket90 }
+      byBucket: { "0-30": point.bucket0_30, "31-60": point.bucket31_60, "61-90": point.bucket61_90, "90+": point.bucket90 },
+      dataQualityExcluded: point.dataQualityExcluded
     });
   }
   return out;
 }
 
-type TrendBucket = { bucket0_30: number; bucket31_60: number; bucket61_90: number; bucket90: number };
+type TrendBucket = { bucket0_30: number; bucket31_60: number; bucket61_90: number; bucket90: number; dataQualityExcluded: number };
 
 function endOfDayUtc(d: Date): Date {
   return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate(), 23, 59, 59, 999));
@@ -755,8 +799,9 @@ async function getInvoiceAgingForDate(
     select: { id: true, amount: true, actualIssueDate: true, dueDate: true }
   });
   if (invoices.length === 0) {
-    return { bucket0_30: 0, bucket31_60: 0, bucket61_90: 0, bucket90: 0 };
+    return { bucket0_30: 0, bucket31_60: 0, bucket61_90: 0, bucket90: 0, dataQualityExcluded: 0 };
   }
+  const dqMap = await getOpenAgingExcludedIssues(invoices.map((i) => i.id));
   const paid = await prisma.payment.groupBy({
     by: ["invoiceId"],
     where: {
@@ -772,15 +817,19 @@ async function getInvoiceAgingForDate(
   const paidMap = new Map<string, number>();
   for (const p of paid) paidMap.set(p.invoiceId!, Number(p._sum.amount ?? 0));
 
-  const out = { bucket0_30: 0, bucket31_60: 0, bucket61_90: 0, bucket90: 0 } as TrendBucket;
+  const out = { bucket0_30: 0, bucket31_60: 0, bucket61_90: 0, bucket90: 0, dataQualityExcluded: 0 } as TrendBucket;
   for (const inv of invoices) {
     const basisDate = basis === "issue" ? inv.actualIssueDate : inv.dueDate ?? inv.actualIssueDate;
     if (!basisDate) continue;
+    const remain = new Prisma.Decimal(inv.amount).minus(paidMap.get(inv.id) ?? 0);
+    if (remain.lessThanOrEqualTo(0.01)) continue;
+    if (dqMap.get(inv.id)?.length) {
+      out.dataQualityExcluded = round2(new Prisma.Decimal(out.dataQualityExcluded).plus(remain));
+      continue;
+    }
     // asOf 必须 >= basisDate 才算"已超期"
     if (asOf.getTime() < new Date(basisDate).getTime()) continue;
     const days = daysBetween(asOf, new Date(basisDate));
-    const remain = new Prisma.Decimal(inv.amount).minus(paidMap.get(inv.id) ?? 0);
-    if (remain.lessThanOrEqualTo(0.01)) continue;
     const b = bucketOf(days);
     if (b === "0-30") out.bucket0_30 = round2(new Prisma.Decimal(out.bucket0_30).plus(remain));
     else if (b === "31-60") out.bucket31_60 = round2(new Prisma.Decimal(out.bucket31_60).plus(remain));

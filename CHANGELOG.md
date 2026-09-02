@@ -2,6 +2,19 @@
 
 本文件记录 qt-biz 每个版本的详细变更。项目快速入口请见 [README.md](README.md)。
 
+## v0.21.10(2026-09-02)应收账龄数据质量隔离
+
+新增发票级数据质量问题表和分类脚本，把 `00000000` 占位发票号、无需发票、异常账龄日期等历史脏数据从应收账龄主口径隔离，避免 90+ 被异常数据抬高。**DB schema 有变化：新增 `InvoiceDataQualityIssue`，`AgingSnapshot` 增加数据质量隔离字段。**
+
+### 新增
+- **feat(aging)**：新增 `InvoiceDataQualityIssue` 表，记录 `PENDING_INVOICE_NO / NO_INVOICE_REQUIRED / INVALID_AGING_DATE / DUPLICATE_INVOICE_NO` 四类问题，支持 `OPEN / RESOLVED` 状态。
+- **feat(aging)**：新增 `scripts/data-quality/classify-invoice-dq.ts`，支持 `--dry-run` / `--apply` 幂等打标。
+- **feat(statistics)**：`getInvoiceAging`、`getAgingByCustomer/Owner`、账龄趋势和 `AgingSnapshot` 统一排除 OPEN 的隔离问题，同时返回 `dataQualityExcluded` 金额和发票数。
+- **feat(dunning)**：智能催款建议同步排除被隔离的问题发票。
+
+### 测试
+- 新增 `tests/api/aging-data-quality.test.ts`，覆盖 OPEN 隔离、RESOLVED 恢复、客户维度隔离。
+
 ## v0.21.9(2026-09-01)业绩排行导出口径统一(PDF 三维度 + xlsx 明细 sheet)
 
 业绩排行页导出全面切换到统一排行口径,解决「PDF 固定 signer 口径与页面维度不一致」「xlsx 新旧两套实现并存」两个问题。**DB schema 无变化**。

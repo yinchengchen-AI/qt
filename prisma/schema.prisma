@@ -515,6 +515,7 @@ model Invoice {
   auditLogs      InvoiceAuditLog[]
   attachmentRefs Attachment[]      @relation("InvoiceAttachments")
   dunningNotes   DunningNote[]
+  dataQualityIssues InvoiceDataQualityIssue[]
 
   @@index([status])
   @@index([actualIssueDate])
@@ -787,6 +788,30 @@ model DunningNote {
 }
 
 // =====================================================
+// InvoiceDataQualityIssue (应收账龄数据质量治理)
+//   - 记录发票级数据质量问题, 由 scripts/data-quality/classify-invoice-dq.ts 幂等写入。
+//   - issueCode 用于隔离口径: PENDING_INVOICE_NO / NO_INVOICE_REQUIRED /
+//     INVALID_AGING_DATE / DUPLICATE_INVOICE_NO。
+//   - status: OPEN / RESOLVED。账龄统计只排除 OPEN 且属于隔离口径的问题行,
+//     同时把隔离金额通过 dataQualityExcluded 单独返回, 不直接丢数据。
+// =====================================================
+model InvoiceDataQualityIssue {
+  id         String    @id @default(cuid())
+  invoiceId  String
+  invoice    Invoice   @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  issueCode  String
+  detail     String?
+  status     String    @default("OPEN") // OPEN | RESOLVED
+  resolvedAt DateTime? @db.Timestamptz(6)
+  createdAt  DateTime  @default(now()) @db.Timestamptz(6)
+  updatedAt  DateTime  @updatedAt @db.Timestamptz(6)
+
+  @@unique([invoiceId, issueCode])
+  @@index([invoiceId])
+  @@index([issueCode, status])
+}
+
+// =====================================================
 // AgingSnapshot (应收账龄日快照 / 预计算)
 //   - 用途: 账龄趋势图 O(1) 读取,避免每次请求对全量 ISSUED 发票 + 回款
 //     重算 N 天。cron job (server/jobs/aging-snapshot.ts) 每日幂等 upsert
@@ -808,6 +833,8 @@ model AgingSnapshot {
   bucket90        Decimal  @db.Decimal(18, 2)
   totalReceivable Decimal  @db.Decimal(18, 2)
   invoiceCount    Int
+  dataQualityExcluded Decimal  @default(0) @db.Decimal(18, 2)
+  dataQualityInvoiceCount Int @default(0)
   createdAt       DateTime @default(now()) @db.Timestamptz(6)
   updatedAt       DateTime @updatedAt @db.Timestamptz(6)
 

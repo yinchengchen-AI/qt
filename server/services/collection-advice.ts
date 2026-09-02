@@ -13,6 +13,7 @@ import { prisma } from "@/lib/prisma";
 import type { SessionUser } from "@/lib/session";
 import { requirePermission, RESOURCE, ACTION } from "@/lib/permissions";
 import { ownerViaContract } from "@/lib/ownership";
+import { getOpenAgingExcludedIssues } from "@/lib/invoice-data-quality";
 import {
   generateSmartCollectionAdvice,
   type CollectionRecommendation,
@@ -85,6 +86,7 @@ export async function getCollectionAdvice(user: SessionUser): Promise<Collection
   if (invoices.length === 0) {
     return { items: [], totalOverdueContracts: 0, totalOutstanding: 0, generatedAt: now.toISOString() };
   }
+  const dqMap = await getOpenAgingExcludedIssues(invoices.map((i) => i.id));
 
   // 2) 每张发票的已回款 (仅仍生效的 CONFIRMED/RECONCILED)
   const paid = await prisma.payment.groupBy({
@@ -113,6 +115,7 @@ export async function getCollectionAdvice(user: SessionUser): Promise<Collection
   };
   const overdueRows: OverdueRow[] = [];
   for (const inv of invoices) {
+    if (dqMap.get(inv.id)?.length) continue;
     const basisDate = inv.dueDate ?? inv.actualIssueDate;
     if (!basisDate) continue;
     const remaining = new Prisma.Decimal(inv.amount).minus(paidMap.get(inv.id) ?? 0);
