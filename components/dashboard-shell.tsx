@@ -3,6 +3,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useMessageStream } from "@/lib/use-message-stream";
+import type { MessageRowPayload } from "@/lib/message-types";
 import { useUnreadCount, refreshUnread } from "@/lib/message-unread";
 import { MobileBottomNav } from "@/components/mobile-bottom-nav";
 import Link from "next/link";
@@ -215,9 +216,7 @@ export function DashboardShell({ user, children }: Props) {
   const unread = useUnreadCount();
   const [navOpen, setNavOpen] = useState(false);
   const [drawerOpen, setDrawerOpen] = useState(false);
-  const [messages, setMessages] = useState<
-    Array<{ id: string; title: string; type: string; readAt: string | null; createdAt: string; link: { kind: string; id: string } | null }>
-  >([]);
+  const [messages, setMessages] = useState<MessageRowPayload[]>([]);
   // 抽屉里的置顶公告(打开抽屉时拉一次)
   const [pinned, setPinned] = useState<Array<{ id: string; title: string; content: string }>>([]);
   // 抽屉消息分页:loadMessages(false) 翻页追加,loadMessages(true) 重置到第 1 页
@@ -275,7 +274,7 @@ export function DashboardShell({ user, children }: Props) {
       const r = await fetch(`/api/messages?page=${nextPage}&pageSize=10`, { credentials: "include" });
       const j = await r.json();
       if (j.code === 0) {
-        const list = (j.data.list ?? []) as typeof messages;
+        const list = (j.data.list ?? []) as MessageRowPayload[];
         setMessages((prev) => (reset ? list : [...prev, ...list]));
         setMsgPage(nextPage);
         setMsgHasMore(list.length === 10 && nextPage * 10 < (j.data.total ?? 0));
@@ -304,6 +303,15 @@ export function DashboardShell({ user, children }: Props) {
         loadMessages();
         loadPinned();
       }
+    },
+    // v0.22.0: 后端直推 message:new 事件, 抽屉打开时直接 prepend;不打开时仅刷新 unread 计数。
+    onNewMessage: (row) => {
+      refreshUnread();
+      if (!drawerOpen) return;
+      setMessages((prev) => {
+        if (prev.some((m) => m.id === row.id)) return prev;
+        return [row, ...prev];
+      });
     }
   });
 

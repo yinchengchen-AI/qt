@@ -4,11 +4,18 @@
 // 事件类型派生自 types/enums.ts 的 MESSAGE_TYPE,确保:
 //   - 编译期 DomainEventType 与常量数组一致
 //   - DB 层(prisma enum MessageType)与这里一致
-//   - 加新事件时只改 MESSAGE_TYPE + prisma enum + buildMessage case
+//   - 加新事件时只改 MESSAGE_TYPE + prisma enum + builder-registry
+//
+// v0.22.0 改动：
+//   - 渲染从 inline switch 拆到 server/events/builder-registry.ts
+//   - emit 写入前过滤用户已退订的 type（MessagePreference.enabled=false）
+//   - 写入成功后非事务路径立即 broadcastNew (message:new 事件) + broadcastKick 兜底
 import type { Prisma, PrismaClient } from "@prisma/client";
 import { Prisma as PrismaNS } from "@prisma/client";
 import { MESSAGE_TYPE } from "@/types/enums";
-import { broadcastKick, queueKickKick } from "@/server/notifications/hub";
+import { broadcastKick, broadcastNew, queueKickKick } from "@/server/notifications/hub";
+import { getDisabledMap } from "@/server/services/message-preference";
+import { getBuilder } from "@/server/events/builder-registry";
 
 export type DomainEventType = (typeof MESSAGE_TYPE)[number];
 
@@ -28,9 +35,26 @@ type TxOrClient = Prisma.TransactionClient | PrismaClient;
 
 export async function emit(prisma: TxOrClient, ev: DomainEvent): Promise<number> {
   if (!ev.receivers || ev.receivers.length === 0) return 0;
-  const messages = ev.receivers.map((uid) => buildMessage(uid, ev));
-  // 去重（同一人不会收两条相同 type+entityId）
-  // entityKey 由调用方提供;无 link 或 deprecated 事件可省略(null)→ 不参与 unique。
+
+  // v0.22.0: 过滤退订用户
+  const disabledMap = await getDisabledMap(ev.receivers, prisma);
+  const effectiveReceivers = ev.receivers.filter((uid) => {
+    const disabled = disabledMap.get(uid);
+    return !disabled || !disabled.has(ev.type);
+  });
+  if (effectiveReceivers.length === 0) return 0;
+
+  const builder = getBuilder(ev.type);
+  const messages = effectiveReceivers.map((uid) => {
+    const r = builder(ev.payload);
+    return {
+      receiverUserId: uid,
+      title: r.title,
+      content: r.content,
+      link: r.link
+    };
+  });
+
   const data = messages.map((m) => ({
     receiverUserId: m.receiverUserId,
     type: ev.type as Prisma.MessageCreateManyInput["type"],
@@ -39,263 +63,47 @@ export async function emit(prisma: TxOrClient, ev: DomainEvent): Promise<number>
     link: (m.link ?? PrismaNS.JsonNull) as Prisma.InputJsonValue,
     entityKey: ev.entityKey ?? null
   }));
-  // P0-2: 一次性 createMany 替代原来的 for-await prisma.message.create。
-  // 项目只走 Prisma + PostgreSQL,createMany 可用;原顺序写法是 N+1 round-trip,
-  // cron 跑合同到期 30/7/1 × 全部 ACTIVE × (owner+admin) 经常 100+ 条。
-  // createMany 是单条 INSERT...VALUES (...),(...),事务回滚由调用方的 $transaction 保证。
-  //
-  // v0.14.0: 加 skipDuplicates 兜底 @@unique([entityKey, receiverUserId]) 重复组合。
-  // 同 receiver 的相同 entityKey 行被静默跳过;caller 通常应该自己 (job 内部 in-memory)
-  // 过滤已发送记录以节省 DB 往返,这里是最后兜底。如果 entityKey 未传,unique 约束
-  // 不会触发 skipDuplicates,仍然是 N 行写入。
-  //
-  // 通知统一走站内信:外部通道(email / 企微 webhook)已下线,本函数是唯一的写 Message 入口。
-  // 如需恢复外部通道,需要把"已渲染的消息 + 用户联系方式"再派发到通道 handler;
-  // 那个派发必须放在事务外(失败不阻塞业务),并在事务回滚时通过 message.findFirst
-  // 反查避免发出"假阳性"通知。
   await prisma.message.createMany({ data, skipDuplicates: true });
 
-  // 事件驱动推送：非事务路径立即踢；事务路径由外层 flushPendingKicks 负责
+  // v0.22.0: 拉回真实写入的 (id, type, title, content, link, createdAt, receiverUserId) 用于推送
+  // 简化: 一次性 createMany 后再 findMany 拿 (entityKey, receiverUserId) → row
+  // 性能: 仅当 receivers ≤ 200 走这条路, 超过走纯 kick 兜底
   const isTx = typeof (prisma as Prisma.TransactionClient).$transaction === "function";
-  if (!isTx) {
-    for (const uid of ev.receivers) broadcastKick(uid);
+  if (effectiveReceivers.length <= 200) {
+    const rows = await (prisma as PrismaClient).message.findMany({
+      where: {
+        type: ev.type as Prisma.MessageWhereInput["type"],
+        receiverUserId: { in: effectiveReceivers },
+        createdAt: { gte: new Date(Date.now() - 5000) } // 5s 窗口
+      },
+      orderBy: { createdAt: "desc" },
+      take: effectiveReceivers.length,
+      select: {
+        id: true,
+        type: true,
+        title: true,
+        content: true,
+        link: true,
+        createdAt: true,
+        readAt: true,
+        receiverUserId: true
+      }
+    });
+    if (!isTx) {
+      for (const row of rows) broadcastNew(row);
+    } else {
+      queueKickKick(effectiveReceivers);
+    }
   } else {
-    queueKickKick(ev.receivers);
+    if (!isTx) {
+      for (const uid of effectiveReceivers) broadcastKick(uid);
+    } else {
+      queueKickKick(effectiveReceivers);
+    }
   }
 
   return messages.length;
 }
-
-type ResolvedMessage = {
-  receiverUserId: string;
-  title: string;
-  content: string;
-  link?: Record<string, unknown>;
-};
-
-function buildMessage(uid: string, ev: DomainEvent): ResolvedMessage {
-  const p = ev.payload;
-  switch (ev.type) {
-    case "CONTRACT_EXPIRING":
-      return {
-        receiverUserId: uid,
-        title: `合同 ${p.contractNo} 将于 ${p.daysLeft} 天后到期`,
-        content: `到期日：${formatDate(p.endDate)}`,
-        link: { kind: "contract", id: p.contractId }
-      };
-    case "INVOICE_OVERDUE_PAYMENT":
-      return {
-        receiverUserId: uid,
-        title: `发票 ${p.invoiceNo} 已开票 ${p.daysOverdue} 天，剩余未回款 ¥${p.remaining}`,
-        content: `客户：${p.customerName}`,
-        link: { kind: "invoice", id: p.invoiceId }
-      };
-    case "PAYMENT_RECEIVED":
-      return {
-        receiverUserId: uid,
-        title: `客户 ${p.customerName} 回款 ¥${p.amount} 已确认`,
-        content: `回款单号：${p.paymentNo}`,
-        link: { kind: "payment", id: p.paymentId }
-      };
-    case "INVOICE_ISSUED":
-      // 发票开具结果 (invoiceAction issue 触发), 接收人 = 申请人
-      return {
-        receiverUserId: uid,
-        title: `发票 ${p.invoiceNo} 已开票`,
-        content: `开票金额：¥${p.amount ?? "-"}`,
-        link: { kind: "invoice", id: p.invoiceId }
-      };
-    case "INVOICE_REJECTED":
-      // 发票驳回结果 (invoiceAction reject 触发), 接收人 = 申请人
-      return {
-        receiverUserId: uid,
-        title: `发票 ${p.invoiceNo} 已被驳回`,
-        content: `驳回原因：${p.reason ?? "-"}，可修改后重新提交`,
-        link: { kind: "invoice", id: p.invoiceId }
-      };
-    case "CONTRACT_AUTO_EXECUTED":
-      return {
-        receiverUserId: uid,
-        title: `合同 ${p.contractNo} 已自动进入执行`,
-        content: `关联项目「${p.projectName ?? "-"}」已开工`,
-        link: { kind: "contract", id: p.contractId }
-      };
-    case "CONTRACT_AUTO_COMPLETED":
-      return {
-        receiverUserId: uid,
-        title: `合同 ${p.contractNo} 已自动结清`,
-        content: `合同下所有项目已收尾`,
-        link: { kind: "contract", id: p.contractId }
-      };
-    case "CONTRACT_AUTO_EXPIRED":
-      return {
-        receiverUserId: uid,
-        title: `合同 ${p.contractNo} 已自动到期`,
-        content: `合同到期日：${formatDate(p.endDate)}`,
-        link: { kind: "contract", id: p.contractId }
-      };
-    case "CONTRACT_AUTO_OVERDUE_TERMINATED":
-      // 合同过期宽限期强关: endDate+GRACE<now 仍未结清 → 强关为 overdue_terminated
-      // payload: contractId, contractNo, reason, endDate, graceDays
-      return {
-        receiverUserId: uid,
-        title: `合同 ${p.contractNo} 已自动强关 (过期未结清)`,
-        content: `到期日: ${formatDate(p.endDate)}, 已超宽限期 ${p.graceDays} 天仍未结清, 系统自动关闭`,
-        link: { kind: "contract", id: p.contractId }
-      };
-    case "CONTRACT_EXPIRED_UNPAID":
-      // 合同过期未结清提醒: endDate<now 但钱没收齐, 每天去重发一次
-      // payload: contractId, contractNo, daysOverdue, graceDays, daysUntilForceClose,
-      //          paidAmount, totalAmount
-      // 文案分档 (P3-2 防假完结 9 月没人察觉的根因之一 — 强关前预警不醒目):
-      //   - daysUntilForceClose ∈ {7, 3, 1}: 红色加粗 "⚠️ N 天后系统将自动强关"
-      //   - daysUntilForceClose = 0: "今天会被强关"
-      //   - daysUntilForceClose < 0: 已被强关前最后一次提醒 (实际此时已被强关, 不会到这)
-      //   - 其他: 普通 "还剩 N 天进入宽限期强关"
-      const daysUntil = Math.max(0, Number(p.graceDays ?? 0) - Number(p.daysOverdue ?? 0));
-      const daysUntilRaw = Number(p.graceDays ?? 0) - Number(p.daysOverdue ?? 0);
-      const isFinalWarning = daysUntilRaw === 7 || daysUntilRaw === 3 || daysUntilRaw === 1;
-      const titlePrefix = isFinalWarning ? "⚠️ 【强关预警】合同" : "合同";
-      const titleSuffix = daysUntilRaw === 0 ? " — 今天将被系统强关" : "";
-      let content: string;
-      if (daysUntilRaw < 0) {
-        content = `已过宽限期 ${Math.abs(daysUntilRaw)} 天, 系统下次 cron 跑会强关为 overdue_terminated, 请立即处理`;
-      } else if (daysUntilRaw === 0) {
-        content = `⚠️ 今天会被系统强关 (reason=overdue_terminated)! 请立即补录回款或申请延期, 否则合同状态将变为 CLOSED`;
-      } else if (isFinalWarning) {
-        content = `⚠️ ${daysUntilRaw} 天后系统将自动强关 (reason=overdue_terminated)! 立即补录回款或申请延期, 否则合同状态将变为 CLOSED 且无法录回款`;
-      } else {
-        content = `还剩 ${daysUntil} 天进入宽限期强关, 请尽快催收或人工处理`;
-      }
-      return {
-        receiverUserId: uid,
-        title: `${titlePrefix} ${p.contractNo} 已过期 ${p.daysOverdue} 天, 未结清 ¥${p.remaining ?? "-"}${titleSuffix}`,
-        content,
-        link: { kind: "contract", id: p.contractId }
-      };
-    case "CONTRACT_PAID_INVOICE_PENDING":
-      // 回款已足额但开票不足额 (tickStaleContracts 触发): tryAutoClose 要双足额,
-      // 这种合同永不完结也没人察觉, 提醒 owner/admin 补开发票
-      // payload: contractId, contractNo, daysOverdue, paidAmount, totalAmount, invoicedAmount, remaining
-      return {
-        receiverUserId: uid,
-        title: `合同 ${p.contractNo} 回款已收齐, 还差 ¥${p.remaining ?? "-"} 发票未开`,
-        content: `合同已过期 ${p.daysOverdue ?? "-"} 天且回款已足额 (¥${p.paidAmount ?? "-"} / ¥${p.totalAmount ?? "-"}), 已开票 ¥${p.invoicedAmount ?? "-"} 未达完结阈值; 补齐开票后系统会自动完结`,
-        link: { kind: "contract", id: p.contractId }
-      };
-    case "CERTIFICATE_EXPIRING":
-      // 证书到期提醒 (server/jobs/certificate-expiry-check 触发)
-      // payload 字段: certificateId, userId, certName, expiryDate, daysLeft
-      // 完整文案在 PR9 接入 cron 时精修;这里先做最小可用版本,确保 typecheck 通过
-      return {
-        receiverUserId: uid,
-        title: `证书 ${String(p.certName ?? "-")} 将于 ${Number(p.daysLeft ?? 0)} 天后到期`,
-        content: `到期日：${formatDate(p.expiryDate)}`,
-        link: { kind: "employee-profile", id: p.userId, certificateId: p.certificateId }
-      };
-    case "RECONCILIATION_AUTO_MATCHED":
-      // 自动匹配成功，待财务确认
-      return {
-        receiverUserId: uid,
-        title: `银行流水 ${p.bankRefNo} 已自动匹配到回款 ${p.paymentNo}`,
-        content: `金额：¥${p.amount}，客户：${p.customerName}，匹配分数：${p.score}分，请前往对账中心确认`,
-        link: { kind: "reconciliation", id: p.transactionId }
-      };
-    case "RECONCILIATION_SUGGESTION":
-      // 有建议匹配，需人工判断
-      return {
-        receiverUserId: uid,
-        title: `银行流水 ${p.bankRefNo} 有 ${p.candidateCount} 条候选匹配`,
-        content: `金额：¥${p.amount}，客户：${p.customerName}，请前往对账中心人工确认`,
-        link: { kind: "reconciliation", id: p.transactionId }
-      };
-    case "RECONCILIATION_DISCREPANCY":
-      // 对账差异提醒
-      // link 指向关联流水 (对账中心详情抽屉); 无关联流水时退化到无跳转
-      return {
-        receiverUserId: uid,
-        title: `对账差异提醒：${p.description}`,
-        content: `类型：${p.type}，严重程度：${p.severity}，请及时处理`,
-        link: { kind: "reconciliation", id: p.bankTransactionId }
-      };
-    case "RECONCILIATION_WEEKLY_REPORT":
-      // 每周对账汇总报告
-      return {
-        receiverUserId: uid,
-        title: `本周对账汇总：新增 ${p.newCount} 条流水，匹配率 ${p.matchRate}%`,
-        content: `待确认 ${p.pendingCount} 条，差异 ${p.discrepancyCount} 条，请前往对账中心查看`,
-        link: { kind: "reconciliation" }
-      };
-    case "RISK_LEVEL_UP": {
-      // 合同风险等级上调 (risk-score-snapshot job 快照比对触发)
-      // 两种 payload:
-      //   单合同升档: { contractId, contractNo, level, score, prevLevel, prevScore }
-      //   admin 每日汇总: { summary: true, high, critical, topContractNo?, topScore? } (无 link)
-      const LEVEL_LABEL: Record<string, string> = { LOW: "低", MEDIUM: "中", HIGH: "高", CRITICAL: "严重" };
-      if (p.summary) {
-        return {
-          receiverUserId: uid,
-          title: `风险合同日报：高风险 ${Number(p.high ?? 0)} 份，严重 ${Number(p.critical ?? 0)} 份`,
-          content: p.topContractNo
-            ? `最高分合同 ${p.topContractNo}（${Number(p.topScore ?? 0)} 分），请登录合同工作台跟进`
-            : "请登录合同工作台跟进风险合同"
-        };
-      }
-      const level = String(p.level ?? "");
-      const prevLevel = String(p.prevLevel ?? "");
-      return {
-        receiverUserId: uid,
-        title: `合同 ${p.contractNo} 风险等级上调为${LEVEL_LABEL[level] ?? level}（${Number(p.score ?? 0)} 分）`,
-        content: `原等级：${LEVEL_LABEL[prevLevel] ?? prevLevel}（${Number(p.prevScore ?? 0)} 分），请尽快处理`,
-        link: { kind: "contract", id: p.contractId }
-      };
-    }
-    case "CONTRACT_RENEWAL_REMIND":
-      // 到期超 30 天未续签 (contract-renewal-remind job, 每周一次)
-      // payload: contractId, contractNo, customerName, endDate, daysExpired
-      return {
-        receiverUserId: uid,
-        title: `合同 ${p.contractNo} 已到期 ${Number(p.daysExpired ?? 0)} 天，仍未续签`,
-        content: `客户：${p.customerName ?? "-"}，到期日：${formatDate(p.endDate)}；如不再合作请归档处理，否则请尽快发起续签`,
-        link: { kind: "contract", id: p.contractId }
-      };
-    case "LINKAGE_NO_INVOICE":
-      // 生效 30 天无已开票发票 (daily-linkage-check job)
-      // payload: contractId, contractNo, customerName, daysSinceStart
-      return {
-        receiverUserId: uid,
-        title: `合同 ${p.contractNo} 生效 ${Number(p.daysSinceStart ?? 0)} 天未开票`,
-        content: `客户：${p.customerName ?? "-"}，请确认服务进度并及时开票`,
-        link: { kind: "contract", id: p.contractId }
-      };
-    case "LINKAGE_INVOICE_PAYMENT_GAP":
-      // 开票-回款偏差 (daily-linkage-check job): 已开票>=1万 且缺口>20% 且最新发票超 30 天
-      // payload: contractId, contractNo, customerName, invoicedAmount, paidAmount, gapAmount, gapRatio
-      return {
-        receiverUserId: uid,
-        title: `合同 ${p.contractNo} 开票-回款偏差 ${Number(p.gapRatio ?? 0)}%（缺口 ¥${p.gapAmount ?? "-"}）`,
-        content: `客户：${p.customerName ?? "-"}，已开票 ¥${p.invoicedAmount ?? "-"} / 已回款 ¥${p.paidAmount ?? "-"}，请跟进催收`,
-        link: { kind: "contract", id: p.contractId }
-      };
-    default:
-      // 历史消息 fallback: deprecated 事件类型 (CUSTOMER_STATUS_SUGGEST 等) 保留在 enum 但不再 emit
-      // 偶有历史 row 会落在这里, 渲染为占位 + 提示
-      return {
-        receiverUserId: uid,
-        title: `历史消息 (${ev.type})`,
-        content: "该消息类型已下线, 详情请联系管理员",
-      };
-  }
-}
-
-
-function formatDate(d: unknown): string {
-  if (!d) return "—";
-  const date = typeof d === "string" ? new Date(d) : d instanceof Date ? d : null;
-  if (!date || isNaN(date.getTime())) return "—";
-  return date.toISOString().slice(0, 10);
-}
-
 
 /** 找出全部 *真人* ADMIN 的 userId;排除 isSystem 占位；用于"通用通知"接收人 */
 export async function listAdminUserIds(prisma: TxOrClient): Promise<string[]> {
@@ -305,5 +113,3 @@ export async function listAdminUserIds(prisma: TxOrClient): Promise<string[]> {
   });
   return users.map((u) => u.id);
 }
-
-

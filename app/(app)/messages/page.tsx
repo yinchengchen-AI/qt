@@ -1,9 +1,49 @@
 "use client";
-import { ProTable, type ActionType, type ProColumns } from "@ant-design/pro-components";
-import { Tag, Button, Space, App as AntdApp, Tabs, Empty, Typography, Card, Skeleton } from "antd";
-import { CheckOutlined, DeleteOutlined, LinkOutlined, PushpinOutlined } from "@ant-design/icons";
+// 消息中心 v2 (2026-09-03)
+//
+// 重做:
+//   - 左侧分类 sidebar (全部 / 合同 / 财务 / 对账 / 证书 / 系统),从 /unread-summary 拉分类未读计数
+//   - 顶部 toolbar: 搜索 + 类型多选 + 状态 tab + 日期范围
+//   - 批量操作: 勾选行后出现 batch bar (mark read / delete)
+//   - row click = 标记已读 + 跳转到 link
+//   - message:new SSE 事件: 直接 prepend 到列表顶部 (无重拉)
+//   - 订阅设置: 顶部"订阅"按钮打开 Drawer
+import {
+  ProTable,
+  type ActionType,
+  type ProColumns
+} from "@ant-design/pro-components";
+import {
+  Tag,
+  Button,
+  Space,
+  App as AntdApp,
+  Tabs,
+  Empty,
+  Typography,
+  Card,
+  Skeleton,
+  Input,
+  Drawer,
+  Switch,
+  Divider,
+  DatePicker,
+  Popconfirm,
+  Spin,
+  Badge,
+  Select
+} from "antd";
+import {
+  CheckOutlined,
+  DeleteOutlined,
+  LinkOutlined,
+  SearchOutlined,
+  SettingOutlined,
+  ReloadOutlined,
+  AppstoreOutlined
+} from "@ant-design/icons";
 import Link from "next/link";
-import { useRef, useState, useEffect } from "react";
+import { useRef, useState, useEffect, useMemo, useCallback } from "react";
 import { Page } from "@/components/page";
 import { PageHeader } from "@/components/page-header";
 import { StatusTag } from "@/components/status-tag";
@@ -13,20 +53,28 @@ import { useResponsive } from "@/lib/use-breakpoint";
 import { useUnreadCount, refreshUnread } from "@/lib/message-unread";
 import { useMessageStream } from "@/lib/use-message-stream";
 import { buildMessageLinkHref as buildLinkHref } from "@/lib/message-link";
+import { MESSAGE_CATEGORY, categoryOf } from "@/lib/message-categories";
+import type {
+  MessageRowPayload,
+  UnreadSummary,
+  MessagePreferenceRow
+} from "@/lib/message-types";
+import { type Dayjs } from "dayjs";
 
 const { Text, Paragraph } = Typography;
-
-type Message = {
-  id: string;
-  type: string;
-  title: string;
-  content: string;
-  link: { kind: string; id: string } | null;
-  readAt: string | null;
-  createdAt: string;
-};
+const { RangePicker } = DatePicker;
 
 type TabKey = "all" | "unread" | "read";
+type SelectedCategory = string | "all";
+
+type ListResp = {
+  list: MessageRowPayload[];
+  total?: number;
+  nextCursor: string | null;
+  unreadCount: number;
+};
+
+type PinnedAnnouncement = { id: string; title: string; content: string; publishAt: string };
 
 export default function MessagesPage() {
   const t = useT();
@@ -34,159 +82,386 @@ export default function MessagesPage() {
   const { isMobile } = useResponsive();
   const actionRef = useRef<ActionType>(undefined);
   const [tab, setTab] = useState<TabKey>("all");
+  const [searchInput, setSearchInput] = useState("");
+  const [search, setSearch] = useState("");
+  const [category, setCategory] = useState<SelectedCategory>("all");
+  const [dateRange, setDateRange] = useState<[Dayjs | null, Dayjs | null] | null>(null);
+  const [selectedRowKeys, setSelectedRowKeys] = useState<React.Key[]>([]);
+  const [data, setData] = useState<MessageRowPayload[]>([]);
+  const [summary, setSummary] = useState<UnreadSummary | null>(null);
+  const [pinned, setPinned] = useState<PinnedAnnouncement[]>([]);
+  const [pinnedLoading, setPinnedLoading] = useState(true);
+  const [prefOpen, setPrefOpen] = useState(false);
+  const [prefs, setPrefs] = useState<MessagePreferenceRow[] | null>(null);
+  const [prefsLoading, setPrefsLoading] = useState(false);
 
   const unreadCount = useUnreadCount();
 
-  useMessageStream({ onKick: () => {
-    actionRef.current?.reload?.();
-    refreshUnread();
-  } });
+  const reloadSummary = useCallback(async () => {
+    try {
+      const r = await fetch("/api/messages/unread-summary", { credentials: "include" });
+      const j = await r.json();
+      if (j.code === 0) setSummary(j.data as UnreadSummary);
+    } catch {
+      /* ignore */
+    }
+  }, []);
 
-  type PinnedAnnouncement = { id: string; title: string; content: string; publishAt: string };
-  const [pinned, setPinned] = useState<PinnedAnnouncement[]>([]);
-  const [pinnedLoading, setPinnedLoading] = useState(true);
+  useEffect(() => {
+    reloadSummary();
+  }, [reloadSummary]);
+
+  // 提交搜索（防抖 400ms）
+  useEffect(() => {
+    const id = setTimeout(() => setSearch(searchInput.trim()), 400);
+    return () => clearTimeout(id);
+  }, [searchInput]);
+
+  // 加载 pinned 公告
   useEffect(() => {
     (async () => {
       try {
         const r = await fetch("/api/announcements/pinned", { credentials: "include" });
         const j = await r.json();
         if (j.code === 0) setPinned(j.data?.list ?? []);
-      } catch { /* empty */ }
+      } catch {
+        /* empty */
+      }
       setPinnedLoading(false);
     })();
   }, []);
 
-  const columns: ProColumns<Message>[] = [
-    {
-      title: t("messages.column.status"),
-      dataIndex: "readAt",
-      width: 90,
-      render: (_, r) =>
-        r.readAt ? (
-          <Tag icon={<CheckOutlined />} color="default" style={{ margin: 0 }}>{t("messages.tag.read")}</Tag>
-        ) : (
-          <Tag color="red" style={{ margin: 0 }}>{t("messages.tag.unread")}</Tag>
-        )
+  // SSE 实时推送
+  useMessageStream({
+    onKick: () => {
+      actionRef.current?.reload?.();
+      refreshUnread();
+      reloadSummary();
     },
-    {
-      title: t("messages.column.type"),
-      dataIndex: "type",
-      width: 120,
-      render: (_, r) => <StatusTag status={r.type} domain="message" />
+    onNewMessage: (row) => {
+      // 仅 prepend 到列表顶部（去重 + 仅未读）
+      setData((prev) => {
+        if (prev.some((m) => m.id === row.id)) return prev;
+        // 过滤 category / tab 命中才进
+        if (category !== "all" && categoryOf(row.type) !== category) return prev;
+        if (tab === "read" && !row.readAt) return prev;
+        return [row, ...prev];
+      });
+      refreshUnread();
+      reloadSummary();
+    }
+  });
+
+  const loadPrefs = useCallback(async () => {
+    setPrefsLoading(true);
+    try {
+      const r = await fetch("/api/messages/preferences", { credentials: "include" });
+      const j = await r.json();
+      if (j.code === 0) setPrefs(j.data.preferences as MessagePreferenceRow[]);
+    } finally {
+      setPrefsLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (prefOpen && !prefs) loadPrefs();
+  }, [prefOpen, prefs, loadPrefs]);
+
+  const updatePref = useCallback(
+    async (type: string, enabled: boolean) => {
+      const next = (prefs ?? []).map((p) =>
+        p.type === type ? { ...p, enabled } : p
+      );
+      setPrefs(next);
+      try {
+        const r = await fetch("/api/messages/preferences", {
+          method: "PUT",
+          credentials: "include",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            preferences: next.map((p) => ({ type: p.type, enabled: p.enabled }))
+          })
+        });
+        const j = await r.json();
+        if (j.code !== 0) {
+          msg.error(j.message ?? t("messages.toast.actionFailed"));
+          setPrefs(prefs); // 回滚
+        } else {
+          msg.success(t("messages.preferences.saved"));
+        }
+      } catch {
+        msg.error(t("messages.toast.actionFailed"));
+        setPrefs(prefs);
+      }
     },
-    {
-      title: t("messages.column.message"),
-      dataIndex: "title",
-      width: 360,
-      render: (_, r) => (
-        <div style={{ minWidth: 0 }}>
-          <Text
-            strong={!r.readAt}
-            style={{
-              color: r.readAt ? "var(--qt-text-muted)" : undefined,
-              display: "block"
-            }}
-          >
-            {r.title}
-          </Text>
-          {r.content ? (
+    [prefs, msg, t]
+  );
+
+  const columns: ProColumns<MessageRowPayload>[] = useMemo(
+    () => [
+      {
+        title: t("messages.column.status"),
+        dataIndex: "readAt",
+        width: 90,
+        render: (_, r) =>
+          r.readAt ? (
+            <Tag icon={<CheckOutlined />} color="default" style={{ margin: 0 }}>
+              {t("messages.tag.read")}
+            </Tag>
+          ) : (
+            <Tag color="red" style={{ margin: 0 }}>
+              {t("messages.tag.unread")}
+            </Tag>
+          )
+      },
+      {
+        title: t("messages.column.type"),
+        dataIndex: "type",
+        width: 140,
+        render: (_, r) => <StatusTag status={r.type} domain="message" />
+      },
+      {
+        title: t("messages.column.message"),
+        dataIndex: "title",
+        width: 360,
+        render: (_, r) => (
+          <div style={{ minWidth: 0 }}>
             <Text
-              type="secondary"
+              strong={!r.readAt}
               style={{
-                fontSize: 12,
-                display: "-webkit-box",
-                WebkitLineClamp: 2,
-                WebkitBoxOrient: "vertical",
-                overflow: "hidden",
-                marginTop: 2
+                color: r.readAt ? "var(--qt-text-muted)" : undefined,
+                display: "block"
               }}
             >
-              {r.content}
+              {r.title}
             </Text>
-          ) : null}
-        </div>
-      )
-    },
-    {
-      title: t("messages.column.time"),
-      dataIndex: "createdAt",
-      width: 180,
-      render: (_, r) => <DateTimeCell value={r.createdAt} />
-    },
-    {
-      title: t("messages.column.actions"),
-      width: 240,
-      fixed: "right",
-      render: (_, r) => (
-        <Space size={4} wrap>
-          {(() => {
-            const href = buildLinkHref(r.link);
-            if (!href) return null;
-            return (
-              <Link href={href}>
-                <Button type="link" size="small" icon={<LinkOutlined />}>
-                  {t("messages.action.view")}
-                </Button>
-              </Link>
-            );
-          })()}
-          {!r.readAt && (
+            {r.content ? (
+              <Text
+                type="secondary"
+                style={{
+                  fontSize: 12,
+                  display: "-webkit-box",
+                  WebkitLineClamp: 2,
+                  WebkitBoxOrient: "vertical",
+                  overflow: "hidden",
+                  marginTop: 2
+                }}
+              >
+                {r.content}
+              </Text>
+            ) : null}
+          </div>
+        )
+      },
+      {
+        title: t("messages.column.time"),
+        dataIndex: "createdAt",
+        width: 180,
+        render: (_, r) => <DateTimeCell value={r.createdAt} />
+      },
+      {
+        title: t("messages.column.actions"),
+        width: 240,
+        fixed: "right",
+        render: (_, r) => (
+          <Space size={4} wrap>
+            {(() => {
+              const href = buildLinkHref(r.link);
+              if (!href) return null;
+              return (
+                <Link href={href}>
+                  <Button type="link" size="small" icon={<LinkOutlined />}>
+                    {t("messages.action.view")}
+                  </Button>
+                </Link>
+              );
+            })()}
+            {!r.readAt && (
+              <Button
+                type="link"
+                size="small"
+                icon={<CheckOutlined />}
+                onClick={async () => {
+                  const res = await fetch(`/api/messages/${r.id}`, {
+                    method: "PATCH",
+                    credentials: "include"
+                  });
+                  const j = await res.json();
+                  if (j.code === 0) {
+                    msg.success(t("messages.tag.read"));
+                    actionRef.current?.reload?.();
+                  }
+                }}
+              >
+                {t("messages.action.markRead")}
+              </Button>
+            )}
             <Button
               type="link"
               size="small"
-              icon={<CheckOutlined />}
-              onClick={async () => {
-                const res = await fetch(`/api/messages/${r.id}`, { method: "PATCH", credentials: "include" });
-                const j = await res.json();
-                if (j.code === 0) {
-                  msg.success(t("messages.tag.read"));
-                  actionRef.current?.reload?.();
-                }
+              danger
+              icon={<DeleteOutlined />}
+              onClick={() => {
+                modal.confirm({
+                  title: t("messages.deleteConfirm.title"),
+                  content: t("messages.deleteConfirm.content"),
+                  okText: t("messages.action.delete"),
+                  okType: "danger",
+                  cancelText: t("announcements.cancel"),
+                  onOk: async () => {
+                    const res = await fetch(`/api/messages/${r.id}`, {
+                      method: "DELETE",
+                      credentials: "include"
+                    });
+                    const j = await res.json();
+                    if (j.code === 0) {
+                      msg.success(t("messages.toast.deleted"));
+                      actionRef.current?.reload?.();
+                    } else msg.error(j.message);
+                  }
+                });
               }}
             >
-              {t("messages.action.markRead")}
+              {t("messages.action.delete")}
             </Button>
-          )}
-          <Button
-            type="link"
-            size="small"
-            danger
-            icon={<DeleteOutlined />}
-            onClick={() => {
-              modal.confirm({
-                title: t("messages.deleteConfirm.title"),
-                content: t("messages.deleteConfirm.content"),
-                okText: t("messages.action.delete"),
-                okType: "danger",
-                cancelText: t("announcements.cancel"),
-                onOk: async () => {
-                  const res = await fetch(`/api/messages/${r.id}`, { method: "DELETE", credentials: "include" });
-                  const j = await res.json();
-                  if (j.code === 0) actionRef.current?.reload?.();
-                }
-              });
-            }}
-          >
-            {t("messages.action.delete")}
-          </Button>
-        </Space>
-      )
-    }
-  ];
+          </Space>
+        )
+      }
+    ],
+    [t, msg, modal]
+  );
 
-  const tabItems = [
-    { key: "all", label: t("messages.tab.all") },
-    {
-      key: "unread",
-      label: (
-        <Space size={6}>
-          <span>{t("messages.tab.unread")}</span>
-          {unreadCount > 0 ? <Tag color="red" style={{ margin: 0 }}>{unreadCount}</Tag> : null}
-        </Space>
-      )
+  // 侧边栏分类
+  const categoryItems: { key: SelectedCategory; label: React.ReactNode; count: number }[] = useMemo(
+    () => [
+      { key: "all", label: t("messages.category.all"), count: summary?.total ?? 0 },
+      {
+        key: MESSAGE_CATEGORY.CONTRACT,
+        label: t("messages.category.contract"),
+        count: summary?.byCategory[MESSAGE_CATEGORY.CONTRACT] ?? 0
+      },
+      {
+        key: MESSAGE_CATEGORY.FINANCE,
+        label: t("messages.category.finance"),
+        count: summary?.byCategory[MESSAGE_CATEGORY.FINANCE] ?? 0
+      },
+      {
+        key: MESSAGE_CATEGORY.RECONCILIATION,
+        label: t("messages.category.reconciliation"),
+        count: summary?.byCategory[MESSAGE_CATEGORY.RECONCILIATION] ?? 0
+      },
+      {
+        key: MESSAGE_CATEGORY.CERTIFICATE,
+        label: t("messages.category.certificate"),
+        count: summary?.byCategory[MESSAGE_CATEGORY.CERTIFICATE] ?? 0
+      },
+      {
+        key: MESSAGE_CATEGORY.SYSTEM,
+        label: t("messages.category.system"),
+        count: summary?.byCategory[MESSAGE_CATEGORY.SYSTEM] ?? 0
+      }
+    ],
+    [t, summary]
+  );
+
+  const tabs: { key: TabKey; label: React.ReactNode }[] = useMemo(
+    () => [
+      { key: "all", label: t("messages.tab.all") },
+      {
+        key: "unread",
+        label: (
+          <Space size={4}>
+            <span>{t("messages.tab.unread")}</span>
+            {unreadCount > 0 ? (
+              <Tag color="red" style={{ margin: 0 }}>
+                {unreadCount}
+              </Tag>
+            ) : null}
+          </Space>
+        )
+      },
+      { key: "read", label: t("messages.tab.read") }
+    ],
+    [t, unreadCount]
+  );
+
+  const markAllRead = useCallback(async () => {
+    try {
+      const body: Record<string, unknown> = {};
+      if (category !== "all") body.categories = [category];
+      if (search) body.q = search;
+      if (dateRange?.[0]) body.from = dateRange[0].toISOString();
+      if (dateRange?.[1]) body.to = dateRange[1].toISOString();
+      const r = await fetch("/api/messages/mark-all-read", {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body)
+      });
+      const j = await r.json();
+      if (j.code === 0) {
+        msg.success(t("messages.toast.markedRead", { n: j.data.updated }));
+        actionRef.current?.reload?.();
+        refreshUnread();
+        reloadSummary();
+      } else msg.error(j.message);
+    } catch {
+      msg.error(t("messages.toast.actionFailed"));
+    }
+  }, [category, search, dateRange, msg, t, reloadSummary]);
+
+  const clearRead = useCallback(async () => {
+    try {
+      const body: Record<string, unknown> = {};
+      if (category !== "all") body.categories = [category];
+      if (search) body.q = search;
+      if (dateRange?.[0]) body.from = dateRange[0].toISOString();
+      if (dateRange?.[1]) body.to = dateRange[1].toISOString();
+      const r = await fetch("/api/messages/read/clear", {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body)
+      });
+      const j = await r.json();
+      if (j.code === 0) {
+        msg.success(t("messages.toast.clearedRead", { n: j.data.deleted }));
+        actionRef.current?.reload?.();
+        reloadSummary();
+      } else msg.error(j.message);
+    } catch {
+      msg.error(t("messages.toast.actionFailed"));
+    }
+  }, [category, search, dateRange, msg, t, reloadSummary]);
+
+  const batchAction = useCallback(
+    async (action: "markRead" | "delete") => {
+      if (selectedRowKeys.length === 0) return;
+      try {
+        const r = await fetch("/api/messages/batch", {
+          method: "POST",
+          credentials: "include",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ ids: selectedRowKeys, action })
+        });
+        const j = await r.json();
+        if (j.code === 0) {
+          msg.success(
+            action === "markRead"
+              ? t("messages.toast.bulkRead", { n: j.data.affected })
+              : t("messages.toast.bulkDeleted", { n: j.data.affected })
+          );
+          setSelectedRowKeys([]);
+          actionRef.current?.reload?.();
+          refreshUnread();
+          reloadSummary();
+        } else msg.error(j.message);
+      } catch {
+        msg.error(t("messages.toast.actionFailed"));
+      }
     },
-    { key: "read", label: t("messages.tab.read") }
-  ];
+    [selectedRowKeys, msg, t, reloadSummary]
+  );
 
   return (
     <Page>
@@ -194,71 +469,59 @@ export default function MessagesPage() {
         title={t("messages.title")}
         subtitle={t("messages.subtitle")}
         actions={
-          <Space>
+          <Space wrap>
+            <Button
+              key="prefs"
+              icon={<SettingOutlined />}
+              onClick={() => setPrefOpen(true)}
+            >
+              {t("messages.preferences.title")}
+            </Button>
             <Button
               key="all"
               icon={<CheckOutlined />}
               disabled={unreadCount === 0}
-              onClick={async () => {
-                try {
-                  const r = await fetch("/api/messages/mark-all-read", { method: "POST", credentials: "include" });
-                  const j = await r.json();
-                  if (j.code === 0) {
-                    msg.success(t("messages.toast.markedRead", { n: j.data.updated }));
-                    actionRef.current?.reload?.();
-                    refreshUnread();
-                  } else msg.error(j.message);
-                } catch {
-                  msg.error(t("messages.toast.actionFailed"));
-                }
-              }}
+              onClick={markAllRead}
             >
               {t("messages.markAllRead")}
             </Button>
-            <Button
+            <Popconfirm
               key="clear"
-              icon={<DeleteOutlined />}
-              danger
-              onClick={() => {
-                modal.confirm({
-                  title: t("messages.clearReadConfirm.title"),
-                  content: t("messages.clearReadConfirm.content"),
-                  okText: t("messages.action.clearRead"),
-                  okType: "danger",
-                  cancelText: t("announcements.cancel"),
-                  onOk: async () => {
-                    try {
-                      const r = await fetch("/api/messages/read/clear", { method: "POST", credentials: "include" });
-                      const j = await r.json();
-                      if (j.code === 0) {
-                        msg.success(t("messages.toast.clearedRead", { n: j.data.deleted }));
-                        actionRef.current?.reload?.();
-                      } else msg.error(j.message);
-                    } catch {
-                      msg.error(t("messages.toast.actionFailed"));
-                    }
-                  }
-                });
-              }}
+              title={t("messages.clearReadConfirm.title")}
+              description={t("messages.clearReadConfirm.content")}
+              okText={t("messages.action.clearRead")}
+              okType="danger"
+              cancelText={t("announcements.cancel")}
+              onConfirm={clearRead}
             >
-              {t("messages.action.clearRead")}
-            </Button>
+              <Button icon={<DeleteOutlined />} danger>
+                {t("messages.action.clearRead")}
+              </Button>
+            </Popconfirm>
           </Space>
         }
       />
 
       {pinnedLoading ? (
-        <Card size="small" style={{ marginBottom: 12 }}><Skeleton active paragraph={{ rows: 1 }} /></Card>
+        <Card size="small" style={{ marginBottom: 12 }}>
+          <Skeleton active paragraph={{ rows: 1 }} />
+        </Card>
       ) : pinned.length > 0 ? (
         <Card
           size="small"
-          title={<Space size={6}><PushpinOutlined />{t("messages.pinned.title")}</Space>}
+          title={
+            <Space size={6}>
+              {t("messages.pinned.title")}
+            </Space>
+          }
           style={{ marginBottom: 12 }}
         >
           {pinned.map((p) => (
             <div key={p.id} style={{ marginBottom: 8 }}>
               <Text strong>{p.title}</Text>
-              <Paragraph type="secondary" style={{ marginBottom: 0, fontSize: 13 }}>{p.content}</Paragraph>
+              <Paragraph type="secondary" style={{ marginBottom: 0, fontSize: 13 }}>
+                {p.content}
+              </Paragraph>
             </div>
           ))}
         </Card>
@@ -266,62 +529,280 @@ export default function MessagesPage() {
 
       <div
         style={{
-          marginBottom: 12,
-          padding: "4px 8px",
-          background: "var(--qt-bg)",
-          border: "1px solid var(--qt-border-soft)",
-          borderRadius: 8
+          display: "flex",
+          gap: 12,
+          flexDirection: isMobile ? "column" : "row",
+          alignItems: "stretch",
+          marginBottom: 12
         }}
       >
-        <Tabs
-          activeKey={tab}
-          onChange={(k) => {
-            setTab(k as TabKey);
-            actionRef.current?.reload?.();
-          }}
-          items={tabItems}
-          size={isMobile ? "small" : "middle"}
-          tabBarStyle={{ marginBottom: 0 }}
-        />
+        {!isMobile && (
+          <Card
+            size="small"
+            styles={{ body: { padding: 8 } }}
+            style={{ width: 200, flexShrink: 0 }}
+          >
+            <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+              {categoryItems.map((c) => {
+                const active = category === c.key;
+                return (
+                  <Button
+                    key={c.key}
+                    type={active ? "primary" : "text"}
+                    onClick={() => {
+                      setCategory(c.key);
+                      setSelectedRowKeys([]);
+                      actionRef.current?.reload?.();
+                    }}
+                    style={{ justifyContent: "space-between" }}
+                    block
+                  >
+                    <span>{c.label}</span>
+                    {c.count > 0 ? (
+                      <Badge
+                        count={c.count}
+                        style={{ backgroundColor: active ? "#fff" : undefined, color: active ? "var(--ant-color-primary)" : undefined }}
+                      />
+                    ) : null}
+                  </Button>
+                );
+              })}
+            </div>
+          </Card>
+        )}
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <Card size="small" styles={{ body: { padding: 8 } }} style={{ marginBottom: 8 }}>
+            <Space wrap size={8}>
+              <Input
+                allowClear
+                prefix={<SearchOutlined />}
+                placeholder={t("messages.toolbar.searchPlaceholder")}
+                value={searchInput}
+                onChange={(e) => setSearchInput(e.target.value)}
+                style={{ width: 240 }}
+              />
+              <RangePicker
+                value={dateRange}
+                onChange={(v) => {
+                  setDateRange(v);
+                  setSelectedRowKeys([]);
+                }}
+                allowEmpty={[true, true]}
+                placeholder={[t("messages.toolbar.from"), t("messages.toolbar.to")]}
+              />
+              {isMobile ? (
+                <SelectCategoryMobile
+                  value={category}
+                  onChange={(v) => {
+                    setCategory(v);
+                    setSelectedRowKeys([]);
+                  }}
+                  items={categoryItems.map((c) => ({ value: c.key, label: typeof c.label === "string" ? c.label : String(c.key), count: c.count }))}
+                />
+              ) : null}
+              <Button
+                icon={<ReloadOutlined />}
+                onClick={() => {
+                  actionRef.current?.reload?.();
+                  reloadSummary();
+                }}
+              >
+                {t("messages.toolbar.refresh")}
+              </Button>
+            </Space>
+          </Card>
+          <div
+            style={{
+              marginBottom: 8,
+              padding: "4px 8px",
+              background: "var(--qt-bg)",
+              border: "1px solid var(--qt-border-soft)",
+              borderRadius: 8
+            }}
+          >
+            <Tabs
+              activeKey={tab}
+              onChange={(k) => {
+                setTab(k as TabKey);
+                setSelectedRowKeys([]);
+                actionRef.current?.reload?.();
+              }}
+              items={tabs}
+              size={isMobile ? "small" : "middle"}
+              tabBarStyle={{ marginBottom: 0 }}
+            />
+          </div>
+          {selectedRowKeys.length > 0 ? (
+            <Card
+              size="small"
+              style={{
+                marginBottom: 8,
+                background: "var(--ant-color-primary-bg, #e6f4ff)",
+                border: "1px solid var(--ant-color-primary-border, #91caff)"
+              }}
+            >
+              <Space>
+                <Text strong>{t("messages.batch.selected", { n: selectedRowKeys.length })}</Text>
+                <Button
+                  type="primary"
+                  size="small"
+                  icon={<CheckOutlined />}
+                  onClick={() => batchAction("markRead")}
+                >
+                  {t("messages.batch.markRead")}
+                </Button>
+                <Popconfirm
+                  title={t("messages.batch.deleteConfirmTitle")}
+                  description={t("messages.batch.deleteConfirmContent")}
+                  okText={t("messages.action.delete")}
+                  okType="danger"
+                  cancelText={t("announcements.cancel")}
+                  onConfirm={() => batchAction("delete")}
+                >
+                  <Button danger size="small" icon={<DeleteOutlined />}>
+                    {t("messages.batch.delete")}
+                  </Button>
+                </Popconfirm>
+                <Button size="small" onClick={() => setSelectedRowKeys([])}>
+                  {t("messages.batch.clear")}
+                </Button>
+              </Space>
+            </Card>
+          ) : null}
+          <ProTable<MessageRowPayload>
+            key={`${tab}-${category}-${search}-${dateRange?.[0]?.toISOString() ?? ""}-${dateRange?.[1]?.toISOString() ?? ""}`}
+            actionRef={actionRef}
+            rowKey="id"
+            search={false}
+            dataSource={data}
+            onDataSourceChange={setData}
+            rowSelection={{
+              selectedRowKeys,
+              onChange: setSelectedRowKeys
+            }}
+            pagination={{
+              defaultPageSize: 20,
+              showSizeChanger: !isMobile,
+              size: isMobile ? "small" : undefined
+            }}
+            cardBordered={false}
+            scroll={{ x: "max-content" }}
+            sticky={isMobile}
+            locale={{
+              emptyText: (
+                <Empty
+                  image={Empty.PRESENTED_IMAGE_SIMPLE}
+                  description={
+                    tab === "unread"
+                      ? t("messages.empty.unread")
+                      : tab === "read"
+                        ? t("messages.empty.read")
+                        : t("messages.empty")
+                  }
+                />
+              )
+            }}
+            request={async (params) => {
+              const qs = new URLSearchParams();
+              qs.set("page", String(params.current ?? 1));
+              qs.set("pageSize", String(params.pageSize ?? 20));
+              if (tab === "unread") qs.set("unread", "true");
+              else if (tab === "read") qs.set("unread", "false");
+              if (category !== "all") qs.set("categories", category);
+              if (search) qs.set("q", search);
+              if (dateRange?.[0]) qs.set("from", dateRange[0].toISOString());
+              if (dateRange?.[1]) qs.set("to", dateRange[1].toISOString());
+              const r = await fetch(`/api/messages?${qs}`, { credentials: "include" });
+              const j = await r.json();
+              if (j.code !== 0) throw new Error(j.message);
+              const data = j.data as ListResp;
+              return {
+                data: data.list,
+                total: data.total ?? data.list.length,
+                success: true
+              };
+            }}
+            options={{
+              reload: () => actionRef.current?.reload?.(),
+              density: !isMobile,
+              fullScreen: !isMobile
+            }}
+            columns={columns}
+          />
+        </div>
       </div>
 
-      <ProTable<Message>
-        key={tab}
-        actionRef={actionRef}
-        rowKey="id"
-        search={false}
-        pagination={{
-          defaultPageSize: 20,
-          showSizeChanger: !isMobile,
-          size: isMobile ? "small" : undefined
-        }}
-        cardBordered={false}
-        scroll={{ x: "max-content" }}
-        sticky={isMobile}
-        locale={{
-          emptyText: (
-            <Empty
-              image={Empty.PRESENTED_IMAGE_SIMPLE}
-              description={
-                tab === "unread" ? t("messages.empty.unread") : tab === "read" ? t("messages.empty.read") : t("messages.empty")
-              }
-            />
-          )
-        }}
-        request={async (params) => {
-          const qs = new URLSearchParams();
-          qs.set("page", String(params.current ?? 1));
-          qs.set("pageSize", String(params.pageSize ?? 20));
-          if (tab === "unread") qs.set("unread", "true");
-          else if (tab === "read") qs.set("unread", "false");
-          const r = await fetch(`/api/messages?${qs}`, { credentials: "include" });
-          const j = await r.json();
-          if (j.code !== 0) throw new Error(j.message);
-          return { data: j.data.list, total: j.data.total, success: true };
-        }}
-        options={{ reload: () => actionRef.current?.reload?.(), density: !isMobile, fullScreen: !isMobile }}
-        columns={columns}
-      />
+      <Drawer
+        open={prefOpen}
+        onClose={() => setPrefOpen(false)}
+        title={t("messages.preferences.drawerTitle")}
+        width={isMobile ? "100%" : 480}
+      >
+        {prefsLoading ? (
+          <Spin />
+        ) : !prefs ? (
+          <Empty description={t("messages.preferences.empty")} />
+        ) : (
+          <div>
+            <Text type="secondary" style={{ display: "block", marginBottom: 12 }}>
+              {t("messages.preferences.description")}
+            </Text>
+            {prefs.map((p, idx) => (
+              <div key={p.type}>
+                <div
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "space-between",
+                    padding: "10px 0"
+                  }}
+                >
+                  <div style={{ minWidth: 0, flex: 1 }}>
+                    <StatusTag status={p.type} domain="message" />
+                  </div>
+                  <Switch
+                    checked={p.enabled}
+                    onChange={(v) => updatePref(p.type, v)}
+                    checkedChildren={t("messages.preferences.enabled")}
+                    unCheckedChildren={t("messages.preferences.disabled")}
+                  />
+                </div>
+                {idx < prefs.length - 1 ? <Divider style={{ margin: 0 }} /> : null}
+              </div>
+            ))}
+          </div>
+        )}
+      </Drawer>
     </Page>
+  );
+}
+
+function SelectCategoryMobile({
+  value,
+  onChange,
+  items
+}: {
+  value: string;
+  onChange: (v: string) => void;
+  items: { value: string; label: string; count: number }[];
+}) {
+  const t = useT();
+  return (
+    <Select
+      value={value}
+      onChange={onChange}
+      style={{ minWidth: 140 }}
+      options={items.map((i) => ({
+        value: i.value,
+        label: (
+          <Space>
+            <span>{i.label}</span>
+            {i.count > 0 ? <Badge count={i.count} /> : null}
+          </Space>
+        )
+      }))}
+      suffixIcon={<AppstoreOutlined />}
+      placeholder={t("messages.toolbar.categoryFilter")}
+    />
   );
 }

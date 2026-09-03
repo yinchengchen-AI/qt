@@ -106,6 +106,7 @@ model User {
   signedContracts        Contract[]           @relation("ContractSigner")
   ownedContracts         Contract[]           @relation("ContractOwner")
   messages               Message[]
+  messagePreferences    MessagePreference[]
   publishedAnnouncements Announcement[]       @relation("AnnouncementPublishUser")
   dunningNotes           DunningNote[]
   publishedReleases      AppRelease[]         @relation("AppReleasePublishUser")
@@ -617,6 +618,29 @@ model MessageArchive {
   @@index([receiverUserId, archivedAt])
   @@index([type, receiverUserId, archivedAt])
 }
+
+/// 消息中心 v2：用户对每种 MessageType 的订阅偏好
+/// (PR of messages-redesign, 2026-09-03)
+///
+/// 设计要点：
+///   - 复合主键 (userId, type) 避免同一用户对同类型多行；
+///   - **缺省即视为 enabled=true**：`bus.emit` 通过 `getDisabledTypes(userIds)` 过滤 receivers,
+///     仅在用户明确关闭某类型时才落行,无需为每个用户写 23 行默认记录；
+///   - Cascade 删除：与 User 同步清理。
+///   - 见 prisma/migrations/20260903_message_preference/migration.sql 同步建立表与 GRANT。
+model MessagePreference {
+  userId    String
+  type      MessageType
+  enabled   Boolean      @default(true)
+  createdAt DateTime     @default(now()) @db.Timestamptz(6)
+  updatedAt DateTime     @updatedAt @db.Timestamptz(6)
+
+  user      User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([userId, type])
+  @@index([userId])
+}
+
 
 model Announcement {
   id            String    @id @default(cuid())

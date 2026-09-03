@@ -17,7 +17,11 @@ vi.mock("@/lib/prisma", () => ({
       createMany: vi.fn(async (args: { data: Array<Record<string, unknown>>; skipDuplicates?: boolean }) => {
         mockState.createManyCalls.push(args);
         return { count: args.data.length };
-      })
+      }),
+      findMany: vi.fn(async () => [])
+    },
+    messagePreference: {
+      findMany: vi.fn(async () => [] as Array<{ userId: string; type: string }>)
     }
   }
 }));

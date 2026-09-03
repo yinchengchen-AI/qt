@@ -2,6 +2,41 @@
 
 本文件记录 qt-biz 每个版本的详细变更。项目快速入口请见 [README.md](README.md)。
 
+## v0.22.0(2026-09-03)消息中心前后端重做
+
+消息中心 v2 重构：把 20+ `MessageType` 拆到 6 个业务分类（合同/财务/对账/证书/系统/历史），列表支持类型/关键词/日期多维筛选 + 批量操作 + 游标分页，新增用户订阅偏好 + 实时 `message:new` 推送 + 后台按类未读汇总。**DB schema 有变化：新增 `MessagePreference` 表。**
+
+详见 [docs/DESIGN-messages-v2.md](docs/DESIGN-messages-v2.md)。
+
+### 新增
+
+- **feat(messages)**：新增 `MessagePreference(userId, type, enabled)` 表，缺省即视为 enabled=true；用户可逐类型退订，迁移 `20260903_message_preference`。
+- **feat(messages)**：新增 `GET /api/messages/unread-summary`，按 category 返回未读分布，供侧边栏 badge。
+- **feat(messages)**：新增 `POST /api/messages/batch`，body `{ ids, action: 'markRead' | 'delete' }`，上限 200；审计 `MESSAGE_BATCH_READ` / `MESSAGE_BATCH_DELETE`。
+- **feat(messages)**：新增 `GET /api/messages/preferences` 与 `PUT /api/messages/preferences`，支持逐类型开关；审计 `MESSAGE_PREFERENCE_UPDATE`。
+- **feat(realtime)**：SSE 协议升级，新增 `message:new` 事件携带完整 row payload；前端收到后直接 prepend 到列表顶部、unread badge +1，不再走 fetch。`kick` 事件保留作为兜底。
+- **feat(events)**：把 20+ inline switch 拆到 `server/events/builder-registry.ts` 注册表，新增 `FALLBACK_BUILDER_FACTORY` 兜底未知 type；`bus.emit` 写入前过滤用户退订类型。
+
+### 增强
+
+- **enh(messages)**：`GET /api/messages` 新增 `cursor`（base64 游标分页）/ `types` / `categories` / `q`（title+content 模糊匹配）/ `from` / `to`（ISO 8601 createdAt 范围）参数；返回 `nextCursor` + `unreadCount`。
+- **enh(messages)**：`POST /api/messages/mark-all-read` 与 `POST /api/messages/read/clear` 接受 scope body（types/categories/q/from/to），限定操作范围；空 body 时与旧行为一致（全部）。
+- **enh(messages)**：`GET /api/admin/messages-archive` 新增 `types` / `q` 过滤；归档页 UI 升级。
+- **enh(ui)**：`/messages` 页面重做：左侧分类 sidebar（全部/合同/财务/对账/证书/系统）+ 顶部 toolbar（搜索/日期）+ 行勾选批量操作 bar + 订阅设置 Drawer。
+- **enh(ui)**：Dashboard 抽屉接入 `message:new` 事件实时 prepend；`useMessageStream` 共享 SSE，新增 `onNewMessage` listener。
+- **enh(i18n)**：新增 30+ 中英 `messages.*` 文案键（category / toolbar / batch / preferences）。
+
+### 重构
+
+- **refactor(events)**：`bus.ts` 不再内联渲染 switch，全部走 `builder-registry.ts`。
+- **refactor(services)**：`buildMessageWhere` 共享 where 构造器，list/markAllRead/clearRead/batchMutate 复用。
+
+### 测试
+
+- **test(messages)**：新增 `tests/api/messages-v2-routes.test.ts`（8 用例）：unread-summary / batch / preferences 路由的登录/未登录/body 校验。
+- **test(messages)**：新增 `tests/unit/lib/message-categories.test.ts`（11 用例）：categoryOf / isSubscribable / isMessageCategory。
+- **test(messages)**：更新 `tests/unit/server/events-bus.test.ts` 的 prisma mock，加入 `messagePreference.findMany` stub。
+
 ## v0.21.14(2026-09-03)消息路由锁定 + 账龄测试隔离 + 前端错误透传
 
 v0.21.13 代码审查发现 4 项问题:账龄数据质量测试 fixture 泄漏、消息路由缺少锁定测试、抽屉/页面 fetch 错误静默、README 版本漂移。本次逐一修复。**DB schema 无变化。**

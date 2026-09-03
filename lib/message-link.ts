@@ -20,9 +20,12 @@ export const MESSAGE_LINK_PATH: Record<string, string> = {
 
 export type MessageLink = { kind: string; id?: string | null } & Record<string, unknown>;
 
-export function buildMessageLinkHref(link: MessageLink | null): string | null {
-  if (!link || !link.id) return null;
-  const { kind, id, ...rest } = link;
+export function buildMessageLinkHref(link: unknown): string | null {
+  if (!link || typeof link !== "object") return null;
+  const obj = link as Record<string, unknown>;
+  if (!obj.id) return null;
+  const { kind, id, ...rest } = obj as { kind?: string; id?: string | null; [k: string]: unknown };
+  if (typeof kind !== "string") return null;
   const base = MESSAGE_LINK_PATH[kind];
   if (!base) return null;
 

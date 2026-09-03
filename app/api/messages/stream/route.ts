@@ -3,6 +3,7 @@
 // 用法 (前端):
 //   const es = new EventSource("/api/messages/stream", { withCredentials: true });
 //   es.addEventListener("kick", () => mutate("/api/messages/unread-count"));
+//   es.addEventListener("message:new", (ev) => prependMessage(JSON.parse(ev.data).payload));
 //
 // 后端:
 //   - 单条 EventSource 长连接,每个用户 1 个
@@ -30,9 +31,11 @@ export async function GET(req: Request) {
       const user = await requireSession();
       userId = user.id;
     } catch (e) {
-      // 鉴权失败仍按 JSON 错误返回 (EventSource 无法解析非 text/event-stream)
       const message = e instanceof Error ? e.message : "unauthorized";
-      return NextResponse.json({ code: 401, errorCode: "UNAUTHORIZED", message }, { status: 401 });
+      return NextResponse.json(
+        { code: 401, errorCode: "UNAUTHORIZED", message },
+        { status: 401 }
+      );
     }
 
     const encoder = new TextEncoder();
@@ -42,12 +45,10 @@ export async function GET(req: Request) {
 
     const stream = new ReadableStream<Uint8Array>({
       start(controller) {
-        // 立刻发一个 ready event:前端 EventSource 立即收到 first frame,
-        // 浏览器会认为 stream 已 active,不再触发 immediate reconnect
-        controller.enqueue(encoder.encode(`event: ready\ndata: {"userId":"${userId}"}\n\n`));
-        // 注册到 hub
+        controller.enqueue(
+          encoder.encode(`event: ready\ndata: {"userId":"${userId}"}\n\n`)
+        );
         cleanup = subscribe(userId, controller);
-        // 心跳
         heartbeat = setInterval(() => {
           if (closed) return;
           try {
@@ -73,7 +74,6 @@ export async function GET(req: Request) {
         "Content-Type": "text/event-stream; charset=utf-8",
         "Cache-Control": "no-store, no-transform",
         Connection: "keep-alive",
-        // 强制 nginx / 反代不缓冲
         "X-Accel-Buffering": "no"
       }
     });

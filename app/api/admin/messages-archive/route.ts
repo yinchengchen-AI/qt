@@ -8,7 +8,12 @@ const query = z.object({
   page: z.coerce.number().int().min(1).default(1),
   pageSize: z.coerce.number().int().min(1).max(100).default(20),
   receiverUserId: z.string().min(1).max(64).optional(),
-  month: z.string().regex(/^\d{4}-\d{2}$/).optional()
+  month: z.string().regex(/^\d{4}-\d{2}$/).optional(),
+  types: z
+    .string()
+    .optional()
+    .transform((v) => (v ? v.split(",").map((s) => s.trim()).filter(Boolean) : undefined)),
+  q: z.string().min(1).max(100).optional()
 });
 
 export async function GET(req: Request) {
