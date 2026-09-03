@@ -2,6 +2,20 @@
 
 本文件记录 qt-biz 每个版本的详细变更。项目快速入口请见 [README.md](README.md)。
 
+## v0.21.14(2026-09-03)消息路由锁定 + 账龄测试隔离 + 前端错误透传
+
+v0.21.13 代码审查发现 4 项问题:账龄数据质量测试 fixture 泄漏、消息路由缺少锁定测试、抽屉/页面 fetch 错误静默、README 版本漂移。本次逐一修复。**DB schema 无变化。**
+
+### 修复
+- **fix(messages)**: dashboard-shell 标记已读补 else 分支 + 两处 fetch 包裹 try/catch,错误时弹 `actionFailed` 提示; `lib/i18n` 新增 `messages.toast.actionFailed`(中/英)。
+
+### 测试
+- **test(messages)**: 新增 `tests/api/messages-read-clear.test.ts`,锁定 `POST /api/messages/read/clear` 和 `POST /api/messages/mark-all-read`——静态 import 路由文件(删则编译失败),覆盖已登录 200 + 未登录 401。
+- **test(aging)**: `tests/api/aging-data-quality.test.ts` S3(byCustomer 维度)改用独立 `testCustomer2Id`,消除与 S1/S2 共享 `testCustomerId` 导致的 fixture 泄漏。
+
+### 文档
+- **docs(readme)**: 同步 badge 与版本行至 v0.21.13。
+
 ## v0.21.13(2026-09-03)消息中心「清空已读」按钮修复
 
 顶栏消息中心抽屉与 `/messages` 页的「清空已读」按钮此前点击无反应——前端调用 `POST /api/messages/read/clear`,但该 API 路由从未提交(服务层 `clearReadMessages`、UI、i18n 均已存在),请求 404 后静默失败。**DB schema 无变化。**
