@@ -20,6 +20,7 @@ const TAG = `TEST-DQ-AGING-${Date.now()}-${Math.random().toString(36).slice(2, 8
 let adminUser: { id: string; employeeNo: string; name: string; email: string; roleCode: "ADMIN" } | null = null;
 let financeUser: { id: string; employeeNo: string; name: string; email: string; roleCode: "FINANCE" } | null = null;
 let testCustomerId: string | null = null;
+let testCustomer2Id: string | null = null;
 const createdContractNos: string[] = [];
 const createdInvoiceIds: string[] = [];
 
@@ -33,13 +34,13 @@ const buildFinance = (): SessionUser => {
   return { id: financeUser.id, employeeNo: financeUser.employeeNo, name: financeUser.name, email: financeUser.email, roleCode: "FINANCE", permissions: [] };
 };
 
-async function makeContract(suffix: string) {
+async function makeContract(suffix: string, customerId: string | null = testCustomerId!) {
   const signDate = new Date(Date.now() - 120 * 86400_000);
   const contractNo = `${TAG}-CTR-${suffix}`;
   const ctr = await prisma.contract.create({
     data: {
       contractNo,
-      customerId: testCustomerId!,
+      customerId: customerId!,
       customerName: `${TAG}-客户`,
       title: `${TAG}-title-${suffix}`,
       serviceType: "OTHER",
@@ -126,6 +127,21 @@ beforeAll(async () => {
     }
   });
   testCustomerId = cust.id;
+
+  const cust2 = await prisma.customer.create({
+    data: {
+      code: `${TAG}-CUST2`,
+      name: `${TAG}-客户2`,
+      customerType: "ENTERPRISE",
+      province: "浙江省",
+      city: "杭州市",
+      contactPhone: "13800000000",
+      ownerUserId: adminUser.id,
+      createdById: adminUser.id,
+      updatedById: adminUser.id
+    }
+  });
+  testCustomer2Id = cust2.id;
 });
 
 afterAll(async () => {
@@ -144,8 +160,9 @@ afterAll(async () => {
     }
     await prisma.contract.deleteMany({ where: { contractNo: { in: createdContractNos } } });
   }
-  if (testCustomerId) {
-    await prisma.customer.deleteMany({ where: { id: testCustomerId } });
+  const customerIds = [testCustomerId, testCustomer2Id].filter((x): x is string => Boolean(x));
+  if (customerIds.length > 0) {
+    await prisma.customer.deleteMany({ where: { id: { in: customerIds } } });
   }
 });
 
@@ -183,14 +200,14 @@ describe("应收账龄数据质量隔离", () => {
 
   it("byCustomer 维度同样排除 OPEN 问题发票", async () => {
     if (!dbReachable || !adminUser) return;
-    const ctr = await makeContract("dq-dim");
+    const ctr = await makeContract("dq-dim", testCustomer2Id!);
     const inv = await makeIssuedInvoice(ctr.id, "dq-dim");
     await prisma.invoiceDataQualityIssue.create({
       data: { invoiceId: inv.id, issueCode: "NO_INVOICE_REQUIRED", status: "OPEN" }
     });
 
     const rows = await getAgingByCustomer(buildAdmin(), { basis: "due", limit: 200 });
-    const hit = rows.find((x) => x.key === testCustomerId);
+    const hit = rows.find((x) => x.key === testCustomer2Id);
     expect(hit).toBeUndefined();
   });
 });
