@@ -46,7 +46,7 @@ export const invoiceUpdateSchema = invoiceCreateSchema.partial().extend({
 });
 
 export const invoiceActionSchema = z.object({
-  action: z.enum(["submit", "issue", "reject", "void", "red-flush"]),
+  action: z.enum(["submit", "issue", "reject", "void", "red-flush", "withdraw", "resubmit"]),
   reason: z.string().max(500).optional(),
   invoiceNo: z.string().max(50).optional(),
   actualIssueDate: isoDate.optional()

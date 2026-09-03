@@ -150,7 +150,7 @@ export async function updateInvoice(user: SessionUser, id: string, input: Invoic
   // 写守门: SALES/EXPERT 只能改自己合同下的发票 (非受限角色直接放行)
   assertRecordWritable(user, inv.contract?.ownerUserId, "发票");
   // 状态机门控: admin 任意态可改; 非 admin 仅 DRAFT 可改 (与 server/services/contract/crud.ts:248 一致)
-  if (user.roleCode !== "ADMIN" && inv.status !== "DRAFT") {
+  if (user.roleCode !== "ADMIN" && inv.status !== "DRAFT" && inv.status !== "REJECTED") {
     throw new ApiError(ERROR_CODES.ENTITY_IMMUTABLE, "当前状态不可修改", 403);
   }
 
@@ -213,7 +213,7 @@ export async function updateInvoice(user: SessionUser, id: string, input: Invoic
       updated = await tx.invoice.update({
         // 状态门控原子化: 事务外 :142 的读只是友好预判, 真正的门控在这里——
         // 非 admin 带 status 条件更新, 并发下 DRAFT→他态后这里撞 P2025
-        where: user.roleCode === "ADMIN" ? { id } : { id, status: "DRAFT" },
+        where: user.roleCode === "ADMIN" ? { id } : { id, status: { in: ["DRAFT", "REJECTED"] } },
         data: {
           ...(safeInput as InvoiceUpdateInput),
           applyDate: input.applyDate ? new Date(input.applyDate) : undefined,

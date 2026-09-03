@@ -192,8 +192,10 @@ export async function createPayment(
         updatedById: user.id
       }
     });
+  }).then((r) => {
+    flushPendingKicks();
+    return r;
   });
-  flushPendingKicks();
 }
 
 // 在事务内将一笔 Payment 从 CONFIRMED/RECONCILED 退到 REFUNDED,
@@ -396,7 +398,36 @@ export async function paymentAction(user: SessionUser, id: string, input: Paymen
       return result.updated!;
     }
 
+    if (input.action === "return") {
+      // 实务: 财务确认后发现金额/流水号/到账日录错, 退回业务重录 (CONFIRMED -> PLANNED)。
+      // 与 refund 的区别: refund 是实际退款给客户(终态, 资金流反转); return 只是登记错误回退,
+      // 不产生资金流, 退回后保持 PLANNED 由业务/财务重新确认(confirm 支持覆盖流水号/到账日/方式)。
+      requireFinance();
+      const reason = (input.reason ?? "").trim();
+      if (!reason) throw new ApiError(ERROR_CODES.VALIDATION_FAILED, "退回需填写原因", 400);
+      const result = await runTransitionInTx(tx, {
+        entity: "Payment",
+        loadInTx: commonLoad,
+        from: ["CONFIRMED"],
+        to: "PLANNED",
+        extraData: (current) => ({
+          remark: `退回重录:${reason}${current.remark ? ` | 原备注:${current.remark}` : ""}`,
+          updatedById: user.id,
+        }),
+        audit: (current) => ({
+          actorId: user.id,
+          action: "PAYMENT_RETURN",
+          before: { status: current.status, amount: Number(current.amount), bankRefNo: current.bankRefNo },
+          after: { status: "PLANNED", reason },
+        }),
+        mismatchError: { ...mismatch, message: (_c, to) => `仅 CONFIRMED 可退回(目标: ${to})` },
+      });
+      return result.updated!;
+    }
+
     throw new ApiError(ERROR_CODES.VALIDATION_FAILED, "未知动作", 400);
+  }).then((r) => {
+    flushPendingKicks();
+    return r;
   });
-  flushPendingKicks();
 }

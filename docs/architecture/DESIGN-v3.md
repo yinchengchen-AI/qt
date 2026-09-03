@@ -366,6 +366,7 @@ DRAFT ─submit─▶ PENDING_FINANCE ─issue(finance)─▶ ISSUED ─redFlush
 ```
 - `issue` 触发：自动创建 `Payment{ status: PLANNED, amount: invoice.amount, invoiceId: ... }`。
 - `redFlush`：生成负数 `Invoice`，原记录置 `RED_FLUSHED`，`linkedInvoiceId` 互指；同时取消原 PLANNED Payment。
+- **撤回 / 重提（实务闭环）**：`withdraw` PENDING_FINANCE → DRAFT（财务处理前申请人/管理员取回修改）；`resubmit` REJECTED → PENDING_FINANCE（驳回后修改重提，复检 R-08 且显式计入本票金额）；REJECTED 可编辑（非 admin 限 DRAFT/REJECTED）。
 
 ### 5.4 `Payment.status`
 ```
@@ -374,6 +375,7 @@ PLANNED ─confirm(finance)─▶ CONFIRMED ─reconcile(finance)─▶ RECONCIL
    │                          └──refund(finance)──▶ REFUNDED(终态)
    └──cancel(创建人, PLANNED 态)──▶ CANCELLED
 ```
+- **退回重录（实务闭环）**：`return` CONFIRMED → PLANNED（财务确认后录入错误，与 refund 区分、不产生资金流；退回后可重新确认或取消）。
 
 ### 5.5 `Customer`(无 status 字段)
 

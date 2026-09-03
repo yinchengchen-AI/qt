@@ -23,7 +23,7 @@ export const paymentCreateSchema = z.object({
 });
 
 export const paymentActionSchema = z.object({
-  action: z.enum(["confirm", "reconcile", "refund", "cancel"]),
+  action: z.enum(["confirm", "reconcile", "refund", "cancel", "return"]),
   bankRefNo: z.string().max(50).optional(),
   reason: z.string().max(500).optional(),
   // confirm 时可选更正实际到账日 / 收款方式 (预建 PLANNED 的 receivedAt 是开票时间快照)

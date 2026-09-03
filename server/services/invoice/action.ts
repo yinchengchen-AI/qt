@@ -20,7 +20,8 @@ import { INVOICE_LIMIT_COUNTED_STATUSES } from "@/lib/invoice-amounts";
 // 堵住 "提交后隐身" 与 "并发绕过" 两类超额路径——创建环节的校验在这些场景下不可靠。
 async function assertWithinContractLimit(
   tx: Prisma.TransactionClient,
-  inv: { id: string; contractId: string }
+  inv: { id: string; contractId: string; amount?: Prisma.Decimal | string | number },
+  opts?: { includeSelf?: boolean }
 ): Promise<void> {
   // 先锁合同行 (FOR UPDATE), 序列化同一合同的并发 submit/issue 复检——
   // 外层事务默认 ReadCommitted, 只 aggregate 不锁会让两张 DRAFT 并发 submit 双双通过
@@ -32,7 +33,10 @@ async function assertWithinContractLimit(
     where: { contractId: inv.contractId, status: { in: [...INVOICE_LIMIT_COUNTED_STATUSES] }, deletedAt: null },
     _sum: { amount: true }
   });
-  const issuedAmt = new Prisma.Decimal(issued._sum.amount?.toString() ?? "0");
+  let issuedAmt = new Prisma.Decimal(issued._sum.amount?.toString() ?? "0");
+  if (opts?.includeSelf && inv.amount !== undefined) {
+    issuedAmt = issuedAmt.plus(inv.amount.toString());
+  }
   const contractTotal = new Prisma.Decimal(contract.totalAmount.toString());
   // 本票已在口径内, 无需再加; 只校验当前累计未超额
   if (issuedAmt.greaterThan(contractTotal.plus(MONEY_TOLERANCE))) {
@@ -112,6 +116,42 @@ export async function invoiceAction(user: SessionUser, id: string, input: Invoic
         precondition: (current, t) => assertWithinContractLimit(t, current),
         audit: () => ({ actorId: user.id, action: "INVOICE_SUBMIT", before: { status: "DRAFT" }, after: { status: "PENDING_FINANCE" } }),
         mismatchError: { ...mismatch, message: (_c, to) => `仅 DRAFT 可提交(目标: ${to})` },
+      });
+      return result.updated;
+    }
+
+    if (input.action === "withdraw") {
+      // 实务: 提交后发现填错, 财务处理前申请人(或管理员)可撤回修改 (PENDING_FINANCE -> DRAFT)
+      // 权限与 submit 同口径: 受限角色按合同 owner 守门, admin 兜底
+      const pre = await commonLoad(tx);
+      if (!pre) throw new ApiError(ERROR_CODES.NOT_FOUND, "发票不存在", 404);
+      assertRecordWritable(user, pre.contract?.ownerUserId, "发票");
+      const result = await runTransitionInTx(tx, {
+        entity: "Invoice",
+        loadInTx: commonLoad,
+        from: ["PENDING_FINANCE"],
+        to: "DRAFT",
+        audit: () => ({ actorId: user.id, action: "INVOICE_WITHDRAW", before: { status: "PENDING_FINANCE" }, after: { status: "DRAFT" } }),
+        mismatchError: { ...mismatch, message: (_c, to) => `仅 PENDING_FINANCE 可撤回(目标: ${to})` },
+      });
+      return result.updated;
+    }
+
+    if (input.action === "resubmit") {
+      // 实务: 被驳回后业务修改正确, 重新提交 (REJECTED -> PENDING_FINANCE)
+      // 权限与 submit 同口径; 重提时本票从"不计额度(REJECTED)"回到"占额度(PENDING_FINANCE)",
+      // precondition 复检 R-08 且显式计入本票金额 (编辑驳回票期间可能已开其它票)
+      const pre = await commonLoad(tx);
+      if (!pre) throw new ApiError(ERROR_CODES.NOT_FOUND, "发票不存在", 404);
+      assertRecordWritable(user, pre.contract?.ownerUserId, "发票");
+      const result = await runTransitionInTx(tx, {
+        entity: "Invoice",
+        loadInTx: commonLoad,
+        from: ["REJECTED"],
+        to: "PENDING_FINANCE",
+        precondition: (current, t) => assertWithinContractLimit(t, current, { includeSelf: true }),
+        audit: () => ({ actorId: user.id, action: "INVOICE_RESUBMIT", before: { status: "REJECTED" }, after: { status: "PENDING_FINANCE" } }),
+        mismatchError: { ...mismatch, message: (_c, to) => `仅 REJECTED 可重新提交(目标: ${to})` },
       });
       return result.updated;
     }
@@ -296,7 +336,9 @@ export async function invoiceAction(user: SessionUser, id: string, input: Invoic
     }
 
     throw new ApiError(ERROR_CODES.VALIDATION_FAILED, "未知动作", 400);
+  }).then((r) => {
+    flushPendingKicks();
+    return r;
   });
-  flushPendingKicks();
 }
 

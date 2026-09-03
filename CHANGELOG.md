@@ -2,6 +2,32 @@
 
 本文件记录 qt-biz 每个版本的详细变更。项目快速入口请见 [README.md](README.md)。
 
+## v0.23.0(2026-09-03)合同/开票/回款状态机实务闭环
+
+完善三大状态机的实务流转,补齐此前"走不通"的业务路径。**DB schema / migrations: 无变化**(全部在既有状态集内流转,不新增状态值)。
+
+### 新增
+
+- **feat(invoice)**：新增 `withdraw` 撤回(`PENDING_FINANCE → DRAFT`)。提交后发现填错、财务尚未处理前,申请人(限本人合同行级权限)/管理员可取回修改;财务已处理则不可撤回,走驳回。审计 `INVOICE_WITHDRAW`。
+- **feat(invoice)**：新增 `resubmit` 重提(`REJECTED → PENDING_FINANCE`)。被驳回后业务修改正确可再次提交,precondition 复检 R-08(累计开票 ≤ 合同总额)且**显式计入本票金额**(`includeSelf`),堵住"两张驳回票先后重提叠加超限"的漏洞。审计 `INVOICE_RESUBMIT`。
+- **feat(invoice)**：非 admin 允许编辑 `REJECTED` 发票(此前仅 DRAFT),支撑"驳回→修改→重提"闭环;状态门控原子化更新为 `status IN (DRAFT, REJECTED)`。
+- **feat(payment)**：新增 `return` 退回重录(`CONFIRMED → PLANNED`)。财务确认后发现金额/流水号/到账日录错,可退回业务重录;与 `refund` 区分——**不产生资金流**,退回后保持 PLANNED 可重新确认或取消。必填退回原因,审计 `PAYMENT_RETURN`。
+
+### 修复
+
+- **fix(statemachine)**：修复 `publishContract` / `closeContract` / `paymentAction` / `createPayment` / `invoiceAction` 中 `flushPendingKicks()` 写在 `return prisma.$transaction(...)` 之后导致**永不执行**的真实时通知缺陷(此前依赖 5s scheduler 兜底),改为事务 commit 后 `.then()` flush。
+
+### 测试
+
+- **test(invoice)**：`tests/api/invoice-withdraw-resubmit.test.ts` 9 例(撤回 / 越权 / 终态不可撤 / 无权限角色、重提成功 / 重提超限 includeSelf 复检 / 无超限通过 / DRAFT 不可重提、REJECTED 可编辑)。
+- **test(payment)**：`tests/api/payment-return.test.ts` 5 例(退回成功 / 必填原因 / 非 CONFIRMED 不可退 / SALES 越权 / 退回后可重新确认)。
+- typecheck / lint / vitest 全绿:119 文件 / 1028 用例(新增 14 例)。
+
+### 文档
+
+- **docs**：USER_MANUAL 发票 §8.4 / 回款 §9.1/§9.4 补齐撤回、重提、退回重录流程;DESIGN-v3 §5.3/§5.4 补实现增量说明。
+
+
 ## v0.22.2(2026-09-03)messages-v2-routes typecheck 修复
 
 拉取 v0.22.1 后新增的 `tests/api/messages-v2-routes.test.ts` 在 `noUncheckedIndexedAccess` 下报 3 处 TS2532（`listCalls[0]` 被判 possibly undefined），阻塞 `npm run typecheck`。**DB schema / migrations: 无变化。**

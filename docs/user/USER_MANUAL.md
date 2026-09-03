@@ -413,7 +413,7 @@ DRAFT ─submit─▶ PENDING_FINANCE ─issue─▶ ISSUED
 | `DRAFT` 草稿 | SALES 录入,待提交 |
 | `PENDING_FINANCE` 待财务审核 | 财务介入 |
 | `ISSUED` 已开 | 财务已开具,正式号已分配 |
-| `REJECTED` 已驳回 | 财务驳回,回到 DRAFT |
+| `REJECTED` 已驳回 | 财务驳回,业务修改后可「重新提交」回到 `PENDING_FINANCE` |
 | `VOIDED` 已作废 | 已开但作废,需关联红冲 |
 | `RED_FLUSHED` 红冲 | 负数发票,关联原 ISSUED 票 |
 
@@ -445,8 +445,10 @@ DRAFT ─submit─▶ PENDING_FINANCE ─issue─▶ ISSUED
 ### 8.4 提交 / 审核流程
 
 - **提交**:`DRAFT → PENDING_FINANCE`,销售可提交自己的草稿(限本人合同的行级权限)
+- **撤回**:`PENDING_FINANCE → DRAFT`,财务处理前,申请人 / 管理员可取回修改(财务已处理则不可撤回,走驳回)
 - **审核通过**(财务):`→ ISSUED`,系统分配正式号,申请人收到 `INVOICE_ISSUED` 通知;同时自动预建一笔 `PLANNED` 回款(金额=发票额)
 - **驳回**:`→ REJECTED`,必填意见,申请人收到 `INVOICE_REJECTED` 通知
+- **重新提交**:`REJECTED → PENDING_FINANCE`,被驳回后业务修改正确可再次提交,系统复检「累计开票 ≤ 合同总额」(含本票)
 - **作废**:`ISSUED → VOIDED`,必填作废原因,**仅开票后 24 小时内**可操作;该发票的预建回款同步取消、已确认回款自动退款
 - **红冲**:`ISSUED → RED_FLUSHED`,生成反向负数发票,自动关联原票;**红冲票(负数票)不可再作废 / 再红冲**
 
@@ -461,7 +463,9 @@ DRAFT ─submit─▶ PENDING_FINANCE ─issue─▶ ISSUED
 
 ```
 PLANNED ─confirm─▶ CONFIRMED ─reconcile─▶ RECONCILED
+     ▲                │
      │                │
+     │                ├─return─▶ PLANNED (退回重录)
      │                ├─refund─▶ REFUNDED
      │                └─cancel─▶ CANCELLED
      │
@@ -501,6 +505,7 @@ PLANNED ─confirm─▶ CONFIRMED ─reconcile─▶ RECONCILED
 
 - **确认到账**:`PLANNED → CONFIRMED`,流水号此时起全局唯一;确认时可更正 **到账日 / 收款方式**(如开票自动预建的回款,默认到账日为开票日,确认时改成实际到账日)
 - **核销**:`CONFIRMED → RECONCILED`,由 finance 在「对账」动作里勾选目标发票即可
+- **退回重录**:`CONFIRMED → PLANNED`,财务确认后发现金额 / 流水号 / 到账日录错,可退回业务重录;与「退款」不同,**不产生资金流**,退回后可重新确认或取消
 - 一笔回款对应 **一张发票**(`payment.invoiceId`),没有跨发票分摊 —— 回款在创建时已绑定发票,避免一笔回款挂多张发票带来的跨合同抹账风险
 - **退款**:`→ REFUNDED`,必填退款原因,退款后核销人 / 核销时间自动清空
 - **取消**:仅 `PLANNED → CANCELLED`;**创建人本人**或财务 / 管理员可取消(销售可自助撤掉自己录错的登记)

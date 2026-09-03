@@ -62,7 +62,7 @@ export default function InvoiceDetailPage() {
   // 与 server/services/invoice/crud.ts:130 的状态机门控保持一致: 非 admin 仅 DRAFT 可改, admin 任意态
   const canUpdate = hasPermission(roleCode, RESOURCE.INVOICE, ACTION.UPDATE);
   const status = invoice?.status;
-  const canTouch = isAdmin || (status === "DRAFT" && (!isRestricted || invoice.contract?.ownerUserId === me));
+  const canTouch = isAdmin || ((status === "DRAFT" || status === "REJECTED") && (!isRestricted || invoice.contract?.ownerUserId === me));
   // 红冲票 (负数票) 服务端禁止作废/再红冲, 前端同步隐藏按钮
   const isRedFlushTicket = Number(invoice.amount) < 0;
 
@@ -104,6 +104,8 @@ export default function InvoiceDetailPage() {
               <Button key="edit" icon={<EditOutlined />} onClick={() => router.push(`/invoices/${id}/edit`)}>编辑</Button>
             )}
             {status === "DRAFT" && canUpdate && (!isRestricted || invoice.contract?.ownerUserId === me) && <Button type="primary" onClick={() => run("submit")}>提交</Button>}
+            {status === "PENDING_FINANCE" && canUpdate && (!isRestricted || invoice.contract?.ownerUserId === me) && <Button onClick={() => run("withdraw")}>撤回</Button>}
+            {status === "REJECTED" && canUpdate && (!isRestricted || invoice.contract?.ownerUserId === me) && <Button type="primary" onClick={() => run("resubmit")}>重新提交</Button>}
             {status === "PENDING_FINANCE" && isFinance && (
               <>
                 <Button danger onClick={() => openModal("reject")}>驳回</Button>

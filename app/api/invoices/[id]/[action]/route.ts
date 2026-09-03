@@ -14,6 +14,8 @@ const ACTIONS: ReadonlySet<InvoiceActionInput["action"]> = new Set([
   "reject",
   "void",
   "red-flush",
+  "withdraw",
+  "resubmit",
 ]);
 
 export async function POST(

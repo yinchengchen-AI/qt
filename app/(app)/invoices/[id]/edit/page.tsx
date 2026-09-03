@@ -100,7 +100,7 @@ export default function EditInvoicePage() {
     );
   }
   // 非 admin 撞上非 DRAFT: 直接挡住, 与后端 updateInvoice 守卫一致
-  if (!isAdmin && data.status !== "DRAFT") {
+  if (!isAdmin && data.status !== "DRAFT" && data.status !== "REJECTED") {
     return (
       <Page compact>
         <PageHeader
@@ -110,7 +110,7 @@ export default function EditInvoicePage() {
         />
         <FormCard>
           <Text type="warning">
-            当前状态 <StatusTag status={data.status} domain="invoice" /> 不可编辑;仅 草稿 可改。
+            当前状态 <StatusTag status={data.status} domain="invoice" /> 不可编辑;仅 草稿 / 已驳回 可改。
           </Text>
         </FormCard>
       </Page>

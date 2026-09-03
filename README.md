@@ -6,12 +6,12 @@
 [![TypeScript](https://img.shields.io/badge/TypeScript-6.0.3-3178c6)](https://www.typescriptlang.org/)
 [![Prisma](https://img.shields.io/badge/Prisma-7.9.1-2d3748)](https://www.prisma.io/)
 [![PostgreSQL](https://img.shields.io/badge/PostgreSQL-16-336791)](https://www.postgresql.org/)
-[![Last Release](https://img.shields.io/badge/release-v0.22.2-blue)](CHANGELOG.md)
+[![Last Release](https://img.shields.io/badge/release-v0.23.0-blue)](CHANGELOG.md)
 [![CI](https://github.com/yinchengchen-AI/qt/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/yinchengchen-AI/qt/actions/workflows/ci.yml)
 
 > **客户 / 合同 / 开票 / 回款** 一体化管理,附件走 MinIO presigned 直传,服务端 Server Actions + RBAC + 行级隔离。
 >
-> **当前版本: v0.22.2**(2026-09-03)。文档地图见 [docs/README.md](docs/README.md),架构与设计见 [docs/architecture/DESIGN-v3.md](docs/architecture/DESIGN-v3.md),用户手册见 [docs/user/USER_MANUAL.md](docs/user/USER_MANUAL.md)。
+> **当前版本: v0.23.0**(2026-09-03)。文档地图见 [docs/README.md](docs/README.md),架构与设计见 [docs/architecture/DESIGN-v3.md](docs/architecture/DESIGN-v3.md),用户手册见 [docs/user/USER_MANUAL.md](docs/user/USER_MANUAL.md)。
 
 ## 目录
 
@@ -257,6 +257,10 @@ nginx 反代下上游异常时,由 `public/502.html` 静态页与 `app/502/page.
 
 最近 5 个版本,完整历史见 [CHANGELOG.md](CHANGELOG.md)。
 
+
+### v0.23.0(2026-09-03)合同/开票/回款状态机实务闭环
+
+开票新增「撤回」(PENDING_FINANCE→DRAFT)与「驳回后修改重提」(REJECTED→PENDING_FINANCE,复检开票限额含本票);回款新增「退回重录」(CONFIRMED→PLANNED,区别于退款不产生资金流);同时修复合同/回款/发票状态机函数中 `flushPendingKicks()` 写在 `return` 之后永不执行的真实时通知缺陷。**DB schema 无变化。** 新增 14 例 API 测试。
 ### v0.22.2(2026-09-03)messages-v2-routes typecheck 修复
 
 拉取 v0.22.1 后新增的 `tests/api/messages-v2-routes.test.ts` 在 `noUncheckedIndexedAccess` 下报 3 处 TS2532,阻塞 `npm run typecheck`。改用非空断言修复(行内已有 `toHaveLength(1)` 保证索引存在)。**DB schema 无变化。**

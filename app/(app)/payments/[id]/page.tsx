@@ -110,6 +110,23 @@ export default function PaymentDetailPage() {
       }
     });
   };
+  const askReturn = () => {
+    reasonRef.current = "";
+    Modal.confirm({
+      title: "确认退回重录（财务）？",
+      content: (
+        <Input.TextArea
+          rows={2}
+          placeholder="请填写退回原因（金额/流水号/到账日录错等），业务员可见"
+          onChange={(e) => { reasonRef.current = e.target.value; }}
+        />
+      ),
+      onOk: async () => {
+        await run("return", { reason: reasonRef.current });
+        reasonRef.current = "";
+      }
+    });
+  };
   const askRefund = () => {
     reasonRef.current = "";
     Modal.confirm({
@@ -142,6 +159,7 @@ export default function PaymentDetailPage() {
             {status === "CONFIRMED" && isFinance && (
               <>
                 <Button onClick={() => run("reconcile")}>对账</Button>
+                <Button onClick={askReturn}>退回重录</Button>
                 <Button danger onClick={askRefund}>退款</Button>
               </>
             )}

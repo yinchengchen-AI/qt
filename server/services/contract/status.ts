@@ -34,8 +34,10 @@ export async function publishContract(user: SessionUser, id: string) {
       before, after: { status: "ACTIVE" }
     });
     return updated;
+  }).then((r) => {
+    flushPendingKicks();
+    return r;
   });
-  flushPendingKicks();
 }
 
 
@@ -80,8 +82,10 @@ export async function closeContract(
       after: { status: "CLOSED", reason }
     });
     return updated;
+  }).then((r) => {
+    flushPendingKicks();
+    return r;
   });
-  flushPendingKicks();
 }
 
 
