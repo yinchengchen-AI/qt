@@ -218,19 +218,19 @@ describe("GET /api/messages zod unlock (v0.22.1 fix)", () => {
     const res = await messagesGET(makeMessagesReq(""));
     expect(res.status).toBe(200);
     expect(listCalls).toHaveLength(1);
-    expect(listCalls[0].unread).toBeUndefined();
+    expect(listCalls[0]!.unread).toBeUndefined();
   });
 
   it("?unread=true → params.unread=true(仅未读)", async () => {
     const res = await messagesGET(makeMessagesReq("?unread=true"));
     expect(res.status).toBe(200);
-    expect(listCalls[0].unread).toBe(true);
+    expect(listCalls[0]!.unread).toBe(true);
   });
 
   it("?unread=false → params.unread=false(仅已读)", async () => {
     const res = await messagesGET(makeMessagesReq("?unread=false"));
     expect(res.status).toBe(200);
-    expect(listCalls[0].unread).toBe(false);
+    expect(listCalls[0]!.unread).toBe(false);
   });
 });
 
