@@ -6,12 +6,12 @@
 [![TypeScript](https://img.shields.io/badge/TypeScript-6.0.3-3178c6)](https://www.typescriptlang.org/)
 [![Prisma](https://img.shields.io/badge/Prisma-7.9.1-2d3748)](https://www.prisma.io/)
 [![PostgreSQL](https://img.shields.io/badge/PostgreSQL-16-336791)](https://www.postgresql.org/)
-[![Last Release](https://img.shields.io/badge/release-v0.21.14-blue)](CHANGELOG.md)
+[![Last Release](https://img.shields.io/badge/release-v0.22.0-blue)](CHANGELOG.md)
 [![CI](https://github.com/yinchengchen-AI/qt/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/yinchengchen-AI/qt/actions/workflows/ci.yml)
 
 > **客户 / 合同 / 开票 / 回款** 一体化管理,附件走 MinIO presigned 直传,服务端 Server Actions + RBAC + 行级隔离。
 >
-> **当前版本: v0.21.14**(2026-09-03)。文档地图见 [docs/README.md](docs/README.md),架构与设计见 [docs/architecture/DESIGN-v3.md](docs/architecture/DESIGN-v3.md),用户手册见 [docs/user/USER_MANUAL.md](docs/user/USER_MANUAL.md)。
+> **当前版本: v0.22.0**(2026-09-03)。文档地图见 [docs/README.md](docs/README.md),架构与设计见 [docs/architecture/DESIGN-v3.md](docs/architecture/DESIGN-v3.md),用户手册见 [docs/user/USER_MANUAL.md](docs/user/USER_MANUAL.md)。
 
 ## 目录
 
@@ -256,6 +256,10 @@ nginx 反代下上游异常时,由 `public/502.html` 静态页与 `app/502/page.
 ## 最近更新
 
 最近 5 个版本,完整历史见 [CHANGELOG.md](CHANGELOG.md)。
+
+### v0.22.0(2026-09-03)消息中心前后端重做
+
+把 20+ `MessageType` 拆到 6 个业务分类(合同/财务/对账/证书/系统/历史);列表新增类型/关键词/日期多维筛选 + 游标分页;新增批量操作(批量已读/删除)、用户订阅偏好(退订某类型不再发送)、SSE `message:new` 实时直推新消息(不再走 fetch 二次浪费);`bus.emit` 渲染逻辑拆到注册表;管理员归档页加类型/搜索。**DB schema 有变化: 新增 `MessagePreference` 表。** 详见 [docs/DESIGN-messages-v2.md](docs/DESIGN-messages-v2.md) 与 [CHANGELOG.md](CHANGELOG.md)。
 
 ### v0.21.13(2026-09-03)消息中心「清空已读」按钮修复
 
