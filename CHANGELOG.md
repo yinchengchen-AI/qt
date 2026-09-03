@@ -2,6 +2,13 @@
 
 本文件记录 qt-biz 每个版本的详细变更。项目快速入口请见 [README.md](README.md)。
 
+## v0.21.13(2026-09-03)消息中心「清空已读」按钮修复
+
+顶栏消息中心抽屉与 `/messages` 页的「清空已读」按钮此前点击无反应——前端调用 `POST /api/messages/read/clear`,但该 API 路由从未提交(服务层 `clearReadMessages`、UI、i18n 均已存在),请求 404 后静默失败。**DB schema 无变化。**
+
+### 修复
+- **fix(messages)**:新增 `app/api/messages/read/clear/route.ts`(POST;鉴权 + 仅删当前用户已读消息 + `MESSAGE_CLEAR_READ` 审计),与 `mark-all-read` 路由同构;抽屉「清空已读」失败时弹错误提示,不再静默无响应。
+
 ## v0.21.12(2026-09-02)统计分析新增异常数据
 
 统计分析下新增「异常数据」台账页，把发票数据质量问题（占位发票号、内部无票收据、异常账龄日期、历史重复编号）从治理后台变成可视化报表。**DB schema 无变化。**

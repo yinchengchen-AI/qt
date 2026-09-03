@@ -711,6 +711,8 @@ export function DashboardShell({ user, children }: Props) {
                       if (j.code === 0) {
                         modal.success({ content: t("messages.toast.clearedRead", { n: j.data.deleted }) });
                         loadMessages();
+                      } else {
+                        modal.error({ content: j.message });
                       }
                     }
                   });
