@@ -683,12 +683,18 @@ export function DashboardShell({ user, children }: Props) {
             <a
               onClick={async (e) => {
                 e.preventDefault();
-                const r = await fetch("/api/messages/mark-all-read", { method: "POST", credentials: "include" });
-                const j = await r.json();
-                if (j.code === 0) {
-                  refreshUnread();
-                  loadMessages();
-                  modal.success({ content: t("messages.toast.markedRead", { n: j.data.updated }) });
+                try {
+                  const r = await fetch("/api/messages/mark-all-read", { method: "POST", credentials: "include" });
+                  const j = await r.json();
+                  if (j.code === 0) {
+                    refreshUnread();
+                    loadMessages();
+                    modal.success({ content: t("messages.toast.markedRead", { n: j.data.updated }) });
+                  } else {
+                    modal.error({ content: j.message });
+                  }
+                } catch {
+                  modal.error({ content: t("messages.toast.actionFailed") });
                 }
               }}
               style={{ color: token.colorPrimary, fontSize: 13, cursor: "pointer" }}
@@ -706,13 +712,17 @@ export function DashboardShell({ user, children }: Props) {
                     okType: "danger",
                     cancelText: t("announcements.cancel"),
                     onOk: async () => {
-                      const r = await fetch("/api/messages/read/clear", { method: "POST", credentials: "include" });
-                      const j = await r.json();
-                      if (j.code === 0) {
-                        modal.success({ content: t("messages.toast.clearedRead", { n: j.data.deleted }) });
-                        loadMessages();
-                      } else {
-                        modal.error({ content: j.message });
+                      try {
+                        const r = await fetch("/api/messages/read/clear", { method: "POST", credentials: "include" });
+                        const j = await r.json();
+                        if (j.code === 0) {
+                          modal.success({ content: t("messages.toast.clearedRead", { n: j.data.deleted }) });
+                          loadMessages();
+                        } else {
+                          modal.error({ content: j.message });
+                        }
+                      } catch {
+                        modal.error({ content: t("messages.toast.actionFailed") });
                       }
                     }
                   });

@@ -200,13 +200,17 @@ export default function MessagesPage() {
               icon={<CheckOutlined />}
               disabled={unreadCount === 0}
               onClick={async () => {
-                const r = await fetch("/api/messages/mark-all-read", { method: "POST", credentials: "include" });
-                const j = await r.json();
-                if (j.code === 0) {
-                  msg.success(t("messages.toast.markedRead", { n: j.data.updated }));
-                  actionRef.current?.reload?.();
-                  refreshUnread();
-                } else msg.error(j.message);
+                try {
+                  const r = await fetch("/api/messages/mark-all-read", { method: "POST", credentials: "include" });
+                  const j = await r.json();
+                  if (j.code === 0) {
+                    msg.success(t("messages.toast.markedRead", { n: j.data.updated }));
+                    actionRef.current?.reload?.();
+                    refreshUnread();
+                  } else msg.error(j.message);
+                } catch {
+                  msg.error(t("messages.toast.actionFailed"));
+                }
               }}
             >
               {t("messages.markAllRead")}
@@ -223,12 +227,16 @@ export default function MessagesPage() {
                   okType: "danger",
                   cancelText: t("announcements.cancel"),
                   onOk: async () => {
-                    const r = await fetch("/api/messages/read/clear", { method: "POST", credentials: "include" });
-                    const j = await r.json();
-                    if (j.code === 0) {
-                      msg.success(t("messages.toast.clearedRead", { n: j.data.deleted }));
-                      actionRef.current?.reload?.();
-                    } else msg.error(j.message);
+                    try {
+                      const r = await fetch("/api/messages/read/clear", { method: "POST", credentials: "include" });
+                      const j = await r.json();
+                      if (j.code === 0) {
+                        msg.success(t("messages.toast.clearedRead", { n: j.data.deleted }));
+                        actionRef.current?.reload?.();
+                      } else msg.error(j.message);
+                    } catch {
+                      msg.error(t("messages.toast.actionFailed"));
+                    }
                   }
                 });
               }}
