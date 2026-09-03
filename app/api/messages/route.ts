@@ -11,11 +11,11 @@ const query = z.object({
   pageSize: z.coerce.number().int().min(1).max(100).default(20),
   // 新: cursor 分页
   cursor: z.string().min(1).max(200).optional(),
-  // ?unread=true|false
+  // ?unread=true|false; 保留 undefined = 不过滤(全部),不能折叠成 false
   unread: z
     .enum(["true", "false"])
     .optional()
-    .transform((v) => v === "true"),
+    .transform((v) => (v === "true" ? true : v === "false" ? false : undefined)),
   // ?types=A,B,C
   types: z
     .string()

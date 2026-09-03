@@ -175,6 +175,65 @@ describe("PUT /api/messages/preferences (v0.22.0 lock)", () => {
   });
 });
 
+// ============================================================
+// GET /api/messages (v0.22.0 lock + v0.22.1 fix)
+// 锁定 zod 解析:?unread 缺失=undefined(全部),?unread=true=未读,?unread=false=已读
+// 回归: v0.22.0 的 transform 把 undefined 折叠成 false,导致「全部」tab/drawer 看到的是已读(空)
+// ============================================================
+const listCalls = vi.hoisted(() => [] as Array<Record<string, unknown>>);
+
+vi.mock("@/server/services/message", async (importOriginal) => {
+  const mod = await importOriginal<typeof import("@/server/services/message")>();
+  return {
+    ...mod,
+    // 保留原有 mock,避免覆盖 v0.22.0 lock 里的 unreadSummary / batchMutate
+    unreadSummary: async () => ({ total: 7, byCategory: { contract: 3, finance: 2, reconciliation: 1, certificate: 1, system: 0, unknown: 0 } }),
+    batchMutate: async (_u: SessionUser, input: { ids: string[]; action: string }) => ({ affected: input.ids.length }),
+    listMessages: async (_u: SessionUser, params: Record<string, unknown>) => {
+      listCalls.push(params);
+      return {
+        list: [],
+        total: 0,
+        page: 1,
+        pageSize: 20,
+        nextCursor: null,
+        unreadCount: 0
+      };
+    }
+  };
+});
+
+import { GET as messagesGET } from "@/app/api/messages/route";
+
+function makeMessagesReq(qs: string): Request {
+  return new Request(`http://localhost/api/messages${qs}`, { method: "GET" });
+}
+
+describe("GET /api/messages zod unlock (v0.22.1 fix)", () => {
+  beforeEach(() => {
+    listCalls.length = 0;
+  });
+
+  it("无 ?unread → params.unread=undefined(全部,不是 false)", async () => {
+    const res = await messagesGET(makeMessagesReq(""));
+    expect(res.status).toBe(200);
+    expect(listCalls).toHaveLength(1);
+    expect(listCalls[0].unread).toBeUndefined();
+  });
+
+  it("?unread=true → params.unread=true(仅未读)", async () => {
+    const res = await messagesGET(makeMessagesReq("?unread=true"));
+    expect(res.status).toBe(200);
+    expect(listCalls[0].unread).toBe(true);
+  });
+
+  it("?unread=false → params.unread=false(仅已读)", async () => {
+    const res = await messagesGET(makeMessagesReq("?unread=false"));
+    expect(res.status).toBe(200);
+    expect(listCalls[0].unread).toBe(false);
+  });
+});
+
 const _sanityApiError = ApiError;
 const _sanityErrCode = ERROR_CODES.UNAUTHORIZED;
 void _sanityApiError;

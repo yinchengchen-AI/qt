@@ -2,6 +2,19 @@
 
 本文件记录 qt-biz 每个版本的详细变更。项目快速入口请见 [README.md](README.md)。
 
+## v0.22.1(2026-09-03)消息中心「全部」tab / 抽屉空白 hotfix
+
+v0.22.0 上线后收到一个紧急反馈:消息中心「全部」选项卡和 Dashboard 消息抽屉都不显示内容。
+
+### 修复
+
+- **fix(messages)**:`GET /api/messages` 的 zod schema 把缺失的 `?unread` 参数从 `undefined` 折叠成 `false`,导致 `buildMessageWhere` 错误地加上 `readAt: { not: null }` 过滤 = 只显示已读消息。Admin 账号 1211 条全部未读 / 0 条已读,所以列表为空。修复:transform 区分三态(`true` / `false` / `undefined`),对齐「无参=全部」的契约。`server/services/message.ts` 的 `buildMessageWhere` 语义保持不变。
+- **test(messages)**:`tests/api/messages-v2-routes.test.ts` 加 3 个 zod lock 用例,显式断言 `?unread` 缺失 → `undefined`、`?unread=true` → `true`、`?unread=false` → `false`,防止回退。
+
+### 不变
+
+- 部署方式、API 形状、Service 接口、DB schema 均不变。直接 `npm version patch` 上 v0.22.1,无迁移。
+
 ## v0.22.0(2026-09-03)消息中心前后端重做
 
 消息中心 v2 重构：把 20+ `MessageType` 拆到 6 个业务分类（合同/财务/对账/证书/系统/历史），列表支持类型/关键词/日期多维筛选 + 批量操作 + 游标分页，新增用户订阅偏好 + 实时 `message:new` 推送 + 后台按类未读汇总。**DB schema 有变化：新增 `MessagePreference` 表。**
