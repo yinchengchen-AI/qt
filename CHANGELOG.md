@@ -2,6 +2,22 @@
 
 本文件记录 qt-biz 每个版本的详细变更。项目快速入口请见 [README.md](README.md)。
 
+## v0.22.2(2026-09-03)messages-v2-routes typecheck 修复
+
+拉取 v0.22.1 后新增的 `tests/api/messages-v2-routes.test.ts` 在 `noUncheckedIndexedAccess` 下报 3 处 TS2532（`listCalls[0]` 被判 possibly undefined），阻塞 `npm run typecheck`。**DB schema / migrations: 无变化。**
+
+### 修复
+
+- **fix(test)**：`tests/api/messages-v2-routes.test.ts` 3 处 `listCalls[0].unread` 改为 `listCalls[0]!.unread`（行内已有 `toHaveLength(1)` 保证索引存在，非空断言不改断言语义）。
+
+### 不变
+
+- 部署方式、API 形状、Service 接口、DB schema 均不变。直接 `npm version patch` 上 v0.22.2，无迁移。
+
+### 测试
+
+- typecheck / lint / vitest 全绿：117 文件 / 1014 用例。
+
 ## v0.22.1(2026-09-03)消息中心「全部」tab / 抽屉空白 hotfix
 
 v0.22.0 上线后收到一个紧急反馈:消息中心「全部」选项卡和 Dashboard 消息抽屉都不显示内容。

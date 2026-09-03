@@ -6,12 +6,12 @@
 [![TypeScript](https://img.shields.io/badge/TypeScript-6.0.3-3178c6)](https://www.typescriptlang.org/)
 [![Prisma](https://img.shields.io/badge/Prisma-7.9.1-2d3748)](https://www.prisma.io/)
 [![PostgreSQL](https://img.shields.io/badge/PostgreSQL-16-336791)](https://www.postgresql.org/)
-[![Last Release](https://img.shields.io/badge/release-v0.22.1-blue)](CHANGELOG.md)
+[![Last Release](https://img.shields.io/badge/release-v0.22.2-blue)](CHANGELOG.md)
 [![CI](https://github.com/yinchengchen-AI/qt/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/yinchengchen-AI/qt/actions/workflows/ci.yml)
 
 > **客户 / 合同 / 开票 / 回款** 一体化管理,附件走 MinIO presigned 直传,服务端 Server Actions + RBAC + 行级隔离。
 >
-> **当前版本: v0.22.1**(2026-09-03)。文档地图见 [docs/README.md](docs/README.md),架构与设计见 [docs/architecture/DESIGN-v3.md](docs/architecture/DESIGN-v3.md),用户手册见 [docs/user/USER_MANUAL.md](docs/user/USER_MANUAL.md)。
+> **当前版本: v0.22.2**(2026-09-03)。文档地图见 [docs/README.md](docs/README.md),架构与设计见 [docs/architecture/DESIGN-v3.md](docs/architecture/DESIGN-v3.md),用户手册见 [docs/user/USER_MANUAL.md](docs/user/USER_MANUAL.md)。
 
 ## 目录
 
@@ -257,6 +257,10 @@ nginx 反代下上游异常时,由 `public/502.html` 静态页与 `app/502/page.
 
 最近 5 个版本,完整历史见 [CHANGELOG.md](CHANGELOG.md)。
 
+### v0.22.2(2026-09-03)messages-v2-routes typecheck 修复
+
+拉取 v0.22.1 后新增的 `tests/api/messages-v2-routes.test.ts` 在 `noUncheckedIndexedAccess` 下报 3 处 TS2532,阻塞 `npm run typecheck`。改用非空断言修复(行内已有 `toHaveLength(1)` 保证索引存在)。**DB schema 无变化。**
+
 ### v0.22.1(2026-09-03)「全部」tab / 抽屉空白 hotfix
 
 修复 `GET /api/messages` 的 zod transform 把缺失的 `?unread` 折叠成 `false` 的问题(会导致 buildMessageWhere 加 `readAt: { not: null }` 过滤,只返回已读)。transform 改为三态(`true`/`false`/`undefined`),对齐「无参=全部」契约。同步加 3 个 zod lock 测试。
@@ -272,10 +276,6 @@ nginx 反代下上游异常时,由 `public/502.html` 静态页与 `app/502/page.
 ### v0.21.12(2026-09-02)统计分析新增异常数据
 
 统计分析新增「异常数据」页，汇总展示发票数据质量问题，支持待处理/已处理切换、类型/关键词筛选与发票号下钻。**DB schema 无变化。**
-
-### v0.21.11(2026-09-02)账龄异常日期回填脚本
-
-新增旧 FineUI 发票日期回填脚本，按发票号迁移顺序精确匹配，金额不一致或源日期缺失时跳过，只修正 `INVALID_AGING_DATE` 对应的历史异常日期。**DB schema 无变化。**
 
 ### v0.21.10(2026-09-02)应收账龄数据质量隔离
 
