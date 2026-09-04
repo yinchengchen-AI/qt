@@ -9,6 +9,7 @@ import { tickPublishableDrafts, tickCompletionCandidates } from "@/server/jobs/c
 import { runCertificateExpiryCheck } from "@/server/jobs/certificate-expiry-check";
 import { tickStaleContracts } from "@/server/jobs/stale-contract";
 import { runMessageArchive } from "@/server/jobs/message-archive";
+import { runMessageRecyclePurge } from "@/server/jobs/message-recycle-purge";
 import { runAgingSnapshot } from "@/server/jobs/aging-snapshot";
 import { runRiskScoreSnapshot } from "@/server/jobs/risk-score-snapshot";
 import { runContractRenewalRemind } from "@/server/jobs/contract-renewal-remind";
@@ -49,13 +50,24 @@ export async function runAllJobs(now = new Date()): Promise<JobResult[]> {
     { name: "contract-auto-publish", run: () => tickPublishableDrafts() },
     { name: "contract-auto-complete", run: () => tickCompletionCandidates(now) },
     { name: "contract-stale-notify", run: () => tickStaleContracts(now) },
-    // 03:00 hourly tick 内顺序最末:把已读超过 90 天的 inbox 搬到 MessageArchive
+    // 03:00 hourly tick 内:把已读超过 90 天的 inbox 搬到 MessageArchive
     { name: "message-archive", run: async () => {
         const r = await runMessageArchive(now);
         return {
           job: "message-archive",
           created: r.archived,
           scanned: r.batch,
+          durationMs: 0
+        };
+    } },
+    // v0.24.0: 回收站超过 N 天(默认 30)的软删消息 hard delete
+    { name: "message-recycle-purge", run: async () => {
+        const r = await runMessageRecyclePurge(now);
+        return {
+          job: "message-recycle-purge",
+          created: 0,
+          scanned: r.batch,
+          updated: r.purged,
           durationMs: 0
         };
     } },

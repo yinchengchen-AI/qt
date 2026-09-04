@@ -106,7 +106,7 @@ model User {
   signedContracts        Contract[]           @relation("ContractSigner")
   ownedContracts         Contract[]           @relation("ContractOwner")
   messages               Message[]
-  messagePreferences    MessagePreference[]
+  messagePreferences     MessagePreference[]
   publishedAnnouncements Announcement[]       @relation("AnnouncementPublishUser")
   dunningNotes           DunningNote[]
   publishedReleases      AppRelease[]         @relation("AppReleasePublishUser")
@@ -512,10 +512,10 @@ model Invoice {
   updatedById        String
   deletedAt          DateTime? @db.Timestamptz(6)
 
-  payments       Payment[]
-  auditLogs      InvoiceAuditLog[]
-  attachmentRefs Attachment[]      @relation("InvoiceAttachments")
-  dunningNotes   DunningNote[]
+  payments          Payment[]
+  auditLogs         InvoiceAuditLog[]
+  attachmentRefs    Attachment[]              @relation("InvoiceAttachments")
+  dunningNotes      DunningNote[]
   dataQualityIssues InvoiceDataQualityIssue[]
 
   @@index([status])
@@ -593,12 +593,17 @@ model Message {
   /// 业务实体键(`type:linkId`);deprecated / 无 link 消息留空
   /// 配合 @@unique([entityKey, receiverUserId]) + createMany(skipDuplicates) 做行级去重
   entityKey      String?     @db.VarChar(500)
+  /// 软删时间戳 (v0.24.0 回收站)：NULL=在 inbox,非 NULL=已软删
+  /// 30 天后由 runMessageRecyclePurge 永久 hard delete
+  deletedAt      DateTime?   @db.Timestamptz(6)
 
   @@unique([entityKey, receiverUserId])
   @@index([receiverUserId, readAt])
   // 去重查询:`type + receiverUserId + createdAt + JSON link.id`
   // 这个复合索引把扫描收敛到"今天 + 该用户 + 该类型"的小窗口,JSON 路径再二次过滤
   @@index([type, receiverUserId, createdAt])
+  // 回收站: 用户维度查自己已软删消息
+  @@index([receiverUserId, deletedAt])
 }
 
 /// 消息归档表 (append-only)。已读超过 90 天的 Message 会被移动到这里,
@@ -631,16 +636,15 @@ model MessageArchive {
 model MessagePreference {
   userId    String
   type      MessageType
-  enabled   Boolean      @default(true)
-  createdAt DateTime     @default(now()) @db.Timestamptz(6)
-  updatedAt DateTime     @updatedAt @db.Timestamptz(6)
+  enabled   Boolean     @default(true)
+  createdAt DateTime    @default(now()) @db.Timestamptz(6)
+  updatedAt DateTime    @updatedAt @db.Timestamptz(6)
 
-  user      User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@id([userId, type])
   @@index([userId])
 }
-
 
 model Announcement {
   id            String    @id @default(cuid())
@@ -848,19 +852,19 @@ model InvoiceDataQualityIssue {
 //   - 无 RLS: 与 AppRelease 相同策略, 行级隔离在 service 层按角色处理。
 // =====================================================
 model AgingSnapshot {
-  id              String   @id @default(cuid())
-  asOfDate        DateTime @db.Date
-  basis           String // "issue" | "due"
-  bucket0_30      Decimal  @db.Decimal(18, 2)
-  bucket31_60     Decimal  @db.Decimal(18, 2)
-  bucket61_90     Decimal  @db.Decimal(18, 2)
-  bucket90        Decimal  @db.Decimal(18, 2)
-  totalReceivable Decimal  @db.Decimal(18, 2)
-  invoiceCount    Int
-  dataQualityExcluded Decimal  @default(0) @db.Decimal(18, 2)
-  dataQualityInvoiceCount Int @default(0)
-  createdAt       DateTime @default(now()) @db.Timestamptz(6)
-  updatedAt       DateTime @updatedAt @db.Timestamptz(6)
+  id                      String   @id @default(cuid())
+  asOfDate                DateTime @db.Date
+  basis                   String // "issue" | "due"
+  bucket0_30              Decimal  @db.Decimal(18, 2)
+  bucket31_60             Decimal  @db.Decimal(18, 2)
+  bucket61_90             Decimal  @db.Decimal(18, 2)
+  bucket90                Decimal  @db.Decimal(18, 2)
+  totalReceivable         Decimal  @db.Decimal(18, 2)
+  invoiceCount            Int
+  dataQualityExcluded     Decimal  @default(0) @db.Decimal(18, 2)
+  dataQualityInvoiceCount Int      @default(0)
+  createdAt               DateTime @default(now()) @db.Timestamptz(6)
+  updatedAt               DateTime @updatedAt @db.Timestamptz(6)
 
   @@unique([asOfDate, basis])
   @@index([basis, asOfDate])
@@ -954,37 +958,37 @@ model AppReleaseRead {
 
 /// 银行流水原始记录（从银行导出 Excel/CSV 导入）
 model BankTransaction {
-  id                String   @id @default(cuid())
+  id                  String    @id @default(cuid())
   /// 银行流水号 + 交易日期 + 金额 联合唯一, 防重复导入
-  bankRefNo         String
-  transactionDate   DateTime @db.Timestamptz(6)
-  amount            Decimal  @db.Decimal(18, 2)
-  currency          String   @default("CNY")
+  bankRefNo           String
+  transactionDate     DateTime  @db.Timestamptz(6)
+  amount              Decimal   @db.Decimal(18, 2)
+  currency            String    @default("CNY")
   /// 对方信息
-  counterpartyName    String? @db.VarChar(200)
-  counterpartyAccount String? @db.VarChar(100)
-  counterpartyBank    String? @db.VarChar(100)
+  counterpartyName    String?   @db.VarChar(200)
+  counterpartyAccount String?   @db.VarChar(100)
+  counterpartyBank    String?   @db.VarChar(100)
   /// 摘要与用途
-  summary             String? @db.VarChar(500)
-  purpose             String? @db.VarChar(500)
+  summary             String?   @db.VarChar(500)
+  purpose             String?   @db.VarChar(500)
   /// 导入批次
   importBatchId       String
   importedById        String
-  importedAt          DateTime @default(now()) @db.Timestamptz(6)
+  importedAt          DateTime  @default(now()) @db.Timestamptz(6)
   /// 对账状态: UNMATCHED → AUTO_MATCHED → CONFIRMED_MATCHED → MANUAL_MATCHED → IGNORED
-  matchStatus         String   @default("UNMATCHED")
+  matchStatus         String    @default("UNMATCHED")
   matchedAt           DateTime? @db.Timestamptz(6)
   matchedById         String?
   /// 匹配结果
   paymentId           String?
-  payment             Payment? @relation(fields: [paymentId], references: [id], onDelete: SetNull)
+  payment             Payment?  @relation(fields: [paymentId], references: [id], onDelete: SetNull)
   /// 匹配时回款的原始状态(PLANNED/CONFIRMED), unmatch 回滚用
   paymentPrevStatus   String?
-  matchScore          Decimal? @db.Decimal(5, 2)
-  matchReason         String?  @db.VarChar(200)
+  matchScore          Decimal?  @db.Decimal(5, 2)
+  matchReason         String?   @db.VarChar(200)
   /// 审计
-  createdAt           DateTime @default(now()) @db.Timestamptz(6)
-  updatedAt           DateTime @updatedAt @db.Timestamptz(6)
+  createdAt           DateTime  @default(now()) @db.Timestamptz(6)
+  updatedAt           DateTime  @updatedAt @db.Timestamptz(6)
   deletedAt           DateTime? @db.Timestamptz(6)
 
   @@unique([bankRefNo, transactionDate, amount])
@@ -998,25 +1002,25 @@ model BankTransaction {
 // =====================================================
 // 对账差异记录（金额不符、重复回款等异常情况）
 model ReconciliationDiscrepancy {
-  id                String   @id @default(cuid())
+  id                String    @id @default(cuid())
   /// 差异类型
   type              String
-  severity          String   @default("MEDIUM")
+  severity          String    @default("MEDIUM")
   /// 关联实体
   bankTransactionId String?
   paymentId         String?
   invoiceId         String?
   /// 差异详情
-  expectedAmount    Decimal? @db.Decimal(18, 2)
-  actualAmount      Decimal? @db.Decimal(18, 2)
-  difference        Decimal? @db.Decimal(18, 2)
-  description       String   @db.VarChar(1000)
-  resolution        String?  @db.VarChar(1000)
+  expectedAmount    Decimal?  @db.Decimal(18, 2)
+  actualAmount      Decimal?  @db.Decimal(18, 2)
+  difference        Decimal?  @db.Decimal(18, 2)
+  description       String    @db.VarChar(1000)
+  resolution        String?   @db.VarChar(1000)
   resolvedAt        DateTime? @db.Timestamptz(6)
   resolvedById      String?
-  status            String   @default("OPEN")
-  createdAt         DateTime @default(now()) @db.Timestamptz(6)
-  updatedAt         DateTime @updatedAt @db.Timestamptz(6)
+  status            String    @default("OPEN")
+  createdAt         DateTime  @default(now()) @db.Timestamptz(6)
+  updatedAt         DateTime  @updatedAt @db.Timestamptz(6)
 
   @@index([status, severity])
   @@index([type])

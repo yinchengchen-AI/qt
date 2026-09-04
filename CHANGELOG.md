@@ -2,6 +2,75 @@
 
 本文件记录 qt-biz 每个版本的详细变更。项目快速入口请见 [README.md](README.md)。
 
+## v0.24.0(2026-09-04)消息归档与回收站统一重做
+
+把消息系统当前散在三个地方的"删除/归档"概念(用户硬删、90 天自动归档、admin 业务回收站)统一成两套用户可见视图 + 一套管理视角:
+
+- **归档** = 自动归档,数据来自 `MessageArchive` (read+90d cron); `/messages` 加 tab, `/admin/messages` 升级为跨用户视图 + 恢复到收件箱。
+- **回收站** = 软删,`Message` 加 `deletedAt`; 30 天 cron hard delete; `/messages` 加 tab, `/admin/messages` 切到"回收站"模式可恢复/真删。
+
+`MessageArchive` 保留 append-only 语义; `/admin/trash` 不动(继续管业务记录)。**DB schema 有变化**: 新增迁移 `20260904_message_recycle`。
+
+### 新增
+
+- **feat(messages)**: `Message.deletedAt` 软删列 + 部分索引 (仅索引已软删行, 常驻 inbox 不增加索引成本) + `receiverUserId, deletedAt` 复合索引。`qt_app` 已有表级 GRANT, 新列自动覆盖。
+- **feat(messages)**: `/messages` 页面加 **归档** + **回收站** 两个 tab,独立 ProTable + 独立行操作 (移到收件箱 / 恢复 / 彻底删除) + 独立批量 bar。支持 `?tab=archive` / `?tab=recycle` deep link。
+- **feat(messages)**: 归档 tab 行/批量操作"移到收件箱"调 `POST /api/messages/archive/[id]/restore` (新, owner 校验), 行为是 `create new Message row + delete MessageArchive row`, `readAt = null` 视为新送达。
+- **feat(messages)**: 回收站 tab 行/批量操作 "恢复" 调 `batchMutate action:"restore"`, 保留原 `readAt` 状态; "彻底删除" 调 `batchMutate action:"purge"`, 立即 hard delete (跳过 30 天等), 二次确认。
+- **feat(admin)**: `/admin/messages` 顶部 `Segmented` 切换 **归档 / 回收站** 模式, 新增列 receiverName (从 `/api/admin/messages-archive/users` 拉 User 表 name + employeeNo), 月份 / 接收人 / 类型 / q 多维过滤。
+- **feat(admin)**: 归档模式行操作 "移到收件箱" 走 `POST /api/admin/messages-archive/[id]/restore` (新, admin 校验, 跨用户); 回收站模式行/批量操作 "恢复" / "彻底删除" 走 `POST /api/admin/messages-archive/batch` (新, body `{ids, mode, action}`)。
+- **feat(jobs)**: `runMessageRecyclePurge` (新) 把 `Message.deletedAt < (now - N天)` 的软删行 hard delete, 批量 1000, `$transaction` 包, env `MESSAGE_RECYCLE_PURGE_DAYS` (默认 30)。挂在 `server/jobs/runner.ts` 03:00 hourly tick 内 `runMessageArchive` 之后。
+
+### 变更
+
+- **change(messages)**: 之前 `DELETE /api/messages/[id]` 是 `prisma.message.delete` (hard delete), 现在改为软删 (set `deletedAt = now`)。行为变化: 误删可在 30 天内从回收站恢复, 30 天后由 cron 真正清掉。审计 `MESSAGE_DELETE` → `MESSAGE_RECYCLE`。
+- **change(messages)**: `POST /api/messages/read/clear` 同样改为软删, `recycled: N` 取代 `deleted: N`。
+- **change(messages)**: `buildMessageWhere` 新增 `includeDeleted?: boolean` 旁路开关, inbox 路径默认加 `where.deletedAt = null` 过滤; `getUnreadCount` / `unreadSummary` 同步排除已软删。
+- **change(jobs)**: `runMessageArchive` candidates query 增加 `deletedAt: null` 过滤, 跳过已软删的行 (防止归档泄露 + 与 recycle-purge 职责清晰分开)。
+- **change(admin)**: `listArchivedMessages` 服务扩展支持 `mode: "archive" | "recycle"`, recycle 模式从 `Message.deletedAt != null` 查, 配合 `?deletedBefore` / `?deletedAfter` 范围过滤。
+- **change(i18n)**: `messages.batch.deleteConfirmContent` 从 "将永久删除所选消息,不可恢复" 改为 "将把所选消息移入回收站, 30 天后自动清除"。
+
+### 新增 API 端点
+
+- `POST /api/messages/[id]/restore` — owner 恢复软删单条
+- `POST /api/messages/[id]/purge` — owner 硬删单条 (跳过 30 天)
+- `GET /api/messages/recycle` — 列自己已软删
+- `GET /api/messages/archive` — 列自己归档
+- `POST /api/messages/archive/[id]/restore` — owner 恢复自己归档到收件箱
+- `POST /api/admin/messages-archive/[id]/restore` — admin 跨用户恢复 (body `{mode}`)
+- `POST /api/admin/messages-archive/batch` — admin 批量恢复/硬删 (body `{ids, mode, action}`)
+- `GET /api/admin/messages-archive/users` — 接收人下拉数据
+
+修改端点:
+- `GET /api/messages` 加 `?includeDeleted=true` 切换回收站视图
+- `POST /api/messages/batch` action 扩为 `markRead | delete | restore | purge`
+- `GET /api/admin/messages-archive` 加 `?mode=archive|recycle` (默认 archive)
+
+### 审计
+
+新增 `MESSAGE_RECYCLE` / `MESSAGE_RESTORE` / `MESSAGE_PURGE` / `MESSAGE_BATCH_RECYCLE` / `MESSAGE_BATCH_RESTORE` / `MESSAGE_BATCH_PURGE` / `MESSAGE_BATCH_RESTORE_ADMIN` / `MESSAGE_BATCH_PURGE_ADMIN` / `MESSAGE_ARCHIVE_RESTORE` / `MESSAGE_ARCHIVE_RESTORE_USER` / `MESSAGE_RECYCLE_PURGE`。`MESSAGE_DELETE` (单条) 已被 `MESSAGE_RECYCLE` 替代, 老 API path 仍兼容。
+
+### 测试
+
+- typecheck / lint / vitest 全绿: 122 文件 / 1062 用例 (新增 34 例)。
+- `tests/api/messages-recycle.test.ts` (16 例): 软删 / 恢复 / 硬删 / 批量 / 越权 / recycle 列表 / archive 列表 / 用户恢复归档。
+- `tests/api/messages-archive-user.test.ts` (4 例): 用户侧归档接口契约。
+- `tests/api/admin-messages-archive.test.ts` (11 例): mode 切换 / admin 恢复归档 / admin 恢复回收站 / admin 硬删 / 非 admin 403。
+- `tests/jobs/message-recycle-purge.test.ts` (4 例): 30 天阈值 / 边界 / batch 1000 / 事务。
+- `tests/unit/server/message.test.ts` 改 5 例: 软删/clearReadMessages 行为变更。
+- `tests/api/messages-v2-routes.test.ts` 增 3 例: `?includeDeleted` 三态契约 (对齐 v0.22.1 的 zod 三态修复)。
+
+### 文档
+
+- **docs**: 新增 `docs/DESIGN-messages-archive-recycle.md` (§ 0-12, 12 节, 完整覆盖动机/数据模型/服务层/Jobs/API/UI/i18n/审计/测试/部署/兼容性/未做项)。
+- **i18n**: 中英两套, 新增 ~30 个 key (`messages.tab.{archive,recycle}` / `messages.action.{moveToRecycle,moveToInbox,restore,purge}` / `messages.recycle.*` / `messages.toast.*` / `messages.batch.*` / `messages.drawer.{viewArchive,viewRecycle}` / `admin.messagesArchive.{mode,action,batch,column,filter,confirm,empty}.*`)。
+
+### 部署
+
+- 标准 `npm version minor` + `scripts/prod/deploy.sh`;新迁移幂等 (`ALTER TABLE ... ADD COLUMN` 在 Prisma 7 自动 IF NOT EXISTS)。
+- 回滚: `scripts/prod/rollback.sh` 回代码 (DB 列保留, 所有读路径都通过 `buildMessageWhere` 过滤, 不影响功能)。
+- env (可选): `MESSAGE_RECYCLE_PURGE_DAYS` 默认 30, 紧急情况下调成 0 跑一次 cron 立即清空。
+
 ## v0.23.0(2026-09-03)合同/开票/回款状态机实务闭环
 
 完善三大状态机的实务流转,补齐此前"走不通"的业务路径。**DB schema / migrations: 无变化**(全部在既有状态集内流转,不新增状态值)。

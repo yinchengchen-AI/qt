@@ -892,17 +892,41 @@ export function DashboardShell({ user, children }: Props) {
           ) : null}
           {messages.length > 0 ? (
             <div style={{ textAlign: "center", marginTop: 8 }}>
-              <a
-                href="/messages"
-                onClick={(e) => {
-                  e.preventDefault();
-                  router.push("/messages");
-                  setDrawerOpen(false);
-                }}
-                style={{ color: token.colorPrimary, fontSize: 13 }}
-              >
-                {t("messages.drawer.viewAll")}
-              </a>
+              <Space size={12}>
+                <a
+                  href="/messages"
+                  onClick={(e) => {
+                    e.preventDefault();
+                    router.push("/messages");
+                    setDrawerOpen(false);
+                  }}
+                  style={{ color: token.colorPrimary, fontSize: 13 }}
+                >
+                  {t("messages.drawer.viewAll")}
+                </a>
+                <a
+                  href="/messages?tab=archive"
+                  onClick={(e) => {
+                    e.preventDefault();
+                    router.push("/messages?tab=archive");
+                    setDrawerOpen(false);
+                  }}
+                  style={{ color: token.colorTextSecondary, fontSize: 13 }}
+                >
+                  {t("messages.drawer.viewArchive")}
+                </a>
+                <a
+                  href="/messages?tab=recycle"
+                  onClick={(e) => {
+                    e.preventDefault();
+                    router.push("/messages?tab=recycle");
+                    setDrawerOpen(false);
+                  }}
+                  style={{ color: token.colorTextSecondary, fontSize: 13 }}
+                >
+                  {t("messages.drawer.viewRecycle")}
+                </a>
+              </Space>
             </div>
           ) : null}
         </div>

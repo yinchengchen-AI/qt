@@ -37,8 +37,10 @@ export async function runMessageArchive(
   const cutoff = new Date(now);
   cutoff.setDate(cutoff.getDate() - afterDays);
 
+  // v0.24.0 跳过已软删 (deletedAt != null) 的消息, 让回收站 purge job 处理
+  // 防止归档后被回收站 cron 重复清理, 也防止把"用户主动删掉的"消息归档泄露
   const candidates = await txOrClient.message.findMany({
-    where: { readAt: { not: null, lt: cutoff } },
+    where: { readAt: { not: null, lt: cutoff }, deletedAt: null },
     orderBy: { createdAt: "asc" },
     take: BATCH_SIZE,
     select: {

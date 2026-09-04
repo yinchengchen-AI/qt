@@ -1,28 +1,33 @@
-// GET /api/admin/messages-archive
-// v0.24.0: 统一管理视图 - 归档 (MessageArchive) 或 回收站 (Message.deletedAt != null)
-//   ?mode=archive (默认) | recycle
+// GET /api/messages/archive
+// v0.24.0 用户侧归档: 列出当前用户 receiverUserId = self 的归档消息(MessageArchive)
 import { z } from "zod";
 import { runWithRequestContext } from "@/lib/request-context";
 import { ok, err } from "@/lib/api";
 import { requireSession } from "@/lib/session";
-import { listArchivedMessages } from "@/server/services/message";
+import { listUserArchive } from "@/server/services/message";
+import { isMessageCategory } from "@/lib/message-categories";
 
 const query = z.object({
   page: z.coerce.number().int().min(1).default(1),
   pageSize: z.coerce.number().int().min(1).max(100).default(20),
-  receiverUserId: z.string().min(1).max(64).optional(),
-  // archive mode
-  month: z.string().regex(/^\d{4}-\d{2}$/).optional(),
-  // recycle mode
-  deletedBefore: z.string().datetime().optional(),
-  deletedAfter: z.string().datetime().optional(),
-  // shared
   types: z
     .string()
     .optional()
     .transform((v) => (v ? v.split(",").map((s) => s.trim()).filter(Boolean) : undefined)),
+  categories: z
+    .string()
+    .optional()
+    .transform((v) =>
+      v
+        ? v
+            .split(",")
+            .map((s) => s.trim())
+            .filter((s) => isMessageCategory(s))
+        : undefined
+    ),
   q: z.string().min(1).max(100).optional(),
-  mode: z.enum(["archive", "recycle"]).default("archive")
+  from: z.string().datetime().optional(),
+  to: z.string().datetime().optional()
 });
 
 export async function GET(req: Request) {
@@ -31,16 +36,14 @@ export async function GET(req: Request) {
       const user = await requireSession();
       const url = new URL(req.url);
       const params = query.parse(Object.fromEntries(url.searchParams));
-      const data = await listArchivedMessages(user, {
+      const data = await listUserArchive(user, {
         page: params.page,
         pageSize: params.pageSize,
-        receiverUserId: params.receiverUserId,
-        month: params.month,
         types: params.types,
-        q: params.q,
-        mode: params.mode,
-        deletedBefore: params.deletedBefore,
-        deletedAfter: params.deletedAfter
+        categories: params.categories as never,
+        q: params.q ?? null,
+        from: params.from ?? null,
+        to: params.to ?? null
       });
       return ok(data);
     } catch (e) {

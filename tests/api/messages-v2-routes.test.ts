@@ -232,6 +232,25 @@ describe("GET /api/messages zod unlock (v0.22.1 fix)", () => {
     expect(res.status).toBe(200);
     expect(listCalls[0]!.unread).toBe(false);
   });
+
+  // v0.24.0 回收站: ?includeDeleted 三态契约 (对齐 v0.22.1 unread 三态修复)
+  it("无 ?includeDeleted → params.includeDeleted=undefined (inbox 口径, 默认)", async () => {
+    const res = await messagesGET(makeMessagesReq(""));
+    expect(res.status).toBe(200);
+    expect(listCalls[0]!.includeDeleted).toBeUndefined();
+  });
+
+  it("?includeDeleted=true → params.includeDeleted=true (回收站)", async () => {
+    const res = await messagesGET(makeMessagesReq("?includeDeleted=true"));
+    expect(res.status).toBe(200);
+    expect(listCalls[0]!.includeDeleted).toBe(true);
+  });
+
+  it("?includeDeleted=false → params.includeDeleted=false (显式 inbox)", async () => {
+    const res = await messagesGET(makeMessagesReq("?includeDeleted=false"));
+    expect(res.status).toBe(200);
+    expect(listCalls[0]!.includeDeleted).toBe(false);
+  });
 });
 
 const _sanityApiError = ApiError;

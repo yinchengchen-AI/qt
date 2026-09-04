@@ -37,7 +37,12 @@ const query = z.object({
   q: z.string().min(1).max(100).optional(),
   // ?from=2026-01-01&to=2026-12-31 (ISO 8601)
   from: z.string().datetime().optional(),
-  to: z.string().datetime().optional()
+  to: z.string().datetime().optional(),
+  // v0.24.0 回收站: ?includeDeleted=true 切换为查回收站 (deletedAt != null)
+  includeDeleted: z
+    .enum(["true", "false"])
+    .optional()
+    .transform((v) => (v === "true" ? true : v === "false" ? false : undefined))
 });
 
 export async function GET(req: Request) {
@@ -55,7 +60,8 @@ export async function GET(req: Request) {
         categories: params.categories as never,
         q: params.q ?? null,
         from: params.from ?? null,
-        to: params.to ?? null
+        to: params.to ?? null,
+        includeDeleted: params.includeDeleted
       });
       return ok(data);
     } catch (e) {

@@ -40,10 +40,14 @@ import {
   SearchOutlined,
   SettingOutlined,
   ReloadOutlined,
-  AppstoreOutlined
+  AppstoreOutlined,
+  UndoOutlined,
+  InboxOutlined,
+  DeleteFilled
 } from "@ant-design/icons";
 import Link from "next/link";
 import { useRef, useState, useEffect, useMemo, useCallback } from "react";
+import { useSearchParams } from "next/navigation";
 import { Page } from "@/components/page";
 import { PageHeader } from "@/components/page-header";
 import { StatusTag } from "@/components/status-tag";
@@ -64,7 +68,7 @@ import { type Dayjs } from "dayjs";
 const { Text, Paragraph } = Typography;
 const { RangePicker } = DatePicker;
 
-type TabKey = "all" | "unread" | "read";
+type TabKey = "all" | "unread" | "read" | "archive" | "recycle";
 type SelectedCategory = string | "all";
 
 type ListResp = {
@@ -74,6 +78,27 @@ type ListResp = {
   unreadCount: number;
 };
 
+type ArchiveRow = {
+  id: string;
+  type: string;
+  title: string;
+  content: string;
+  link: { kind: string; id: string } | Record<string, unknown> | null;
+  createdAt: string;
+  archivedAt: string;
+};
+
+type RecycleRow = {
+  id: string;
+  type: string;
+  title: string;
+  content: string;
+  link: { kind: string; id: string } | Record<string, unknown> | null;
+  readAt: string | null;
+  createdAt: string;
+  deletedAt: string;
+};
+
 type PinnedAnnouncement = { id: string; title: string; content: string; publishAt: string };
 
 export default function MessagesPage() {
@@ -81,7 +106,18 @@ export default function MessagesPage() {
   const { message: msg, modal } = AntdApp.useApp();
   const { isMobile } = useResponsive();
   const actionRef = useRef<ActionType>(undefined);
-  const [tab, setTab] = useState<TabKey>("all");
+  const archiveActionRef = useRef<ActionType>(undefined);
+  const recycleActionRef = useRef<ActionType>(undefined);
+  const [archiveSelectedRowKeys, setArchiveSelectedRowKeys] = useState<React.Key[]>([]);
+  const [recycleSelectedRowKeys, setRecycleSelectedRowKeys] = useState<React.Key[]>([]);
+  const searchParams = useSearchParams();
+  // v0.24.0: 支持 ?tab=archive|recycle deep link
+  const initialTab = ((): TabKey => {
+    const t = searchParams.get("tab");
+    if (t === "archive" || t === "recycle") return t;
+    return "all";
+  })();
+  const [tab, setTab] = useState<TabKey>(initialTab);
   const [searchInput, setSearchInput] = useState("");
   const [search, setSearch] = useState("");
   const [category, setCategory] = useState<SelectedCategory>("all");
@@ -380,7 +416,9 @@ export default function MessagesPage() {
           </Space>
         )
       },
-      { key: "read", label: t("messages.tab.read") }
+      { key: "read", label: t("messages.tab.read") },
+      { key: "archive", label: t("messages.tab.archive") },
+      { key: "recycle", label: t("messages.tab.recycle") }
     ],
     [t, unreadCount]
   );
@@ -434,6 +472,80 @@ export default function MessagesPage() {
     }
   }, [category, search, dateRange, msg, t, reloadSummary]);
 
+  // Archive: move selected to inbox (user-side, owner only)
+  const moveToInbox = useCallback(
+    async (ids: React.Key[]) => {
+      if (ids.length === 0) return;
+      try {
+        let ok = 0;
+        for (const id of ids) {
+          const r = await fetch(`/api/messages/archive/${String(id)}/restore`, {
+            method: "POST",
+            credentials: "include"
+          });
+          const j = await r.json();
+          if (j.code === 0) ok++;
+        }
+        msg.success(t("messages.toast.movedToInbox", { n: ok }));
+        setArchiveSelectedRowKeys([]);
+        archiveActionRef.current?.reload?.();
+        refreshUnread();
+        reloadSummary();
+      } catch {
+        msg.error(t("messages.toast.actionFailed"));
+      }
+    },
+    [msg, t, reloadSummary]
+  );
+
+  // Recycle: restore selected to inbox
+  const restoreRecycled = useCallback(
+    async (ids: React.Key[]) => {
+      if (ids.length === 0) return;
+      try {
+        const r = await fetch("/api/messages/batch", {
+          method: "POST",
+          credentials: "include",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ ids, action: "restore" })
+        });
+        const j = await r.json();
+        if (j.code === 0) {
+          msg.success(t("messages.toast.restored", { n: j.data.affected }));
+          setRecycleSelectedRowKeys([]);
+          recycleActionRef.current?.reload?.();
+        } else msg.error(j.message);
+      } catch {
+        msg.error(t("messages.toast.actionFailed"));
+      }
+    },
+    [msg, t]
+  );
+
+  // Recycle: purge selected (hard delete)
+  const purgeRecycled = useCallback(
+    async (ids: React.Key[]) => {
+      if (ids.length === 0) return;
+      try {
+        const r = await fetch("/api/messages/batch", {
+          method: "POST",
+          credentials: "include",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ ids, action: "purge" })
+        });
+        const j = await r.json();
+        if (j.code === 0) {
+          msg.success(t("messages.toast.purged", { n: j.data.affected }));
+          setRecycleSelectedRowKeys([]);
+          recycleActionRef.current?.reload?.();
+        } else msg.error(j.message);
+      } catch {
+        msg.error(t("messages.toast.actionFailed"));
+      }
+    },
+    [msg, t]
+  );
+
   const batchAction = useCallback(
     async (action: "markRead" | "delete") => {
       if (selectedRowKeys.length === 0) return;
@@ -461,6 +573,160 @@ export default function MessagesPage() {
       }
     },
     [selectedRowKeys, msg, t, reloadSummary]
+  );
+
+  // ============= Archive tab columns =============
+  const archiveColumns: ProColumns<ArchiveRow>[] = useMemo(
+    () => [
+      {
+        title: t("messages.column.type"),
+        dataIndex: "type",
+        width: 140,
+        render: (_, r) => <StatusTag status={r.type} domain="message" />
+      },
+      {
+        title: t("messages.column.message"),
+        dataIndex: "title",
+        width: 360,
+        render: (_, r) => (
+          <div style={{ minWidth: 0 }}>
+            <Text strong style={{ display: "block" }}>{r.title}</Text>
+            {r.content ? (
+              <Text type="secondary" style={{ fontSize: 12, display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden", marginTop: 2 }}>
+                {r.content}
+              </Text>
+            ) : null}
+          </div>
+        )
+      },
+      {
+        title: t("messages.column.time"),
+        dataIndex: "createdAt",
+        width: 160,
+        render: (_, r) => <DateTimeCell value={r.createdAt} />
+      },
+      {
+        title: t("admin.messagesArchive.column.archivedAt"),
+        dataIndex: "archivedAt",
+        width: 160,
+        render: (_, r) => <DateTimeCell value={r.archivedAt} />
+      },
+      {
+        title: t("messages.column.actions"),
+        key: "actions",
+        width: 160,
+        render: (_, r) => {
+          const href = r.link ? buildLinkHref(r.link as never) : null;
+          return (
+            <Space size={4}>
+              {href ? <Button type="link" size="small" icon={<LinkOutlined />} href={href} target="_blank" rel="noreferrer">{t("messages.action.view")}</Button> : null}
+              <Popconfirm
+                title={t("admin.messagesArchive.confirm.moveToInbox")}
+                okText={t("messages.action.moveToInbox")}
+                cancelText={t("announcements.cancel")}
+                onConfirm={() => moveToInbox([r.id])}
+              >
+                <Button type="link" size="small" icon={<InboxOutlined />}>
+                  {t("messages.action.moveToInbox")}
+                </Button>
+              </Popconfirm>
+            </Space>
+          );
+        }
+      }
+    ],
+    [t, moveToInbox]
+  );
+
+  // ============= Recycle tab columns =============
+  const recycleColumns: ProColumns<RecycleRow>[] = useMemo(
+    () => [
+      {
+        title: t("messages.column.status"),
+        dataIndex: "readAt",
+        width: 80,
+        render: (_, r) =>
+          r.readAt ? (
+            <Tag icon={<CheckOutlined />} color="default" style={{ margin: 0 }}>
+              {t("messages.tag.read")}
+            </Tag>
+          ) : (
+            <Tag color="red" style={{ margin: 0 }}>
+              {t("messages.tag.unread")}
+            </Tag>
+          )
+      },
+      {
+        title: t("messages.column.type"),
+        dataIndex: "type",
+        width: 140,
+        render: (_, r) => <StatusTag status={r.type} domain="message" />
+      },
+      {
+        title: t("messages.column.message"),
+        dataIndex: "title",
+        width: 320,
+        render: (_, r) => (
+          <div style={{ minWidth: 0 }}>
+            <Text strong={!r.readAt} style={{ display: "block" }}>{r.title}</Text>
+            {r.content ? (
+              <Text type="secondary" style={{ fontSize: 12, display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden", marginTop: 2 }}>
+                {r.content}
+              </Text>
+            ) : null}
+          </div>
+        )
+      },
+      {
+        title: t("messages.column.time"),
+        dataIndex: "createdAt",
+        width: 140,
+        render: (_, r) => <DateTimeCell value={r.createdAt} />
+      },
+      {
+        title: t("admin.messagesArchive.column.deletedAt"),
+        dataIndex: "deletedAt",
+        width: 160,
+        render: (_, r) => <DateTimeCell value={r.deletedAt} />
+      },
+      {
+        title: t("messages.column.actions"),
+        key: "actions",
+        width: 200,
+        render: (_, r) => {
+          const href = r.link ? buildLinkHref(r.link as never) : null;
+          return (
+            <Space size={4}>
+              {href ? <Button type="link" size="small" icon={<LinkOutlined />} href={href} target="_blank" rel="noreferrer">{t("messages.action.view")}</Button> : null}
+              <Popconfirm
+                title={t("messages.recycle.restoreConfirm.title")}
+                description={t("messages.recycle.restoreConfirm.content")}
+                okText={t("messages.action.restore")}
+                cancelText={t("announcements.cancel")}
+                onConfirm={() => restoreRecycled([r.id])}
+              >
+                <Button type="link" size="small" icon={<UndoOutlined />}>
+                  {t("messages.action.restore")}
+                </Button>
+              </Popconfirm>
+              <Popconfirm
+                title={t("messages.recycle.purgeConfirm.title")}
+                description={t("messages.recycle.purgeConfirm.content")}
+                okText={t("messages.action.purge")}
+                okType="danger"
+                cancelText={t("announcements.cancel")}
+                onConfirm={() => purgeRecycled([r.id])}
+              >
+                <Button type="link" size="small" danger icon={<DeleteFilled />}>
+                  {t("messages.action.purge")}
+                </Button>
+              </Popconfirm>
+            </Space>
+          );
+        }
+      }
+    ],
+    [t, restoreRecycled, purgeRecycled]
   );
 
   return (
@@ -652,15 +918,15 @@ export default function MessagesPage() {
                   {t("messages.batch.markRead")}
                 </Button>
                 <Popconfirm
-                  title={t("messages.batch.deleteConfirmTitle")}
-                  description={t("messages.batch.deleteConfirmContent")}
-                  okText={t("messages.action.delete")}
+                  title={t("messages.recycle.moveConfirm.title")}
+                  description={t("messages.recycle.moveConfirm.content")}
+                  okText={t("messages.action.moveToRecycle")}
                   okType="danger"
                   cancelText={t("announcements.cancel")}
                   onConfirm={() => batchAction("delete")}
                 >
                   <Button danger size="small" icon={<DeleteOutlined />}>
-                    {t("messages.batch.delete")}
+                    {t("messages.batch.moveToRecycle")}
                   </Button>
                 </Popconfirm>
                 <Button size="small" onClick={() => setSelectedRowKeys([])}>
@@ -669,66 +935,160 @@ export default function MessagesPage() {
               </Space>
             </Card>
           ) : null}
-          <ProTable<MessageRowPayload>
-            key={`${tab}-${category}-${search}-${dateRange?.[0]?.toISOString() ?? ""}-${dateRange?.[1]?.toISOString() ?? ""}`}
-            actionRef={actionRef}
-            rowKey="id"
-            search={false}
-            dataSource={data}
-            onDataSourceChange={setData}
-            rowSelection={{
-              selectedRowKeys,
-              onChange: setSelectedRowKeys
-            }}
-            pagination={{
-              defaultPageSize: 20,
-              showSizeChanger: !isMobile,
-              size: isMobile ? "small" : undefined
-            }}
-            cardBordered={false}
-            scroll={{ x: "max-content" }}
-            sticky={isMobile}
-            locale={{
-              emptyText: (
-                <Empty
-                  image={Empty.PRESENTED_IMAGE_SIMPLE}
-                  description={
-                    tab === "unread"
-                      ? t("messages.empty.unread")
-                      : tab === "read"
-                        ? t("messages.empty.read")
-                        : t("messages.empty")
-                  }
-                />
-              )
-            }}
-            request={async (params) => {
-              const qs = new URLSearchParams();
-              qs.set("page", String(params.current ?? 1));
-              qs.set("pageSize", String(params.pageSize ?? 20));
-              if (tab === "unread") qs.set("unread", "true");
-              else if (tab === "read") qs.set("unread", "false");
-              if (category !== "all") qs.set("categories", category);
-              if (search) qs.set("q", search);
-              if (dateRange?.[0]) qs.set("from", dateRange[0].toISOString());
-              if (dateRange?.[1]) qs.set("to", dateRange[1].toISOString());
-              const r = await fetch(`/api/messages?${qs}`, { credentials: "include" });
-              const j = await r.json();
-              if (j.code !== 0) throw new Error(j.message);
-              const data = j.data as ListResp;
-              return {
-                data: data.list,
-                total: data.total ?? data.list.length,
-                success: true
-              };
-            }}
-            options={{
-              reload: () => actionRef.current?.reload?.(),
-              density: !isMobile,
-              fullScreen: !isMobile
-            }}
-            columns={columns}
-          />
+          {tab === "all" || tab === "unread" || tab === "read" ? (
+            <ProTable<MessageRowPayload>
+              key={`${tab}-${category}-${search}-${dateRange?.[0]?.toISOString() ?? ""}-${dateRange?.[1]?.toISOString() ?? ""}`}
+              actionRef={actionRef}
+              rowKey="id"
+              search={false}
+              dataSource={data}
+              onDataSourceChange={setData}
+              rowSelection={{
+                selectedRowKeys,
+                onChange: setSelectedRowKeys
+              }}
+              pagination={{
+                defaultPageSize: 20,
+                showSizeChanger: !isMobile,
+                size: isMobile ? "small" : undefined
+              }}
+              cardBordered={false}
+              scroll={{ x: "max-content" }}
+              sticky={isMobile}
+              locale={{
+                emptyText: (
+                  <Empty
+                    image={Empty.PRESENTED_IMAGE_SIMPLE}
+                    description={
+                      tab === "unread"
+                        ? t("messages.empty.unread")
+                        : tab === "read"
+                          ? t("messages.empty.read")
+                          : t("messages.empty")
+                    }
+                  />
+                )
+              }}
+              request={async (params) => {
+                const qs = new URLSearchParams();
+                qs.set("page", String(params.current ?? 1));
+                qs.set("pageSize", String(params.pageSize ?? 20));
+                if (tab === "unread") qs.set("unread", "true");
+                else if (tab === "read") qs.set("unread", "false");
+                if (category !== "all") qs.set("categories", category);
+                if (search) qs.set("q", search);
+                if (dateRange?.[0]) qs.set("from", dateRange[0].toISOString());
+                if (dateRange?.[1]) qs.set("to", dateRange[1].toISOString());
+                const r = await fetch(`/api/messages?${qs}`, { credentials: "include" });
+                const j = await r.json();
+                if (j.code !== 0) throw new Error(j.message);
+                const data = j.data as ListResp;
+                return {
+                  data: data.list,
+                  total: data.total ?? data.list.length,
+                  success: true
+                };
+              }}
+              options={{
+                reload: () => actionRef.current?.reload?.(),
+                density: !isMobile,
+                fullScreen: !isMobile
+              }}
+              columns={columns}
+            />
+          ) : tab === "archive" ? (
+            <ProTable<ArchiveRow>
+              key={`archive-${category}-${search}-${dateRange?.[0]?.toISOString() ?? ""}-${dateRange?.[1]?.toISOString() ?? ""}`}
+              actionRef={archiveActionRef}
+              rowKey="id"
+              search={false}
+              rowSelection={{
+                selectedRowKeys: archiveSelectedRowKeys,
+                onChange: setArchiveSelectedRowKeys
+              }}
+              pagination={{
+                defaultPageSize: 20,
+                showSizeChanger: !isMobile,
+                size: isMobile ? "small" : undefined
+              }}
+              cardBordered={false}
+              scroll={{ x: "max-content" }}
+              sticky={isMobile}
+              locale={{
+                emptyText: (
+                  <Empty
+                    image={Empty.PRESENTED_IMAGE_SIMPLE}
+                    description={t("messages.archive.empty")}
+                  />
+                )
+              }}
+              request={async (params) => {
+                const qs = new URLSearchParams();
+                qs.set("page", String(params.current ?? 1));
+                qs.set("pageSize", String(params.pageSize ?? 20));
+                if (category !== "all") qs.set("categories", category);
+                if (search) qs.set("q", search);
+                if (dateRange?.[0]) qs.set("from", dateRange[0].toISOString());
+                if (dateRange?.[1]) qs.set("to", dateRange[1].toISOString());
+                const r = await fetch(`/api/messages/archive?${qs}`, { credentials: "include" });
+                const j = await r.json();
+                if (j.code !== 0) throw new Error(j.message);
+                return {
+                  data: (j.data.list as ArchiveRow[]),
+                  total: j.data.total ?? 0,
+                  success: true
+                };
+              }}
+              options={{ reload: () => archiveActionRef.current?.reload?.(), density: !isMobile }}
+              columns={archiveColumns}
+            />
+          ) : (
+            <ProTable<RecycleRow>
+              key={`recycle-${category}-${search}-${dateRange?.[0]?.toISOString() ?? ""}-${dateRange?.[1]?.toISOString() ?? ""}`}
+              actionRef={recycleActionRef}
+              rowKey="id"
+              search={false}
+              rowSelection={{
+                selectedRowKeys: recycleSelectedRowKeys,
+                onChange: setRecycleSelectedRowKeys
+              }}
+              pagination={{
+                defaultPageSize: 20,
+                showSizeChanger: !isMobile,
+                size: isMobile ? "small" : undefined
+              }}
+              cardBordered={false}
+              scroll={{ x: "max-content" }}
+              sticky={isMobile}
+              locale={{
+                emptyText: (
+                  <Empty
+                    image={Empty.PRESENTED_IMAGE_SIMPLE}
+                    description={t("messages.recycle.empty")}
+                  />
+                )
+              }}
+              request={async (params) => {
+                const qs = new URLSearchParams();
+                qs.set("page", String(params.current ?? 1));
+                qs.set("pageSize", String(params.pageSize ?? 20));
+                if (category !== "all") qs.set("categories", category);
+                if (search) qs.set("q", search);
+                if (dateRange?.[0]) qs.set("from", dateRange[0].toISOString());
+                if (dateRange?.[1]) qs.set("to", dateRange[1].toISOString());
+                const r = await fetch(`/api/messages/recycle?${qs}`, { credentials: "include" });
+                const j = await r.json();
+                if (j.code !== 0) throw new Error(j.message);
+                return {
+                  data: (j.data.list as RecycleRow[]),
+                  total: j.data.total ?? 0,
+                  success: true
+                };
+              }}
+              options={{ reload: () => recycleActionRef.current?.reload?.(), density: !isMobile }}
+              columns={recycleColumns}
+            />
+          )}
         </div>
       </div>
 
