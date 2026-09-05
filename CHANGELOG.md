@@ -2,6 +2,18 @@
 
 本文件记录 qt-biz 每个版本的详细变更。项目快速入口请见 [README.md](README.md)。
 
+## v0.25.5(2026-09-05)系统-回收站页面重做
+
+`/admin/trash`(系统分组下回收站)按「简洁实用」重做,与消息归档/通知中心风格对齐:
+
+### 变更
+
+- **change(admin/trash)**: 文案全部走 i18n(`trash.*`, 新增 zh/en 键), 删除时间列统一 `DateTimeCell` 组件。
+- **change(admin/trash)**: 新增工具栏 — 类型筛选 Select(全部/客户/合同/发票/回款) + 关键词搜索(名称/编号) + 刷新(前端筛选, 后端全量接口不变)。
+- **change(admin/trash)**: 新增行选择 + 批量恢复(逐条调用恢复 API, 成功/失败分条提示);空状态保留「返回」入口。
+
+> 纯前端 UI 重构:后端 `/api/admin/trash` 与权限(仅 ADMIN)不变。
+
 ## v0.25.4(2026-09-05)面包屑与实际页面匹配修复
 
 全量比对 46 个 `(app)` 页面路由与 header 面包屑映射(`CRUMB_LABEL` / `BREADCRUMB_OVERRIDE`),修复 4 处不匹配:
