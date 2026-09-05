@@ -2,6 +2,19 @@
 
 本文件记录 qt-biz 每个版本的详细变更。项目快速入口请见 [README.md](README.md)。
 
+## v0.25.4(2026-09-05)面包屑与实际页面匹配修复
+
+全量比对 46 个 `(app)` 页面路由与 header 面包屑映射(`CRUMB_LABEL` / `BREADCRUMB_OVERRIDE`),修复 4 处不匹配:
+
+### 修复
+
+- **fix(nav)**: `/admin/messages` 面包屑由「系统管理 / 通知中心」改为「系统管理 / 消息归档」(`BREADCRUMB_OVERRIDE` 覆盖,拆段后 messages 命中通知中心键)。
+- **fix(nav)**: `/contracts/workbench` 由「合同管理 / workbench」改为「合同管理 / 合同工作台」。
+- **fix(nav)**: `/admin/certificates/expiring` 由「系统管理 / certificates / expiring」改为「系统管理 / 证书管理 / 到期预警」。
+- **fix(nav)**: `/admin/users/[id]/edit-profile` 增加「编辑档案」段映射。
+
+> 其余 42 个页面映射核对无误(含 3 个重定向页 `/admin` `/statistics` `/announcements`)。动态详情页(`contracts/[id]` 等)第二段显示实体 id:合同 id 即编号可读;客户/发票/回款等 UUID 详情页显示原始 id 为架构兜底(header 面包屑无实体名称来源),如需实体名可后续页面级自定义。
+
 ## v0.25.3(2026-09-05)系统-消息归档页面重做
 
 `/admin/messages`(系统分组下消息归档)按「简洁实用」重做,与通知中心风格对齐:

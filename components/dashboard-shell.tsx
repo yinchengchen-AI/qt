@@ -957,6 +957,8 @@ export function DashboardShell({ user, children }: Props) {
 
 // URL 与菜单层级不一致的路由 — 按菜单结构定义面包屑,绕开按路径段拆分
 const BREADCRUMB_OVERRIDE: Record<string, string[]> = {
+  // /admin/messages 拆段后 messages 命中 CRUMB_LABEL["messages"]="通知中心", 与页面实际不符, 覆盖为"消息归档"
+  "/admin/messages": ["系统管理", "消息归档"]
 };
 
 const CRUMB_LABEL: Record<string, string> = {
@@ -984,6 +986,13 @@ const CRUMB_LABEL: Record<string, string> = {
   departments: "部门管理",
   dictionaries: "数据字典",
   "operation-logs": "操作日志",
+  // 合同工作台 (业务分组子项, 无独立段名映射时会显示英文 workbench)
+  workbench: "合同工作台",
+  // 员工档案自助编辑 (admin/users/[id]/edit-profile)
+  "edit-profile": "编辑档案",
+  // 证书到期预警 (员工列表页进入, 无菜单入口)
+  certificates: "证书管理",
+  expiring: "到期预警",
   new: "新建",
   edit: "编辑"
 };
