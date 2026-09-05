@@ -1,14 +1,19 @@
 "use client";
-// 通知中心 v3 (2026-09-05 消息与公告模块重构)
+// 通知中心 v4 (2026-09-05 简洁实用重构)
 //
-// v3 相对 v2 的变更:
+// v4 相对 v3 的简化 (用户反馈: 要求简洁实用):
+//   - 删除左侧分类侧栏(6 个大按钮 + 徽标), 分类筛选并入工具栏一个紧凑 Select(带未读计数)
+//   - 主列表删除独立"状态"列, 未读用行内红点 + 标题加粗表达, 减少列噪
+//   - 布局由"侧栏 + 主区"双栏改单列, 视觉重心收敛到 Tabs + 列表
+//   - 移动端复用同一分类 Select (删除 SelectCategoryMobile 专用组件)
+//
+// v3 (2026-09-05 消息与公告模块重构) 保留:
 //   - 侧边栏"消息与公告"分组合并为"通知中心"单入口 (更新日志移入"系统"分组, 见 dashboard-shell MENU)
-//   - Tabs 新增「公告」: 公告阅读 + 管理一体 (ADMIN/OPS 可发布/编辑/删除), 组件化在 components/notifications/announcement-tab.tsx
+//   - Tabs 含「公告」: 公告阅读 + 管理一体 (ADMIN/OPS 可发布/编辑/删除), 组件化在 components/notifications/announcement-tab.tsx
 //   - deep link 支持 ?tab=announcements|archive|recycle
 //
 // v2 (2026-09-03) 保留能力:
-//   - 左侧分类 sidebar (全部 / 合同 / 财务 / 对账 / 证书 / 系统),从 /unread-summary 拉分类未读计数
-//   - 顶部 toolbar: 搜索 + 类型多选 + 状态 tab + 日期范围
+//   - 顶部 toolbar: 搜索 + 分类筛选 + 状态 tab + 日期范围
 //   - 批量操作: 勾选行后出现 batch bar (mark read / delete)
 //   - row click = 标记已读 + 跳转到 link
 //   - message:new SSE 事件: 直接 prepend 到列表顶部 (无重拉)
@@ -35,7 +40,6 @@ import {
   DatePicker,
   Popconfirm,
   Spin,
-  Badge,
   Select
 } from "antd";
 import {
@@ -45,7 +49,6 @@ import {
   SearchOutlined,
   SettingOutlined,
   ReloadOutlined,
-  AppstoreOutlined,
   UndoOutlined,
   InboxOutlined,
   DeleteFilled
@@ -117,7 +120,7 @@ export default function MessagesPage() {
   const [archiveSelectedRowKeys, setArchiveSelectedRowKeys] = useState<React.Key[]>([]);
   const [recycleSelectedRowKeys, setRecycleSelectedRowKeys] = useState<React.Key[]>([]);
   const searchParams = useSearchParams();
-  // v0.24.0: 支持 ?tab=archive|recycle deep link
+  // v0.24.0: 支持 ?tab=archive|recycle deep link; v3: +?tab=announcements
   const initialTab = ((): TabKey => {
     const t = searchParams.get("tab");
     if (t === "announcements" || t === "archive" || t === "recycle") return t;
@@ -239,44 +242,45 @@ export default function MessagesPage() {
     [prefs, msg, t]
   );
 
+  // 主列表列 (v4: 去掉独立"状态"列, 未读 = 红点 + 标题加粗)
   const columns: ProColumns<MessageRowPayload>[] = useMemo(
     () => [
       {
-        title: t("messages.column.status"),
-        dataIndex: "readAt",
-        width: 90,
-        render: (_, r) =>
-          r.readAt ? (
-            <Tag icon={<CheckOutlined />} color="default" style={{ margin: 0 }}>
-              {t("messages.tag.read")}
-            </Tag>
-          ) : (
-            <Tag color="red" style={{ margin: 0 }}>
-              {t("messages.tag.unread")}
-            </Tag>
-          )
-      },
-      {
         title: t("messages.column.type"),
         dataIndex: "type",
-        width: 140,
+        width: 130,
         render: (_, r) => <StatusTag status={r.type} domain="message" />
       },
       {
         title: t("messages.column.message"),
         dataIndex: "title",
-        width: 360,
+        width: 400,
         render: (_, r) => (
           <div style={{ minWidth: 0 }}>
-            <Text
-              strong={!r.readAt}
-              style={{
-                color: r.readAt ? "var(--qt-text-muted)" : undefined,
-                display: "block"
-              }}
-            >
-              {r.title}
-            </Text>
+            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              {!r.readAt ? (
+                <span
+                  aria-label="未读"
+                  style={{
+                    width: 8,
+                    height: 8,
+                    borderRadius: "50%",
+                    background: "var(--ant-color-primary, #1677ff)",
+                    flexShrink: 0
+                  }}
+                />
+              ) : null}
+              <Text
+                strong={!r.readAt}
+                style={{
+                  color: r.readAt ? "var(--qt-text-muted)" : undefined,
+                  display: "block",
+                  whiteSpace: "normal"
+                }}
+              >
+                {r.title}
+              </Text>
+            </div>
             {r.content ? (
               <Text
                 type="secondary"
@@ -298,12 +302,12 @@ export default function MessagesPage() {
       {
         title: t("messages.column.time"),
         dataIndex: "createdAt",
-        width: 180,
+        width: 170,
         render: (_, r) => <DateTimeCell value={r.createdAt} />
       },
       {
         title: t("messages.column.actions"),
-        width: 240,
+        width: 220,
         fixed: "right",
         render: (_, r) => (
           <Space size={4} wrap>
@@ -373,37 +377,32 @@ export default function MessagesPage() {
     [t, msg, modal]
   );
 
-  // 侧边栏分类
-  const categoryItems: { key: SelectedCategory; label: React.ReactNode; count: number }[] = useMemo(
+  // 分类筛选 (v4: 从左侧侧栏收敛为工具栏 Select, 未读计数以文本展示)
+  const categoryOptions: { value: SelectedCategory; label: string }[] = useMemo(
     () => [
-      { key: "all", label: t("messages.category.all"), count: summary?.total ?? 0 },
+      { value: "all", label: t("messages.category.all") },
       {
-        key: MESSAGE_CATEGORY.CONTRACT,
-        label: t("messages.category.contract"),
-        count: summary?.byCategory[MESSAGE_CATEGORY.CONTRACT] ?? 0
+        value: MESSAGE_CATEGORY.CONTRACT,
+        label: t("messages.category.contract")
       },
       {
-        key: MESSAGE_CATEGORY.FINANCE,
-        label: t("messages.category.finance"),
-        count: summary?.byCategory[MESSAGE_CATEGORY.FINANCE] ?? 0
+        value: MESSAGE_CATEGORY.FINANCE,
+        label: t("messages.category.finance")
       },
       {
-        key: MESSAGE_CATEGORY.RECONCILIATION,
-        label: t("messages.category.reconciliation"),
-        count: summary?.byCategory[MESSAGE_CATEGORY.RECONCILIATION] ?? 0
+        value: MESSAGE_CATEGORY.RECONCILIATION,
+        label: t("messages.category.reconciliation")
       },
       {
-        key: MESSAGE_CATEGORY.CERTIFICATE,
-        label: t("messages.category.certificate"),
-        count: summary?.byCategory[MESSAGE_CATEGORY.CERTIFICATE] ?? 0
+        value: MESSAGE_CATEGORY.CERTIFICATE,
+        label: t("messages.category.certificate")
       },
       {
-        key: MESSAGE_CATEGORY.SYSTEM,
-        label: t("messages.category.system"),
-        count: summary?.byCategory[MESSAGE_CATEGORY.SYSTEM] ?? 0
+        value: MESSAGE_CATEGORY.SYSTEM,
+        label: t("messages.category.system")
       }
     ],
-    [t, summary]
+    [t]
   );
 
   const tabs: { key: TabKey; label: React.ReactNode }[] = useMemo(
@@ -588,13 +587,13 @@ export default function MessagesPage() {
       {
         title: t("messages.column.type"),
         dataIndex: "type",
-        width: 140,
+        width: 130,
         render: (_, r) => <StatusTag status={r.type} domain="message" />
       },
       {
         title: t("messages.column.message"),
         dataIndex: "title",
-        width: 360,
+        width: 400,
         render: (_, r) => (
           <div style={{ minWidth: 0 }}>
             <Text strong style={{ display: "block" }}>{r.title}</Text>
@@ -609,13 +608,13 @@ export default function MessagesPage() {
       {
         title: t("messages.column.time"),
         dataIndex: "createdAt",
-        width: 160,
+        width: 150,
         render: (_, r) => <DateTimeCell value={r.createdAt} />
       },
       {
         title: t("admin.messagesArchive.column.archivedAt"),
         dataIndex: "archivedAt",
-        width: 160,
+        width: 150,
         render: (_, r) => <DateTimeCell value={r.archivedAt} />
       },
       {
@@ -666,7 +665,7 @@ export default function MessagesPage() {
       {
         title: t("messages.column.type"),
         dataIndex: "type",
-        width: 140,
+        width: 130,
         render: (_, r) => <StatusTag status={r.type} domain="message" />
       },
       {
@@ -693,7 +692,7 @@ export default function MessagesPage() {
       {
         title: t("admin.messagesArchive.column.deletedAt"),
         dataIndex: "deletedAt",
-        width: 160,
+        width: 150,
         render: (_, r) => <DateTimeCell value={r.deletedAt} />
       },
       {
@@ -743,36 +742,36 @@ export default function MessagesPage() {
         subtitle={t("messages.subtitle")}
         actions={
           tab === "announcements" ? undefined : (
-          <Space wrap>
-            <Button
-              key="prefs"
-              icon={<SettingOutlined />}
-              onClick={() => setPrefOpen(true)}
-            >
-              {t("messages.preferences.title")}
-            </Button>
-            <Button
-              key="all"
-              icon={<CheckOutlined />}
-              disabled={unreadCount === 0}
-              onClick={markAllRead}
-            >
-              {t("messages.markAllRead")}
-            </Button>
-            <Popconfirm
-              key="clear"
-              title={t("messages.clearReadConfirm.title")}
-              description={t("messages.clearReadConfirm.content")}
-              okText={t("messages.action.clearRead")}
-              okType="danger"
-              cancelText={t("announcements.cancel")}
-              onConfirm={clearRead}
-            >
-              <Button icon={<DeleteOutlined />} danger>
-                {t("messages.action.clearRead")}
+            <Space wrap>
+              <Button
+                key="all"
+                icon={<CheckOutlined />}
+                disabled={unreadCount === 0}
+                onClick={markAllRead}
+              >
+                {t("messages.markAllRead")}
               </Button>
-            </Popconfirm>
-          </Space>
+              <Button
+                key="prefs"
+                icon={<SettingOutlined />}
+                onClick={() => setPrefOpen(true)}
+              >
+                {t("messages.preferences.title")}
+              </Button>
+              <Popconfirm
+                key="clear"
+                title={t("messages.clearReadConfirm.title")}
+                description={t("messages.clearReadConfirm.content")}
+                okText={t("messages.action.clearRead")}
+                okType="danger"
+                cancelText={t("announcements.cancel")}
+                onConfirm={clearRead}
+              >
+                <Button icon={<DeleteOutlined />} danger>
+                  {t("messages.action.clearRead")}
+                </Button>
+              </Popconfirm>
+            </Space>
           )
         }
       />
@@ -804,60 +803,32 @@ export default function MessagesPage() {
         ) : null
       ) : null}
 
-      <div
-        style={{
-          display: "flex",
-          gap: 12,
-          flexDirection: isMobile ? "column" : "row",
-          alignItems: "stretch",
-          marginBottom: 12
-        }}
-      >
-        {!isMobile && tab !== "announcements" && (
-          <Card
-            size="small"
-            styles={{ body: { padding: 8 } }}
-            style={{ width: 200, flexShrink: 0 }}
-          >
-            <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
-              {categoryItems.map((c) => {
-                const active = category === c.key;
-                return (
-                  <Button
-                    key={c.key}
-                    type={active ? "primary" : "text"}
-                    onClick={() => {
-                      setCategory(c.key);
-                      setSelectedRowKeys([]);
-                      actionRef.current?.reload?.();
-                    }}
-                    style={{ justifyContent: "space-between" }}
-                    block
-                  >
-                    <span>{c.label}</span>
-                    {c.count > 0 ? (
-                      <Badge
-                        count={c.count}
-                        style={{ backgroundColor: active ? "#fff" : undefined, color: active ? "var(--ant-color-primary)" : undefined }}
-                      />
-                    ) : null}
-                  </Button>
-                );
-              })}
-            </div>
-          </Card>
-        )}
-        <div style={{ flex: 1, minWidth: 0 }}>
-          {(tab === "all" || tab === "unread" || tab === "read") && (
+      <div style={{ marginBottom: 12 }}>
+        {(tab === "all" || tab === "unread" || tab === "read") && (
           <Card size="small" styles={{ body: { padding: 8 } }} style={{ marginBottom: 8 }}>
             <Space wrap size={8}>
+              <Select
+                value={category}
+                onChange={(v) => {
+                  setCategory(v as SelectedCategory);
+                  setSelectedRowKeys([]);
+                }}
+                style={{ minWidth: 150 }}
+                options={categoryOptions.map((c) => ({
+                  value: c.value,
+                  label:
+                    c.value === "all"
+                      ? c.label
+                      : `${c.label}${(summary?.byCategory[c.value] ?? 0) > 0 ? ` (${summary?.byCategory[c.value] ?? 0})` : ""}`
+                }))}
+              />
               <Input
                 allowClear
                 prefix={<SearchOutlined />}
                 placeholder={t("messages.toolbar.searchPlaceholder")}
                 value={searchInput}
                 onChange={(e) => setSearchInput(e.target.value)}
-                style={{ width: 240 }}
+                style={{ width: isMobile ? 180 : 240 }}
               />
               <RangePicker
                 value={dateRange}
@@ -868,16 +839,6 @@ export default function MessagesPage() {
                 allowEmpty={[true, true]}
                 placeholder={[t("messages.toolbar.from"), t("messages.toolbar.to")]}
               />
-              {isMobile ? (
-                <SelectCategoryMobile
-                  value={category}
-                  onChange={(v) => {
-                    setCategory(v);
-                    setSelectedRowKeys([]);
-                  }}
-                  items={categoryItems.map((c) => ({ value: c.key, label: typeof c.label === "string" ? c.label : String(c.key), count: c.count }))}
-                />
-              ) : null}
               <Button
                 icon={<ReloadOutlined />}
                 onClick={() => {
@@ -889,222 +850,221 @@ export default function MessagesPage() {
               </Button>
             </Space>
           </Card>
-          )}
-          <div
+        )}
+        <div
+          style={{
+            marginBottom: 8,
+            padding: "4px 8px",
+            background: "var(--qt-bg)",
+            border: "1px solid var(--qt-border-soft)",
+            borderRadius: 8
+          }}
+        >
+          <Tabs
+            activeKey={tab}
+            onChange={(k) => {
+              setTab(k as TabKey);
+              setSelectedRowKeys([]);
+              actionRef.current?.reload?.();
+            }}
+            items={tabs}
+            size={isMobile ? "small" : "middle"}
+            tabBarStyle={{ marginBottom: 0 }}
+          />
+        </div>
+        {selectedRowKeys.length > 0 ? (
+          <Card
+            size="small"
             style={{
               marginBottom: 8,
-              padding: "4px 8px",
-              background: "var(--qt-bg)",
-              border: "1px solid var(--qt-border-soft)",
-              borderRadius: 8
+              background: "var(--ant-color-primary-bg, #e6f4ff)",
+              border: "1px solid var(--ant-color-primary-border, #91caff)"
             }}
           >
-            <Tabs
-              activeKey={tab}
-              onChange={(k) => {
-                setTab(k as TabKey);
-                setSelectedRowKeys([]);
-                actionRef.current?.reload?.();
-              }}
-              items={tabs}
-              size={isMobile ? "small" : "middle"}
-              tabBarStyle={{ marginBottom: 0 }}
-            />
-          </div>
-          {selectedRowKeys.length > 0 ? (
-            <Card
-              size="small"
-              style={{
-                marginBottom: 8,
-                background: "var(--ant-color-primary-bg, #e6f4ff)",
-                border: "1px solid var(--ant-color-primary-border, #91caff)"
-              }}
-            >
-              <Space>
-                <Text strong>{t("messages.batch.selected", { n: selectedRowKeys.length })}</Text>
-                <Button
-                  type="primary"
-                  size="small"
-                  icon={<CheckOutlined />}
-                  onClick={() => batchAction("markRead")}
-                >
-                  {t("messages.batch.markRead")}
+            <Space>
+              <Text strong>{t("messages.batch.selected", { n: selectedRowKeys.length })}</Text>
+              <Button
+                type="primary"
+                size="small"
+                icon={<CheckOutlined />}
+                onClick={() => batchAction("markRead")}
+              >
+                {t("messages.batch.markRead")}
+              </Button>
+              <Popconfirm
+                title={t("messages.recycle.moveConfirm.title")}
+                description={t("messages.recycle.moveConfirm.content")}
+                okText={t("messages.action.moveToRecycle")}
+                okType="danger"
+                cancelText={t("announcements.cancel")}
+                onConfirm={() => batchAction("delete")}
+              >
+                <Button danger size="small" icon={<DeleteOutlined />}>
+                  {t("messages.batch.moveToRecycle")}
                 </Button>
-                <Popconfirm
-                  title={t("messages.recycle.moveConfirm.title")}
-                  description={t("messages.recycle.moveConfirm.content")}
-                  okText={t("messages.action.moveToRecycle")}
-                  okType="danger"
-                  cancelText={t("announcements.cancel")}
-                  onConfirm={() => batchAction("delete")}
-                >
-                  <Button danger size="small" icon={<DeleteOutlined />}>
-                    {t("messages.batch.moveToRecycle")}
-                  </Button>
-                </Popconfirm>
-                <Button size="small" onClick={() => setSelectedRowKeys([])}>
-                  {t("messages.batch.clear")}
-                </Button>
-              </Space>
-            </Card>
-          ) : null}
-          {tab === "announcements" ? (
-            <AnnouncementTab />
-          ) : tab === "all" || tab === "unread" || tab === "read" ? (
-            <ProTable<MessageRowPayload>
-              key={`${tab}-${category}-${search}-${dateRange?.[0]?.toISOString() ?? ""}-${dateRange?.[1]?.toISOString() ?? ""}`}
-              actionRef={actionRef}
-              rowKey="id"
-              search={false}
-              dataSource={data}
-              onDataSourceChange={setData}
-              rowSelection={{
-                selectedRowKeys,
-                onChange: setSelectedRowKeys
-              }}
-              pagination={{
-                defaultPageSize: 20,
-                showSizeChanger: !isMobile,
-                size: isMobile ? "small" : undefined
-              }}
-              cardBordered={false}
-              scroll={{ x: "max-content" }}
-              sticky={isMobile}
-              locale={{
-                emptyText: (
-                  <Empty
-                    image={Empty.PRESENTED_IMAGE_SIMPLE}
-                    description={
-                      tab === "unread"
-                        ? t("messages.empty.unread")
-                        : tab === "read"
-                          ? t("messages.empty.read")
-                          : t("messages.empty")
-                    }
-                  />
-                )
-              }}
-              request={async (params) => {
-                const qs = new URLSearchParams();
-                qs.set("page", String(params.current ?? 1));
-                qs.set("pageSize", String(params.pageSize ?? 20));
-                if (tab === "unread") qs.set("unread", "true");
-                else if (tab === "read") qs.set("unread", "false");
-                if (category !== "all") qs.set("categories", category);
-                if (search) qs.set("q", search);
-                if (dateRange?.[0]) qs.set("from", dateRange[0].toISOString());
-                if (dateRange?.[1]) qs.set("to", dateRange[1].toISOString());
-                const r = await fetch(`/api/messages?${qs}`, { credentials: "include" });
-                const j = await r.json();
-                if (j.code !== 0) throw new Error(j.message);
-                const data = j.data as ListResp;
-                return {
-                  data: data.list,
-                  total: data.total ?? data.list.length,
-                  success: true
-                };
-              }}
-              options={{
-                reload: () => actionRef.current?.reload?.(),
-                density: !isMobile,
-                fullScreen: !isMobile
-              }}
-              columns={columns}
-            />
-          ) : tab === "archive" ? (
-            <ProTable<ArchiveRow>
-              key={`archive-${category}-${search}-${dateRange?.[0]?.toISOString() ?? ""}-${dateRange?.[1]?.toISOString() ?? ""}`}
-              actionRef={archiveActionRef}
-              rowKey="id"
-              search={false}
-              rowSelection={{
-                selectedRowKeys: archiveSelectedRowKeys,
-                onChange: setArchiveSelectedRowKeys
-              }}
-              pagination={{
-                defaultPageSize: 20,
-                showSizeChanger: !isMobile,
-                size: isMobile ? "small" : undefined
-              }}
-              cardBordered={false}
-              scroll={{ x: "max-content" }}
-              sticky={isMobile}
-              locale={{
-                emptyText: (
-                  <Empty
-                    image={Empty.PRESENTED_IMAGE_SIMPLE}
-                    description={t("messages.archive.empty")}
-                  />
-                )
-              }}
-              request={async (params) => {
-                const qs = new URLSearchParams();
-                qs.set("page", String(params.current ?? 1));
-                qs.set("pageSize", String(params.pageSize ?? 20));
-                if (category !== "all") qs.set("categories", category);
-                if (search) qs.set("q", search);
-                if (dateRange?.[0]) qs.set("from", dateRange[0].toISOString());
-                if (dateRange?.[1]) qs.set("to", dateRange[1].toISOString());
-                const r = await fetch(`/api/messages/archive?${qs}`, { credentials: "include" });
-                const j = await r.json();
-                if (j.code !== 0) throw new Error(j.message);
-                return {
-                  data: (j.data.list as ArchiveRow[]),
-                  total: j.data.total ?? 0,
-                  success: true
-                };
-              }}
-              options={{ reload: () => archiveActionRef.current?.reload?.(), density: !isMobile }}
-              columns={archiveColumns}
-            />
-          ) : (
-            <ProTable<RecycleRow>
-              key={`recycle-${category}-${search}-${dateRange?.[0]?.toISOString() ?? ""}-${dateRange?.[1]?.toISOString() ?? ""}`}
-              actionRef={recycleActionRef}
-              rowKey="id"
-              search={false}
-              rowSelection={{
-                selectedRowKeys: recycleSelectedRowKeys,
-                onChange: setRecycleSelectedRowKeys
-              }}
-              pagination={{
-                defaultPageSize: 20,
-                showSizeChanger: !isMobile,
-                size: isMobile ? "small" : undefined
-              }}
-              cardBordered={false}
-              scroll={{ x: "max-content" }}
-              sticky={isMobile}
-              locale={{
-                emptyText: (
-                  <Empty
-                    image={Empty.PRESENTED_IMAGE_SIMPLE}
-                    description={t("messages.recycle.empty")}
-                  />
-                )
-              }}
-              request={async (params) => {
-                const qs = new URLSearchParams();
-                qs.set("page", String(params.current ?? 1));
-                qs.set("pageSize", String(params.pageSize ?? 20));
-                if (category !== "all") qs.set("categories", category);
-                if (search) qs.set("q", search);
-                if (dateRange?.[0]) qs.set("from", dateRange[0].toISOString());
-                if (dateRange?.[1]) qs.set("to", dateRange[1].toISOString());
-                const r = await fetch(`/api/messages/recycle?${qs}`, { credentials: "include" });
-                const j = await r.json();
-                if (j.code !== 0) throw new Error(j.message);
-                return {
-                  data: (j.data.list as RecycleRow[]),
-                  total: j.data.total ?? 0,
-                  success: true
-                };
-              }}
-              options={{ reload: () => recycleActionRef.current?.reload?.(), density: !isMobile }}
-              columns={recycleColumns}
-            />
-          )}
-        </div>
+              </Popconfirm>
+              <Button size="small" onClick={() => setSelectedRowKeys([])}>
+                {t("messages.batch.clear")}
+              </Button>
+            </Space>
+          </Card>
+        ) : null}
+        {tab === "announcements" ? (
+          <AnnouncementTab />
+        ) : tab === "all" || tab === "unread" || tab === "read" ? (
+          <ProTable<MessageRowPayload>
+            key={`${tab}-${category}-${search}-${dateRange?.[0]?.toISOString() ?? ""}-${dateRange?.[1]?.toISOString() ?? ""}`}
+            actionRef={actionRef}
+            rowKey="id"
+            search={false}
+            dataSource={data}
+            onDataSourceChange={setData}
+            rowSelection={{
+              selectedRowKeys,
+              onChange: setSelectedRowKeys
+            }}
+            pagination={{
+              defaultPageSize: 20,
+              showSizeChanger: !isMobile,
+              size: isMobile ? "small" : undefined
+            }}
+            cardBordered={false}
+            scroll={{ x: "max-content" }}
+            sticky={isMobile}
+            locale={{
+              emptyText: (
+                <Empty
+                  image={Empty.PRESENTED_IMAGE_SIMPLE}
+                  description={
+                    tab === "unread"
+                      ? t("messages.empty.unread")
+                      : tab === "read"
+                        ? t("messages.empty.read")
+                        : t("messages.empty")
+                  }
+                />
+              )
+            }}
+            request={async (params) => {
+              const qs = new URLSearchParams();
+              qs.set("page", String(params.current ?? 1));
+              qs.set("pageSize", String(params.pageSize ?? 20));
+              if (tab === "unread") qs.set("unread", "true");
+              else if (tab === "read") qs.set("unread", "false");
+              if (category !== "all") qs.set("categories", category);
+              if (search) qs.set("q", search);
+              if (dateRange?.[0]) qs.set("from", dateRange[0].toISOString());
+              if (dateRange?.[1]) qs.set("to", dateRange[1].toISOString());
+              const r = await fetch(`/api/messages?${qs}`, { credentials: "include" });
+              const j = await r.json();
+              if (j.code !== 0) throw new Error(j.message);
+              const data = j.data as ListResp;
+              return {
+                data: data.list,
+                total: data.total ?? data.list.length,
+                success: true
+              };
+            }}
+            options={{
+              reload: () => actionRef.current?.reload?.(),
+              density: !isMobile,
+              fullScreen: !isMobile
+            }}
+            columns={columns}
+          />
+        ) : tab === "archive" ? (
+          <ProTable<ArchiveRow>
+            key={`archive-${category}-${search}-${dateRange?.[0]?.toISOString() ?? ""}-${dateRange?.[1]?.toISOString() ?? ""}`}
+            actionRef={archiveActionRef}
+            rowKey="id"
+            search={false}
+            rowSelection={{
+              selectedRowKeys: archiveSelectedRowKeys,
+              onChange: setArchiveSelectedRowKeys
+            }}
+            pagination={{
+              defaultPageSize: 20,
+              showSizeChanger: !isMobile,
+              size: isMobile ? "small" : undefined
+            }}
+            cardBordered={false}
+            scroll={{ x: "max-content" }}
+            sticky={isMobile}
+            locale={{
+              emptyText: (
+                <Empty
+                  image={Empty.PRESENTED_IMAGE_SIMPLE}
+                  description={t("messages.archive.empty")}
+                />
+              )
+            }}
+            request={async (params) => {
+              const qs = new URLSearchParams();
+              qs.set("page", String(params.current ?? 1));
+              qs.set("pageSize", String(params.pageSize ?? 20));
+              if (category !== "all") qs.set("categories", category);
+              if (search) qs.set("q", search);
+              if (dateRange?.[0]) qs.set("from", dateRange[0].toISOString());
+              if (dateRange?.[1]) qs.set("to", dateRange[1].toISOString());
+              const r = await fetch(`/api/messages/archive?${qs}`, { credentials: "include" });
+              const j = await r.json();
+              if (j.code !== 0) throw new Error(j.message);
+              return {
+                data: (j.data.list as ArchiveRow[]),
+                total: j.data.total ?? 0,
+                success: true
+              };
+            }}
+            options={{ reload: () => archiveActionRef.current?.reload?.(), density: !isMobile }}
+            columns={archiveColumns}
+          />
+        ) : (
+          <ProTable<RecycleRow>
+            key={`recycle-${category}-${search}-${dateRange?.[0]?.toISOString() ?? ""}-${dateRange?.[1]?.toISOString() ?? ""}`}
+            actionRef={recycleActionRef}
+            rowKey="id"
+            search={false}
+            rowSelection={{
+              selectedRowKeys: recycleSelectedRowKeys,
+              onChange: setRecycleSelectedRowKeys
+            }}
+            pagination={{
+              defaultPageSize: 20,
+              showSizeChanger: !isMobile,
+              size: isMobile ? "small" : undefined
+            }}
+            cardBordered={false}
+            scroll={{ x: "max-content" }}
+            sticky={isMobile}
+            locale={{
+              emptyText: (
+                <Empty
+                  image={Empty.PRESENTED_IMAGE_SIMPLE}
+                  description={t("messages.recycle.empty")}
+                />
+              )
+            }}
+            request={async (params) => {
+              const qs = new URLSearchParams();
+              qs.set("page", String(params.current ?? 1));
+              qs.set("pageSize", String(params.pageSize ?? 20));
+              if (category !== "all") qs.set("categories", category);
+              if (search) qs.set("q", search);
+              if (dateRange?.[0]) qs.set("from", dateRange[0].toISOString());
+              if (dateRange?.[1]) qs.set("to", dateRange[1].toISOString());
+              const r = await fetch(`/api/messages/recycle?${qs}`, { credentials: "include" });
+              const j = await r.json();
+              if (j.code !== 0) throw new Error(j.message);
+              return {
+                data: (j.data.list as RecycleRow[]),
+                total: j.data.total ?? 0,
+                success: true
+              };
+            }}
+            options={{ reload: () => recycleActionRef.current?.reload?.(), density: !isMobile }}
+            columns={recycleColumns}
+          />
+        )}
       </div>
 
       <Drawer
@@ -1149,35 +1109,5 @@ export default function MessagesPage() {
         )}
       </Drawer>
     </Page>
-  );
-}
-
-function SelectCategoryMobile({
-  value,
-  onChange,
-  items
-}: {
-  value: string;
-  onChange: (v: string) => void;
-  items: { value: string; label: string; count: number }[];
-}) {
-  const t = useT();
-  return (
-    <Select
-      value={value}
-      onChange={onChange}
-      style={{ minWidth: 140 }}
-      options={items.map((i) => ({
-        value: i.value,
-        label: (
-          <Space>
-            <span>{i.label}</span>
-            {i.count > 0 ? <Badge count={i.count} /> : null}
-          </Space>
-        )
-      }))}
-      suffixIcon={<AppstoreOutlined />}
-      placeholder={t("messages.toolbar.categoryFilter")}
-    />
   );
 }
