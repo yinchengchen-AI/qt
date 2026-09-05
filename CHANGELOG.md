@@ -2,6 +2,30 @@
 
 本文件记录 qt-biz 每个版本的详细变更。项目快速入口请见 [README.md](README.md)。
 
+## v0.25.0(2026-09-05)通知中心:消息与公告模块重构
+
+把散在「消息与公告」分组下的消息中心、公告、更新日志三个入口重构成统一**通知中心**,更新日志移入「系统」分组:
+
+- **通知中心** = 消息 + 公告 + 回收站,`/messages` 单入口,Tabs 切换。
+- **公告并入通知中心**: 新增「公告」Tab,公告阅读 + 管理一体,ADMIN/OPS 可直接在 Tab 内发布/编辑/删除;普通用户看到时间线卡片(置顶优先、目标角色、生效期、内容预览),点标题进详情页。
+- **更新日志移入「系统」分组**: 原「消息与公告」分组合并为「通知中心」单入口,`/releases` 挂到「系统」分组下(全员可见)。
+- 旧路径 `/announcements` 保留兼容,重定向到 `/messages?tab=announcements`;公告详情页 `/announcements/[id]` 保持独立。
+
+### 新增
+
+- **feat(notifications)**: `components/notifications/announcement-tab.tsx` — 公告 Tab 组件(时间线卡片 + 搜索 + 分页 + 发布/编辑/删除 Modal),复用 `/api/announcements`,零后端改动。
+- **feat(messages)**: `/messages` Tabs 新增「公告」,支持 `?tab=announcements` deep link。
+
+### 变更
+
+- **change(nav)**: 侧边栏「消息与公告」分组合并为「通知中心」单入口(icon Bell);「系统」分组新增「更新日志」(`/releases`,APP_RELEASE READ 全员可见)。面包屑 `messages` 标签改为「通知中心」。
+- **change(announcements)**: `/announcements` 列表页改为重定向 `/messages?tab=announcements`(公告管理能力随 Tab 保留,权限矩阵不变)。
+- **change(messages)**: 公告 Tab 下隐藏消息侧栏/搜索/批量工具与 pinned 公告卡(公告 Tab 内有完整列表)。
+
+### 测试
+
+- **test(e2e)**: 01-admin 全流程 + 04-ops 流程更新为访问 `/messages?tab=announcements`,OPS 校验「发布公告」按钮可见;`/announcements` 校验重定向。
+
 ## v0.24.1(2026-09-05)修复完结合同无法登记回款
 
 合同完结(CLOSED)后收到尾款/质保金等补录场景,此前 UI 上登记回款页的合同下拉只过滤 ACTIVE,导致完结合同选不到——后端预留的 admin force 补录旁路没有入口。

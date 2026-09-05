@@ -123,15 +123,12 @@ const MENU: MenuItem[] = [
       { path: "/statistics/data-quality", name: "异常数据", permission: { resource: RESOURCE.STATISTICS, action: ACTION.READ } },
     ]
   },
+  // 通知中心:消息 + 公告 + 回收站统一入口 (/messages 内 Tabs 切换, 见 app/(app)/messages/page.tsx)
   {
     path: "/messages",
-    name: "消息与公告",
+    name: "通知中心",
     icon: <BellOutlined />,
-    children: [
-      { path: "/messages", name: "消息中心", permission: { resource: RESOURCE.MESSAGE, action: ACTION.READ } },
-      { path: "/announcements", name: "公告", permission: { resource: RESOURCE.ANNOUNCEMENT, action: ACTION.READ } },
-      { path: "/releases", name: "更新日志", permission: { resource: RESOURCE.APP_RELEASE, action: ACTION.READ } }
-    ]
+    permission: { resource: RESOURCE.MESSAGE, action: ACTION.READ }
   },
   {
     path: "/admin/users",
@@ -152,8 +149,9 @@ const MENU: MenuItem[] = [
       { path: "/admin/operation-logs", name: "操作日志", permission: { resource: RESOURCE.OPERATION_LOG, action: ACTION.READ } },
       // 消息归档(仅 ADMIN 可看全部): service 内显式另字护占; 菜单用 ROLE.CREATE proxy
       { path: "/admin/messages", name: "消息归档", permission: { resource: RESOURCE.ROLE, action: ACTION.CREATE } },
-      // /admin/trash 走 trash 服务, 仅 ADMIN 可看全部; 用 ROLE.CREATE 代理(仅 ADMIN)
-      { path: "/admin/trash", name: "回收站", permission: { resource: RESOURCE.ROLE, action: ACTION.CREATE } }
+      { path: "/admin/trash", name: "回收站", permission: { resource: RESOURCE.ROLE, action: ACTION.CREATE } },
+      // 更新日志(全员可见, APP_RELEASE READ): 原属"消息与公告"分组, 随通知中心重构移入系统分组
+      { path: "/releases", name: "更新日志", permission: { resource: RESOURCE.APP_RELEASE, action: ACTION.READ } }
     ]
   }
 ];
@@ -977,7 +975,7 @@ const CRUMB_LABEL: Record<string, string> = {
   aging: "账龄分析",
   performance: "业绩排行",
   "data-quality": "异常数据",
-  messages: "消息中心",
+  messages: "通知中心",
   announcements: "公告",
   releases: "更新日志",
   admin: "系统管理",

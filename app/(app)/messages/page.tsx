@@ -1,7 +1,12 @@
 "use client";
-// 消息中心 v2 (2026-09-03)
+// 通知中心 v3 (2026-09-05 消息与公告模块重构)
 //
-// 重做:
+// v3 相对 v2 的变更:
+//   - 侧边栏"消息与公告"分组合并为"通知中心"单入口 (更新日志移入"系统"分组, 见 dashboard-shell MENU)
+//   - Tabs 新增「公告」: 公告阅读 + 管理一体 (ADMIN/OPS 可发布/编辑/删除), 组件化在 components/notifications/announcement-tab.tsx
+//   - deep link 支持 ?tab=announcements|archive|recycle
+//
+// v2 (2026-09-03) 保留能力:
 //   - 左侧分类 sidebar (全部 / 合同 / 财务 / 对账 / 证书 / 系统),从 /unread-summary 拉分类未读计数
 //   - 顶部 toolbar: 搜索 + 类型多选 + 状态 tab + 日期范围
 //   - 批量操作: 勾选行后出现 batch bar (mark read / delete)
@@ -52,6 +57,7 @@ import { Page } from "@/components/page";
 import { PageHeader } from "@/components/page-header";
 import { StatusTag } from "@/components/status-tag";
 import { DateTimeCell } from "@/components/table-cells";
+import { AnnouncementTab } from "@/components/notifications/announcement-tab";
 import { useT } from "@/lib/i18n";
 import { useResponsive } from "@/lib/use-breakpoint";
 import { useUnreadCount, refreshUnread } from "@/lib/message-unread";
@@ -68,7 +74,7 @@ import { type Dayjs } from "dayjs";
 const { Text, Paragraph } = Typography;
 const { RangePicker } = DatePicker;
 
-type TabKey = "all" | "unread" | "read" | "archive" | "recycle";
+type TabKey = "all" | "unread" | "read" | "announcements" | "archive" | "recycle";
 type SelectedCategory = string | "all";
 
 type ListResp = {
@@ -114,7 +120,7 @@ export default function MessagesPage() {
   // v0.24.0: 支持 ?tab=archive|recycle deep link
   const initialTab = ((): TabKey => {
     const t = searchParams.get("tab");
-    if (t === "archive" || t === "recycle") return t;
+    if (t === "announcements" || t === "archive" || t === "recycle") return t;
     return "all";
   })();
   const [tab, setTab] = useState<TabKey>(initialTab);
@@ -417,6 +423,7 @@ export default function MessagesPage() {
         )
       },
       { key: "read", label: t("messages.tab.read") },
+      { key: "announcements", label: t("messages.tab.announcements") },
       { key: "archive", label: t("messages.tab.archive") },
       { key: "recycle", label: t("messages.tab.recycle") }
     ],
@@ -735,6 +742,7 @@ export default function MessagesPage() {
         title={t("messages.title")}
         subtitle={t("messages.subtitle")}
         actions={
+          tab === "announcements" ? undefined : (
           <Space wrap>
             <Button
               key="prefs"
@@ -765,32 +773,35 @@ export default function MessagesPage() {
               </Button>
             </Popconfirm>
           </Space>
+          )
         }
       />
 
-      {pinnedLoading ? (
-        <Card size="small" style={{ marginBottom: 12 }}>
-          <Skeleton active paragraph={{ rows: 1 }} />
-        </Card>
-      ) : pinned.length > 0 ? (
-        <Card
-          size="small"
-          title={
-            <Space size={6}>
-              {t("messages.pinned.title")}
-            </Space>
-          }
-          style={{ marginBottom: 12 }}
-        >
-          {pinned.map((p) => (
-            <div key={p.id} style={{ marginBottom: 8 }}>
-              <Text strong>{p.title}</Text>
-              <Paragraph type="secondary" style={{ marginBottom: 0, fontSize: 13 }}>
-                {p.content}
-              </Paragraph>
-            </div>
-          ))}
-        </Card>
+      {tab !== "announcements" ? (
+        pinnedLoading ? (
+          <Card size="small" style={{ marginBottom: 12 }}>
+            <Skeleton active paragraph={{ rows: 1 }} />
+          </Card>
+        ) : pinned.length > 0 ? (
+          <Card
+            size="small"
+            title={
+              <Space size={6}>
+                {t("messages.pinned.title")}
+              </Space>
+            }
+            style={{ marginBottom: 12 }}
+          >
+            {pinned.map((p) => (
+              <div key={p.id} style={{ marginBottom: 8 }}>
+                <Text strong>{p.title}</Text>
+                <Paragraph type="secondary" style={{ marginBottom: 0, fontSize: 13 }}>
+                  {p.content}
+                </Paragraph>
+              </div>
+            ))}
+          </Card>
+        ) : null
       ) : null}
 
       <div
@@ -802,7 +813,7 @@ export default function MessagesPage() {
           marginBottom: 12
         }}
       >
-        {!isMobile && (
+        {!isMobile && tab !== "announcements" && (
           <Card
             size="small"
             styles={{ body: { padding: 8 } }}
@@ -837,6 +848,7 @@ export default function MessagesPage() {
           </Card>
         )}
         <div style={{ flex: 1, minWidth: 0 }}>
+          {(tab === "all" || tab === "unread" || tab === "read") && (
           <Card size="small" styles={{ body: { padding: 8 } }} style={{ marginBottom: 8 }}>
             <Space wrap size={8}>
               <Input
@@ -877,6 +889,7 @@ export default function MessagesPage() {
               </Button>
             </Space>
           </Card>
+          )}
           <div
             style={{
               marginBottom: 8,
@@ -935,7 +948,9 @@ export default function MessagesPage() {
               </Space>
             </Card>
           ) : null}
-          {tab === "all" || tab === "unread" || tab === "read" ? (
+          {tab === "announcements" ? (
+            <AnnouncementTab />
+          ) : tab === "all" || tab === "unread" || tab === "read" ? (
             <ProTable<MessageRowPayload>
               key={`${tab}-${category}-${search}-${dateRange?.[0]?.toISOString() ?? ""}-${dateRange?.[1]?.toISOString() ?? ""}`}
               actionRef={actionRef}

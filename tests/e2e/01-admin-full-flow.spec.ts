@@ -105,8 +105,13 @@ test.describe.serial("场景 1: admin 完整主链路", () => {
     await page.waitForLoadState("networkidle");
     // 至少有 ProTable 容器
     await expect(page.locator(".ant-pro-table").first()).toBeVisible({ timeout: 10000 });
+    // 公告并入通知中心: 深链直达公告 Tab
+    await page.goto("/messages?tab=announcements");
+    await page.waitForLoadState("networkidle");
+    // 旧路径 /announcements 重定向到通知中心公告 Tab
     await page.goto("/announcements");
     await page.waitForLoadState("networkidle");
+    await expect(page).toHaveURL(/\/messages\?tab=announcements/);
   });
 
   test("01.9 统计页加载", async ({ page }) => {

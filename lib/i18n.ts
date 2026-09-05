@@ -138,6 +138,7 @@ const messages: Record<Locale, Record<string, string>> = {
     // v0.24.0 归档 + 回收站
     "messages.tab.archive": "归档",
     "messages.tab.recycle": "回收站",
+    "messages.tab.announcements": "公告",
     "messages.archive.empty": "暂无已归档消息 (90 天前已读消息会自动归档)",
     "messages.recycle.empty": "回收站为空",
     "messages.archive.subtitle": "已读超过 90 天的消息自动归档到这里",
@@ -213,6 +214,10 @@ const messages: Record<Locale, Record<string, string>> = {
     "announcements.toast.saved": "已保存",
     "announcements.toast.deleted": "已删除",
     "announcements.tag.pinned": "置顶",
+    "announcements.toolbar.searchPlaceholder": "搜索公告标题或内容",
+    "announcements.empty": "暂无公告",
+    "announcements.pagination.prev": "上一页",
+    "announcements.pagination.next": "下一页",
 
     // 应用更新记录 (AppRelease)
     "releases.tag.important": "重要",
@@ -430,6 +435,7 @@ const messages: Record<Locale, Record<string, string>> = {
     // v0.24.0 archive + recycle
     "messages.tab.archive": "Archive",
     "messages.tab.recycle": "Recycle",
+    "messages.tab.announcements": "Announcements",
     "messages.archive.empty": "No archived messages (read messages older than 90 days are auto-archived)",
     "messages.recycle.empty": "Recycle bin is empty",
     "messages.archive.subtitle": "Read messages older than 90 days are auto-archived here",
@@ -578,6 +584,10 @@ const messages: Record<Locale, Record<string, string>> = {
     "aging.exportFilename": "aging_{basis}_{date}.xlsx",
     "aging.trend.title": "Aging Trend (last {days} days)",
     "announcements.tag.pinned": "Pinned",
+    "announcements.toolbar.searchPlaceholder": "Search announcement title or content",
+    "announcements.empty": "No announcements",
+    "announcements.pagination.prev": "Prev",
+    "announcements.pagination.next": "Next",
 
     // AppRelease (release notes)
     "releases.tag.important": "Important",

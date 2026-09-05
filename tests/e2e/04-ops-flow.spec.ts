@@ -24,9 +24,10 @@ test.describe.serial("场景 4: OPS 行政 + 公告 + 字典", () => {
 
   test("04.2 OPS 访问公告管理（有 CRUD 权限）", async ({ page }) => {
     await ensureLoggedIn(page, "ops", DEV_PASSWORD);
-    await page.goto("/announcements");
+    await page.goto("/messages?tab=announcements");
     await page.waitForLoadState("networkidle");
-    await expect(page.locator(".ant-pro-table").first()).toBeVisible({ timeout: 10000 });
+    // 公告 Tab 管理入口: OPS 可见「发布公告」
+    await expect(page.getByRole("button", { name: "发布公告" })).toBeVisible({ timeout: 10000 });
   });
 
   test("04.3 OPS 访问数据字典", async ({ page }) => {
