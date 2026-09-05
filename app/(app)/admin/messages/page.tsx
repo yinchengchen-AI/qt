@@ -1,22 +1,47 @@
 "use client";
-// 消息归档管理 (v0.24.0 模式切换: 归档 / 回收站)
+// 消息归档管理 (v0.25.3 重做: 与通知中心简洁化对齐, 类型全中文标签)
 //
 // 后端: GET /api/admin/messages-archive?mode=archive|recycle
 //   - archive: MessageArchive (read+90d cron 写入)
 //   - recycle: Message with deletedAt != null (用户软删, 30 天后由 cron hard delete)
 //
 // 操作: 移到收件箱 (archive) / 恢复 (recycle) / 彻底删除 (recycle, 跳过 30 天)
+//
+// v0.25.3 相对 v0.24.0 的变更:
+//   - 类型列由英文枚举 Tag 改为 StatusTag(domain=message) 中文标签 + 语义色
+//   - 类型筛选下拉由英文枚举改为 getStatusOptions("message") 中文选项
+//   - 归档月份筛选由原生 <input type=month> 换为 antd DatePicker(picker=month, 可清空)
+//   - 工具栏控件统一 antd, 紧凑对齐通知中心风格; 空状态文案入 i18n
 import { useRef, useState, useMemo, useEffect, useCallback } from "react";
 import { ProTable, type ActionType, type ProColumns } from "@ant-design/pro-components";
-import { Empty, Tag, Typography, Card, Input, Space, Select, Segmented, Button, Popconfirm, App as AntdApp } from "antd";
-import { SearchOutlined, UndoOutlined, InboxOutlined, DeleteFilled } from "@ant-design/icons";
+import {
+  Empty,
+  Typography,
+  Card,
+  Input,
+  Space,
+  Select,
+  Segmented,
+  Button,
+  Popconfirm,
+  App as AntdApp,
+  DatePicker
+} from "antd";
+import {
+  SearchOutlined,
+  UndoOutlined,
+  InboxOutlined,
+  DeleteFilled
+} from "@ant-design/icons";
+import dayjs, { type Dayjs } from "dayjs";
 import { Page } from "@/components/page";
 import { PageHeader } from "@/components/page-header";
 import { useT } from "@/lib/i18n";
 import { useResponsive } from "@/lib/use-breakpoint";
 import { DateTimeCell } from "@/components/table-cells";
+import { StatusTag } from "@/components/status-tag";
 import { buildMessageLinkHref } from "@/lib/message-link";
-import { MESSAGE_TYPE } from "@/types/enums";
+import { getStatusOptions } from "@/lib/status";
 
 const { Text } = Typography;
 
@@ -48,10 +73,8 @@ type RecycleRow = {
 
 type UserMini = { id: string; employeeNo: string; name: string };
 
-function currentMonthYYYYMM(): string {
-  const d = new Date();
-  return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}`;
-}
+/** 消息类型下拉: 中文 label, 枚举 value (与 lib/status.ts 对齐) */
+const MESSAGE_TYPE_OPTIONS = getStatusOptions("message");
 
 export default function AdminMessagesArchivePage() {
   const t = useT();
@@ -59,7 +82,10 @@ export default function AdminMessagesArchivePage() {
   const { message: msg } = AntdApp.useApp();
   const actionRef = useRef<ActionType>(undefined);
   const [mode, setMode] = useState<Mode>("archive");
-  const [month, setMonth] = useState<string>(currentMonthYYYYMM());
+  // 归档月份 (YYYY-MM), 空串 = 全部月份
+  const [month, setMonth] = useState<string>(() =>
+    dayjs().format("YYYY-MM")
+  );
   const [q, setQ] = useState<string>("");
   const [types, setTypes] = useState<string[]>([]);
   const [receiverUserId, setReceiverUserId] = useState<string | undefined>(undefined);
@@ -124,9 +150,10 @@ export default function AdminMessagesArchivePage() {
         });
         const j = await r.json();
         if (j.code === 0) {
-          msg.success(action === "restore"
-            ? t("messages.toast.restored", { n: j.data.affected })
-            : t("messages.toast.purged", { n: j.data.affected })
+          msg.success(
+            action === "restore"
+              ? t("messages.toast.restored", { n: j.data.affected })
+              : t("messages.toast.purged", { n: j.data.affected })
           );
           reset();
         } else msg.error(j.message);
@@ -145,8 +172,8 @@ export default function AdminMessagesArchivePage() {
       {
         title: t("admin.messagesArchive.column.type"),
         dataIndex: "type",
-        width: 140,
-        render: (_, r) => <Tag>{r.type}</Tag>
+        width: 130,
+        render: (_, r) => <StatusTag status={r.type} domain="message" />
       },
       {
         title: t("admin.messagesArchive.column.title"),
@@ -167,7 +194,7 @@ export default function AdminMessagesArchivePage() {
       {
         title: t("admin.messagesArchive.column.receiverName"),
         dataIndex: "receiverUserId",
-        width: 140,
+        width: 150,
         render: (_, r) => {
           const u = users.find((x) => x.id === r.receiverUserId);
           if (u) return <Text style={{ fontSize: 12 }}>{u.name} ({u.employeeNo})</Text>;
@@ -180,7 +207,13 @@ export default function AdminMessagesArchivePage() {
         width: 80,
         render: (_, r) => {
           const href = buildMessageLinkHref(r.link);
-          return href ? <a href={href} target="_blank" rel="noreferrer">{t("admin.messagesArchive.action.view")}</a> : "—";
+          return href ? (
+            <a href={href} target="_blank" rel="noreferrer">
+              {t("admin.messagesArchive.action.view")}
+            </a>
+          ) : (
+            "—"
+          );
         }
       },
       {
@@ -222,8 +255,8 @@ export default function AdminMessagesArchivePage() {
       {
         title: t("admin.messagesArchive.column.type"),
         dataIndex: "type",
-        width: 140,
-        render: (_, r) => <Tag>{r.type}</Tag>
+        width: 130,
+        render: (_, r) => <StatusTag status={r.type} domain="message" />
       },
       {
         title: t("admin.messagesArchive.column.title"),
@@ -244,7 +277,7 @@ export default function AdminMessagesArchivePage() {
       {
         title: t("admin.messagesArchive.column.receiverName"),
         dataIndex: "receiverUserId",
-        width: 140,
+        width: 150,
         render: (_, r) => {
           const u = users.find((x) => x.id === r.receiverUserId);
           if (u) return <Text style={{ fontSize: 12 }}>{u.name} ({u.employeeNo})</Text>;
@@ -298,8 +331,8 @@ export default function AdminMessagesArchivePage() {
         title={t("admin.messagesArchive.title")}
         subtitle={t("admin.messagesArchive.subtitle")}
       />
-      <Card size="small" style={{ marginBottom: 12 }}>
-        <Space wrap>
+      <Card size="small" styles={{ body: { padding: 8 } }} style={{ marginBottom: 8 }}>
+        <Space wrap size={8}>
           <Segmented
             value={mode}
             onChange={(v) => {
@@ -312,31 +345,28 @@ export default function AdminMessagesArchivePage() {
             ]}
           />
           {mode === "archive" ? (
-            <span>{t("admin.messagesArchive.filter.month")}</span>
-          ) : null}
-          {mode === "archive" ? (
-            <input
-              type="month"
-              value={month}
-              onChange={(e) => setMonth(e.target.value)}
-              style={{
-                height: 32,
-                padding: "0 8px",
-                border: "1px solid var(--qt-border)",
-                borderRadius: 6
+            <DatePicker
+              picker="month"
+              allowClear
+              value={month ? dayjs(month + "-01") : null}
+              onChange={(d: Dayjs | null) => {
+                setMonth(d ? d.format("YYYY-MM") : "");
+                setSelectedRowKeys([]);
               }}
-              aria-label="归档月份"
+              placeholder={t("admin.messagesArchive.filter.month")}
             />
           ) : null}
-          <span>{t("admin.messagesArchive.filter.types")}</span>
           <Select
             mode="multiple"
             allowClear
-            style={{ minWidth: 200 }}
+            style={{ minWidth: 220 }}
             placeholder={t("admin.messagesArchive.filter.typesPlaceholder")}
             value={types}
-            onChange={setTypes}
-            options={MESSAGE_TYPE.map((tp) => ({ value: tp, label: tp }))}
+            onChange={(v) => {
+              setTypes(v as string[]);
+              setSelectedRowKeys([]);
+            }}
+            options={MESSAGE_TYPE_OPTIONS}
             maxTagCount={isMobile ? 1 : 3}
           />
           <Select
@@ -344,7 +374,7 @@ export default function AdminMessagesArchivePage() {
             showSearch
             optionFilterProp="label"
             style={{ minWidth: 180 }}
-            placeholder="接收人"
+            placeholder={t("admin.messagesArchive.filter.receiver")}
             value={receiverUserId}
             onChange={(v) => setReceiverUserId(v ?? undefined)}
             options={users.map((u) => ({
@@ -358,7 +388,7 @@ export default function AdminMessagesArchivePage() {
             placeholder={t("admin.messagesArchive.filter.searchPlaceholder")}
             value={q}
             onChange={(e) => setQ(e.target.value)}
-            style={{ width: 240 }}
+            style={{ width: isMobile ? "100%" : 240 }}
           />
         </Space>
       </Card>
@@ -411,7 +441,7 @@ export default function AdminMessagesArchivePage() {
             emptyText: (
               <Empty
                 image={Empty.PRESENTED_IMAGE_SIMPLE}
-                description={month ? `${month} 无归档消息` : "无归档消息"}
+                description={t("admin.messagesArchive.empty.archive")}
               />
             )
           }}
@@ -420,7 +450,7 @@ export default function AdminMessagesArchivePage() {
             qs.set("page", String(params.current ?? 1));
             qs.set("pageSize", String(params.pageSize ?? 20));
             qs.set("mode", "archive");
-            qs.set("month", month);
+            if (month) qs.set("month", month);
             if (receiverUserId) qs.set("receiverUserId", receiverUserId);
             if (types.length > 0) qs.set("types", types.join(","));
             if (q.trim()) qs.set("q", q.trim());

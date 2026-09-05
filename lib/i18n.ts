@@ -89,6 +89,8 @@ const messages: Record<Locale, Record<string, string>> = {
     "admin.messagesArchive.filter.types": "类型",
     "admin.messagesArchive.filter.typesPlaceholder": "选择消息类型",
     "admin.messagesArchive.filter.searchPlaceholder": "搜索标题或内容",
+    "admin.messagesArchive.filter.receiver": "接收人",
+    "admin.messagesArchive.empty.archive": "无归档消息",
     // v0.24.0 归档/回收站模式切换 + 操作
     "admin.messagesArchive.mode.archive": "归档",
     "admin.messagesArchive.mode.recycle": "回收站",
@@ -386,6 +388,8 @@ const messages: Record<Locale, Record<string, string>> = {
     "admin.messagesArchive.filter.types": "Type",
     "admin.messagesArchive.filter.typesPlaceholder": "Select message types",
     "admin.messagesArchive.filter.searchPlaceholder": "Search title or content",
+    "admin.messagesArchive.filter.receiver": "Receiver",
+    "admin.messagesArchive.empty.archive": "No archived messages",
     // v0.24.0 archive/recycle mode + actions
     "admin.messagesArchive.mode.archive": "Archive",
     "admin.messagesArchive.mode.recycle": "Recycle",

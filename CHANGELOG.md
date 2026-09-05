@@ -2,6 +2,20 @@
 
 本文件记录 qt-biz 每个版本的详细变更。项目快速入口请见 [README.md](README.md)。
 
+## v0.25.3(2026-09-05)系统-消息归档页面重做
+
+`/admin/messages`(系统分组下消息归档)按「简洁实用」重做,与通知中心风格对齐:
+
+### 变更
+
+- **change(admin/messages)**: 类型列由英文枚举 Tag 改为 `StatusTag(domain=message)` 中文标签 + 语义色(与 v0.25.2 标签补全联动)。
+- **change(admin/messages)**: 类型筛选下拉由英文枚举改为 `getStatusOptions("message")` 中文选项,枚举值透传后端不变。
+- **change(admin/messages)**: 归档月份筛选由原生 `<input type=month>` 换为 antd `DatePicker(picker=month)`,支持清空看全部月份。
+- **change(admin/messages)**: 工具栏控件统一 antd 并紧凑对齐通知中心;归档空状态文案入 i18n(`admin.messagesArchive.empty.archive`)。
+- **i18n**: 新增 `admin.messagesArchive.filter.receiver` / `admin.messagesArchive.empty.archive`(zh/en)。
+
+> 纯前端 UI 重构:API、数据模型、操作(移回收件箱/恢复/彻底删除)与权限均不变。
+
 ## v0.25.2(2026-09-05)消息类型中文标签补全
 
 `lib/status.ts` 的 MESSAGE 映射此前只覆盖 12 个类型,对账中心、风险升级、续签提醒、联动补盲等 8 个应用层类型与 3 个已下线客户状态类型在消息列表/归档/回收站中直接回退显示英文枚举值。补齐全部 23 个类型的中文标签与语义色。
