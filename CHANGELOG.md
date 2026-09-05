@@ -2,6 +2,18 @@
 
 本文件记录 qt-biz 每个版本的详细变更。项目快速入口请见 [README.md](README.md)。
 
+## v0.24.1(2026-09-05)修复完结合同无法登记回款
+
+合同完结(CLOSED)后收到尾款/质保金等补录场景,此前 UI 上登记回款页的合同下拉只过滤 ACTIVE,导致完结合同选不到——后端预留的 admin force 补录旁路没有入口。
+
+### 修复
+
+- **fix(payments)**: 登记回款页(`/payments/new`)合同下拉放开 CLOSED 合同,选项标注「已完结」;admin 选中完结合同后出现「补录原因」必填输入,提交自动携带 `force=true + forceReason` 走后端 `createPayment` force 旁路(remark 落 `[FORCE_BACKFILL]` 审计标记)。
+- **fix(payments)**: 非管理员选中完结合同显示「仅管理员可补录回款」提示并拦截提交(保持后端权限边界:force 仅 ADMIN)。
+- **fix(payments)**: URL 带 `?contractId=` 直达登记页时预载合同信息,完结补录提示/原因输入与手动选择走同一套逻辑。
+
+> 说明:后端 `createPayment` 对 CLOSED 合同本就拒绝(防误操作),仅 ADMIN + force + forceReason 可旁路;本次仅补齐 UI 入口,不改后端权限与金额校验。
+
 ## v0.24.0(2026-09-04)消息归档与回收站统一重做
 
 把消息系统当前散在三个地方的"删除/归档"概念(用户硬删、90 天自动归档、admin 业务回收站)统一成两套用户可见视图 + 一套管理视角:

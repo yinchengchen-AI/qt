@@ -6,13 +6,13 @@ import {
   ProFormDigit,
   ProFormDatePicker
 } from "@ant-design/pro-components";
-import { App as AntdApp, Space, Typography } from "antd";
+import { Alert, App as AntdApp, Space, Typography } from "antd";
 import { useSession } from "next-auth/react";
 import dayjs from "dayjs";
 import { toIsoDateTime, formatCurrency } from "@/lib/format";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useGoBack } from "@/lib/navigation";
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Page } from "@/components/page";
 import { PageHeader } from "@/components/page-header";
 import { FormSection, FormGrid, FormCard, SubmitBar } from "@/components/form";
@@ -56,11 +56,34 @@ export default function NewPaymentPage() {
   const { data: session } = useSession();
   const me = session?.user?.id;
   const roleCode = session?.user?.roleCode ?? "";
+  const isAdmin = roleCode === "ADMIN";
   const isRestricted = roleCode === "SALES" || roleCode === "EXPERT";
   // ProForm 的 ProFormRef 类型未导出,用 any 承载动态表单引用
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const formRef = useRef<any>(null);
   const [pickedContract, setPickedContract] = useState<Contract | null>(null);
+
+  // URL 直接带 contractId 进入(如完结合同补录链接)时, 预载合同信息,
+  // 让"完结补录"提示/原因输入与手动选择走同一套逻辑。
+  useEffect(() => {
+    if (!presetContract) return;
+    let cancelled = false;
+    void (async () => {
+      try {
+        const r = await fetch(`/api/contracts/${presetContract}`, { credentials: "include" });
+        const j = await r.json();
+        if (!cancelled && j.code === 0) setPickedContract(j.data as Contract);
+      } catch {
+        // 预载失败不阻塞表单, 用户仍可手动搜索选择
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [presetContract]);
+
+  // 合同已完结(CLOSED): 仅 admin 可走 force 旁路补录回款, 其余角色拦截并提示
+  const pickedClosed = pickedContract?.status === "CLOSED";
 
   return (
     <Page compact>
@@ -87,9 +110,15 @@ export default function NewPaymentPage() {
             method: "BANK_TRANSFER"
           }}
           onFinish={async (values) => {
+            if (pickedClosed && !isAdmin) {
+              message.error("合同已完结，仅管理员可补录回款");
+              return false;
+            }
             const payload = {
               ...values,
-              receivedAt: toIsoDateTime(values.receivedAt)
+              receivedAt: toIsoDateTime(values.receivedAt),
+              // 完结补录: admin 走后端 force 旁路 (createPayment 二次校验 ADMIN + CLOSED)
+              ...(pickedClosed && isAdmin ? { force: true, forceReason: values.forceReason } : {})
             };
             const res = await fetch("/api/payments", {
               method: "POST",
@@ -124,11 +153,12 @@ export default function NewPaymentPage() {
                   const j = await r.json();
                   if (j.code !== 0) return [];
                   return (j.data.list as Contract[])
-                    .filter((c) => c.status === "ACTIVE")
+                    // ACTIVE 正常登记; CLOSED 仅用于"完结补录"(admin force, 见 pickedClosed 逻辑)
+                    .filter((c) => c.status === "ACTIVE" || c.status === "CLOSED")
                     .filter((c) => !isRestricted || c.ownerUserId === me)
                     .map((c) => ({
                       value: c.id,
-                      label: `${c.contractNo} · ${c.title} · ${formatCurrency(c.totalAmount)}`,
+                      label: `${c.contractNo} · ${c.title} · ${formatCurrency(c.totalAmount)}${c.status === "CLOSED" ? "（已完结）" : ""}`,
                       contract: c
                     }));
                 }}
@@ -170,6 +200,24 @@ export default function NewPaymentPage() {
               />
             </FormGrid>
           </FormSection>
+
+          {pickedClosed ? (
+            <FormSection title="完结补录" description={isAdmin ? "合同已完结，需填写补录原因后提交（系统将记录 FORCE_BACKFILL 审计标记）" : "合同已完结，普通账号不可登记回款"}>
+              <FormGrid columns={1}>
+                {isAdmin ? (
+                  <ProFormText
+                    name="forceReason"
+                    label="补录原因"
+                    placeholder="必填：说明为何完结合同后仍有回款到账（如尾款/质保金晚到账）"
+                    rules={[{ required: true, message: "完结合同补录回款必须填写原因" }]}
+                    fieldProps={{ size: "large", maxLength: 500, showCount: true }}
+                  />
+                ) : (
+                  <Alert type="warning" showIcon message="该合同已完结，仅管理员可补录回款；如需登记请联系管理员操作。" />
+                )}
+              </FormGrid>
+            </FormSection>
+          ) : null}
 
           <FormSection title="金额与到账">
             <FormGrid columns={2}>
