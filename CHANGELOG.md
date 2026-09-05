@@ -2,6 +2,15 @@
 
 本文件记录 qt-biz 每个版本的详细变更。项目快速入口请见 [README.md](README.md)。
 
+## v0.25.2(2026-09-05)消息类型中文标签补全
+
+`lib/status.ts` 的 MESSAGE 映射此前只覆盖 12 个类型,对账中心、风险升级、续签提醒、联动补盲等 8 个应用层类型与 3 个已下线客户状态类型在消息列表/归档/回收站中直接回退显示英文枚举值。补齐全部 23 个类型的中文标签与语义色。
+
+### 修复
+
+- **fix(status)**: 新增 `RECONCILIATION_AUTO_MATCHED`(对账自动匹配)/`RECONCILIATION_SUGGESTION`(对账建议)/`RECONCILIATION_DISCREPANCY`(对账差异)/`RECONCILIATION_WEEKLY_REPORT`(对账周报)/`RISK_LEVEL_UP`(风险升级)/`CONTRACT_RENEWAL_REMIND`(续签提醒)/`LINKAGE_NO_INVOICE`(联动无发票)/`LINKAGE_INVOICE_PAYMENT_GAP`(联动票款缺口) 8 个应用层类型标签。
+- **fix(status)**: 补 `CUSTOMER_STATUS_SUGGEST`/`CUSTOMER_STATUS_AUTO_APPLIED`/`CUSTOMER_STATUS_AUTO_REVERTED` 3 个已下线类型标签(历史数据在归档/回收站仍会显示)。
+
 ## v0.25.1(2026-09-05)messages 页面简洁实用重构
 
 通知中心(/messages)消息列表部分按「简洁实用」原则简化,公告/归档/回收站与导航架构不变:

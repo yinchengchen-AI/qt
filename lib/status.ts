@@ -53,6 +53,21 @@ const MESSAGE: Record<string, StatusMeta> = {
   CERTIFICATE_EXPIRING:      { label: "证书到期", tone: "warning" },
   INVOICE_ISSUED:            { label: "已开票",   tone: "success" },
   INVOICE_REJECTED:          { label: "开票驳回", tone: "danger" },
+  // 对账中心 (bank-reconciliation, 应用层枚举)
+  RECONCILIATION_AUTO_MATCHED:   { label: "对账自动匹配", tone: "success" },
+  RECONCILIATION_SUGGESTION:     { label: "对账建议", tone: "info" },
+  RECONCILIATION_DISCREPANCY:    { label: "对账差异", tone: "danger" },
+  RECONCILIATION_WEEKLY_REPORT:  { label: "对账周报", tone: "info" },
+  // 合同风险等级上调 (risk-score-snapshot job)
+  RISK_LEVEL_UP:                 { label: "风险升级", tone: "danger" },
+  // 续签提醒 / 联动补盲 (contract-renewal-remind / daily-linkage-check jobs)
+  CONTRACT_RENEWAL_REMIND:       { label: "续签提醒", tone: "warning" },
+  LINKAGE_NO_INVOICE:            { label: "联动无发票", tone: "warning" },
+  LINKAGE_INVOICE_PAYMENT_GAP:   { label: "联动票款缺口", tone: "danger" },
+  // 已下线类型 (v0.5.0 客户状态机迁移; 历史数据仍可能出现在归档/回收站, 保留渲染)
+  CUSTOMER_STATUS_SUGGEST:       { label: "客户状态建议", tone: "info" },
+  CUSTOMER_STATUS_AUTO_APPLIED:  { label: "状态自动应用", tone: "processing" },
+  CUSTOMER_STATUS_AUTO_REVERTED: { label: "状态自动回退", tone: "default" },
 };
 
 const DOMAIN_MAP: Record<StatusDomain, Record<string, StatusMeta>> = {
