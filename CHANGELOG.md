@@ -2,6 +2,24 @@
 
 本文件记录 qt-biz 每个版本的详细变更。项目快速入口请见 [README.md](README.md)。
 
+## v0.25.6(2026-09-07)合同/开票金额链路守卫补全
+
+### 修复
+
+- **fix(invoice)**: `updateInvoice` 改小金额时增加 **R-11(per-invoice 累计回款 ≤ 发票金额)** 复检守卫。原先仅复检 R-08(合同级), 降额时已 CONFIRMED/RECONCILED 的回款可能超过新发票金额, 进入"已回款 > 已开票"的不一致状态; 现以 `MONEY_TOLERANCE` (0.01 元) 为容差, 复检范围含手工 PLANNED + CONFIRMED + RECONCILED(系统预建的 `-PLANNED` 后缀 PLANNED 在同一事务内被 `updateMany` 同步改金额, 复检时排除避免与后续同步互相打架). 升额或不变时不触发.
+- **fix(payment)**: `createPayment` 关联非 ISSUED 状态发票时的错误信息补充红冲场景提示(原票 RED_FLUSHED 与红冲负票均不可直接挂回款, 后者由 R-11 自然拦截).
+
+### 变更
+
+- **change(contract-billing)**: `getBillingStatus` / `getPaymentStatus` 的 NOT_STARTED 判定由 `invoiced <= TOLERANCE` 收紧为 `invoiced <= 0`. 此前 0.01 元开票会被判定为"未开票", 0.005 元(理论上不会由 2 位精度 DB 产生)同样误判; 现仅 0 / 负净额(red-flush 反向) 视为未开, 0.01 元起算归 IN_PROGRESS. COMPLETED 仍保留 0.01 元容差.
+
+### 测试
+
+- **test(invoice)**: 新增 `tests/unit/server/invoice-update-r11-guard.test.ts`(5 用例): 改大/不变不触发 R-11 复检; 降额超额拦截; 降额但容差内放行; 降额超容差拦截.
+- **test(contract-billing)**: `tests/unit/lib/contract-billing.test.ts` 补 0.01 元 IN_PROGRESS 用例, 改写 0.005 元用例为 IN_PROGRESS, 负净额用例保持 NOT_STARTED.
+
+> **DB schema / migrations: 无变化。**
+
 ## v0.25.5(2026-09-05)系统-回收站页面重做
 
 `/admin/trash`(系统分组下回收站)按「简洁实用」重做,与消息归档/通知中心风格对齐:

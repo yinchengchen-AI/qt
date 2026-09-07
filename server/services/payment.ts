@@ -122,7 +122,14 @@ export async function createPayment(
         throw new ApiError(ERROR_CODES.NOT_FOUND, "发票不属于该合同", 404);
       }
       if (inv.status !== "ISSUED") {
-        throw new ApiError(ERROR_CODES.VALIDATION_FAILED, "仅已开票（ISSUED）状态的发票可关联回款", 422);
+        // DRAFT/PENDING_FINANCE/REJECTED/VOIDED/RED_FLUSHED 都不允许直接挂回款;
+        // 注: 红冲产生的负票本身也是 ISSUED, 但 amount<0, 会被下方 R-11 自然拦截
+        // (sum + 正amount > 负invoiceAmount + TOL)
+        throw new ApiError(
+          ERROR_CODES.VALIDATION_FAILED,
+          "仅已开票（ISSUED）状态的发票可关联回款（红冲原票/作废票均不可, 红冲负票系统会自动退款）",
+          422
+        );
       }
     }
     const paymentNo = await nextBusinessNo("PAYMENT", undefined, tx);

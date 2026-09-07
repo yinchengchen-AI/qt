@@ -12,9 +12,19 @@ describe("getBillingStatus", () => {
     expect(getBillingStatus(0, 0)).toBe("NOT_STARTED");
   });
 
-  it("returns NOT_STARTED when invoiced is below tolerance (e.g. 0.005)", () => {
-    // 容差 0.01:小于等于容差视为未开票,处理 decimal→number 残留
-    expect(getBillingStatus(0.005, 1000)).toBe("NOT_STARTED");
+  it("returns NOT_STARTED when invoiced is negative (red-flush 净额为负)", () => {
+    // 净额为负意味着总开票为负向(冲销大于原票);按 <= 0 视为未开票
+    expect(getBillingStatus(-10, 100)).toBe("NOT_STARTED");
+  });
+
+  it("returns IN_PROGRESS for the smallest positive DB amount (0.01 元)", () => {
+    // DB 金额最小精度 0.01, 0.01 元视为已开但未开完
+    expect(getBillingStatus(0.01, 1000)).toBe("IN_PROGRESS");
+  });
+
+  it("treats 0.005 (仅在 decimal→number 残留时可能出现) as IN_PROGRESS", () => {
+    // 0.005 在新版下不再 <= 0, 视为"已开但不足" — 期望未来 DB 不会产出该值
+    expect(getBillingStatus(0.005, 1000)).toBe("IN_PROGRESS");
   });
 
   it("returns IN_PROGRESS when invoiced is between tolerance and total", () => {
@@ -40,11 +50,6 @@ describe("getBillingStatus", () => {
     expect(getBillingStatus(110, 100)).toBe("COMPLETED");
   });
 
-  it("returns NOT_STARTED when invoiced is negative (red-flush 净额为负)", () => {
-    // 净额为负意味着总开票为负向(冲销大于原票);按 < TOLERANCE 视为未开票
-    expect(getBillingStatus(-10, 100)).toBe("NOT_STARTED");
-  });
-
   it("coerces non-numeric / NaN inputs to 0", () => {
     expect(getBillingStatus(Number("abc"), 100)).toBe("NOT_STARTED");
     expect(getBillingStatus(50, Number("xyz"))).toBe("COMPLETED");
@@ -56,8 +61,12 @@ describe("getPaymentStatus", () => {
     expect(getPaymentStatus(0, 0)).toBe("NOT_STARTED");
   });
 
-  it("returns NOT_STARTED when paid is below tolerance (e.g. 0.005)", () => {
-    expect(getPaymentStatus(0.005, 1000)).toBe("NOT_STARTED");
+  it("returns IN_PROGRESS for the smallest positive DB amount (0.01 元)", () => {
+    expect(getPaymentStatus(0.01, 1000)).toBe("IN_PROGRESS");
+  });
+
+  it("treats 0.005 (decimal→number 残留) as IN_PROGRESS", () => {
+    expect(getPaymentStatus(0.005, 1000)).toBe("IN_PROGRESS");
   });
 
   it("returns IN_PROGRESS when paid is between tolerance and total", () => {

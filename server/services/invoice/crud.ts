@@ -204,6 +204,33 @@ export async function updateInvoice(user: SessionUser, id: string, input: Invoic
           422
         );
       }
+      // P0-1: 改小金额时复检 R-11(per-invoice 累计回款 ≤ 发票金额)
+      // 仅当 newAmount < inv.amount 时需要校验(升额时原回款 ≤ oldAmount < newAmount, R-11 自动满足)
+      // 复检范围: 该发票关联的 PLANNED(手工, 排除开票时系统预建 -PLANNED 后缀) +
+      //   CONFIRMED + RECONCILED; 系统预建 PLANNED 已在下方 updateMany 同步到 newAmount
+      // 复检时机: 在 autoAdjustPlannedPayment 之前, 避免回滚/二次提交
+      if (new Prisma.Decimal(newAmount.toString()).lessThan(inv.amount.toString())) {
+        const paymentSum = await tx.payment.aggregate({
+          where: {
+            invoiceId: id,
+            deletedAt: null,
+            OR: [
+              { status: { in: ["CONFIRMED", "RECONCILED"] } },
+              // 手工 PLANNED 计入, 系统预建 -PLANNED 不计入(下方会 updateMany 同步)
+              { status: "PLANNED", paymentNo: { not: { endsWith: "-PLANNED" } } }
+            ]
+          },
+          _sum: { amount: true }
+        });
+        const sumAmt = new Prisma.Decimal(paymentSum._sum.amount?.toString() ?? "0");
+        if (sumAmt.greaterThan(new Prisma.Decimal(newAmount.toString()).plus(TOL))) {
+          throw new ApiError(
+            ERROR_CODES.PAYMENT_OVER_INVOICE,
+            `该发票已关联回款 ¥${sumAmt.toFixed(2)}，将超过新金额 ¥${newAmount.toFixed(2)}`,
+            422
+          );
+        }
+      }
     }
     const attachments = input.attachments
       ? await resolveAttachmentSnapshots(input.attachments, "Invoice", id, tx)

@@ -2,12 +2,13 @@
 // 服务端列表/详情/导出复用,前端列表/详情通过 import @/lib/contract-billing 复用。
 //
 // 语义(与 server/services/statistics.ts:18-30 一致):
-//   - invoiced = 0                  → NOT_STARTED  未开票
-//   - 0 < invoiced < total          → IN_PROGRESS  开票中
-//   - invoiced >= total             → COMPLETED    开票已完成
+//   - invoiced <= 0                 → NOT_STARTED  未开票(0/负净额均视为未开票, 含 red-flush 净额为负)
+//   - 0 < invoiced < total - 0.01   → IN_PROGRESS  开票中(0.01 元起算, DB 最小精度)
+//   - invoiced >= total - 0.01      → COMPLETED    开票已完成
 //
-// 不容忍浮点误差:用 0.01 元容差,避免 decimal 转 number 后产生 0.0000001 的余项
-// 让 100.00 元的合同被 99.9999999 元判定为未完成。
+// 不容忍浮点误差: COMPLETED 判定用 0.01 元容差,避免 decimal 转 number 后产生
+// 0.0000001 的余项让 100.00 元的合同被 99.9999999 元判定为未完成。
+// NOT_STARTED 不用容差: 0.01 元视为已开(走 IN_PROGRESS), 0 与负数才视为未开。
 import type { BillingStatus, PaymentProgressStatus } from "@/types/enums";
 import { MONEY_TOLERANCE } from "@/lib/money-tolerance";
 
@@ -16,22 +17,22 @@ const TOLERANCE = MONEY_TOLERANCE.toNumber();
 export function getBillingStatus(invoicedAmount: number, totalAmount: number): BillingStatus {
   const total = Number(totalAmount) || 0;
   const invoiced = Number(invoicedAmount) || 0;
-  if (invoiced <= TOLERANCE) return "NOT_STARTED";
+  if (invoiced <= 0) return "NOT_STARTED";
   if (invoiced + TOLERANCE >= total) return "COMPLETED";
   return "IN_PROGRESS";
 }
 
 // 合同回款状态派生:由 paidAmount 与 totalAmount 比较得出, 与 getBillingStatus 对称。
 // 语义:
-//   - paid = 0           -> NOT_STARTED  未回款
-//   - 0 < paid < total   -> IN_PROGRESS  回款中
-//   - paid >= total      -> COMPLETED    回款已完成
+//   - paid <= 0           -> NOT_STARTED  未回款
+//   - 0 < paid < total-0.01   -> IN_PROGRESS  回款中
+//   - paid >= total-0.01      -> COMPLETED    回款已完成
 //
 // 容差复用 MONEY_TOLERANCE (0.01 元), 处理 decimal -> number 残留.
 export function getPaymentStatus(paidAmount: number, totalAmount: number): PaymentProgressStatus {
   const total = Number(totalAmount) || 0;
   const paid = Number(paidAmount) || 0;
-  if (paid <= TOLERANCE) return "NOT_STARTED";
+  if (paid <= 0) return "NOT_STARTED";
   if (paid + TOLERANCE >= total) return "COMPLETED";
   return "IN_PROGRESS";
 }
