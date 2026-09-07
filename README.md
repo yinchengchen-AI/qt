@@ -6,12 +6,12 @@
 [![TypeScript](https://img.shields.io/badge/TypeScript-6.0.3-3178c6)](https://www.typescriptlang.org/)
 [![Prisma](https://img.shields.io/badge/Prisma-7.9.1-2d3748)](https://www.prisma.io/)
 [![PostgreSQL](https://img.shields.io/badge/PostgreSQL-16-336791)](https://www.postgresql.org/)
-[![Last Release](https://img.shields.io/badge/release-v0.24.0-blue)](CHANGELOG.md)
+[![Last Release](https://img.shields.io/badge/release-v0.25.5-blue)](CHANGELOG.md)
 [![CI](https://github.com/yinchengchen-AI/qt/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/yinchengchen-AI/qt/actions/workflows/ci.yml)
 
 > **客户 / 合同 / 开票 / 回款** 一体化管理,附件走 MinIO presigned 直传,服务端 Server Actions + RBAC + 行级隔离。
 >
-> **当前版本: v0.24.0**(2026-09-04)。文档地图见 [docs/README.md](docs/README.md),架构与设计见 [docs/architecture/DESIGN-v3.md](docs/architecture/DESIGN-v3.md),用户手册见 [docs/user/USER_MANUAL.md](docs/user/USER_MANUAL.md)。
+> **当前版本: v0.25.5**(2026-09-05)。文档地图见 [docs/README.md](docs/README.md),架构与设计见 [docs/architecture/DESIGN-v3.md](docs/architecture/DESIGN-v3.md),用户手册见 [docs/user/USER_MANUAL.md](docs/user/USER_MANUAL.md)。
 
 ## 目录
 
@@ -258,71 +258,25 @@ nginx 反代下上游异常时,由 `public/502.html` 静态页与 `app/502/page.
 最近 5 个版本,完整历史见 [CHANGELOG.md](CHANGELOG.md)。
 
 
-### v0.23.0(2026-09-03)合同/开票/回款状态机实务闭环
+### v0.25.5(2026-09-05)系统-回收站页面重做
 
-开票新增「撤回」(PENDING_FINANCE→DRAFT)与「驳回后修改重提」(REJECTED→PENDING_FINANCE,复检开票限额含本票);回款新增「退回重录」(CONFIRMED→PLANNED,区别于退款不产生资金流);同时修复合同/回款/发票状态机函数中 `flushPendingKicks()` 写在 `return` 之后永不执行的真实时通知缺陷。**DB schema 无变化。** 新增 14 例 API 测试。
-### v0.22.2(2026-09-03)messages-v2-routes typecheck 修复
+`/admin/trash` 按「简洁实用」重做:文案全走 i18n,新增类型筛选/关键词搜索/刷新工具栏,行选择 + 批量恢复。纯前端 UI 重构,后端 `/api/admin/trash` 与权限不变。
 
-拉取 v0.22.1 后新增的 `tests/api/messages-v2-routes.test.ts` 在 `noUncheckedIndexedAccess` 下报 3 处 TS2532,阻塞 `npm run typecheck`。改用非空断言修复(行内已有 `toHaveLength(1)` 保证索引存在)。**DB schema 无变化。**
+### v0.25.4(2026-09-05)面包屑与实际页面匹配修复
 
-### v0.22.1(2026-09-03)「全部」tab / 抽屉空白 hotfix
+全量比对 46 个 `(app)` 页面路由与 header 面包屑映射,修复 `/admin/messages`、`/contracts/workbench`、`/admin/certificates/expiring`、`/admin/users/[id]/edit-profile` 4 处不匹配。
 
-修复 `GET /api/messages` 的 zod transform 把缺失的 `?unread` 折叠成 `false` 的问题(会导致 buildMessageWhere 加 `readAt: { not: null }` 过滤,只返回已读)。transform 改为三态(`true`/`false`/`undefined`),对齐「无参=全部」契约。同步加 3 个 zod lock 测试。
+### v0.25.3(2026-09-05)系统-消息归档页面重做
 
-### v0.22.0(2026-09-03)消息中心前后端重做
+`/admin/messages` 类型列/筛选改中文标签 + 语义色,归档月份筛选换 antd DatePicker,工具栏对齐通知中心风格。纯前端 UI 重构。
 
-把 20+ `MessageType` 拆到 6 个业务分类(合同/财务/对账/证书/系统/历史);列表新增类型/关键词/日期多维筛选 + 游标分页;新增批量操作(批量已读/删除)、用户订阅偏好(退订某类型不再发送)、SSE `message:new` 实时直推新消息(不再走 fetch 二次浪费);`bus.emit` 渲染逻辑拆到注册表;管理员归档页加类型/搜索。**DB schema 有变化: 新增 `MessagePreference` 表。** 详见 [docs/DESIGN-messages-v2.md](docs/DESIGN-messages-v2.md) 与 [CHANGELOG.md](CHANGELOG.md)。
+### v0.25.2(2026-09-05)消息类型中文标签补全
 
-### v0.21.13(2026-09-03)消息中心「清空已读」按钮修复
+`lib/status.ts` MESSAGE 映射补齐全部 23 个类型(8 个应用层类型 + 3 个已下线客户状态类型)的中文标签与语义色,归档/回收站历史数据不再回退显示英文枚举。
 
-顶栏消息中心抽屉与 `/messages` 页的「清空已读」此前点击无反应——前端调用的 `POST /api/messages/read/clear` 路由缺失(服务层与 UI 早已存在,路由从未提交)。补齐该路由并给抽屉加失败提示。**DB schema 无变化。**
+### v0.25.1(2026-09-05)messages 页面简洁实用重构
 
-### v0.21.12(2026-09-02)统计分析新增异常数据
-
-统计分析新增「异常数据」页，汇总展示发票数据质量问题，支持待处理/已处理切换、类型/关键词筛选与发票号下钻。**DB schema 无变化。**
-
-### v0.21.10(2026-09-02)应收账龄数据质量隔离
-
-新增发票级数据质量问题表和分类脚本，把 `00000000` 占位发票号、无需发票、异常账龄日期等历史脏数据从应收账龄主口径隔离，避免 90+ 被异常数据抬高；账龄统计、趋势和快照同步返回 `dataQualityExcluded`。**DB schema 有变化：新增 `InvoiceDataQualityIssue`，`AgingSnapshot` 增加数据质量隔离字段。**
-
-### v0.21.8(2026-08-27)自然语言搜索 + 智能催款接线(Phase 5 落地第一批)
-
-v0.21.6 的智能化模块接上真实入口:全局搜索框支持"找去年Q3的合同"等自然语言查询(自动解析时间/金额/类别并回显);账龄分析页新增「催款建议」Tab,按客户付款习惯生成紧急度排序的催款话术,一键复制/一键记催收。顺带修复 NL 模块三个接线时暴露的潜伏 bug。**DB schema 无变化**。
-
-### v0.21.7(2026-08-21)智能化增强模块质量修复
-
-修复 v0.21.6 六个 Phase 5 模块的质量问题(确定性评分/权重对齐/503 契约等),新增 `/api/contracts/[id]/risk/enhanced` 路由。**DB schema 无变化**。
-
-### v0.21.6(2026-08-21)智能化增强模块
-
-新增六个智能化服务模块，覆盖风险预测增强与用户体验优化。**DB schema 无变化**。
-
-- **风险评分增强**：新增行业风险、历史逾期率、季节性因素三个维度
-- **智能催款**：基于客户付款习惯生成个性化话术，智能计算催款紧急度
-- **趋势预测**：基于历史快照预测未来 7/14/30 天风险走势
-- **自然语言搜索**：支持"找去年Q3的合同"等自然语言查询
-- **AI 报表**：基于业务数据生成自然语言分析摘要
-- **个性化推荐**：分析用户工作模式，智能排序待办优先级
-
-### v0.21.4(2026-08-19)合同详情页概览金额改用 ¥ 千分位格式
-
-合同详情页概览三卡（合同总额/已开票/已回款）金额从 "X.X 万" 改为 ¥ 千分位两位小数格式（如 ¥2,000.00)，与详细信息 tab 口径一致。**DB schema 无变化**。
-
-### v0.21.3(2026-08-19)合同详情页概览收敛
-
-合同详情页概览从 4 个堆叠区块收敛为一行三卡：合同总额（带开票/回款计数）、已开票、已回款，后两张带占总额进度条与状态 Tag；删除与统计卡重复的开票/回款状态卡；修正副标题过期文案。**DB schema 无变化**。
-
-### v0.21.2(2026-08-19)操作日志时间段选择与查询再优化
-
-时间范围 RangePicker 内置 10 个预设（近 1 小时 ~ 本年）取代头部快捷按钮；时间/动作/对象列头排序（默认时间倒序）;keyword 新增命中对象可读名（合同号/客户名/发票号/回款号/用户名等）,CSV 导出同步生效。**DB schema 无变化**。
-
-### v0.21.1(2026-08-19)框架内容页宽度提高 15%
-
-桌面端框架内容区最大宽度由 1280px 提高到 1472px(+15%),移动端仍 100% 铺开。**DB schema 无变化**。
-
-### v0.21.0(2026-08-19)操作日志前后端体验优化
-
-操作日志模块升级：修复搜索区时间范围过滤不生效的 bug；列表行内展示关联对象可读名（合同号/客户名/发票号/回款号）并可跳详情；新增 `GET /api/operation-logs/meta` 动态过滤候选与 `keyword` 模糊搜索；操作人改可搜索下拉；失败原因悬停可见；diff 字段中文名 + 请求ID/IP 一键复制；CSV 导出自动翻页（上限 1000 行）；逻辑下沉 `server/services/operation-log.ts`。**DB schema 有变化：迁移 `20260822_operation_log_action_index`（action 索引）**。
+通知中心消息列表简化:分类筛选收敛为工具栏紧凑 Select,双栏改单列,未读改行内红点 + 标题加粗,移动端复用同一分类 Select。纯前端 UI 重构。
 
 ## 安全提醒
 
@@ -360,28 +314,4 @@ v0.21.6 的智能化模块接上真实入口:全局搜索框支持"找去年Q3�
 本项目以 [MIT 许可证](LICENSE)发布。Copyright © 2026 yinchengchen-AI。
 
 欢迎贡献 — 提 issue / PR 之前请先阅读 [docs/history/code-review/code-review-announcement.md](docs/history/code-review/code-review-announcement.md) 中的代码审查公告与 [AGENTS.md](AGENTS.md) 中的贡献指南。
-### v0.20.8(2026-08-19)DeepSeek 合同风险 AI 分析（Phase 4b）
 
-风险报告接入 DeepSeek LLM：「AI 分析」区一键生成自然语言摘要与跟进话术，出域数据最小化，key 仅服务端可见（本地 `.env`，gitignored）。**DB schema 无变化**。
-
-### v0.20.7(2026-08-19)移动端适配 + PWA（Phase 5）
-
-PWA 可添加到主屏幕（standalone、应用壳缓存 + 离线兜底，Service Worker 不拦截 API），手机端底部固定导航（工作台/合同/消息/我的 + 未读角标），风险报告雷达图窄屏降级条形图，工作台统计卡 2×2。**DB schema 无变化**。
-
-### v0.20.6(2026-08-19)规则引擎风险报告（Phase 4a）
-
-合同风险报告：五维度明细 + 加权公式串（spec §7.2 逐字符验算）+ 多条业务化建议（催款带剩余金额/逾期带宽限期倒数）+ 30 天趋势与主因维度；工作台抽屉与详情页「风险分析」区块共用视图。**DB schema 无变化**。
-
-### v0.20.5(2026-08-18)续签跟进 + 联动补盲（Phase 1.5/3）
-
-续签链路（`Contract.renewedFromId` 自关联 + 每周提醒 + 待办一键续签 Modal）；联动补盲两条每日检查（超期未开票 / 开票-回款偏差）+ 详情页双进度条/预警 Alert/续签链链接。**DB schema 有变化：迁移 `20260822_contract_renewed_from` + `20260822_message_type_renewal_linkage`（3 个新枚举值）**。
-
-### v0.20.4(2026-08-18)合同风险预警引擎（Phase 2）
-
-五维度风险评分（到期/付款/开票/客户信用/金额异常）+ 每日快照 + 等级升档站内信；工作台风险卡真实计数 + 风险抽屉（雷达+趋势）。**DB schema 有变化：新表 `RiskScoreSnapshot`（含 GRANT qt_app）+ `RISK_LEVEL_UP` 枚举**。
-
-### v0.20.3(2026-08-18)个人合同工作台（Phase 1）
-
-新增「合同工作台」页：我的统计卡（活跃/即将到期/逾期/风险）+ 待办列表（逾期>7天内到期>未开票优先级）+ 我的合同 ProTable；合同列表支持 `mine=true` 服务端注入 ownerUserId 行级隔离防越权。**DB schema 无变化**。
-
-### v0.20.2(2026-08-17)对账规则配置（ReconciliationRule）下线
