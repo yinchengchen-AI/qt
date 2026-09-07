@@ -323,6 +323,18 @@ dev 模式无：
 | **运维 Runbook** | 备份恢复 / 故障切换 / 性能瓶颈排查 |
 | **权限审计** | 每季度 review 一次角色 × 资源矩阵 |
 
+### 5.7 已知实现缺口 — LLM 增强
+
+「AI / 智能化」标签覆盖三个模块,但**只有合同风险分析真正调用了 DeepSeek**,另外两个目前仍是本地规则实现(代码内留有 TODO):
+
+| 模块 | 入口 | 现状 |
+|---|---|---|
+| 合同风险 AI 分析 | `server/services/contract-ai.ts` | **已接 DeepSeek**(v0.20.8);未配置 `DEEPSEEK_API_KEY` 时显式 503,不伪装本地生成 |
+| AI 报表 | `server/services/ai-report-generation.ts:180` | 规则实现;即使配了 key 也返回本地规则结果(TODO 未实现) |
+| AI 催款建议 | `server/services/smart-collection.ts:271`(`generateLLMCollectionAdvice`) | 规则实现;同上,配置 key 后仍走规则引擎 |
+
+> 对外介绍 / 用户手册涉及「AI 报表」「AI 催款」时,措辞应为「基于规则的智能分析」,避免与真正接 LLM 的合同风险分析混为一谈。
+
 ---
 
 ## 六、给后续开发者的建议

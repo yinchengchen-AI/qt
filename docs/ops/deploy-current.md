@@ -16,10 +16,10 @@
 | 本地 dry-run (只显示 ssh 配置, 不真跑) | `./scripts/prod/remote-deploy.sh --dry-run` |
 | **server 上日常部署** (进 ssh 后) | `cd /opt/qt && sudo -E ./scripts/prod/deploy.sh` |
 | 紧急回滚到上一版 | `bash /opt/qt/scripts/prod/rollback.sh` |
-| 查看历史镜像版本 | `bash /opt/qt/scripts/prod/rollback.sh --list` |
+| 查看可回滚的候选 commit | `bash /opt/qt/scripts/prod/rollback.sh --list` |
 | 回滚到指定版本 | `bash /opt/qt/scripts/prod/rollback.sh --to v0.13.6` |
 | 看部署日志 | `tail -f /var/log/qt-deploy.log` |
-| 看应用日志 | `docker logs -f qt-app` |
+| 看应用日志 | `journalctl -u qt-app -f` |
 | 看 cron 自检日志 | `tail -f /var/log/qt-cron.log` |
 
 ## 二、deploy.sh 自动跑的 9 步
@@ -99,7 +99,7 @@ bash /opt/qt/scripts/prod/rollback.sh --to <sha> --skip-smoke  # 紧急回滚 (�
 不跑 `prisma migrate deploy` (DB schema 永远 forward; code 可以向后)。  
 回滚前自动创建 `.rollback-<old-sha>` 备份分支, 出问题可 `bash scripts/prod/rollback.sh --to .rollback-<sha>` 滚回去。
 
-**Docker 应急**: 把 `qt-app.service` 停掉, `docker compose up -d app`。镜像保留最近 1 版 (`deploy.sh` 末尾 `KEEP=1`)。
+**~~Docker 应急~~ 已失效**: v0.17 起 `qt-app` 镜像与容器已清除, `docker compose up -d app` 无镜像可起; 应急路径只有 `rollback.sh --to <sha>` 或手工 `docker build -t qt-app:latest .`(根目录 `Dockerfile` 仍保留, 仅作历史参考)。
 
 ## 四点五、首次切 native (从 docker qt-app 迁过来)
 

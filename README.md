@@ -52,7 +52,7 @@ cp .env.example .env   # 默认 minioadmin/minioadmin;生产前必轮换
 npm install
 npx prisma migrate dev
 
-# 4) 系统管理数据(5 角色 / 5 部门 / 8 类字典)
+# 4) 系统管理数据(5 角色 / system actor / 5 部门 / 17 类字典)
 npm run seed
 
 # 5) 第一个业务管理员
@@ -123,7 +123,7 @@ qt-biz/
 ├─ public/                    静态资源(502 兜底页 / 品牌 logo)
 ├─ docker-compose.postgres.yml
 ├─ docker-compose.minio.yml
-└─ Dockerfile                 多阶段构建(v0.13.3 起全 Docker 化部署)
+└─ Dockerfile                 多阶段构建 — **DEPRECATED(v0.17+)**:现网走 native systemd,此文件仅留作应急回退参考
 ```
 
 ## 脚本速查
@@ -161,9 +161,9 @@ qt-biz/
 
 | 命令 | 用途 |
 |---|---|
-| `npm run seed` | 系统管理数据(角色 / 部门 / 字典 / 工作流模板) |
+| `npm run seed` | 系统管理数据(幂等):5 角色 + system actor + 5 部门 + 17 类字典 |
 | `npm run seed-roles` | 只插 5 角色 |
-| `npm run seed-dicts` | 只插 8 类字典 |
+| `npm run seed-dicts` | 只插 17 类字典 |
 | `npm run sync-dict` | 同步字典 |
 | `npm run create-admin` | CLI 创建业务管理员 |
 | `npm run reset-password` | 重置密码 |
@@ -199,7 +199,7 @@ qt-biz/
 | `CRON_SECRET` | 否 | 仅 Vercel Cron 需要,自动注入 `Authorization: Bearer` |
 | `APP_LOCALE` | 否 | 默认 `zh-CN` |
 | `FORCE_HTTPS` | 否 | 生产设 `true`,启用 Secure Cookie |
-| `SKIP_ENV_VALIDATION` | 否 | 仅构建期(v0.13.3+,`Dockerfile` 设置) |
+| `SKIP_ENV_VALIDATION` | 否 | 仅构建期(CI 生产构建冒烟用;历史由 `Dockerfile` 设置,该文件已 DEPRECATED) |
 | `MINIO_*` | 否 | 端点 / 端口 / 凭证 / bucket / 公开 base URL,见 `.env.example` |
 | `DEV_QUICK_FILL_PASSWORD` | 否 | `seed:dev-users` 测试账号密码,**生产不要设置** |
 
@@ -207,11 +207,12 @@ qt-biz/
 
 ```bash
 npx prisma migrate deploy           # 应用全部 migration(已合并到 main 不可删)
-npm run seed-roles                 # 5 角色
-npm run seed-dicts                 # 8 类字典
+npm run seed                       # 系统管理数据(幂等): 5 角色 + system actor + 5 部门 + 17 类字典
 npm run create-admin -- --employeeNo <工号> --name <真名> --email <公司邮箱> --password '<强密码>'
-npm run seed                       # 找到 ADMIN 后写入工作流模板
 ```
+
+> `npm run seed` 只写系统管理数据,不依赖 ADMIN 账号,也不再 seed 业务数据(客户/合同/发票/回款走真实数据)。
+> 工作流模板随 v0.3.0 工作流模块下线已移除,seed 不再写入。
 
 **生产密码**:`create-admin` 强制 ≥ 8 字符,生产请用密码管理器生成的随机串。
 
@@ -225,10 +226,10 @@ npm run seed                       # 找到 ADMIN 后写入工作流模板
 日常更新(服务器 `/opt/qt`):
 
 ```bash
-sudo -E ./scripts/prod/deploy.sh      # preflight → git pull → docker build → migrate → release:publish → compose up → smoke
+sudo -E ./scripts/prod/deploy.sh      # preflight → git pull → native build → compose up pg/minio → migrate deploy → release:publish → systemctl restart → smoke
 ```
 
-构建已做国内源提速(apk 阿里云 / npm npmmirror + BuildKit 缓存挂载 / 阿里云个人镜像加速器),普通部署 ~3 分钟,依赖升级类 ~9 分钟。日志写到 `/var/log/qt-deploy.log`。
+v0.16.0 起应用为 **native systemd**(`qt-app.service`),不再 docker build;native build 复用 Turbopack `.next/cache` 增量,日常部署 30s–2min(v0.15.x docker 时期约 14min)。日志写到 `/var/log/qt-deploy.log`,应用日志用 `journalctl -u qt-app -f`。
 
 ### 备份与定时任务
 
@@ -242,20 +243,22 @@ nginx 反代下上游异常时,由 `public/502.html` 静态页与 `app/502/page.
 
 ## 质量基线
 
-基线刷新于 **v0.18.3(2026-08-02)**。
+基线刷新于 **v0.25.5(2026-09-07)**。
 
 | 项 | 状态 |
 |---|---|
-| `npm run typecheck` | 0 errors |
-| `npm run lint` | 0 errors / 0 warnings |
-| `npm test` | 86 个 `.test.ts`,661 用例全绿 |
-| `npm run test:e2e` | 部分运行:01.1 / 12 / 14 三项目(chromium / iPad / iPhone)全绿 |
-| `prisma generate` + `migrate deploy` | 42 / 42 migrations,client v7.9.1 |
+| `npm run typecheck` | 0 errors(实测) |
+| `npm run lint` | 0 errors / 0 warnings(实测) |
+| `npm test` | 122 个 `.test.ts`,1062 用例(实测):本地未起 PG/MinIO 时 629 通过 / 423 跳过 / 10 失败,失败与跳过均为依赖实时数据库的套件,先 `npm run dev:setup` 起基础设施后应全绿 |
+| `npm run test:e2e` | 部分运行:01.1 / 12 / 14 三项目(chromium / iPad / iPhone)全绿(沿用上轮记录) |
+| `prisma generate` + `migrate deploy` | 59 / 59 migrations,client v7.9.1 |
 | `npm run build` | 本地因 `docker-data/postgres` 目录权限未通过验证(环境限制,非代码错误) |
+
+> typecheck / lint / vitest 三行为 v0.25.5 本地实测;E2E 与 build 行沿用上一轮记录,未在本轮重跑。
 
 ## 最近更新
 
-最近 5 个版本,完整历史见 [CHANGELOG.md](CHANGELOG.md)。
+最近 5 个版本(另附更早的重要版本 v0.25.0),完整历史见 [CHANGELOG.md](CHANGELOG.md)。
 
 
 ### v0.25.5(2026-09-05)系统-回收站页面重做
@@ -277,6 +280,10 @@ nginx 反代下上游异常时,由 `public/502.html` 静态页与 `app/502/page.
 ### v0.25.1(2026-09-05)messages 页面简洁实用重构
 
 通知中心消息列表简化:分类筛选收敛为工具栏紧凑 Select,双栏改单列,未读改行内红点 + 标题加粗,移动端复用同一分类 Select。纯前端 UI 重构。
+
+### v0.25.0(2026-09-05)通知中心:消息与公告模块重构(重要)
+
+散在「消息与公告」分组下的消息中心、公告、更新日志三个入口重构为统一**通知中心**:`/messages` 单入口 + Tabs(消息/公告/回收站),公告管理能力并入公告 Tab;更新日志 `/releases` 移入「系统」分组(全员可见);旧路径 `/announcements` 保留重定向。
 
 ## 安全提醒
 

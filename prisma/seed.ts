@@ -1,8 +1,9 @@
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
-// @ts-nocheck -- 字典/工作流模板用 JS 字面量集中维护, 暂不细化类型
-// 种子: 5 角色 + 5 部门 + 字典 (系统管理数据)
-// 业务数据 (客户/合同/项目/发票/回款/跟进) 不再 seed, 生产用真实数据
-// 初始账号: 跑 pnpm create-admin 自行创建
+// @ts-nocheck -- 字典用 JS 字面量集中维护, 暂不细化类型
+// 种子: 5 角色 + system actor + 5 部门 + 17 类字典 (系统管理数据, 幂等 upsert)
+// 业务数据 (客户/合同/发票/回款/跟进) 不再 seed, 生产用真实数据
+// 工作流模板 / 项目 随 v0.3.0 模块下线已移除, 不再写入
+// 初始账号: 跑 npm run create-admin 自行创建
 import { randomBytes } from "node:crypto";
 import bcrypt from "bcrypt";
 import { PrismaClient } from "@prisma/client";

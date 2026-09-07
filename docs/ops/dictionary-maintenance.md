@@ -64,10 +64,10 @@ npx prisma migrate deploy
 # 2) 角色 (5 角色,与 lib/permissions.ts 同源)
 pnpm seed-roles
 
-# 3) 字典 (16 类白名单,与 scripts/shared/dict-defs.ts 同源)
+# 3) 字典 (17 类白名单,与 scripts/shared/dict-defs.ts 同源)
 pnpm seed-dicts
 
-# 4) 部门 + 字典 + 9 类工作流模板 (一站式)
+# 4) system actor + 部门 + 字典 (一站式,幂等;工作流模板随 v0.3.0 下线已移除)
 pnpm seed
 
 # 5) 创建管理员
