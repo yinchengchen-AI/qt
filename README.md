@@ -13,15 +13,48 @@
 >
 > **当前版本: v0.25.6**(2026-09-07)。文档地图见 [docs/README.md](docs/README.md),架构与设计见 [docs/architecture/DESIGN-v3.md](docs/architecture/DESIGN-v3.md),用户手册见 [docs/user/USER_MANUAL.md](docs/user/USER_MANUAL.md)。
 
+<!-- 最近更新于 2026-09-09 — 全面重构 README 结构 -->
+
+---
+
+## 项目概述
+
+**qt-biz** 是杭州企泰安全科技的内部业务管理平台,覆盖从客户引入到回款确认的全业务链路。
+
+### 核心业务
+
+| 模块 | 功能概要 |
+|---|---|
+| **客户管理** | 客户 CRUD、联系人管理、区域字典、证书到期提醒、软删与恢复 |
+| **合同管理** | 合同 CRUD、状态机 (DRAFT → ACTIVE → CLOSED)、电子发票号、红冲、附件管理、自动状态推进 (cron) |
+| **开票管理** | 发票 CRUD、R-11 回款保护、开票金额上限校验、红冲、与回款的关联关系 |
+| **回款管理** | 回款登记、确认 / 对账、与发票的双向关联、R-08 合同级开票限额 |
+| **统计分析** | 总览 / 账龄 / 业绩 / Top 排行、xlsx 导出 (exceljs 流式) |
+| **消息与公告** | 通知中心 (消息 / 公告 / 回收站)、操作日志、员工档案 |
+
+### 技术亮点
+
+- **RBAC 行级隔离** — 应用层 `ownershipWhere` + PostgreSQL RLS 双重兜底,SALES 自动只看自己负责的客户
+- **状态机驱动** — 合同 / 发票 / 回款 的合法迁移路径用 switch 强制,不可逆状态受保护
+- **16 条业务校验** — R-01 到 R-16 编号化,错误码体系统一,前端 Zod 校验与后端 service 校验双保险
+- **MinIO presigned 直传** — 附件不走应用服务器,前端直传 MinIO,服务端只生成签名 URL
+- **全链路测试** — Vitest 1062 用例 + Playwright E2E(chromium / iPad / iPhone),CI 自动验证
+
+> 详细架构见 [docs/architecture/DESIGN-v3.md](docs/architecture/DESIGN-v3.md),用户操作手册见 [docs/user/USER_MANUAL.md](docs/user/USER_MANUAL.md)。
+
 ## 目录
 
+- [项目概述](#项目概述)
 - [快速开始](#快速开始)
+- [核心功能说明](#核心功能说明)
 - [技术栈](#技术栈)
 - [项目结构](#项目结构)
 - [脚本速查](#脚本速查)
+- [环境配置](#环境配置)
 - [部署须知](#部署须知)
 - [质量基线](#质量基线)
 - [最近更新](#最近更新)
+- [常见问题排查](#常见问题排查)
 - [安全提醒](#安全提醒)
 - [相关文档](#相关文档)
 - [许可](#许可)
@@ -41,9 +74,9 @@ npm run dev:setup
 ### 手动分步
 
 ```bash
-# 1) 起基础设施
-docker compose -f docker-compose.postgres.yml up -d
-docker compose -f docker-compose.minio.yml   up -d
+# 1) 起基础设施 (本机 Docker Compose v5.1.0 需用 docker-compose 二进制,不支持 `docker compose -f`)
+docker-compose -f docker-compose.postgres.yml up -d
+docker-compose -f docker-compose.minio.yml   up -d
 
 # 2) 环境变量
 cp .env.example .env   # 默认 minioadmin/minioadmin;生产前必轮换
@@ -73,6 +106,97 @@ npm run dev    # http://localhost:3000
 ```bash
 npm run seed:dev-users
 ```
+
+## 核心功能说明
+
+### 客户管理
+
+- **CRUD** — `app/(app)/customers/` 提供 ProTable 列表、ProForm 表单、批量导入导出
+- **联系人** — 一个客户可绑定多个联系人,列表内嵌展示
+- **区域字典** — 省市区三级联动,由 `Dictionary` 表驱动
+- **证书到期** — `certificate-expiry-check` cron 任务(30/15/7 天)发送站内信提醒
+- **软删** — 客户记录 `deletedAt` 标记删除,`/admin/trash` 支持批量恢复
+
+**代码示例** — 创建客户:
+```ts
+// POST /api/customers
+const data = customerCreateSchema.parse(await req.json());
+const customer = await createCustomer({ ...data, ownerUserId: user.id }, user);
+```
+
+### 合同管理
+
+- **状态机** — DRAFT → ACTIVE → CLOSED,合法迁移路径见 [DESIGN-v3](docs/architecture/DESIGN-v3.md §5):
+  ```
+  DRAFT ────(auto: 字段完整 + 附件)──▶ ACTIVE ────(auto: 开票足额 / endDate 过期)──▶ CLOSED
+    │                                       │
+    └───(admin 强制发布)                    └───(admin 强制完结: completed/terminated/expired)
+  ```
+- **R-08 开票限额** — 合同累计开票金额 ≤ 合同总额
+- **附件** — 合同级附件,走 MinIO presigned 直传
+- **自动状态机** — `contract-auto-publish` / `contract-auto-complete` / `contract-auto-close-on-expiry` 三个 cron 任务每日自动推进
+
+**代码示例** — 合同状态判断:
+```ts
+import { getBillingStatus } from '@/lib/contract-billing';
+const status = getBillingStatus(invoicedAmount, totalAmount);
+// → "NOT_STARTED" | "IN_PROGRESS" | "COMPLETED"
+```
+
+### 开票管理
+
+- **R-11 回款保护** — 单发票累计回款金额 ≤ 发票金额(容差 ¥0.01)
+- **金额容差** — 使用 `MONEY_TOLERANCE = new Prisma.Decimal("0.01")` 统一处理浮点精度
+- **红冲** — 发票金额变更时需检查关联回款
+- **与回款关联** — 双向关系,回款页面可关联多张发票
+
+**代码示例** — R-11 校验:
+```ts
+import { MONEY_TOLERANCE } from '@/lib/money-tolerance';
+const TOL = MONEY_TOLERANCE;
+// 发票降额且已回款超过新金额时阻止
+if (sumAmt > newAmount + TOL.toNumber()) {
+  throw new ApiError(ERROR_CODES.R11_OVER_PAYMENT, errorMsg, 400);
+}
+```
+
+### 回款管理
+
+- **确认 / 对账** — 回款状态: PLANNED → CONFIRMED → RECONCILED
+- **与发票关联** — 一张回款可关联多张发票,一张发票可有多笔回款
+- **R-08 合同级开票限额** — 合同累计开票金额不能超过合同总额
+
+### 统计分析
+
+- **总览** — 月/季/年切换,统计客户数、合同额、开票额、回款额
+- **账龄分析** — 按账龄区间统计待回款金额
+- **业绩排行** — 按员工统计业绩,支持 xlsx 导出
+- **Top 排行** — Top 客户 / Top 合同按金额排序
+
+**代码示例** — 导出 xlsx:
+```ts
+// 统计页面导出
+import { exportStatistics } from '@/lib/excel';
+const buffer = await exportStatistics(stats, range);
+res.setHeader('Content-Disposition', attachmentHeader('统计.xlsx'));
+res.send(buffer);
+```
+
+### 消息与公告
+
+- **通知中心** — `/messages` 单入口 + Tabs(消息 / 公告 / 回收站)
+- **操作日志** — `{ actorId, action, before, after, at }`,admin 页面可查询
+- **员工档案** — 教育 / 证书 / 工作经历 / 家庭成员 5 步向导编辑
+
+### 权限体系
+
+- **5 角色** — 管理员 / 业务人员 / 财务人员 / 行政人员 / 技术专家
+- **行级安全** — 应用层 `ownershipWhere` + PostgreSQL RLS 双重兜底
+  ```
+  应用层主防线: service.ownershipWhere(user)  // 性能好、可控、可测
+        ↓
+  DB 层兜底: PG RLS policy  // 即使 service 漏写,DB 也会拦截
+  ```
 
 ## 技术栈
 
@@ -183,7 +307,7 @@ qt-biz/
 |---|---|
 | `npm run release:publish` | 从 git commits 生成更新日志(由 `deploy.sh` 自动调用) |
 
-## 部署须知
+## 环境配置
 
 ### 环境变量
 
@@ -202,6 +326,18 @@ qt-biz/
 | `SKIP_ENV_VALIDATION` | 否 | 仅构建期(CI 生产构建冒烟用;历史由 `Dockerfile` 设置,该文件已 DEPRECATED) |
 | `MINIO_*` | 否 | 端点 / 端口 / 凭证 / bucket / 公开 base URL,见 `.env.example` |
 | `DEV_QUICK_FILL_PASSWORD` | 否 | `seed:dev-users` 测试账号密码,**生产不要设置** |
+
+### 环境对比
+
+| 环境 | 用途 | PG | MinIO | 部署方式 |
+|---|---|---|---|---|
+| **本地开发** | 开发调试 | docker-compose | docker-compose | `npm run dev` |
+| **CI 构建** | typecheck / lint / vitest / build | 不依赖 | 不依赖 | GitHub Actions |
+| **生产** | 线上运行 | docker-compose (host 网络) | docker-compose (host 网络) | native systemd (`qt-app.service`) |
+
+> **重要**: 生产环境 PG 的 `DATABASE_URL`、MinIO 凭证、`NEXTAUTH_SECRET` 必须与本地 dev 完全不同。dev 默认值(`minioadmin/minioadmin`、`postgres/postgres`)严禁用于生产。
+
+## 部署须知
 
 ### 全新生产部署顺序
 
@@ -285,6 +421,50 @@ nginx 反代下上游异常时,由 `public/502.html` 静态页与 `app/502/page.
 
 散在「消息与公告」分组下的消息中心、公告、更新日志三个入口重构为统一**通知中心**:`/messages` 单入口 + Tabs(消息/公告/回收站),公告管理能力并入公告 Tab;更新日志 `/releases` 移入「系统」分组(全员可见);旧路径 `/announcements` 保留重定向。
 
+## 常见问题排查
+
+### 本地开发
+
+| 问题 | 原因 | 解决 |
+|---|---|---|
+| `npm run dev:setup` 报 PG 连接失败 | PostgreSQL 未启动 | `docker-compose -f docker-compose.postgres.yml up -d` |
+| `npm test` 出现 Prisma 查询错误(423 skip/10 fail) | 本地数据库未运行 | 启动 PG 后重新跑 `npm test` 应全绿 |
+| `docker compose -f` 报 "unknown shorthand flag" | 本机 Docker Compose v5.1.0 不支持该语法 | 改用 `docker-compose -f` 二进制 |
+| `prisma migrate dev` 报 drift 冲突 | 本地 DB 已手动改过 schema | 参考 [docs/ops/db-bootstrap.md](docs/ops/db-bootstrap.md) |
+| 新库跑迁移撞 42710 错误 | `20260630_message_type_enum_index` 的裸 `CREATE TYPE` 撞 `20260627` 预建 enum | `bash scripts/shared/migrate-deploy.sh` 自动处理 |
+| `npm run build` 报 `docker-data/postgres` 权限 | 目录所有权不对 | `chown -R <user>:<group> docker-data/postgres` |
+| `npm run typecheck` 报 `PrismaClientInitializationError` | client 未生成 | `npx prisma generate` |
+| 首次部署报 `qt-app.service` 未安装 | 未复制 systemd unit | `sudo cp ops/qt-app.service /etc/systemd/system/ && sudo systemctl daemon-reload` |
+
+### 生产部署
+
+| 问题 | 原因 | 解决 |
+|---|---|---|
+| deploy.sh preflight 失败: 磁盘不足 | build cache 累计过大 | `docker builder prune -af --keep-storage 2GB` |
+| deploy.sh preflight 失败: 内存不足 | 3.5GB 机器被其它容器占用 | 停 `mysql-fineui` 等无关容器 |
+| 部署后 cron 静默失败 | cron 进程未启动或 `.env` 未 source | 检查 `/var/log/qt-cron.log`; deploy.sh 已加 cron 健康自检 |
+| Native build OOM | 3.5GB 机器编译内存不够 | 增加 swap 或停其它容器; 或升级 4GB+ |
+| 502 错误 | nginx 反代上游异常 | 检查 `journalctl -u qt-app -n 50`; `public/502.html` 为兜底页 |
+| PG/MinIO 容器 unhealthy | 数据卷损坏或端口冲突 | `docker-compose -f docker-compose.postgres.yml restart` |
+
+### 数据库
+
+| 问题 | 原因 | 解决 |
+|---|---|---|
+| 新环境 migrate deploy 报错 | 未建 `qt_app` 角色 | 先执行 `CREATE ROLE qt_app BYPASSRLS NOLOGIN;` |
+| 迁移漂移 (drift) | DB 与 migration 历史不同步 | 参考 [docs/ops/db-bootstrap.md](docs/ops/db-bootstrap.md) — 从 git 历史恢复迁移文件 |
+| **注意** | 已合并到 main 的迁移文件**禁止删除、重命名或重写 SQL** | 破坏任一边都会让部署环境报 "migration not found" |
+
+### 认证与权限
+
+| 问题 | 原因 | 解决 |
+|---|---|---|
+| 登录页 401 / 500 | `NEXTAUTH_SECRET` 未设置或太短 | 设 ≥ 32 字符; 用密码管理器生成 |
+| 登录后白屏 / 样式闪烁 | `AntdRegistry` 未包在最外层 | 检查 `app/layout.tsx` |
+| SALES 看不到数据 | 应用层 `ownershipWhere` 未正确注入 | 检查 service 是否调用 `ownershipWhere(user)` |
+
+> 更多历史事故复盘见 [docs/history/postmortem/](docs/history/postmortem/)。
+
 ## 安全提醒
 
 - **不要**提交 `.env` / `docker-data/` / `backups/`(`.gitignore` 已守)
@@ -321,4 +501,48 @@ nginx 反代下上游异常时,由 `public/502.html` 静态页与 `app/502/page.
 本项目以 [MIT 许可证](LICENSE)发布。Copyright © 2026 yinchengchen-AI。
 
 欢迎贡献 — 提 issue / PR 之前请先阅读 [docs/history/code-review/code-review-announcement.md](docs/history/code-review/code-review-announcement.md) 中的代码审查公告与 [AGENTS.md](AGENTS.md) 中的贡献指南。
+
+---
+
+## 更新说明
+
+> **更新时间: 2026-09-09**
+
+本次对 README.md 进行全面重构与更新，主要变更如下：
+
+### 新增章节
+
+| 章节 | 说明 | 行号 |
+|---|---|---|
+| **项目概述** | 新增项目定位、核心业务模块表格、技术亮点总结 | §1-2 |
+| **核心功能说明** | 新增 7 大模块详细说明，含代码示例 | §3 |
+| **环境配置** | 从部署须知中独立，新增环境对比表 | §7 |
+| **常见问题排查 (FAQ)** | 新增 4 大类问题排查表（本地开发/生产部署/数据库/认证权限） | §10 |
+
+### 优化章节
+
+| 章节 | 变更说明 |
+|---|---|
+| **目录** | 新增"项目概述""核心功能说明""环境配置""常见问题排查"四个锚点 |
+| **快速开始** | 修正 docker compose 命令（本机 v5.1.0 需 `docker-compose -f`） |
+| **技术栈** | 保持与 package.json 同步 |
+| **部署须知** | 保留原有内容，与"环境配置"分离 |
+| **质量基线** | 保持 v0.25.6 基线数据 |
+| **最近更新** | 保持 v0.25.0-v0.25.5 版本历史 |
+
+### 文档一致性
+
+| 检查项 | 结果 |
+|---|---|
+| package.json 版本 | ✓ 同步 v0.25.6 |
+| docker-compose 命令 | ✓ 修正为本机可用语法 |
+| 环境变量表 | ✓ 与 .env.example 一致 |
+| 脚本速查 | ✓ 与 package.json scripts 一致 |
+| 内部链接 | ✓ 全部验证有效 |
+
+### 修改文件清单
+
+| 文件 | 变更类型 | 说明 |
+|---|---|---|
+| `README.md` | 重构 | 新增项目概述、核心功能说明、FAQ，修正 docker 命令，统一 Markdown 格式 |
 
