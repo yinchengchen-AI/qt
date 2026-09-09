@@ -249,7 +249,7 @@ nginx 反代下上游异常时,由 `public/502.html` 静态页与 `app/502/page.
 |---|---|
 | `npm run typecheck` | 0 errors(实测) |
 | `npm run lint` | 0 errors / 0 warnings(实测) |
-| `npm test` | 122 个 `.test.ts`,1062 用例(实测):本地未起 PG/MinIO 时 629 通过 / 423 跳过 / 10 失败,失败与跳过均为依赖实时数据库的套件,先 `npm run dev:setup` 起基础设施后应全绿 |
+| `npm test` | 122 个 `.test.ts`,1062 用例:本地无 PG 时 629 pass/423 skip/10 fail; 有 PG(`npm run dev:setup`) 时应全绿 |
 | `npm run test:e2e` | 部分运行:01.1 / 12 / 14 三项目(chromium / iPad / iPhone)全绿(沿用上轮记录) |
 | `prisma generate` + `migrate deploy` | 59 / 59 migrations,client v7.9.1 |
 | `npm run build` | 本地因 `docker-data/postgres` 目录权限未通过验证(环境限制,非代码错误) |

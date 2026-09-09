@@ -102,9 +102,12 @@ describe("updateInvoice - 降额 R-11 守卫", () => {
     ).rejects.toMatchObject({ errorCode: ERROR_CODES.PAYMENT_OVER_INVOICE, status: 422 });
     // R-11 复检跑了一次
     expect(captured.paymentAggregateCalls).toBe(1);
-    // 口径: OR 分支含 CONFIRMED/RECONCILED 与 手工 PLANNED(非 -PLANNED 后缀)
+    // 验证 where 条件: OR 分支含 CONFIRMED/RECONCILED 与 手工 PLANNED(非 -PLANNED 后缀)
     const ors = captured.paymentOrBranches[0] ?? [];
-    expect(ors.length).toBeGreaterThanOrEqual(2);
+    expect(ors).toHaveLength(2);
+    expect(ors[0]).toHaveProperty("status", { in: expect.arrayContaining(["CONFIRMED", "RECONCILED"]) });
+    expect(ors[1]).toHaveProperty("status", "PLANNED");
+    expect(ors[1]).toHaveProperty("paymentNo", { not: { endsWith: "-PLANNED" } });
   });
 
   it("降额但已回款在容差内 → 允许", async () => {

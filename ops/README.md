@@ -32,6 +32,7 @@ sudo systemctl daemon-reload
 sudo systemctl enable --now qt-app.service
 journalctl -u qt-app -f                    # 实时日志
 systemctl status qt-app --no-pager         # 运行状态
+systemctl is-active qt-app && echo "OK" || (echo "FAILED" && journalctl -u qt-app -n 50)
 
 # 2) 基础设施 (PG + MinIO, 仍走 docker)
 docker compose -f docker-compose.prod.yml up -d postgres minio

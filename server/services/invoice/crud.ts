@@ -209,6 +209,7 @@ export async function updateInvoice(user: SessionUser, id: string, input: Invoic
       // 复检范围: 该发票关联的 PLANNED(手工, 排除开票时系统预建 -PLANNED 后缀) +
       //   CONFIRMED + RECONCILED; 系统预建 PLANNED 已在下方 updateMany 同步到 newAmount
       // 复检时机: 在 autoAdjustPlannedPayment 之前, 避免回滚/二次提交
+      // TOL: 来自外层 (line 199), 统一使用 MONEY_TOLERANCE
       if (new Prisma.Decimal(newAmount.toString()).lessThan(inv.amount.toString())) {
         const paymentSum = await tx.payment.aggregate({
           where: {
@@ -226,7 +227,7 @@ export async function updateInvoice(user: SessionUser, id: string, input: Invoic
         if (sumAmt.greaterThan(new Prisma.Decimal(newAmount.toString()).plus(TOL))) {
           throw new ApiError(
             ERROR_CODES.PAYMENT_OVER_INVOICE,
-            `该发票已关联回款 ¥${sumAmt.toFixed(2)}，将超过新金额 ¥${newAmount.toFixed(2)}`,
+            `该发票已关联回款 ¥${sumAmt.toFixed(2)}，超过新金额 ¥${newAmount.toFixed(2)}（容差 ¥${TOL.toFixed(2)}）`,
             422
           );
         }

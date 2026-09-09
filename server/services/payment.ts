@@ -127,7 +127,7 @@ export async function createPayment(
         // (sum + 正amount > 负invoiceAmount + TOL)
         throw new ApiError(
           ERROR_CODES.VALIDATION_FAILED,
-          "仅已开票（ISSUED）状态的发票可关联回款（红冲原票/作废票均不可, 红冲负票系统会自动退款）",
+          "仅已开票（ISSUED）状态的发票可关联回款",
           422
         );
       }

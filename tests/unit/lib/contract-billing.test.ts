@@ -13,18 +13,19 @@ describe("getBillingStatus", () => {
   });
 
   it("returns NOT_STARTED when invoiced is negative (red-flush 净额为负)", () => {
-    // 净额为负意味着总开票为负向(冲销大于原票);按 <= 0 视为未开票
+    // 净额为负意味着总开票为负向(冲销大于原票);按 <= TOLERANCE 视为未开票
     expect(getBillingStatus(-10, 100)).toBe("NOT_STARTED");
   });
 
-  it("returns IN_PROGRESS for the smallest positive DB amount (0.01 元)", () => {
-    // DB 金额最小精度 0.01, 0.01 元视为已开但未开完
+  it("returns IN_PROGRESS for the smallest DB amount (0.01 元) — at tolerance boundary", () => {
+    // 0.01 = TOLERANCE, 按 < TOLERANCE 判断: 0.01 < 0.01 is false → IN_PROGRESS;
+    // DB 最小精度 0.01 元视为已开但未开完
     expect(getBillingStatus(0.01, 1000)).toBe("IN_PROGRESS");
   });
 
-  it("treats 0.005 (仅在 decimal→number 残留时可能出现) as IN_PROGRESS", () => {
-    // 0.005 在新版下不再 <= 0, 视为"已开但不足" — 期望未来 DB 不会产出该值
-    expect(getBillingStatus(0.005, 1000)).toBe("IN_PROGRESS");
+  it("treats 0.005 (decimal→number 残留) as NOT_STARTED", () => {
+    // 0.005 < TOLERANCE(0.01), 视为"未开" — decimal→number 残留应兜底
+    expect(getBillingStatus(0.005, 1000)).toBe("NOT_STARTED");
   });
 
   it("returns IN_PROGRESS when invoiced is between tolerance and total", () => {
@@ -61,12 +62,15 @@ describe("getPaymentStatus", () => {
     expect(getPaymentStatus(0, 0)).toBe("NOT_STARTED");
   });
 
-  it("returns IN_PROGRESS for the smallest positive DB amount (0.01 元)", () => {
+  it("returns IN_PROGRESS for the smallest positive DB amount (0.01 元) — at tolerance boundary", () => {
+    // 0.01 = TOLERANCE, 按 < TOLERANCE 判断: 0.01 < 0.01 is false → IN_PROGRESS;
+    // DB 最小精度 0.01 元视为已回但未回完
     expect(getPaymentStatus(0.01, 1000)).toBe("IN_PROGRESS");
   });
 
-  it("treats 0.005 (decimal→number 残留) as IN_PROGRESS", () => {
-    expect(getPaymentStatus(0.005, 1000)).toBe("IN_PROGRESS");
+  it("treats 0.005 (decimal→number 残留) as NOT_STARTED", () => {
+    // 0.005 < TOLERANCE(0.01), 视为"未回" — decimal→number 残留应兜底
+    expect(getPaymentStatus(0.005, 1000)).toBe("NOT_STARTED");
   });
 
   it("returns IN_PROGRESS when paid is between tolerance and total", () => {
