@@ -127,6 +127,15 @@ export NODE_ENV="$save_NODE_ENV"
 log "==> prisma generate"
 npx prisma generate
 
+# 先停旧服务释放内存，避免 next build 时 OOM (v0.25.7 修复)
+log '==> stop old service to free memory (prevent OOM during build)'
+systemctl stop qt-app.service 2>/dev/null || true
+sleep 1
+if pgrep -f next-server >/dev/null 2>&1; then
+  log 'WARN: next-server still running, force kill'
+  pkill -9 -f next-server 2>/dev/null || true
+  sleep 1
+fi
 # next build: 复用 .next/cache 走增量
 log "==> next build (.next/cache 复用, 增量编译)"
 # 把 .env 关键项透给 build (页面 force-dynamic 但仍是 source-time read)
