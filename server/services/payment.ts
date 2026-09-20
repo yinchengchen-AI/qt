@@ -12,6 +12,7 @@ import { assertRecordWritable, ownerViaContract, parseStatusList } from "@/lib/o
 import { runTransitionInTx } from "@/lib/status-machine";
 import { flushPendingKicks } from "@/server/notifications/hub";
 import { MONEY_TOLERANCE } from "@/lib/money-tolerance";
+import { audit } from "@/server/audit";
 
 export async function listPayments(
   user: SessionUser,
@@ -181,7 +182,7 @@ export async function createPayment(
       options?.force === true
         ? `[FORCE_BACKFILL:${options.forceReason?.trim().slice(0, 200) ?? "n/a"}] ${baseRemark}`.trim()
         : baseRemark || null;
-    return tx.payment.create({
+    const created = await tx.payment.create({
       data: {
         paymentNo,
         customerId: contract.customerId,
@@ -199,6 +200,24 @@ export async function createPayment(
         updatedById: user.id
       }
     });
+    // force 补录写 OperationLog (审计真源, remark 里的 FORCE_BACKFILL 标记只是展示层冗余;
+    // audit() 自动带 IP/UA/requestId/diff, 与 contract/reopen.ts 同基建)
+    if (options?.force === true) {
+      await audit(tx, {
+        actorId: user.id,
+        action: "PAYMENT_FORCE_BACKFILL",
+        entity: "Payment",
+        entityId: created.id,
+        after: {
+          paymentNo,
+          contractId: contract.id,
+          invoiceId: input.invoiceId ?? null,
+          amount: input.amount,
+          forceReason: options.forceReason?.trim().slice(0, 500) ?? null
+        }
+      });
+    }
+    return created;
   }).then((r) => {
     flushPendingKicks();
     return r;

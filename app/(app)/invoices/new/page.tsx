@@ -6,10 +6,10 @@ import {
   ProFormDatePicker
 } from "@ant-design/pro-components";
 import { App as AntdApp, Alert, Space, Tag, Typography } from "antd";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useSession } from "next-auth/react";
 import { useGoBack } from "@/lib/navigation";
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import dayjs from "dayjs";
 import { Page } from "@/components/page";
 import { PageHeader } from "@/components/page-header";
@@ -48,7 +48,10 @@ type Customer = {
 export default function NewInvoicePage() {
   const router = useRouter();
   const goBack = useGoBack("/invoices");
-  const { message } = AntdApp.useApp();
+  const search = useSearchParams();
+  // 合同详情页"新建开票/补开发票"入口带 ?contractId= 预置 (与 payments/new 同模式)
+  const presetContract = search.get("contractId") ?? undefined;
+  const { message, modal } = AntdApp.useApp();
   const { data: session } = useSession();
   const me = session?.user?.id;
   const roleCode = session?.user?.roleCode ?? "";
@@ -61,11 +64,53 @@ export default function NewInvoicePage() {
   const [form] = ProForm.useForm();
   const [pickedCustomer, setPickedCustomer] = useState<Customer | null>(null);
   // 选中合同的额度信息(Decimal 经 JSON 序列化为字符串, 已 Number() 化), 用于税率继承 + 剩余可开票额度提示
-  const [pickedContract, setPickedContract] = useState<{ totalAmount: number; occupiedAmount: number; status: string } | null>(null);
+  // occupiedAmount 为 null 表示未知(详情接口不带该字段, 仅列表接口算), 此时隐藏额度提示
+  const [pickedContract, setPickedContract] = useState<{ totalAmount: number; occupiedAmount: number | null; status: string } | null>(null);
   const [titleType, setTitleType] = useState<"COMPANY" | "PERSONAL">("COMPANY");
 
   // 合同已完结(CLOSED): 仅 ADMIN/FINANCE 可走 force 旁路补开发票, 其余角色拦截并提示
   const pickedClosed = pickedContract?.status === "CLOSED";
+
+  // URL 直接带 contractId 进入(如完结合同补开链接)时, 预载合同信息,
+  // 让"完结补开"提示/原因输入与手动选择走同一套逻辑; 客户/抬头/税率同 onChange 口径
+  useEffect(() => {
+    if (!presetContract) return;
+    let cancelled = false;
+    void (async () => {
+      try {
+        const r = await fetch(`/api/contracts/${presetContract}`, { credentials: "include" });
+        const j = await r.json();
+        if (cancelled || j.code !== 0) return;
+        const c = j.data as { totalAmount: string; taxRate: string; status: string; customerId: string };
+        setPickedContract({
+          totalAmount: Number(c.totalAmount),
+          occupiedAmount: null,
+          status: c.status
+        });
+        form.setFieldsValue({ taxRate: Number(c.taxRate) });
+        try {
+          const cr = await fetch(`/api/customers/${c.customerId}`, { credentials: "include" });
+          const cj = await cr.json();
+          if (cancelled || cj.code !== 0) return;
+          const customer = cj.data as Customer;
+          setPickedCustomer(customer);
+          form.setFieldsValue({
+            titleName: customer.name,
+            taxNo: customer.unifiedSocialCreditCode ?? undefined,
+            address: customer.address ?? undefined,
+            phone: customer.contactPhone ?? undefined
+          });
+        } catch {
+          /* ignore */
+        }
+      } catch {
+        // 预载失败不阻塞表单, 用户仍可手动搜索选择
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [presetContract, form]);
 
   return (
     <Page compact>
@@ -87,6 +132,7 @@ export default function NewInvoicePage() {
           form={form}
           layout="vertical"
           initialValues={{
+            contractId: presetContract,
             invoiceType: "VAT_SPECIAL",
             taxRate: 0.06,
             applyDate: dayjs(),
@@ -96,6 +142,16 @@ export default function NewInvoicePage() {
             if (pickedClosed && !canBackfill) {
               message.error("合同已完结，仅管理员或财务可补开发票");
               return false;
+            }
+            // 完结补开是重操作: 提交前二次确认, 确认才走后端 force 旁路
+            if (pickedClosed) {
+              const confirmed = await modal.confirm({
+                title: "该合同已完结，确认补开发票？",
+                content: "提交后将写入 [FORCE_BACKFILL] 审计标记与审计日志，累计开票仍受合同总额上限约束。",
+                okText: "确认补开",
+                cancelText: "再想想"
+              });
+              if (!confirmed) return false;
             }
             const newlyUploaded = (values.attachments ?? [])
               .map((f: { response?: { id?: string; name?: string; mimeType?: string; size?: number; uploadedBy?: string; uploadedAt?: string } }) => f.response)
@@ -213,8 +269,8 @@ export default function NewInvoicePage() {
                   customerName: string;
                   ownerUserId: string;
                 }>)
-                  // ACTIVE 正常开票; CLOSED 仅用于"完结补开"(ADMIN/FINANCE force, 见 pickedClosed 逻辑)
-                  .filter((c) => c.status === "ACTIVE" || c.status === "CLOSED")
+                  // ACTIVE 正常开票; CLOSED 仅用于"完结补开"(仅 ADMIN/FINANCE 的选项可见, 见 pickedClosed 逻辑)
+                  .filter((c) => c.status === "ACTIVE" || (canBackfill && c.status === "CLOSED"))
                   .filter((c) => !isRestricted || c.ownerUserId === me)
                   .map((c) => ({
                   value: c.id,
@@ -223,7 +279,7 @@ export default function NewInvoicePage() {
                 }));
               }}
             />
-            {pickedContract ? (
+            {pickedContract && pickedContract.occupiedAmount != null ? (
               <Text type="secondary" style={{ fontSize: 12 }}>
                 剩余可开票额度 ≈ {formatCurrency(pickedContract.totalAmount - pickedContract.occupiedAmount)}
                 （合同总额 {formatCurrency(pickedContract.totalAmount)} − 已占用{" "}
@@ -292,7 +348,7 @@ export default function NewInvoicePage() {
                   // 仅前端提示(warningOnly 不阻断提交); 权威校验在服务端 createInvoice 的 R-08
                   warningOnly: true,
                   validator: async (_rule, value: number | null | undefined) => {
-                    if (!pickedContract || value == null) return;
+                    if (!pickedContract || pickedContract.occupiedAmount == null || value == null) return;
                     const remaining = pickedContract.totalAmount - pickedContract.occupiedAmount;
                     if (value > remaining + OVER_LIMIT_TOLERANCE) {
                       throw new Error(

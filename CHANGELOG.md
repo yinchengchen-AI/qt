@@ -2,6 +2,26 @@
 
 本文件记录 qt-biz 每个版本的详细变更。项目快速入口请见 [README.md](README.md)。
 
+## v0.25.9(2026-09-20)完结补开/补录体验加固
+
+### 修复
+
+- **fix(invoice)**: force 补开发票写结构化审计 — `createInvoice` force 路径新增 `InvoiceAuditLog`(`action=FORCE_BACKFILL_CREATE`, comment=补开原因)。原先唯一的审计痕迹是 remark 里的 `[FORCE_BACKFILL]` 文本前缀, 而 remark 可被 `updateInvoice` 编辑(标记可被无意/有意抹掉), 且只能 LIKE 模糊筛查; 现审计真源落到不可变日志表, remark 标记保留为展示层冗余。
+- **fix(payment)**: force 补录回款同步写 `OperationLog`(`entity=Payment`, `action=PAYMENT_FORCE_BACKFILL`, diff 含金额/合同/原因, 自动带 IP/UA/requestId), 与 `contract/reopen.ts` 同 `audit()` 基建。零 schema 变更。
+
+### 变更
+
+- **change(contracts)**: 合同详情页开票/回款 tab 新增入口按钮 — ACTIVE 合同显示「新建开票」「登记回款」, CLOSED 合同仅 ADMIN/FINANCE 显示「补开发票」「补录回款」, 均带 `?contractId=` 直达对应新建页。
+- **change(invoices/new)**: 支持 `?contractId=` 预置(对齐回款新建页) — 预载合同并回显税率/客户抬头, 选中完结合同同样出现"完结补开"区块; 额度提示在 occupiedAmount 未知(详情接口不带)时隐藏。
+- **change(invoices/new,payments/new)**: 非 ADMIN/FINANCE 角色的合同下拉不再显示已完结(CLOSED)选项, 避免选完表单才被拦; URL 直达完结合同的场景仍由警告 Alert + 服务端闸门兜底。
+- **change(invoices/new,payments/new)**: 完结合同补开/补录提交前增加二次确认弹窗(重操作防误触)。
+
+### 测试
+
+- **test(invoice,payment)**: `invoice-create-force` / `payment-create-guard` 的 force 成功用例补审计断言(InvoiceAuditLog / OperationLog 行存在且 actor/comment 正确); payment 测试 afterAll 增加 OperationLog 清理。
+
+> **DB schema / migrations: 无变化。**
+
 ## v0.25.8(2026-09-20)已完结合同补开发票/补录回款
 
 ### 修复

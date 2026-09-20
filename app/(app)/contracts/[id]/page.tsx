@@ -347,6 +347,9 @@ const handleDelete = () => {
   };
   const me = (session?.user as { id?: string } | undefined)?.id;
   const isAdmin = (session?.user as { roleCode?: string })?.roleCode === "ADMIN";
+  // 完结补开/补录入口仅 ADMIN/FINANCE 可见 (与开票/回款新建页的 force 旁路口径一致)
+  const roleCode = (session?.user as { roleCode?: string } | undefined)?.roleCode;
+  const canBackfill = roleCode === "ADMIN" || roleCode === "FINANCE";
   const canManageAttachments =
     isAdmin || (!!me && (contract.ownerUserId === me || contract.signerId === me));
   const allowed = isAdmin ? can : [];
@@ -474,6 +477,13 @@ const handleDelete = () => {
       label: <span>开票 ({t?.invoiceCount ?? 0})</span>,
       children: (
         <ProCard>
+          {(contract.status === "ACTIVE" || (contract.status === "CLOSED" && canBackfill)) && (
+            <div style={{ textAlign: "right", marginBottom: 8 }}>
+              <Button size="small" onClick={() => router.push(`/invoices/new?contractId=${id}`)}>
+                {contract.status === "CLOSED" ? "补开发票" : "新建开票"}
+              </Button>
+            </div>
+          )}
           {overview && overview.invoices.length > 0 ? (
             <ProTable
               rowKey="id"
@@ -500,6 +510,13 @@ const handleDelete = () => {
       label: <span>回款 ({t?.paymentCount ?? 0})</span>,
       children: (
         <ProCard>
+          {(contract.status === "ACTIVE" || (contract.status === "CLOSED" && canBackfill)) && (
+            <div style={{ textAlign: "right", marginBottom: 8 }}>
+              <Button size="small" onClick={() => router.push(`/payments/new?contractId=${id}`)}>
+                {contract.status === "CLOSED" ? "补录回款" : "登记回款"}
+              </Button>
+            </div>
+          )}
           {overview && overview.payments.length > 0 ? (
             <ProTable
               rowKey="id"

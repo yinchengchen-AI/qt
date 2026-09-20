@@ -166,6 +166,12 @@ describe("createInvoice 完结补录 force 旁路", () => {
     expect(inv.status).toBe("DRAFT");
     expect(inv.remark).toContain("[FORCE_BACKFILL:完结后客户要求补开尾票]");
     expect(inv.remark).toContain("尾票补开");
+    // 审计真源: InvoiceAuditLog 落 FORCE_BACKFILL_CREATE 一条 (remark 标记可被编辑, 日志不可变)
+    const log = await prisma.invoiceAuditLog.findFirst({
+      where: { invoiceId: inv.id, action: "FORCE_BACKFILL_CREATE" }
+    });
+    expect(log?.actorId).toBe(adminUser?.id);
+    expect(log?.comment).toContain("完结后客户要求补开尾票");
   }));
 
   it("FINANCE + force + CLOSED 合同 → 成功", guard(async () => {
@@ -179,6 +185,11 @@ describe("createInvoice 完结补录 force 旁路", () => {
     createdInvoiceIds.push(inv.id);
     expect(inv.contractId).toBe(c.id);
     expect(inv.remark).toContain("[FORCE_BACKFILL:财务做账补开]");
+    const log = await prisma.invoiceAuditLog.findFirst({
+      where: { invoiceId: inv.id, action: "FORCE_BACKFILL_CREATE" }
+    });
+    expect(log?.actorId).toBe(financeUser?.id);
+    expect(log?.comment).toContain("财务做账补开");
   }));
 
   it("SALES + force → 403 (非 ADMIN/FINANCE 拒绝 force)", guard(async () => {

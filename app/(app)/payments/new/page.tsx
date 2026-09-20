@@ -52,7 +52,7 @@ export default function NewPaymentPage() {
   const search = useSearchParams();
   const presetContract = search.get("contractId") ?? undefined;
   const presetInvoice = search.get("invoiceId") ?? undefined;
-  const { message } = AntdApp.useApp();
+  const { message, modal } = AntdApp.useApp();
   const { data: session } = useSession();
   const me = session?.user?.id;
   const roleCode = session?.user?.roleCode ?? "";
@@ -115,6 +115,16 @@ export default function NewPaymentPage() {
               message.error("合同已完结，仅管理员或财务可补录回款");
               return false;
             }
+            // 完结补录是重操作: 提交前二次确认, 确认才走后端 force 旁路
+            if (pickedClosed) {
+              const confirmed = await modal.confirm({
+                title: "该合同已完结，确认补录回款？",
+                content: "提交后将写入 [FORCE_BACKFILL] 审计标记与操作日志，金额仍受合同总额上限约束。",
+                okText: "确认补录",
+                cancelText: "再想想"
+              });
+              if (!confirmed) return false;
+            }
             const payload = {
               ...values,
               receivedAt: toIsoDateTime(values.receivedAt),
@@ -154,8 +164,8 @@ export default function NewPaymentPage() {
                   const j = await r.json();
                   if (j.code !== 0) return [];
                   return (j.data.list as Contract[])
-                    // ACTIVE 正常登记; CLOSED 仅用于"完结补录"(ADMIN/FINANCE force, 见 pickedClosed 逻辑)
-                    .filter((c) => c.status === "ACTIVE" || c.status === "CLOSED")
+                    // ACTIVE 正常登记; CLOSED 仅用于"完结补录"(仅 ADMIN/FINANCE 的选项可见, 见 pickedClosed 逻辑)
+                    .filter((c) => c.status === "ACTIVE" || (canBackfill && c.status === "CLOSED"))
                     .filter((c) => !isRestricted || c.ownerUserId === me)
                     .map((c) => ({
                       value: c.id,

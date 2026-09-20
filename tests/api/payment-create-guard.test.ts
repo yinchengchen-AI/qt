@@ -60,6 +60,7 @@ afterAll(async () => {
   if (!dbReachable) return;
   try {
     if (createdPaymentIds.length > 0) {
+      await prisma.operationLog.deleteMany({ where: { entityId: { in: createdPaymentIds } } });
       await prisma.payment.deleteMany({ where: { id: { in: createdPaymentIds } } });
     }
     if (createdInvoiceIds.length > 0) {
@@ -228,6 +229,11 @@ describe("createPayment admin/财务 force 旁路 (P2-3)", () => {
     expect(p.status).toBe("PLANNED");
     expect(p.remark).toContain("[FORCE_BACKFILL:cron 误关恢复后补录]");
     expect(p.remark).toContain("客户补打款");
+    // 审计真源: OperationLog 落 PAYMENT_FORCE_BACKFILL 一条 (remark 标记只是展示层冗余)
+    const log = await prisma.operationLog.findFirst({
+      where: { entity: "Payment", entityId: p.id, action: "PAYMENT_FORCE_BACKFILL" }
+    });
+    expect(log?.actorId).toBe(adminUser?.id);
     createdPaymentIds.push(p.id);
   }));
 
@@ -268,6 +274,10 @@ describe("createPayment admin/财务 force 旁路 (P2-3)", () => {
     expect(p.contractId).toBe(c.id);
     expect(p.status).toBe("PLANNED");
     expect(p.remark).toContain("[FORCE_BACKFILL:完结后尾款到账]");
+    const log = await prisma.operationLog.findFirst({
+      where: { entity: "Payment", entityId: p.id, action: "PAYMENT_FORCE_BACKFILL" }
+    });
+    expect(log?.actorId).toBe(financeUser?.id);
     createdPaymentIds.push(p.id);
   }));
 

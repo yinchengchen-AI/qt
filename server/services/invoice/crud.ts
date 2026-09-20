@@ -155,6 +155,18 @@ export async function createInvoice(
         updatedById: user.id
       }
     });
+    // force 补开写 InvoiceAuditLog (审计真源, remark 里的 FORCE_BACKFILL 标记只是展示层冗余,
+    // remark 可被编辑而审计日志不可变; 模式同 action.ts 的 RED_FLUSH)
+    if (options?.force === true) {
+      await tx.invoiceAuditLog.create({
+        data: {
+          invoiceId: invoice.id,
+          actorId: user.id,
+          action: "FORCE_BACKFILL_CREATE",
+          comment: options.forceReason?.trim().slice(0, 500)
+        }
+      });
+    }
     // 解析附件: 内部已把临时附件 updateMany 绑到 invoiceId (Attachment.invoiceId 关系)
     // 同时把真实记录写回 JSON 快照, 详情页直接读 invoice.attachments
     const attachments = await resolveAttachmentSnapshots(input.attachments ?? [], "Invoice", invoice.id, tx);
