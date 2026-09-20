@@ -30,7 +30,9 @@ import { generateLLMCollectionAdvice } from "@/server/services/smart-collection"
 import { env } from "@/lib/env";
 
 const DAY_MS = 86_400_000;
-const NOW = new Date("2026-08-18T06:00:00.000Z");
+// 动态当前时间: identifyTrendPattern 内部 cutoff 以真实 now 为基准,
+// 写死日期会让快照在 30 天 lookback 之外全部被过滤, 用例随时间漂移变红
+const NOW = new Date();
 
 function daysAgo(n: number): Date {
   return new Date(NOW.getTime() - n * DAY_MS);
