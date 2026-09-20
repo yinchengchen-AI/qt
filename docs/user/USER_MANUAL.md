@@ -1001,7 +1001,8 @@ curl -X POST -H "Authorization: Bearer ${CRON_SECRET}" \
    ```
 2. **代码层修复** (P2-3 已加):
    - `POST /api/contracts/[id]/reopen` — admin 重开已完结合同
-   - `POST /api/payments` body 加 `force: true` + `forceReason: string` — admin 在 CLOSED 合同上强制录回款(自动加 `[FORCE_BACKFILL]` 审计标记)
+   - `POST /api/payments` body 加 `force: true` + `forceReason: string` — admin/财务 在 CLOSED 合同上强制录回款(自动加 `[FORCE_BACKFILL]` 审计标记)
+   - `POST /api/invoices` body 加 `force: true` + `forceReason: string` — admin/财务 在 CLOSED 合同上补开发票(同样加 `[FORCE_BACKFILL]` 审计标记, R-08 上限仍生效)
 
 3. **完整流程文档**:`docs/contract-fake-close-recovery.md`
 

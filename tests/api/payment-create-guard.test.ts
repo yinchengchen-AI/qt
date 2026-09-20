@@ -211,12 +211,12 @@ describe("createPayment 金额前置校验", () => {
 });
 
 // =====================================================
-// admin force 旁路 (P2-3): 用于 CLOSED 合同上补录回款
+// admin/财务 force 旁路 (P2-3): 用于 CLOSED 合同上补录回款
 //   - 触发场景: cron 误关 / admin 误关后, 通过 reopen+force 补录
-//   - 安全约束: 仅 ADMIN 可用; force 模式下必须填 forceReason
+//   - 安全约束: 仅 ADMIN/FINANCE 可用; force 模式下必须填 forceReason
 //   - 业务校验不变: 金额仍需 ≤ 发票金额 / 合同总额
 // =====================================================
-describe("createPayment admin force 旁路 (P2-3)", () => {
+describe("createPayment admin/财务 force 旁路 (P2-3)", () => {
   it("ADMIN + force + CLOSED 合同 → 成功, remark 含 [FORCE_BACKFILL] 标记", guard(async () => {
     const c = await mkContract("1000.00", "FORCE-OK", "CLOSED");
     const p = await createPayment(
@@ -244,15 +244,31 @@ describe("createPayment admin force 旁路 (P2-3)", () => {
     createdPaymentIds.push(p.id);
   }));
 
-  it("FINANCE + force → 403 (非 ADMIN 拒绝 force)", guard(async () => {
-    const c = await mkContract("1000.00", "FORCE-FIN", "CLOSED");
+  it("SALES + force → 403 (非 ADMIN/FINANCE 拒绝 force)", guard(async () => {
+    const c = await mkContract("1000.00", "FORCE-SALES", "CLOSED");
+    // 借用 finance 账号的身份但伪装 SALES roleCode: force 角色闸门在事务前触发,
+    // 先于 assertRecordWritable, 不会打到所有权校验
+    const fakeSales: SessionUser = { ...buildFinance(), roleCode: "SALES" };
     await expect(
       createPayment(
-        buildFinance(),
+        fakeSales,
         { contractId: c.id, amount: 100, receivedAt: new Date().toISOString(), method: "BANK_TRANSFER" },
         { force: true, forceReason: "test" },
       ),
     ).rejects.toMatchObject({ errorCode: ERROR_CODES.FORBIDDEN });
+  }));
+
+  it("FINANCE + force + CLOSED 合同 → 成功 (与 ADMIN 同口径)", guard(async () => {
+    const c = await mkContract("1000.00", "FORCE-FIN", "CLOSED");
+    const p = await createPayment(
+      buildFinance(),
+      { contractId: c.id, amount: 300, receivedAt: new Date().toISOString(), method: "BANK_TRANSFER", remark: "财务补录尾款" },
+      { force: true, forceReason: "完结后尾款到账" },
+    );
+    expect(p.contractId).toBe(c.id);
+    expect(p.status).toBe("PLANNED");
+    expect(p.remark).toContain("[FORCE_BACKFILL:完结后尾款到账]");
+    createdPaymentIds.push(p.id);
   }));
 
   it("ADMIN + force + 不填 forceReason → 400", guard(async () => {

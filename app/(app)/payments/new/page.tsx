@@ -56,7 +56,8 @@ export default function NewPaymentPage() {
   const { data: session } = useSession();
   const me = session?.user?.id;
   const roleCode = session?.user?.roleCode ?? "";
-  const isAdmin = roleCode === "ADMIN";
+  // 完结补录: 仅 ADMIN/FINANCE 可在 CLOSED 合同上补录回款 (服务端二次校验同口径)
+  const canBackfill = roleCode === "ADMIN" || roleCode === "FINANCE";
   const isRestricted = roleCode === "SALES" || roleCode === "EXPERT";
   // ProForm 的 ProFormRef 类型未导出,用 any 承载动态表单引用
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -82,7 +83,7 @@ export default function NewPaymentPage() {
     };
   }, [presetContract]);
 
-  // 合同已完结(CLOSED): 仅 admin 可走 force 旁路补录回款, 其余角色拦截并提示
+  // 合同已完结(CLOSED): 仅 ADMIN/FINANCE 可走 force 旁路补录回款, 其余角色拦截并提示
   const pickedClosed = pickedContract?.status === "CLOSED";
 
   return (
@@ -110,15 +111,15 @@ export default function NewPaymentPage() {
             method: "BANK_TRANSFER"
           }}
           onFinish={async (values) => {
-            if (pickedClosed && !isAdmin) {
-              message.error("合同已完结，仅管理员可补录回款");
+            if (pickedClosed && !canBackfill) {
+              message.error("合同已完结，仅管理员或财务可补录回款");
               return false;
             }
             const payload = {
               ...values,
               receivedAt: toIsoDateTime(values.receivedAt),
-              // 完结补录: admin 走后端 force 旁路 (createPayment 二次校验 ADMIN + CLOSED)
-              ...(pickedClosed && isAdmin ? { force: true, forceReason: values.forceReason } : {})
+              // 完结补录: admin/财务走后端 force 旁路 (createPayment 二次校验角色 + CLOSED)
+              ...(pickedClosed && canBackfill ? { force: true, forceReason: values.forceReason } : {})
             };
             const res = await fetch("/api/payments", {
               method: "POST",
@@ -153,7 +154,7 @@ export default function NewPaymentPage() {
                   const j = await r.json();
                   if (j.code !== 0) return [];
                   return (j.data.list as Contract[])
-                    // ACTIVE 正常登记; CLOSED 仅用于"完结补录"(admin force, 见 pickedClosed 逻辑)
+                    // ACTIVE 正常登记; CLOSED 仅用于"完结补录"(ADMIN/FINANCE force, 见 pickedClosed 逻辑)
                     .filter((c) => c.status === "ACTIVE" || c.status === "CLOSED")
                     .filter((c) => !isRestricted || c.ownerUserId === me)
                     .map((c) => ({
@@ -202,9 +203,9 @@ export default function NewPaymentPage() {
           </FormSection>
 
           {pickedClosed ? (
-            <FormSection title="完结补录" description={isAdmin ? "合同已完结，需填写补录原因后提交（系统将记录 FORCE_BACKFILL 审计标记）" : "合同已完结，普通账号不可登记回款"}>
+            <FormSection title="完结补录" description={canBackfill ? "合同已完结，需填写补录原因后提交（系统将记录 FORCE_BACKFILL 审计标记）" : "合同已完结，普通账号不可登记回款"}>
               <FormGrid columns={1}>
-                {isAdmin ? (
+                {canBackfill ? (
                   <ProFormText
                     name="forceReason"
                     label="补录原因"
@@ -213,7 +214,7 @@ export default function NewPaymentPage() {
                     fieldProps={{ size: "large", maxLength: 500, showCount: true }}
                   />
                 ) : (
-                  <Alert type="warning" showIcon message="该合同已完结，仅管理员可补录回款；如需登记请联系管理员操作。" />
+                  <Alert type="warning" showIcon message="该合同已完结，仅管理员或财务可补录回款；如需登记请联系管理员或财务操作。" />
                 )}
               </FormGrid>
             </FormSection>

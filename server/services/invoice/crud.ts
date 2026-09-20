@@ -50,8 +50,20 @@ export async function getInvoice(user: SessionUser, id: string) {
 }
 
 
-export async function createInvoice(user: SessionUser, input: InvoiceCreateInput) {
+export async function createInvoice(
+  user: SessionUser,
+  input: InvoiceCreateInput,
+  options?: { force?: boolean; forceReason?: string },
+) {
   requirePermission(user.roleCode, RESOURCE.INVOICE, ACTION.CREATE);
+  // 完结补录旁路: 仅 ADMIN/FINANCE 可用, 用于 CLOSED 合同上补开发票
+  // (与 createPayment 的 force 旁路同口径; 服务端二次校验角色, 防前端伪造 force=true)
+  if (options?.force && user.roleCode !== "ADMIN" && user.roleCode !== "FINANCE") {
+    throw new ApiError(ERROR_CODES.FORBIDDEN, "仅管理员或财务可强制开票（force）", 403);
+  }
+  if (options?.force === true && !options.forceReason?.trim()) {
+    throw new ApiError(ERROR_CODES.VALIDATION_FAILED, "force 模式下必须填写 forceReason 说明", 400);
+  }
   return prisma.$transaction(async (tx) => {
     // 先锁合同行 (SELECT ... FOR UPDATE 序列化同一合同的并发开票), 消除 R-08 "先 SUM 后 INSERT" 的 TOCTOU 竞态。
     // 用 raw FOR UPDATE 而非 dummy UPDATE, 避免顺带刷新合同 updatedAt 造成污染。
@@ -67,11 +79,19 @@ export async function createInvoice(user: SessionUser, input: InvoiceCreateInput
     if (!contract) throw new ApiError(ERROR_CODES.NOT_FOUND, "合同不存在", 404);
     assertRecordWritable(user, contract.ownerUserId, "发票");
     if (contract.status !== "ACTIVE") {
-      throw new ApiError(
-        ERROR_CODES.CONTRACT_STATUS_INVALID,
-        `合同 ${contract.contractNo} 当前状态 ${contract.status}，不可开票（须 ACTIVE）`,
-        422
-      );
+      // 旁路: ADMIN/FINANCE + force + CLOSED 合同允许补开发票
+      // (其它状态如 DRAFT 不允许, 防止误操作)
+      const canBypass =
+        options?.force === true &&
+        (user.roleCode === "ADMIN" || user.roleCode === "FINANCE") &&
+        contract.status === "CLOSED";
+      if (!canBypass) {
+        throw new ApiError(
+          ERROR_CODES.CONTRACT_STATUS_INVALID,
+          `合同 ${contract.contractNo} 当前状态 ${contract.status}，不可开票（须 ACTIVE${options?.force ? "，或 admin/财务 force + CLOSED" : ""}）`,
+          422
+        );
+      }
     }
     // R-08：累计开票不能超合同总额 (P2-1: 与 R-11/R-12 一致, 加 0.01 元容差)
     // R-08 口径含 PENDING_FINANCE (此前漏掉, 发票提交后即"隐身"可无限超额)
@@ -98,6 +118,13 @@ export async function createInvoice(user: SessionUser, input: InvoiceCreateInput
     if (existingNo) {
       throw new ApiError(ERROR_CODES.VALIDATION_FAILED, `发票号 ${input.invoiceNo} 已被使用`, 422);
     }
+    // force 模式下追加审计标记到 remark, 方便后续筛查所有 force 补开的发票
+    // (即使 force=true 也加标记, 与 createPayment 口径一致: 操作是否带 force 可追溯)
+    const baseRemark = input.remark ?? "";
+    const finalRemark =
+      options?.force === true
+        ? `[FORCE_BACKFILL:${options.forceReason?.trim().slice(0, 200) ?? "n/a"}] ${baseRemark}`.trim()
+        : baseRemark || null;
     const { taxAmount, amountExcludingTax } = calcTaxBreakdown(input.amount, input.taxRate);
     const invoice = await tx.invoice.create({
       data: {
@@ -120,7 +147,7 @@ export async function createInvoice(user: SessionUser, input: InvoiceCreateInput
         bankAccount: input.bankAccount ?? null,
         address: input.address ?? null,
         phone: input.phone ?? null,
-        remark: input.remark ?? null,
+        remark: finalRemark,
         attachments: [] as unknown as Prisma.InputJsonValue,
         status: "DRAFT",
         applicantUserId: user.id,

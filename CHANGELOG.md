@@ -2,6 +2,25 @@
 
 本文件记录 qt-biz 每个版本的详细变更。项目快速入口请见 [README.md](README.md)。
 
+## v0.25.7(2026-09-20)已完结合同补开发票/补录回款
+
+### 修复
+
+- **fix(invoice)**: 已完结(CLOSED)合同此前**完全无法补开发票** — 后端 `createInvoice` 硬校验"须 ACTIVE"且无旁路, 前端开票新建页合同下拉只查 ACTIVE 导致完结合同根本选不到。现新增与回款侧同口径的**完结补录旁路**: ADMIN/FINANCE 传 `force=true + forceReason` 即可在 CLOSED 合同补开发票; remark 自动追加 `[FORCE_BACKFILL:原因]` 审计标记; R-08 累计开票上限仍生效(force 不绕过金额校验), DRAFT 合同不在旁路白名单。
+- **fix(payment)**: force 旁路角色由**仅 ADMIN 放宽为 ADMIN + FINANCE**, 与发票侧对齐 — 财务做账补录不再需要先找管理员。服务端角色闸门(防前端伪造 force) + CLOSED 白名单 + R-11/R-12 金额校验口径不变。
+
+### 变更
+
+- **change(invoices/new)**: 开票新建页合同下拉纳入已完结(CLOSED)合同(带"（已完结）"后缀); 选中完结合同后出现"完结补开"区块 — admin/财务必填补开原因后提交(自动带 `force`), 其余角色显示拦截提示。
+- **change(payments/new)**: 回款登记页"完结补录"区块对财务角色开放(原仅 admin), 提示文案同步更新。
+
+### 测试
+
+- **test(invoice)**: 新增 `tests/api/invoice-create-force.test.ts`(7 用例): CLOSED 无 force 拒绝 / ADMIN+force+CLOSED 成功且 remark 带审计标记 / FINANCE+force 成功 / SALES+force 403 / 缺 forceReason 400 / DRAFT 合同拒绝 / 超 R-08 上限仍拒。
+- **test(payment)**: `tests/api/payment-create-guard.test.ts` 更新: "FINANCE+force→403" 改为 "SALES+force→403", 新增 "FINANCE+force+CLOSED→成功"。
+
+> **DB schema / migrations: 无变化。**
+
 ## v0.25.6(2026-09-07)合同/开票金额链路守卫补全
 
 ### 修复

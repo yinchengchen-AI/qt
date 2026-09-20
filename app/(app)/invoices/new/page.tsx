@@ -5,7 +5,7 @@ import {
   ProFormSelect,
   ProFormDatePicker
 } from "@ant-design/pro-components";
-import { App as AntdApp, Space, Tag, Typography } from "antd";
+import { App as AntdApp, Alert, Space, Tag, Typography } from "antd";
 import { useRouter } from "next/navigation";
 import { useSession } from "next-auth/react";
 import { useGoBack } from "@/lib/navigation";
@@ -53,21 +53,26 @@ export default function NewInvoicePage() {
   const me = session?.user?.id;
   const roleCode = session?.user?.roleCode ?? "";
   const isRestricted = roleCode === "SALES" || roleCode === "EXPERT";
+  // 完结补录: 仅 ADMIN/FINANCE 可在 CLOSED 合同上补开发票 (与回款登记页同口径, 服务端二次校验)
+  const canBackfill = roleCode === "ADMIN" || roleCode === "FINANCE";
   // ProForm 的 ProFormRef 类型未导出,用 any 承载动态表单引用
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const formRef = useRef<any>(null);
   const [form] = ProForm.useForm();
   const [pickedCustomer, setPickedCustomer] = useState<Customer | null>(null);
   // 选中合同的额度信息(Decimal 经 JSON 序列化为字符串, 已 Number() 化), 用于税率继承 + 剩余可开票额度提示
-  const [pickedContract, setPickedContract] = useState<{ totalAmount: number; occupiedAmount: number } | null>(null);
+  const [pickedContract, setPickedContract] = useState<{ totalAmount: number; occupiedAmount: number; status: string } | null>(null);
   const [titleType, setTitleType] = useState<"COMPANY" | "PERSONAL">("COMPANY");
+
+  // 合同已完结(CLOSED): 仅 ADMIN/FINANCE 可走 force 旁路补开发票, 其余角色拦截并提示
+  const pickedClosed = pickedContract?.status === "CLOSED";
 
   return (
     <Page compact>
       <PageHeader
         back={goBack}
         title="新建开票"
-        subtitle="为生效中的合同创建开票草稿；保存后可在详情页提交财务审核"
+        subtitle="为生效中的合同创建开票草稿；已完结合同可由管理员/财务补开；保存后可在详情页提交财务审核"
       />
       <FormCard
         headerHint={
@@ -88,6 +93,10 @@ export default function NewInvoicePage() {
             titleType: "COMPANY"
           }}
           onFinish={async (values) => {
+            if (pickedClosed && !canBackfill) {
+              message.error("合同已完结，仅管理员或财务可补开发票");
+              return false;
+            }
             const newlyUploaded = (values.attachments ?? [])
               .map((f: { response?: { id?: string; name?: string; mimeType?: string; size?: number; uploadedBy?: string; uploadedAt?: string } }) => f.response)
               .filter((r: { id?: string } | undefined): r is { id: string; name: string; mimeType: string; size: number; uploadedBy: string; uploadedAt: string } => Boolean(r && r.id));
@@ -98,7 +107,9 @@ export default function NewInvoicePage() {
               applyDate: values.applyDate ? dayjs(values.applyDate).toISOString() : undefined,
               expectedIssueDate: values.expectedIssueDate ? dayjs(values.expectedIssueDate).toISOString() : undefined,
               dueDate: values.dueDate ? dayjs(values.dueDate).toISOString() : undefined,
-              attachments: newlyUploaded
+              attachments: newlyUploaded,
+              // 完结补录: admin/财务走后端 force 旁路 (createInvoice 二次校验角色 + CLOSED)
+              ...(pickedClosed && canBackfill ? { force: true, forceReason: values.forceReason } : {})
             };
             delete (payload as Record<string, unknown>).attachments_uploads;
             const res = await fetch("/api/invoices", {
@@ -117,7 +128,7 @@ export default function NewInvoicePage() {
             return true;
           }}
         >
-          <FormSection title="关联合同" description="仅可选「生效中」(ACTIVE) 状态的合同；选择合同后将自动带出客户与抬头信息">
+          <FormSection title="关联合同" description="可选「生效中」(ACTIVE) 合同；已完结(CLOSED) 合同仅管理员/财务可补开发票；选择合同后将自动带出客户与抬头信息">
             <ProFormSelect
               name="contractId"
               label="合同"
@@ -139,6 +150,7 @@ export default function NewInvoicePage() {
                       totalAmount: string;
                       taxRate: string;
                       occupiedAmount: number;
+                      status: string;
                       customerId: string;
                       customerName: string;
                     };
@@ -146,7 +158,7 @@ export default function NewInvoicePage() {
                 ) => {
                   const o = opt as {
                     value: string;
-                    contract?: { customerId: string; totalAmount: string; taxRate: string; occupiedAmount: number };
+                    contract?: { customerId: string; totalAmount: string; taxRate: string; occupiedAmount: number; status: string };
                   } | undefined;
                   const c = o?.contract;
                   if (!c) {
@@ -156,7 +168,8 @@ export default function NewInvoicePage() {
                   }
                   setPickedContract({
                     totalAmount: Number(c.totalAmount),
-                    occupiedAmount: Number(c.occupiedAmount ?? 0)
+                    occupiedAmount: Number(c.occupiedAmount ?? 0),
+                    status: c.status
                   });
                   // 税率继承合同(Decimal 序列化为字符串, Number() 化); 用户仍可手改
                   form.setFieldsValue({ taxRate: Number(c.taxRate) });
@@ -185,7 +198,6 @@ export default function NewInvoicePage() {
                 const qs = new URLSearchParams();
                 qs.set("pageSize", "1000");
                 qs.set("keyword", params.keyWords ?? "");
-                qs.set("status", "ACTIVE");
                 const r = await fetch(`/api/contracts?${qs}`, { credentials: "include" });
                 const j = await r.json();
                 if (j.code !== 0) return [];
@@ -196,14 +208,17 @@ export default function NewInvoicePage() {
                   totalAmount: string;
                   taxRate: string;
                   occupiedAmount: number;
+                  status: string;
                   customerId: string;
                   customerName: string;
                   ownerUserId: string;
                 }>)
+                  // ACTIVE 正常开票; CLOSED 仅用于"完结补开"(ADMIN/FINANCE force, 见 pickedClosed 逻辑)
+                  .filter((c) => c.status === "ACTIVE" || c.status === "CLOSED")
                   .filter((c) => !isRestricted || c.ownerUserId === me)
                   .map((c) => ({
                   value: c.id,
-                  label: `${c.contractNo} · ${c.title} · ${formatCurrency(c.totalAmount)}`,
+                  label: `${c.contractNo} · ${c.title} · ${formatCurrency(c.totalAmount)}${c.status === "CLOSED" ? "（已完结）" : ""}`,
                   contract: c
                 }));
               }}
@@ -216,6 +231,24 @@ export default function NewInvoicePage() {
               </Text>
             ) : null}
           </FormSection>
+
+          {pickedClosed ? (
+            <FormSection title="完结补开" description={canBackfill ? "合同已完结，需填写补开原因后提交（系统将记录 FORCE_BACKFILL 审计标记）" : "合同已完结，普通账号不可补开发票"}>
+              <FormGrid columns={1}>
+                {canBackfill ? (
+                  <ProFormText
+                    name="forceReason"
+                    label="补开原因"
+                    placeholder="必填：说明为何完结合同后仍需补开发票（如尾票/红冲后重开）"
+                    rules={[{ required: true, message: "完结合同补开发票必须填写原因" }]}
+                    fieldProps={{ size: "large", maxLength: 500, showCount: true }}
+                  />
+                ) : (
+                  <Alert type="warning" showIcon message="该合同已完结，仅管理员或财务可补开发票；如需补开请联系管理员或财务操作。" />
+                )}
+              </FormGrid>
+            </FormSection>
+          ) : null}
 
           <FormSection title="发票信息">
             <FormGrid columns={1}>

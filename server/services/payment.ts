@@ -84,10 +84,10 @@ export async function createPayment(
   options?: { force?: boolean; forceReason?: string },
 ) {
   requirePermission(user.roleCode, RESOURCE.PAYMENT, ACTION.CREATE);
-  // admin force 旁路: 仅 ADMIN 可用, 用于 CLOSED 合同上补录回款
+  // admin/财务 force 旁路: 仅 ADMIN/FINANCE 可用, 用于 CLOSED 合同上补录回款
   // (典型场景: cron 误关 / admin 误关后, 重开+补录两步走)
-  if (options?.force && user.roleCode !== "ADMIN") {
-    throw new ApiError(ERROR_CODES.FORBIDDEN, "仅管理员可强制录回款（force）", 403);
+  if (options?.force && user.roleCode !== "ADMIN" && user.roleCode !== "FINANCE") {
+    throw new ApiError(ERROR_CODES.FORBIDDEN, "仅管理员或财务可强制录回款（force）", 403);
   }
   if (options?.force === true && !options.forceReason?.trim()) {
     throw new ApiError(ERROR_CODES.VALIDATION_FAILED, "force 模式下必须填写 forceReason 说明", 400);
@@ -101,16 +101,16 @@ export async function createPayment(
     // 写守门: SALES/EXPERT 只能在自己名下的合同登记回款 (读放开后由显式断言替代行过滤)
     assertRecordWritable(user, contract.ownerUserId, "回款");
     if (contract.status !== "ACTIVE") {
-      // 旁路: admin + force + CLOSED 合同允许登记回款
+      // 旁路: ADMIN/FINANCE + force + CLOSED 合同允许登记回款
       // (其它状态如 DRAFT 不允许, 防止误操作)
       const canBypass =
         options?.force === true &&
-        user.roleCode === "ADMIN" &&
+        (user.roleCode === "ADMIN" || user.roleCode === "FINANCE") &&
         contract.status === "CLOSED";
       if (!canBypass) {
         throw new ApiError(
           ERROR_CODES.VALIDATION_FAILED,
-          `合同 ${contract.contractNo} 当前状态 ${contract.status}，不可登记回款（须 ACTIVE${options?.force ? "，或 admin force + CLOSED" : ""}）`,
+          `合同 ${contract.contractNo} 当前状态 ${contract.status}，不可登记回款（须 ACTIVE${options?.force ? "，或 admin/财务 force + CLOSED" : ""}）`,
           422,
         );
       }
