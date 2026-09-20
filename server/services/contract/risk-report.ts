@@ -86,8 +86,7 @@ export function buildTrendSummary(
 /** 建议生成: 原始分 ≥50 的维度按降序取 Top 3, 文案带业务数据; 趋势上升 ≥10 分追加一条 */
 export function buildRecommendations(
   risk: ContractRisk,
-  trendSummary: RiskTrendSummary | null,
-  graceDays: number
+  trendSummary: RiskTrendSummary | null
 ): string[] {
   const REC_THRESHOLD = 50;
   const recs: string[] = [];
@@ -99,11 +98,8 @@ export function buildRecommendations(
   for (const k of sorted) {
     switch (k) {
       case "expiry": {
-        const left = graceDays - risk.daysOverdue;
         recs.push(
-          left > 0
-            ? `合同已逾期 ${risk.daysOverdue} 天且在宽限期内：${left} 天后将被系统自动强关，请优先处理`
-            : "合同已过宽限期，随时可能被系统自动强关，请立即处理"
+          `合同已逾期 ${risk.daysOverdue} 天，请优先催收；合同完结需开票+回款 100% 足额（或管理员手动完结），逾期不会自动关单`
         );
         break;
       }
@@ -139,7 +135,6 @@ export function buildRecommendations(
 export function buildRiskReport(
   risk: ContractRisk,
   snapshots: RiskReportSnapshot[],
-  graceDays: number,
   now = new Date()
 ): RiskReport {
   const trendSummary = buildTrendSummary(risk, snapshots);
@@ -151,7 +146,7 @@ export function buildRiskReport(
     asOf: now.toISOString().slice(0, 10),
     dimensions: risk.dimensions,
     weightedScore: formatWeightedScore(risk.dimensionRaw, risk.score),
-    recommendations: buildRecommendations(risk, trendSummary, graceDays),
+    recommendations: buildRecommendations(risk, trendSummary),
     trendSummary
   };
 }

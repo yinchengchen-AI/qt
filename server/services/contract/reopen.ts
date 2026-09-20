@@ -26,8 +26,8 @@ export type ContractReopenReason = (typeof REOPEN_REASONS)[number];
  * Admin 重新打开已完结合同: CLOSED → ACTIVE
  *
  * 触发场景:
- *   1. cron 任务长期未跑, 大量合同被 tryAutoCloseOnOverdue 强关 (reason=overdue_terminated),
- *      现在恢复运行后需要批量恢复, 让财务补录回款
+ *   1. 历史被宽限期强关的合同 (reason=overdue_terminated, 该自动强关规则已移除),
+ *      需要恢复后让财务补录回款
  *   2. admin 手动 closeContract 后发现误操作, 需要重开
  *   3. 合同正常完结 (reason=completed) 但财务漏录部分回款, 临时重开补录
  *
@@ -37,9 +37,8 @@ export type ContractReopenReason = (typeof REOPEN_REASONS)[number];
  *   - 走完整事务 + ContractReviewLog + audit log
  *   - reviewComment 改为 "reopened:<reason>" 作为审计标记
  *
- * ⚠️ 注意: 重开后如果合同仍然满足 tryAutoCloseOnOverdue 条件
- *   (endDate + GRACE_DAYS < now + 未结清), 下次 cron 跑还会再次被强关.
- *   所以应当: 重开 → 财务补录 → 让 tryAutoClose 走 completed 路径.
+ * 注: 宽限期自动强关 (tryAutoCloseOnOverdue) 已移除, 重开后不会再被自动强关;
+ *   合同只会在"到期 + 开票回款双 100% 足额"时由 tryAutoClose 自动完结.
  *
  * 数据修复批量脚本另见:
  *   scripts/migrate/contract-fake-close-recovery.ts

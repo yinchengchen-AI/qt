@@ -28,8 +28,8 @@ const schema = z.object({
  * 前置: contract.status 必须为 CLOSED
  * 副作用: 写 ContractReviewLog (action=MANUAL_REOPEN) + audit log
  *
- * ⚠️ 注意: 重开后如果仍满足 tryAutoCloseOnOverdue 条件,
- *   下次 cron 跑会再次强关. 应当重开后立即补录回款.
+ * 注: 宽限期自动强关 (tryAutoCloseOnOverdue) 已移除, 重开后不会再被自动强关;
+ *   合同只会在"到期 + 开票回款双 100% 足额"时由 tryAutoClose 自动完结.
  */
 export async function POST(
   req: Request,

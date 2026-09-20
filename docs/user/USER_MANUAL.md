@@ -253,8 +253,7 @@ v0.5.0(2026-06-29)起客户表不再有 `status` 字段, 详情页右上角「�
         ┌──────────────┐
         │ ACTIVE 生效中│
         └──────┬───────┘
-               │ [auto] 开票足额 (≥ 总额 × 95%)
-               │ [auto] endDate < now
+               │ [auto] 开票+回款双 100% 足额 + endDate 到期
                │ [admin] 强制完结 (选 reason)
                ▼
         ┌──────────────┐
@@ -270,9 +269,9 @@ v0.5.0(2026-06-29)起客户表不再有 `status` 字段, 详情页右上角「�
 
 **自动化细节**:
 - `DRAFT → ACTIVE`:`createContract` / `updateContract` 保存时自动判定 `isPublishable(c)`,条件满足即升 ACTIVE。每小时 cron `tickPublishableDrafts` 兜底。
-- `ACTIVE → CLOSED (completed)`:每日 `tickCompletionCandidates` 扫开票足额合同,自动完结。
-- `ACTIVE → CLOSED (expired)`:每日 `runContractExpiryJob` 扫 `endDate<now` 的合同,自动完结。
-- `ACTIVE → CLOSED (terminated)` / `completed`:admin 强制完结弹窗选 reason。
+- `ACTIVE → CLOSED (completed)`:每小时 `tickCompletionCandidates` 扫"已到期 + 开票回款双 100% 足额"的合同,自动完结。
+- 原"宽限期强关"(过期 + 60 天宽限仍未结清 → 自动 CLOSED) 已移除:过期未结清合同保持 ACTIVE,每小时 `contract-stale-notify` 给 owner/admin 发催款提醒,由 admin 手动完结兜底。
+- `ACTIVE → CLOSED (terminated)`:admin 强制完结(选 reason)。
 - 业务自创建/维护合同,日常无需手动点状态按钮。
 
 **时间线**:详情页"自动化记录"区会拉 `ContractReviewLog`,把 `AUTO_PUBLISH` / `AUTO_CLOSE_COMPLETED` / `AUTO_CLOSE_EXPIRED` / `MANUAL_PUBLISH` / `MANUAL_CLOSE` 条目突出显示。
@@ -961,17 +960,14 @@ curl -X POST -H "Authorization: Bearer ${CRON_SECRET}" \
 - 写日志到 `/var/log/qt-cron.log`(运维巡检可见)
 - (可选) 推飞书 webhook,需在 `.env` 配置 `FEISHU_WEBHOOK_URL=https://open.feishu.cn/...`
 
-### 16.3 强关前 7/3/1 天预警
+### 16.3 逾期催款提醒 (contract-stale-notify)
 
-合同 `endDate` 过期后,系统每天给 owner + admin 发 `CONTRACT_EXPIRED_UNPAID` 站内信。**强关前 7/3/1 天的消息文案会自动升级**(从 bus.ts 文案模板):
+合同 `endDate` 过期后**未达双 100% 足额**的,系统每小时给 owner + admin 发 `CONTRACT_EXPIRED_UNPAID` 站内信(同一天去重,不刷屏):
 
-| 剩余天数 | 文案标题 |
-|---|---|
-| 7 / 3 / 1 | ⚠️ **【强关预警】** 合同 ... — N 天后系统将自动强关 |
-| 0 | ⚠️ ... — **今天将被系统强关** |
-| 其他 (8+) | 合同 ... 还剩 N 天进入宽限期强关 |
+- **回款未足额** → `CONTRACT_EXPIRED_UNPAID`(催款,带逾期天数/已收/剩余金额)
+- **回款已足额但开票不足额** → `CONTRACT_PAID_INVOICE_PENDING`(催补开发票;否则合同永远不会自动完结)
 
-**强关后**:发 `CONTRACT_AUTO_OVERDUE_TERMINATED` 通知(`reason=overdue_terminated`)。
+**注意**:原"宽限期强关"规则已移除——逾期未结清合同**不会**再被自动 CLOSED,将一直保持 `ACTIVE` 并持续催款,直到双 100% 足额自动完结或 admin 手动完结。历史 `reason=overdue_terminated` 的 CLOSED 合同不受影响(保持终态,如需恢复走 admin 重新打开)。
 
 ### 16.4 部署后必做(deploy.sh 已自动化)
 

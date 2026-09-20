@@ -265,7 +265,7 @@ enum MessageType {
 - `ownerUserId String`、`reviewerId String?`、`reviewAt DateTime?`、`reviewComment String?`
 - `attachments Json`（`{id,name,url,mimeType,size,uploadedBy,uploadedAt}[]`）
 
-- `completionInvoiceRatio Decimal @default(0.95) @db.Decimal(4,2)`
+- `completionInvoiceRatio Decimal @default(0.95) @db.Decimal(4,2)`（历史遗留列，自动完结已不再读取——完结阈值收紧为总额 100% 足额）
 - 索引：`@@index([customerId])`、`@@index([status])`、`@@index([ownerUserId])`
 
 > **交付物附件**（2026-06 调整）：合同详情"交付物"tab 内直接上传实际交付文件（报告/证书/培训材料 等）作为交付物，不再使用结构化 JSON 清单。复用 `Attachment` 表 + MinIO，加 `isDeliverable Boolean @default(false)` 标记"合同交付物附件"（区别于通用"附件"tab）。上传/删除写权限仅对 **admin / 合同签订人 / 合同负责人** 开放（`server/storage/presign.ts: assertCanManageDeliverables`）。
@@ -340,10 +340,9 @@ DRAFT ──[auto: 字段完整 + 至少 1 附件]──▶ ACTIVE ──[auto: 
                                        completed / terminated / expired
 ```
 - **→ ACTIVE（auto）**：保存/编辑时若 `signDate/startDate/endDate/totalAmount/taxRate/ownerUserId/signerId` 完整且 `attachments.length ≥ 1`，自动从 DRAFT 升 ACTIVE；`isPublishable(c)` 集中判定。
-- **→ CLOSED（auto complete）**：`SUM(Invoice.amount where status=ISSUED) ≥ totalAmount × completionInvoiceRatio`（默认 ratio=0.95，env `CONTRACT_COMPLETION_INVOICE_RATIO` 可调），`tryAutoComplete` 每晚扫一次。
-- **→ CLOSED（auto expire）**：`endDate < now()`，daily cron `runContractExpiryJob` 推 CLOSED 并写 `reviewComment="expired"`。
+- **→ CLOSED（auto complete）**：`endDate < now` 且开票（ISSUED/RED_FLUSHED 口径）与回款（CONFIRMED + RECONCILED）**双 100% 足额**（0.01 元容差），`tryAutoClose` 每小时扫一次（cron `contract-auto-complete`）。原 95% ratio（env `CONTRACT_COMPLETION_INVOICE_RATIO` / 行级 `completionInvoiceRatio`）与"宽限期强关"（`tryAutoCloseOnOverdue`）已移除。
 - **admin 兜底入口**：`POST /api/contracts/[id]/publish`（DRAFT→ACTIVE）、`POST /api/contracts/[id]/close`（ACTIVE→CLOSED, body `{reason: "completed"|"terminated"|"expired"}`）。
-- **时间线**：所有自动/手动迁移写 `ContractReviewLog.action`（AUTO_PUBLISH / AUTO_CLOSE_COMPLETED / AUTO_CLOSE_EXPIRED / MANUAL_PUBLISH / MANUAL_CLOSE），详情页时间线可见。
+- **时间线**：所有自动/手动迁移写 `ContractReviewLog.action`（AUTO_PUBLISH / AUTO_CLOSE_COMPLETED / MANUAL_PUBLISH / MANUAL_CLOSE），详情页时间线可见。
 
 ### 5.2 `Project.status`
 ```
@@ -393,7 +392,7 @@ PLANNED ─confirm(finance)─▶ CONFIRMED ─reconcile(finance)─▶ RECONCIL
 | R-04 | 合同 `→ ACTIVE` | 字段完整 + 至少 1 附件（`isPublishable`） | `CONTRACT_INCOMPLETE` |
 | R-05 | 新建项目 | 所属合同 `status = ACTIVE` | `PROJECT_CONTRACT_NOT_EFFECTIVE` |
 | R-06 | 项目 `endDate` | `≤ contract.endDate` | `PROJECT_DATE_OUT_OF_RANGE` |
-| R-07 | 合同 `→ CLOSED` (auto completed) | `SUM(Invoice.ISSUED) ≥ totalAmount × completionInvoiceRatio` | `CONTRACT_NOT_COMPLETABLE` |
+| R-07 | 合同 `→ CLOSED` (auto completed) | `endDate < now` + 开票 (ISSUED/RED_FLUSHED) 与回款 (CONFIRMED+RECONCILED) 均 `≥ totalAmount − 0.01` (双 100% 足额) | `CONTRACT_NOT_COMPLETABLE` |
 | R-08 | 开票 `submit/issue` | `SUM(已开票 ISSUED) + 当前 ≤ contract.totalAmount` | `INVOICE_OVER_LIMIT` |
 | R-09 | 开票 `→ ISSUED` | 电子发票号 20 位合规(公司抬头税号选填) | `INVOICE_INFO_INVALID` |
 | R-10 | 回款 `→ CONFIRMED` | `bankRefNo` 全局唯一 | `PAYMENT_DUPLICATE_REF` |
@@ -637,7 +636,7 @@ PLANNED ─confirm(finance)─▶ CONFIRMED ─reconcile(finance)─▶ RECONCIL
 - **业务编号**：`QT-{类型简码}-YYYY-####`；4 位年内流水；`Sequence` 表 + 行锁；默认全局递增。
 - **税率**：默认 6%；可由合同覆盖。
 - **电子发票号**：20 位数字（代码 12 + 号码 8），符合国标。
-- **合同完成开票阈值**：默认 95%（`Contract.completionInvoiceRatio` 可调）。
+- **合同完结阈值**：开票+回款**双 100% 足额**（0.01 元容差）；原 95% `completionInvoiceRatio` 与宽限期强关已移除（列为历史遗留）。
 - **认证**：账号密码 + 图形验证码（3 次失败 15 分钟锁定）；预留企业微信/SSO 接入位（不实现）。
 - **审计**：所有状态流转、关键金额字段修改、终态记录操作入 `OperationLog` / `*AuditLog`，保留 5 年。
 - **删除策略**：默认软删除（`deletedAt`）；终态记录禁止物理删除。

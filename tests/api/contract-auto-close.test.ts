@@ -1,11 +1,12 @@
-// 合同自动关闭任务回归 — 新策略 (endDate + 双足额 三个条件同时满足)
+// 合同自动关闭任务回归 — 新策略 (endDate + 双 100% 足额 三个条件同时满足)
 //
 // 设计:
 //   tryAutoClose 三个硬前置 (任一不满足 → SKIPPED):
 //     1) endDate < now                  (合同已过自然到期日)
-//     2) 开票足额  (>= totalAmount * ratio, env CONTRACT_COMPLETION_INVOICE_RATIO)
-//     3) 回款足额  (CONFIRMED + RECONCILED 之和 >= totalAmount * ratio)
+//     2) 开票足额  (已开票金额 >= totalAmount - MONEY_TOLERANCE, 即 100% 足额)
+//     3) 回款足额  (CONFIRMED + RECONCILED 之和 >= totalAmount - MONEY_TOLERANCE)
 //   reason 恒为 "completed" (合同自然到期 + 钱齐了, 项目完结; "expired" 仅用于 manual close).
+//   原 95% ratio (env / 行级 completionInvoiceRatio) 与宽限期强关 (tryAutoCloseOnOverdue) 均已移除.
 //
 // 覆盖:
 //   1) 未到期 + 双足额  → SKIPPED (endDate 是硬前置, 不再提前关)
@@ -13,6 +14,7 @@
 //   3) 已到期 + 开票足额 + 回款 0  → SKIPPED
 //   4) 已到期 + 双足额  → CLOSED (reason=completed)
 //   5) 未到期 + 开票 0 + 回款足额  → SKIPPED
+//   6) 已到期 + 开票足额 + 回款 95% → SKIPPED (回归: 收紧为 100% 足额后 95% 不再过关)
 //
 // DB 不可达时整组 skip. 全部数据用 unique TAG 前缀, 跑完自己清理.
 
@@ -235,6 +237,19 @@ describe("tryAutoClose — 新规则: endDate<now + 双足额", () => {
     const c = await mkContract({ endDate: futureEndDate, totalAmount: "1000.00", suffix: "A5" });
     // 不建任何发票
     await mkReconciledPayment(c.id, null, "1000.00", "A5");
+
+    const r = await tryAutoClose(c.id, new Date("2026-06-26T00:00:00Z"));
+    expect(r).toBe("SKIPPED");
+
+    const after = await prisma.contract.findUnique({ where: { id: c.id }, select: { status: true } });
+    expect(after?.status).toBe("ACTIVE");
+  });
+
+  it("已到期 + 开票足额 + 回款 95% → SKIPPED (回归: 收紧为 100% 足额后 95% 不再过关)", async () => {
+    if (!dbReachable) return;
+    const c = await mkContract({ endDate: pastEndDate, totalAmount: "1000.00", suffix: "A6" });
+    await mkIssuedInvoice(c.id, "1000.00", "A6");
+    await mkReconciledPayment(c.id, null, "950.00", "A6");
 
     const r = await tryAutoClose(c.id, new Date("2026-06-26T00:00:00Z"));
     expect(r).toBe("SKIPPED");

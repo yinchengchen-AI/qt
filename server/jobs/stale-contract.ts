@@ -1,6 +1,6 @@
 // 合同过期未结清提醒 (stale contract notice)
 //
-// 场景: 合同 endDate 已过, 但开票/回款未达到 ratio 阈值, 不会走 tryAutoClose.
+// 场景: 合同 endDate 已过, 但开票/回款未达 100% 足额, 不会走 tryAutoClose.
 // 这类合同会无限期 ACTIVE, owner / admin 需要被持续提醒去催款 / 处理。
 //
 // 触发: tickStaleContracts, 接入 runAllJobs, cron 每小时跑一次。
@@ -8,23 +8,19 @@
 // 判定 (与 tryAutoClose 镜像, 互不重复; 阈值口径 = Decimal + MONEY_TOLERANCE, 同 status.ts):
 //   - status = ACTIVE
 //   - endDate < now
-//   - 分支 A: 累计已确认回款 (CONFIRMED + RECONCILED) < totalAmount * ratio
+//   - 分支 A: 累计已确认回款 (CONFIRMED + RECONCILED) < totalAmount (100% 足额)
 //     → CONTRACT_EXPIRED_UNPAID (催款)
-//   - 分支 B: 回款已足额, 但开票 (INVOICE_ISSUED_AMOUNT_STATUSES 口径) < totalAmount * ratio
+//   - 分支 B: 回款已足额, 但开票 (INVOICE_ISSUED_AMOUNT_STATUSES 口径) < totalAmount
 //     → CONTRACT_PAID_INVOICE_PENDING (催补开发票; 否则 tryAutoClose 永不完结它也无人感知)
 //
 // 通知: 给 ownerUserId + 所有 ACTIVE 非系统 admin 发站内信.
-// 分支 A 提示文案会带上 graceDays 倒数, 让 admin 知道"还剩几天会被系统强关"。
+// 注: 原"宽限期后自动强关"规则已移除, 文案不再带强关倒计时, 只催款。
 //
 // 去重: 按 (type + entityId + 今日) 维度, 已有相同消息则跳过, 避免每天刷屏。
 //   查询走 Message 表 (MessageType 复合索引已建)。
-//
-// 注意: 已经在宽限期内 (endDate+GRACE<now) 的合同, 文案会换成"已过宽限期, 下次 cron 会被强关";
-//       距宽限期还远的, 文案带天数倒数。
 import { prisma } from "@/lib/prisma";
 import { Prisma } from "@prisma/client";
 import { emit, listAdminUserIds } from "@/server/events/bus";
-import { env } from "@/lib/env";
 import { MONEY_TOLERANCE } from "@/lib/money-tolerance";
 import { INVOICE_ISSUED_AMOUNT_STATUSES } from "@/lib/invoice-amounts";
 import type { JobResult } from "./runner";
@@ -33,15 +29,13 @@ const DAY_MS = 86_400_000;
 
 export async function tickStaleContracts(now: Date): Promise<JobResult> {
   const t0 = Date.now();
-  const fallbackRatio = env.CONTRACT_COMPLETION_INVOICE_RATIO;
-  const graceDays = env.CONTRACT_OVERDUE_GRACE_DAYS;
   const todayStart = new Date(now);
   todayStart.setHours(0, 0, 0, 0);
 
   // 1) 找出所有 endDate < now 且 ACTIVE 的合同 (含 unpriced)
   const candidates = await prisma.contract.findMany({
     where: { status: "ACTIVE", endDate: { lt: now }, deletedAt: null },
-    select: { id: true, contractNo: true, totalAmount: true, endDate: true, ownerUserId: true, completionInvoiceRatio: true }
+    select: { id: true, contractNo: true, totalAmount: true, endDate: true, ownerUserId: true }
   });
   if (candidates.length === 0) {
     return { job: "contract-stale-notify", created: 0, scanned: 0, durationMs: Date.now() - t0 };
@@ -105,11 +99,10 @@ export async function tickStaleContracts(now: Date): Promise<JobResult> {
   let scanned = 0;
   for (const c of candidates) {
     scanned++;
-    // 阈值口径与 status.ts tryAutoClose 一致: 行级 completionInvoiceRatio (env 兜底)
+    // 阈值口径与 status.ts tryAutoClose 一致: 总额 100% 足额
     // + Decimal + MONEY_TOLERANCE, 避免 JS number 浮点/容差漂移导致"差 1 分钱不提醒"
-    const ratio = Number(c.completionInvoiceRatio ?? fallbackRatio);
     const total = new Prisma.Decimal(c.totalAmount.toString());
-    const effectiveThreshold = total.mul(ratio).minus(MONEY_TOLERANCE);
+    const effectiveThreshold = total.minus(MONEY_TOLERANCE);
     const paid = paidByContract.get(c.id) ?? new Prisma.Decimal(0);
     const daysOverdue = Math.floor((now.getTime() - new Date(c.endDate).getTime()) / DAY_MS);
 
@@ -137,17 +130,14 @@ export async function tickStaleContracts(now: Date): Promise<JobResult> {
       continue;
     }
 
-    // 分支 A: 回款未足额 → 催款 (原 CONTRACT_EXPIRED_UNPAID 路径)
+    // 分支 A: 回款未足额 → 催款
     if (sentUnpaidIds.has(c.id)) continue;
-    const daysUntilForceClose = Math.max(0, graceDays - daysOverdue);
     await emit(prisma, {
       type: "CONTRACT_EXPIRED_UNPAID",
       payload: {
         contractId: c.id,
         contractNo: c.contractNo,
         daysOverdue,
-        graceDays,
-        daysUntilForceClose,
         paidAmount: paid.toNumber(),
         totalAmount: total.toNumber(),
         remaining: total.minus(paid).toFixed(2)

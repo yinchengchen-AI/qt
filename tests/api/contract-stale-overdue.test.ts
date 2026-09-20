@@ -1,13 +1,8 @@
-// 合同过期宽限期强关 + 过期未结清提醒 (stale contract)
+// 合同过期未结清提醒 (stale contract)
 //
 // 设计:
-//   tryAutoCloseOnOverdue (新): endDate + GRACE_DAYS < now + 未结清 → CLOSED (reason=overdue_terminated)
-//   tickStaleContracts (新): 扫 endDate<now + 未结清 + status=ACTIVE, 给 owner/admin 发通知 (去重)
-//
-// 覆盖 tryAutoCloseOnOverdue:
-//   1) endDate+GRACE<now + 未结清 → CLOSED (reason=overdue_terminated)
-//   2) endDate+GRACE<now + 已结清  → SKIPPED (走 tryAutoClose 处理, 不重复)
-//   3) endDate+GRACE>=now + 未结清 → SKIPPED (还在宽限期内, 等通知)
+//   tickStaleContracts: 扫 endDate<now + 未双足额 + status=ACTIVE, 给 owner/admin 发通知 (去重)
+//   (原宽限期强关 tryAutoCloseOnOverdue 已移除, 过期未结清合同不再被自动 CLOSED)
 //
 // 覆盖 tickStaleContracts (集成测试, 跑出数 + 检查 message 表):
 //   1) DB 不可达时整组 skip
@@ -17,7 +12,6 @@
 
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { prisma } from "@/lib/prisma";
-import { tryAutoCloseOnOverdue } from "@/server/services/contract";
 import { tickStaleContracts } from "@/server/jobs/stale-contract";
 
 let dbReachable = false;
@@ -176,54 +170,8 @@ async function mkReconciledPayment(contractId: string, amount: string, suffix: s
   return p;
 }
 
-// 用一个已超 90 天的 endDate, 配合默认 GRACE_DAYS=60, 保证 endDate+GRACE<now 测试有意义
+// 用一个已超期的 endDate, 保证 stale 扫描 (endDate<now) 一定命中
 const veryOldEndDate = new Date("2025-01-01T00:00:00Z");  // ~540 天前
-// 在宽限期内: endDate=昨天 (1 天前), GRACE=60, endDate+GRACE>>now, 不应被强关
-const withinGraceEndDate = new Date("2026-06-25T00:00:00Z");
-
-describe("tryAutoCloseOnOverdue — 宽限期已过 + 未结清 → 强关", () => {
-  it("endDate+GRACE<now + 未结清 → CLOSED (reason=overdue_terminated)", async () => {
-    if (!dbReachable) return;
-    const c = await mkContract({ endDate: veryOldEndDate, totalAmount: "1000.00", suffix: "O1" });
-    await mkIssuedInvoice(c.id, "1000.00", "O1");
-    // 故意不建回款, 满足"未结清"
-
-    const r = await tryAutoCloseOnOverdue(c.id, new Date("2026-06-26T00:00:00Z"));
-    expect(r).toBe("CLOSED");
-
-    const after = await prisma.contract.findUnique({ where: { id: c.id }, select: { status: true, reviewComment: true } });
-    expect(after?.status).toBe("CLOSED");
-    expect(after?.reviewComment).toBe("overdue_terminated");
-  });
-
-  it("endDate+GRACE<now + 已结清 → SKIPPED (由 tryAutoClose 处理, 互不重复)", async () => {
-    if (!dbReachable) return;
-    const c = await mkContract({ endDate: veryOldEndDate, totalAmount: "1000.00", suffix: "O2" });
-    await mkIssuedInvoice(c.id, "1000.00", "O2");
-    await mkReconciledPayment(c.id, "1000.00", "O2");
-    // 已结清: 不会走 tryAutoCloseOnOverdue (paid>=threshold 抛 SkipTransition)
-    // 同时不会走 tryAutoClose 因为 endDate<now 但 tryAutoClose 的 precondition 仍可能命中
-    // 这里只验证 tryAutoCloseOnOverdue 单独调用 SKIPPED, 不动 status
-    const r = await tryAutoCloseOnOverdue(c.id, new Date("2026-06-26T00:00:00Z"));
-    expect(r).toBe("SKIPPED");
-
-    const after = await prisma.contract.findUnique({ where: { id: c.id }, select: { status: true } });
-    expect(after?.status).toBe("ACTIVE"); // 没改
-  });
-
-  it("endDate+GRACE>=now (在宽限期内) + 未结清 → SKIPPED", async () => {
-    if (!dbReachable) return;
-    const c = await mkContract({ endDate: withinGraceEndDate, totalAmount: "1000.00", suffix: "O3" });
-    await mkIssuedInvoice(c.id, "1000.00", "O3");
-    // 未结清, 但 endDate+GRACE>now (1 天过期, 还在 60 天宽限期内), 不应被强关
-
-    const r = await tryAutoCloseOnOverdue(c.id, new Date("2026-06-26T00:00:00Z"));
-    expect(r).toBe("SKIPPED");
-
-    const after = await prisma.contract.findUnique({ where: { id: c.id }, select: { status: true } });
-    expect(after?.status).toBe("ACTIVE");
-  });
-});
 
 describe("tickStaleContracts — 过期未结清提醒 (集成)", () => {
   it("DB 不可达时不抛错", async () => {
@@ -293,10 +241,10 @@ describe("tickStaleContracts — 回款已足额但开票不足额提醒 (CONTRA
 
   it("回款在 0.01 容差内视为足额 (与 status.ts Decimal+容差口径一致)", async () => {
     if (!dbReachable) return;
-    // total=1000, ratio=0.95 → threshold=950, 容差后有效阈值 949.99
-    // 旧 JS number 口径 (paid >= total*ratio) 会把 949.99 判为未足额走催款分支
+    // total=1000, 100% 足额阈值=1000, 容差后有效阈值 999.99
+    // 低于 999.99 (如 95% 的 950) 视为未足额走催款分支; 999.99 本身足额
     const c = await mkContract({ endDate: veryOldEndDate, totalAmount: "1000.00", suffix: "P2" });
-    await mkReconciledPayment(c.id, "949.99", "P2");
+    await mkReconciledPayment(c.id, "999.99", "P2");
     // 不开票 → 若视为回款足额, 应走"待补开票"分支
 
     await tickStaleContracts(new Date("2026-06-26T00:00:00Z"));

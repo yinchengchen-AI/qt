@@ -253,9 +253,9 @@ const handleDelete = () => {
   })();
 
   // 状态机提示: 合同已"开票+回款"双足额, 但 endDate 还没到, 处于"等自然到期"状态。
-  // 满足条件: status=ACTIVE + endDate>=now + 已确认回款 >= total*ratio + 已开票 >= total*ratio
+  // 满足条件: status=ACTIVE + endDate>=now + 已确认回款 >= total + 已开票 >= total (100% 足额)
   // 这种合同 tryAutoClose 会等 endDate<now 才关, 当前处于"等自然到期"过渡态, 加 tag 提示 admin。
-  // 阈值取该合同行级 completionInvoiceRatio (与 tryAutoClose 同口径), 是 UI 提示不是业务门。
+  // 阈值与 tryAutoClose 同口径 (总额 100%), 是 UI 提示不是业务门。
   const settledPreExpiry = (() => {
     if (contract.status !== "ACTIVE") return false;
     if (!contract.endDate) return false;
@@ -264,8 +264,7 @@ const handleDelete = () => {
     if (!t) return false;
     const total = Number(t.totalAmount);
     if (!(total > 0)) return false;
-    const ratio = Number(contract.completionInvoiceRatio ?? 0.95);
-    return Number(t.invoicedAmount) >= total * ratio && Number(t.paidAmount) >= total * ratio;
+    return Number(t.invoicedAmount) >= total && Number(t.paidAmount) >= total;
   })();
   const daysUntilExpiry = (() => {
     if (!contract.endDate) return null;

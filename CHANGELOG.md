@@ -2,6 +2,24 @@
 
 本文件记录 qt-biz 每个版本的详细变更。项目快速入口请见 [README.md](README.md)。
 
+## v0.25.11(2026-09-20)合同完结判定收紧
+
+### 变更
+
+- **change(contract)**: 自动完结收紧为**双 100% 足额** — `tryAutoClose` 阈值从"总额 × 95%(env `CONTRACT_COMPLETION_INVOICE_RATIO` / 行级 `completionInvoiceRatio` 可调)"改为"开票与回款均 ≥ 总额 − 0.01 容差";两个 env 变量与行级覆盖读取一并移除(DB 列保留兼容, 无迁移)。
+- **change(contract)**: **取消宽限期自动强关** — 删除 `tryAutoCloseOnOverdue`(endDate + 60 天宽限仍未结清 → CLOSED)及 `lock:overdue_skip:*` 豁免机制;过期未结清合同保持 ACTIVE, 由 hourly `contract-stale-notify` 催款提醒 + admin 手动完结兜底。
+- **change(contract)**: 风险报告 expiry 建议文案去掉"N 天后自动强关"表述, 改为催收导向; `buildRiskReport` / `buildRecommendations` 移除 `graceDays` 参数。
+
+### 说明
+
+- 历史 `reason=overdue_terminated` 的 CLOSED 合同保持终态不受影响; 工作台/风险评分的"历史强关"统计口径保留。如需恢复某合同走 admin 重新打开(reopen 后不会再被自动强关)。
+- 手动完结(admin 强制)与 reopen 行为不变; `CONTRACT_AUTO_OVERDUE_TERMINATED` 消息类型保留(PG enum + 历史消息兼容), 不再触发。
+
+### 测试
+
+- **test(contract)**: `contract-auto-close` 新增回归用例 — 已到期 + 开票足额 + 回款 95% → SKIPPED(收紧后 95% 不再过关)。
+- **test(contract)**: 删除 `tryAutoCloseOnOverdue` 用例组(随函数移除); `risk-report` / `contract-risk` 断言适配新文案。
+
 ## v0.25.10(2026-09-20)员工档案模块检查修复
 
 ### 修复

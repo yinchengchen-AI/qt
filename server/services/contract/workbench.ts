@@ -4,8 +4,8 @@
 // 口径对齐 spec §3.5 (docs/superpowers/specs/2026-08-18-contract-deepening-roadmap-design.md):
 //   - 活跃合同数   = status = ACTIVE (含逾期窗口内的)
 //   - 即将到期     = ACTIVE 且 endDate ∈ [now, now + 7d]
-//   - 逾期合同     = ACTIVE 且 endDate < now (宽限期窗口内未被强关、也未双足额自动完结的)
-//                   + CLOSED 且 reviewComment = "overdue_terminated" (已强关待善后)
+//   - 逾期合同     = ACTIVE 且 endDate < now (未双足额自动完结的)
+//                   + CLOSED 且 reviewComment = "overdue_terminated" (历史强关, 善后/统计用)
 //   - 风险预警     = 我的 ACTIVE 合同中风险等级 HIGH/CRITICAL 的数量 (Phase 2 实时计算)
 //
 // 安全: 所有查询的 ownerUserId 一律从 session 取, 不接受客户端传入; 只读操作不写审计日志.
@@ -20,7 +20,6 @@ import {
   type EnhancedRiskScoreInput,
   type EnhancedRiskScoreResult
 } from "@/server/services/contract/risk-score-enhanced";
-import { env } from "@/lib/env";
 
 const DAY_MS = 86_400_000;
 /** 即将到期窗口 (天), 与 spec §3.5 的 0-7 天一致 */
@@ -64,8 +63,8 @@ export async function getMyStats(user: SessionUser): Promise<MyStats> {
       where: { ownerUserId: user.id, status: "ACTIVE", deletedAt: null },
       select: ACTIVE_RISK_SELECT
     }),
-    // 已强关待善后: 宽限期强关 (reason 存在 reviewComment) 的合同
-    // 口径与 status.ts tryAutoCloseOnOverdue 一致; 统计区间内强关的按 endDate 窗口过滤
+    // 历史宽限期强关合同 (reason 存在 reviewComment; 该自动强关规则已移除, 仅历史数据统计)
+    // 统计区间内强关的按 endDate 窗口过滤
     prisma.contract.count({
       where: {
         ownerUserId: user.id,
@@ -140,7 +139,7 @@ export async function getContractRisk(user: SessionUser, contractId: string): Pr
     select: { snapshotDate: true, score: true, level: true, dimensions: true }
   });
 
-  const report = buildRiskReport(risk, snapshots, env.CONTRACT_OVERDUE_GRACE_DAYS);
+  const report = buildRiskReport(risk, snapshots);
   return {
     ...risk,
     trend: snapshots.map((s) => ({ date: s.snapshotDate, score: s.score, level: s.level })),

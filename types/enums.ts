@@ -103,7 +103,7 @@ export const MESSAGE_TYPE = [
   "CONTRACT_AUTO_EXECUTED",
   "CONTRACT_AUTO_COMPLETED",
   "CONTRACT_AUTO_EXPIRED",
-  // 合同过期宽限期强关 (tryAutoCloseOnOverdue 触发, endDate+GRACE<now 仍未结清)
+  // 合同过期宽限期强关 — 历史类型, 不再触发 (强关规则已移除; PG enum + 历史消息兼容保留)
   "CONTRACT_AUTO_OVERDUE_TERMINATED",
   // 合同过期未结清提醒 (tickStaleContracts 触发, endDate<now 但钱没收齐, 给 owner/admin 通知)
   "CONTRACT_EXPIRED_UNPAID",

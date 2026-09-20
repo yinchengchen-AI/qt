@@ -12,7 +12,6 @@ import type { ContractRisk, RiskDimensionKey } from "@/server/services/contract/
 
 const DAY_MS = 86_400_000;
 const NOW = new Date("2026-08-18T06:00:00.000Z");
-const GRACE_DAYS = 90;
 
 /** §7.2 示例合同: 逾期 20 天 + 回款落后 40pp + 开票落后 30pp + 强关率 33% → 57 MEDIUM */
 function makeRisk(overrides: Partial<ContractRisk> = {}): ContractRisk {
@@ -91,38 +90,38 @@ describe("buildTrendSummary", () => {
 });
 
 describe("buildRecommendations", () => {
-  it("§7.2 示例: 催款带剩余金额 + 逾期带宽限期倒数 + 客户信用", () => {
+  it("§7.2 示例: 催款带剩余金额 + 逾期催收建议 + 客户信用", () => {
     const risk = makeRisk();
-    const recs = buildRecommendations(risk, null, GRACE_DAYS);
+    const recs = buildRecommendations(risk, null);
     // payment 80 最高 → 第一条; expiry 66.7 第二; invoicing 60 第三 (Top 3)
     expect(recs[0]).toBe("付款进度落后最严重：建议立即发起催款（剩余 ¥40,000）");
-    expect(recs[1]).toBe("合同已逾期 20 天且在宽限期内：70 天后将被系统自动强关，请优先处理");
+    expect(recs[1]).toBe("合同已逾期 20 天，请优先催收；合同完结需开票+回款 100% 足额（或管理员手动完结），逾期不会自动关单");
     expect(recs[2]).toBe("开票进度落后：请尽快补开发票（缺口 ¥30,000）");
   });
 
   it("客户信用 ≥50 时给缩短账期建议", () => {
     const risk = makeRisk({ dimensionRaw: { expiry: 0, payment: 0, invoicing: 0, customerCredit: 80, amountAnomaly: 0 } });
-    const recs = buildRecommendations(risk, null, GRACE_DAYS);
+    const recs = buildRecommendations(risk, null);
     expect(recs).toEqual(["该客户历史强关率偏高：后续合作建议缩短账期或预付"]);
   });
 
   it("趋势上升 ≥10 分追加趋势建议", () => {
     const risk = makeRisk();
     const trend = { days: 30, from: 35, to: 57, mainDriver: "expiry" as const };
-    const recs = buildRecommendations(risk, trend, GRACE_DAYS);
+    const recs = buildRecommendations(risk, trend);
     expect(recs[recs.length - 1]).toBe("风险评分 30 天内从 35 升至 57，主要由「到期风险」驱动，请优先处理");
   });
 
   it("全部维度 <50 → 常规跟进建议", () => {
     const risk = makeRisk({ dimensionRaw: { expiry: 0, payment: 10, invoicing: 10, customerCredit: 20, amountAnomaly: 0 }, score: 5, level: "LOW" });
-    const recs = buildRecommendations(risk, null, GRACE_DAYS);
+    const recs = buildRecommendations(risk, null);
     expect(recs).toEqual(["暂无高风险维度，保持常规跟进"]);
   });
 
-  it("超过宽限期 → 立即处理文案", () => {
+  it("长期逾期 → 催收建议文案 (不再提示自动强关)", () => {
     const risk = makeRisk({ daysOverdue: 95, dimensionRaw: { expiry: 100, payment: 0, invoicing: 0, customerCredit: 0, amountAnomaly: 0 } });
-    const recs = buildRecommendations(risk, null, GRACE_DAYS);
-    expect(recs[0]).toBe("合同已过宽限期，随时可能被系统自动强关，请立即处理");
+    const recs = buildRecommendations(risk, null);
+    expect(recs[0]).toBe("合同已逾期 95 天，请优先催收；合同完结需开票+回款 100% 足额（或管理员手动完结），逾期不会自动关单");
   });
 });
 
@@ -133,7 +132,7 @@ describe("buildRiskReport 整体契约", () => {
       makeSnapshot(20, 35, { expiry: 30, payment: 60, invoicing: 50, customerCredit: 33.3, amountAnomaly: 0 }),
       makeSnapshot(5, 48, { expiry: 50, payment: 70, invoicing: 55, customerCredit: 33.3, amountAnomaly: 0 })
     ];
-    const report = buildRiskReport(risk, snapshots, GRACE_DAYS, NOW);
+    const report = buildRiskReport(risk, snapshots, NOW);
     expect(report.contractId).toBe("c1");
     expect(report.riskScore).toBe(57);
     expect(report.riskLevel).toBe("MEDIUM");

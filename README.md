@@ -128,13 +128,13 @@ const customer = await createCustomer({ ...data, ownerUserId: user.id }, user);
 
 - **状态机** — DRAFT → ACTIVE → CLOSED,合法迁移路径见 [DESIGN-v3](docs/architecture/DESIGN-v3.md §5):
   ```
-  DRAFT ────(auto: 字段完整 + 附件)──▶ ACTIVE ────(auto: 开票足额 / endDate 过期)──▶ CLOSED
+  DRAFT ────(auto: 字段完整 + 附件)──▶ ACTIVE ────(auto: 到期 + 开票回款双 100% 足额)──▶ CLOSED
     │                                       │
     └───(admin 强制发布)                    └───(admin 强制完结: completed/terminated/expired)
   ```
 - **R-08 开票限额** — 合同累计开票金额 ≤ 合同总额
 - **附件** — 合同级附件,走 MinIO presigned 直传
-- **自动状态机** — `contract-auto-publish` / `contract-auto-complete` / `contract-auto-close-on-expiry` 三个 cron 任务每日自动推进
+- **自动状态机** — `contract-auto-publish` / `contract-auto-complete` / `contract-stale-notify` 三个 cron 任务每小时自动推进; 原"宽限期强关"(过期未结清自动 CLOSED) 已移除, 逾期合同保持 ACTIVE 并由 stale-notify 催款提醒
 
 **代码示例** — 合同状态判断:
 ```ts
