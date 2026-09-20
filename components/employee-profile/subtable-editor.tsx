@@ -27,6 +27,12 @@ type Props = {
   hint?: React.ReactNode;
   /** 每行右上角的标签 (例如 "证书 1") */
   itemLabelIndex?: boolean;
+  /**
+   * upload 类型字段上传时关联的员工档案 id。
+   * 传入后附件直接挂到该档案(canReadAttachment 走档案附件口径: 本人/ADMIN/OPS);
+   * 不传则落 tmp,仅上传者可读,直到业务侧把它挂到具体记录(如证书扫描件)。
+   */
+  uploadEmployeeProfileId?: string | null;
 };
 
 /**
@@ -36,7 +42,7 @@ type Props = {
  * - 字段宽: text/date/select/digit/upload 默认 md;
  *    textarea 与 switch 占满一整行
  */
-export function SubtableEditor({ name, label, fields, initialValue, hint, itemLabelIndex }: Props) {
+export function SubtableEditor({ name, label, fields, initialValue, hint, itemLabelIndex, uploadEmployeeProfileId }: Props) {
   return (
     <ProFormList
       name={name}
@@ -199,7 +205,10 @@ export function SubtableEditor({ name, label, fields, initialValue, hint, itemLa
                           return;
                         }
                         try {
-                          const res = await uploadFileToMinIO(file, { category: f.uploadCategory ?? "GENERAL" });
+                          const res = await uploadFileToMinIO(file, {
+                            category: f.uploadCategory ?? "GENERAL",
+                            employeeProfileId: uploadEmployeeProfileId ?? null
+                          });
                           options.onSuccess?.(res, new XMLHttpRequest());
                         } catch (e) {
                           options.onError?.(e as Error);

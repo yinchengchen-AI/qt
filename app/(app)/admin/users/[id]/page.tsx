@@ -422,7 +422,10 @@ export default function UserDetailPage() {
             ),
             rows: [
               c.issuer ? { icon: <UserOutlined />, text: c.issuer } : null,
-              { icon: <CalendarOutlined />, text: c.issueDate ? `${formatDate(c.issueDate)} ~ ${c.expiryDate ? formatDate(c.expiryDate) : "无到期日"}` : "未填颁发日" }
+              { icon: <CalendarOutlined />, text: c.issueDate ? `${formatDate(c.issueDate)} ~ ${c.expiryDate ? formatDate(c.expiryDate) : "无到期日"}` : "未填颁发日" },
+              c.attachmentId
+                ? { icon: <FileProtectOutlined />, text: <a href={`/api/files/raw/${c.attachmentId}`} target="_blank" rel="noreferrer">查看扫描件</a> }
+                : null
             ].filter(Boolean) as Array<{ icon?: React.ReactNode; text: React.ReactNode; muted?: boolean }>
           }))}
         />

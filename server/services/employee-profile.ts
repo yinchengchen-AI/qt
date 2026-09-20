@@ -85,21 +85,12 @@ export async function linkAttachmentsToProfile(
   });
 }
 
-// 临时安全网 (PR1 only): 用 Prisma 生成的字段枚举做白名单,
-// 防止旧前端提交已删字段 (workExperience / educationHistory / certificates /
-// emergencyContactName / emergencyContactPhone / address) 走到 Prisma 时报
-// "Unknown argument" 错误。PR3 清理 validator/DTO 后移除此 allowlist。
-const EMPLOYEE_PROFILE_WRITABLE_FIELDS = new Set<string>(
-  Object.values(Prisma.EmployeeProfileScalarFieldEnum).filter(
-    (f) => !["id", "userId", "createdAt", "updatedAt", "deletedAt"].includes(f)
-  )
-);
-
+// 入参已经 route 层 zod(employeeProfileUpdateSchema) 严格校验,字段集合即 schema 字段集合,
+// 无需再对 Prisma 字段做二次白名单;这里只负责加密与摊平。
 export function buildProfileUpdateData(input: EmployeeProfileUpdateInput): Record<string, unknown> {
   const data: Record<string, unknown> = {};
   for (const [key, value] of Object.entries(input)) {
     if (value === undefined) continue;
-    if (!EMPLOYEE_PROFILE_WRITABLE_FIELDS.has(key)) continue; // 临时 allowlist
     if (ENCRYPTED_FIELDS.includes(key as (typeof ENCRYPTED_FIELDS)[number]) && typeof value === "string" && value.length > 0) {
       data[key] = encrypt(value);
     } else {
@@ -116,6 +107,18 @@ export function redactForAudit(data: Record<string, unknown>): Record<string, un
   }
   if (out.salary != null) out.salary = "***REDACTED***";
   return out;
+}
+
+// 审计 payload 落 OperationLog(Json 字段)前把 Prisma 特殊类型转成 JSON 安全值:
+// Decimal(如 salary)带 function 属性无法序列化(历史上第二次更新 salary 必崩,这里兜底);
+// Date 统一 ISO 字符串。
+export function auditSafeValue(value: unknown): unknown {
+  if (value == null) return null;
+  if (value instanceof Date) return value.toISOString();
+  if (typeof value === "object" && "toNumber" in (value as Record<string, unknown>)) {
+    return (value as { toNumber: () => number }).toNumber();
+  }
+  return value;
 }
 
 function stripFields(profile: EmployeeProfileDto, fields: ReadonlySet<string>): EmployeeProfileDto {
@@ -140,6 +143,22 @@ function visibleProfile(actor: SessionUser, userId: string, decrypted: EmployeeP
     return stripFields(decrypted, OPS_HIDDEN_FIELDS);
   }
   return decrypted;
+}
+
+// 身份证查重: idCard 随机 IV 加密存储,密文永不相同,DB @unique 无法防重,
+// 只能在应用层解密比对(员工表量级小,每次保存 O(n) 次解密可接受)。
+async function assertIdCardNotDuplicate(idCard: string, excludeProfileId?: string | null): Promise<void> {
+  const normalized = idCard.toUpperCase();
+  const rows = await prisma.employeeProfile.findMany({
+    where: { deletedAt: null, ...(excludeProfileId ? { id: { not: excludeProfileId } } : {}) },
+    select: { id: true, idCard: true }
+  });
+  for (const row of rows) {
+    const plain = row.idCard ? decrypt(row.idCard) : null;
+    if (plain && plain.toUpperCase() === normalized) {
+      throw new ApiError(ERROR_CODES.VALIDATION_FAILED, "该身份证号已存在于其他员工档案", 422);
+    }
+  }
 }
 
 export async function getEmployeeProfile(actor: SessionUser, userId: string): Promise<EmployeeProfileDto | null> {
@@ -178,6 +197,10 @@ export async function updateEmployeeProfile(
   if (!user) throw new ApiError(ERROR_CODES.NOT_FOUND, "用户不存在", 404);
 
   const data = buildProfileUpdateData(input);
+  if (typeof input.idCard === "string" && input.idCard.length > 0) {
+    // 传明文(加密发生在 buildProfileUpdateData 内, 查重需解密比对)
+    await assertIdCardNotDuplicate(input.idCard, user.profile?.id);
+  }
 
   const profile = await prisma.$transaction(async (tx) => {
     const upserted = await tx.employeeProfile.upsert({
@@ -190,7 +213,7 @@ export async function updateEmployeeProfile(
       action: "EMPLOYEE_PROFILE_UPDATE",
       entity: "EmployeeProfile",
       entityId: upserted.id,
-      before: user.profile ? Object.fromEntries(Object.keys(data).map((k) => [k, (user.profile as unknown as Record<string, unknown>)[k] ?? null])) : null,
+      before: user.profile ? Object.fromEntries(Object.keys(data).map((k) => [k, auditSafeValue((user.profile as unknown as Record<string, unknown>)[k])])) : null,
       after: redactForAudit(data)
     });
     return upserted;
@@ -219,8 +242,14 @@ export async function getUserFullProfile(actor: SessionUser, userId: string): Pr
       profile: {
         include: {
           avatarAttachment: { where: { deletedAt: null } },
-          // P0-5: 非 ADMIN 不返回 ID_CARD_FRONT/BACK(身份证正反面照, PII)
-          attachments: { where: { deletedAt: null, category: { in: ["GENERAL"] } } }
+          // P0-5: 身份证正反面照(PII)仅 ADMIN 在附件列表可见; 非 ADMIN 只回 GENERAL。
+          // 注: 这是列表层遮蔽,下载侧 canReadAttachment 才是真管控(本人/ADMIN/OPS)。
+          attachments: {
+            where: {
+              deletedAt: null,
+              category: { in: actor.roleCode === "ADMIN" ? ["GENERAL", "ID_CARD_FRONT", "ID_CARD_BACK"] : ["GENERAL"] }
+            }
+          }
         }
       }
     }
@@ -306,12 +335,14 @@ export async function updateUserFullProfile(
   if (input.expectedUpdatedAt && user.profile) {
     const expected = new Date(input.expectedUpdatedAt).getTime();
     const actual = user.profile.updatedAt.getTime();
-    if (actual > expected) {
+    // 与事务内条件 update(WHERE updatedAt = expected)同一口径: 严格相等。
+    // 用 actual > expected 会让"基线超前"(时钟偏差/旧读)预检放行、事务却 409,自相矛盾。
+    if (actual !== expected) {
       throw new ApiError(ERROR_CODES.CONFLICT, "档案已被他人修改,请刷新后再试", 409);
     }
   }
 
-  // 3. 事务:更新 user 字段 + profile 字段 + 全删全插 5 张子表
+  // 3. 归一化 profile 字段(日期转 Date,敏感字段加密)—— 真正落库在下面的事务里
   const profileData = input.profile
     ? buildProfileUpdateData({
         ...input.profile,
@@ -325,16 +356,30 @@ export async function updateUserFullProfile(
       } as EmployeeProfileUpdateInput)
     : {};
 
-  // P0-1: 新档案先 upsert,拿到 profileId 再走子表全删全插
-  let profileId: string;
-  if (isNewProfile) {
-    const created = await prisma.employeeProfile.create({ data: { userId, ...profileData } });
-    profileId = created.id;
-  } else {
-    profileId = user.profile!.id;
+  // 身份证查重(同单条更新路径,密文 @unique 防不了重)。传明文,内部解密比对。
+  if (typeof input.profile?.idCard === "string" && input.profile.idCard.length > 0) {
+    await assertIdCardNotDuplicate(input.profile.idCard, user.profile?.id);
   }
 
+  // 3. 事务:更新 user 字段 + profile 字段 + 全删全插 5 张子表
   await prisma.$transaction(async (tx) => {
+    // P0-1: 新档案在事务内创建 —— 之前 create 在事务外,事务失败会留下没有
+    // 子表/审计的空壳 profile;并发双建撞 userId 唯一约束时给出明确的 409,
+    // 而不是被全局 P2002 兜底映射成误导性的 "编号已存在" 422。
+    let profileId: string;
+    if (isNewProfile) {
+      try {
+        const created = await tx.employeeProfile.create({ data: { userId, ...profileData } });
+        profileId = created.id;
+      } catch (e) {
+        if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === "P2002") {
+          throw new ApiError(ERROR_CODES.CONFLICT, "档案正在被他人并发创建,请刷新后重试", 409);
+        }
+        throw e;
+      }
+    } else {
+      profileId = user.profile!.id;
+    }
     // user 字段更新
     if (input.user && Object.keys(input.user).length > 0) {
       await tx.user.update({ where: { id: userId }, data: input.user });

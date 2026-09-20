@@ -5,6 +5,13 @@ export function optionalString(max: number) {
   return z.string().max(max).optional().or(z.literal("").transform(() => undefined));
 }
 
+// 敏感字符串字段(银行卡/开户行/社保/公积金)额外接受 null = 显式清空,
+// 与 salary/idCard 的清空语义对齐;其余 optionalString 字段(地址/岗位等)维持
+// "null 拒绝,前端须剔除"的原契约(见 user-with-profile validator 测试)。
+export function nullableOptionalString(max: number) {
+  return z.string().max(max).nullish().or(z.literal("").transform(() => undefined));
+}
+
 export function optionalDate() {
   return z.union([z.iso.datetime(), z.iso.date()]).optional().or(z.literal("").transform(() => undefined));
 }
@@ -37,7 +44,8 @@ export const employeeProfileUpdateSchema = z.object({
   birthday: optionalDate(),
   idCard: z.preprocess(
     (val) => (val === "" ? undefined : val),
-    z.string().max(18).optional().refine((v) => !v || isValidIdCard(v), { message: "身份证号格式错误" })
+    // null = 显式清除已存身份证号(随机 IV 加密使 @unique 无法防重,应用层查重见 service)
+    z.string().max(18).nullish().refine((v) => !v || isValidIdCard(v), { message: "身份证号格式错误" })
   ),
   education: optionalString(50),
   entryDate: optionalDate(),
@@ -65,11 +73,19 @@ export const employeeProfileUpdateSchema = z.object({
   avatarAttachmentId: z.string().min(1).nullable().optional(),
 
   // 敏感
-  salary: z.coerce.number().nonnegative().max(999999999999.99).optional().or(z.literal("").transform(() => undefined)),
-  bankAccount: optionalString(40),
-  bankName: optionalString(100),
-  socialSecurityAccount: optionalString(40),
-  providentFundAccount: optionalString(40),
+  // union 顺序敏感: "" → undefined(不变), null → 显式清空, 数字/数字字符串 → 写入。
+  // 不能用 coerce 兜底(Number(null)/Number("") 都是 0,会把"清空"变成"月薪 0")。
+  salary: z
+    .union([
+      z.literal("").transform(() => undefined),
+      z.null(),
+      z.coerce.number().nonnegative().max(999999999999.99)
+    ])
+    .optional(),
+  bankAccount: nullableOptionalString(40),
+  bankName: nullableOptionalString(100),
+  socialSecurityAccount: nullableOptionalString(40),
+  providentFundAccount: nullableOptionalString(40),
 
   // 备注(保留)
   remark: optionalString(5000)

@@ -203,6 +203,11 @@ test.describe.serial("14 - 员工档案 CRUD + 附件上传", () => {
     // 滚到 #certs 验证锚点 (Anchor 已删, 改用 scrollIntoView)
     await page.locator("#certs").scrollIntoViewIfNeeded();
     await expect(page.locator("#certs")).toBeVisible();
+
+    // 头像已持久化(回归: 向导上传头像曾取错 UploadFile.id 导致从未落库)
+    await expect(page.locator("img[src*='/api/files/raw/']").first()).toBeVisible({ timeout: 10000 });
+    // 证书扫描件有查看入口
+    await expect(page.getByRole("link", { name: "查看扫描件" })).toBeVisible();
   });
 
   // ---------- 14.3 update: 编辑向导 ----------

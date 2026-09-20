@@ -117,18 +117,31 @@ export function ProfileWizard({ userId, initial, isAdmin }: Props) {
   function normalizeValues(values: Record<string, unknown>) {
     const profile = { ...((values.profile as Record<string, unknown> | undefined) ?? {}) };
 
-    // zod 的 optionalString/optionalDate 不接受 null,统一剔除(放弃"清空"语义,与后端现状一致):
+    // null 剔除策略(大部分字段"不动"语义):
     // - getFieldsValue(true) 会带出服务端 profile 的 null 初值(如 probationEndDate)
     // - 直辖市两级级联时 handleAddressChange 会写入 district: null
-    // 注意 avatarAttachmentId=null 是显式清空头像,在下方头像逻辑里单独设置,不受此影响
+    // 这些 null 不代表用户操作,一律剔除、不发给后端。
+    // 例外(显式清空, 后端 validator 已支持 null):
+    // - salary: Digit 清空得到 null, 保留发送 —— 已存值清为 null; 本就 null 则是幂等 no-op
+    // - idCard: 输入框清空得到 "", 转成 null 发送(后端 preprocess 把 "" 当 undefined)
+    const KEEP_NULL_AS_CLEAR = new Set(["salary"]);
+    const EMPTY_STRING_MEANS_CLEAR = new Set(["idCard"]);
     for (const k of Object.keys(profile)) {
-      if (profile[k] === null) delete profile[k];
+      const v = profile[k];
+      if (v === null && !KEEP_NULL_AS_CLEAR.has(k)) {
+        delete profile[k];
+      } else if (v === "" && EMPTY_STRING_MEANS_CLEAR.has(k)) {
+        profile[k] = null;
+      }
     }
 
-    // 把 avatar 上传后写入 profile.avatarAttachmentId
-    const avatarList = profile.avatarUpload as Array<{ id?: string }> | undefined;
-    if (Array.isArray(avatarList) && avatarList[0]?.id) {
-      profile.avatarAttachmentId = avatarList[0].id;
+    // 把 avatar 上传后写入 profile.avatarAttachmentId。
+    // 注意: antd UploadFile 的 id 挂在 response 里(onSuccess 的返回值),顶层没有 id;
+    // 回显项也是我们自己构造的 response:{id},两处都取 response.id。
+    const avatarList = profile.avatarUpload as Array<{ id?: string; response?: { id?: string } }> | undefined;
+    const avatarAttachmentId = avatarList?.[0]?.response?.id ?? avatarList?.[0]?.id;
+    if (avatarAttachmentId) {
+      profile.avatarAttachmentId = avatarAttachmentId;
     } else if (Array.isArray(avatarList) && avatarList.length === 0 && initial?.avatar) {
       // 用户删除了已有头像 → 显式清空(后端 validator 接受 null)
       profile.avatarAttachmentId = null;
@@ -327,7 +340,12 @@ export function ProfileWizard({ userId, initial, isAdmin }: Props) {
                     name: "file",
                     listType: "picture",
                     customRequest: async (options) => {
-                      const att = await uploadFileToMinIO(options.file as File, { category: "AVATAR" });
+                      // 档案已存在时直接挂到档案下(canReadAttachment 按档案附件口径放行本人/OPS);
+                      // 新建档案尚无 profileId,先落 tmp,保存后由 avatarOfProfile 反向关系兜底
+                      const att = await uploadFileToMinIO(options.file as File, {
+                        category: "AVATAR",
+                        employeeProfileId: initial?.profile?.id ?? null
+                      });
                       options.onSuccess?.(att, new XMLHttpRequest());
                     }
                   }}
@@ -514,6 +532,7 @@ export function ProfileWizard({ userId, initial, isAdmin }: Props) {
               name="certificates"
               label="证书"
               initialValue={initialValues.certificates as Record<string, unknown>[]}
+              uploadEmployeeProfileId={initial?.profile?.id ?? null}
               fields={[
                 { name: "name", label: "证书名", valueType: "text", required: true },
                 { name: "number", label: "编号", valueType: "text" },

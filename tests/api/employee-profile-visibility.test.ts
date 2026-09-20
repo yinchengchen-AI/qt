@@ -57,6 +57,11 @@ let financeId: string | null = null;
 let targetUserId: string | null = null;
 let targetProfileId: string | null = null;
 let targetAttachmentId: string | null = null;
+// 头像(tmp,经 avatarAttachmentId 反向归属) / 证书扫描件(tmp,经 certificate.attachmentId) /
+// 身份证正面照(挂在档案下) — 附件读权限兜底 + ADMIN 列表可见性的 fixtures
+let avatarAttId: string | null = null;
+let certScanAttId: string | null = null;
+let idCardAttId: string | null = null;
 
 beforeAll(async () => {
   try {
@@ -113,6 +118,58 @@ beforeAll(async () => {
     });
     targetAttachmentId = att.id;
   }
+  // tmp 头像: 未挂 employeeProfileId(模拟向导里新建档案时的上传), 通过 profile.avatarAttachmentId 归属
+  if (targetProfileId) {
+    const avatarAtt = await prisma.attachment.create({
+      data: {
+        objectKey: `visibility-test/avatar-${ts}`,
+        bucket: "visibility-test",
+        originalName: "avatar.png",
+        mimeType: "image/png",
+        size: 1,
+        uploadedById: adminId,
+        category: "AVATAR"
+      },
+      select: { id: true }
+    });
+    avatarAttId = avatarAtt.id;
+    await prisma.employeeProfile.update({
+      where: { id: targetProfileId },
+      data: { avatarAttachmentId: avatarAtt.id }
+    });
+    // tmp 证书扫描件: 经 EmployeeCertificate.attachmentId 归属
+    const certScanAtt = await prisma.attachment.create({
+      data: {
+        objectKey: `visibility-test/cert-scan-${ts}`,
+        bucket: "visibility-test",
+        originalName: "cert.pdf",
+        mimeType: "application/pdf",
+        size: 1,
+        uploadedById: adminId,
+        category: "CERTIFICATE"
+      },
+      select: { id: true }
+    });
+    certScanAttId = certScanAtt.id;
+    await prisma.employeeCertificate.create({
+      data: { profileId: targetProfileId, name: "可见性测试证书", attachmentId: certScanAtt.id }
+    });
+    // 身份证正面照: 挂在档案下, 类别 ID_CARD_FRONT(测试 ADMIN 列表可见 / 非 ADMIN 列表遮蔽)
+    const idCardAtt = await prisma.attachment.create({
+      data: {
+        objectKey: `visibility-test/idcard-${ts}`,
+        bucket: "visibility-test",
+        originalName: "idcard-front.png",
+        mimeType: "image/png",
+        size: 1,
+        uploadedById: adminId,
+        employeeProfileId: targetProfileId,
+        category: "ID_CARD_FRONT"
+      },
+      select: { id: true }
+    });
+    idCardAttId = idCardAtt.id;
+  }
 });
 
 afterAll(async () => {
@@ -122,6 +179,11 @@ afterAll(async () => {
       await prisma.attachment.deleteMany({ where: { id: targetAttachmentId } });
     }
     if (targetProfileId) {
+      // 证书行引用扫描件附件,先删行再删附件(两关系都是 onDelete: SetNull,顺序宽松)
+      await prisma.employeeCertificate.deleteMany({ where: { profileId: targetProfileId } });
+      await prisma.attachment.deleteMany({
+        where: { id: { in: [avatarAttId, certScanAttId, idCardAttId].filter((x): x is string => !!x) } }
+      });
       await prisma.operationLog.deleteMany({ where: { entity: "EmployeeProfile", entityId: targetProfileId } });
       await prisma.employeeProfile.deleteMany({ where: { id: targetProfileId } });
     }
@@ -313,5 +375,61 @@ describe("员工档案附件 canReadAttachment", () => {
     if (!financeId || financeId === targetUserId) return;
     const att = await getAttachmentForRead(targetAttachmentId!);
     await expect(canReadAttachment(att!, financeId)).resolves.toBe(false);
+  });
+});
+
+// tmp 头像/证书扫描件(未挂 employeeProfileId,经反向关系归属档案):
+// 口径必须与档案附件一致 —— 本人/ADMIN/OPS 可读, FINANCE 不得因 tmp 放行而读到。
+describe("tmp 头像/证书扫描件读权限 (反向关系兜底)", () => {
+  itDb("本人读自己头像 → true", async () => {
+    const att = await getAttachmentForRead(avatarAttId!);
+    await expect(canReadAttachment(att!, targetUserId!)).resolves.toBe(true);
+  });
+
+  itDb("OPS 读他人头像 → true", async () => {
+    if (!opsId) return;
+    const att = await getAttachmentForRead(avatarAttId!);
+    await expect(canReadAttachment(att!, opsId)).resolves.toBe(true);
+  });
+
+  itDb("SALES 非本人读头像 → false", async () => {
+    if (!salesId || salesId === targetUserId) return;
+    const att = await getAttachmentForRead(avatarAttId!);
+    await expect(canReadAttachment(att!, salesId)).resolves.toBe(false);
+  });
+
+  itDb("FINANCE 读他人头像 → false (不走 tmp 全员放行)", async () => {
+    if (!financeId || financeId === targetUserId) return;
+    const att = await getAttachmentForRead(avatarAttId!);
+    await expect(canReadAttachment(att!, financeId)).resolves.toBe(false);
+  });
+
+  itDb("OPS 读他人证书扫描件 → true", async () => {
+    if (!opsId) return;
+    const att = await getAttachmentForRead(certScanAttId!);
+    await expect(canReadAttachment(att!, opsId)).resolves.toBe(true);
+  });
+
+  itDb("FINANCE 读他人证书扫描件 → false", async () => {
+    if (!financeId || financeId === targetUserId) return;
+    const att = await getAttachmentForRead(certScanAttId!);
+    await expect(canReadAttachment(att!, financeId)).resolves.toBe(false);
+  });
+});
+
+// P0-5 列表层遮蔽: 身份证照仅 ADMIN 在附件列表可见; 下载侧管控见上面 canReadAttachment。
+describe("身份证照附件列表可见性 (P0-5)", () => {
+  itDb("ADMIN full profile → attachments 含身份证照", async () => {
+    const out = await getUserFullProfile(mkUser("ADMIN", adminId!), targetUserId!);
+    const ids = (out?.profile.attachments ?? []).map((a) => a.id);
+    expect(ids).toContain(idCardAttId);
+    expect(ids).toContain(targetAttachmentId);
+  });
+
+  itDb("OPS full profile → attachments 不含身份证照(仅 GENERAL)", async () => {
+    const out = await getUserFullProfile(mkUser("OPS", opsId ?? "vis-ops"), targetUserId!);
+    const ids = (out?.profile.attachments ?? []).map((a) => a.id);
+    expect(ids).not.toContain(idCardAttId);
+    expect(ids).toContain(targetAttachmentId);
   });
 });

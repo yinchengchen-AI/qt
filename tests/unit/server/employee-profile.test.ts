@@ -89,7 +89,9 @@ describe("EmployeeProfile service", () => {
     const actor = buildUser(adminUser, "ADMIN");
     const targetId = salesUser ? salesUser.id : actor.id;
     const input = {
-      idCard: "110101199001011237",
+      // 与 tests/api/employee-profile-visibility.test.ts 的 SENSITIVE.idCard 不同号:
+      // 应用层查重后两个并行测试文件共用 dev 库会互相 422
+      idCard: "110101198505054329",
       bankAccount: "6222021234567890123",
       bankName: "工商银行",
       salary: 15000,
@@ -277,5 +279,96 @@ describe("updateUserFullProfile (PR3)", () => {
     });
     expect(second.skills.find((s) => s.name === "PR3-SubOnly-2")).toBeTruthy();
     expect(second.skills.find((s) => s.name === "PR3-SubOnly")).toBeFalsy();
+  });
+});
+
+// 敏感字段清空(null) + 身份证应用层查重(随机 IV 加密使密文 @unique 无法防重)。
+// 用临时用户隔离,不影响上面依赖 sales/admin 档案的用例。
+describe("EmployeeProfile 敏感字段清空 + 身份证查重", () => {
+  // 合法校验位的专用测试号(与 visibility 测试的 SENSITIVE.idCard 不同,避免跨文件并行干扰)
+  const UNIQUE_ID_CARD = "110101199202020009";
+
+  async function mkTempUser(): Promise<string> {
+    const ts = `${Date.now()}_${Math.floor(Math.random() * 1e6)}`;
+    const role = await prisma.role.findFirst({ where: { code: "ADMIN" } });
+    const u = await prisma.user.create({
+      data: {
+        employeeNo: `TSDQ_${ts}`,
+        name: "测试-身份证查重",
+        email: `ts_dq_${ts}@qt.local`,
+        passwordHash: "x",
+        roleId: role!.id
+      },
+      select: { id: true }
+    });
+    return u.id;
+  }
+
+  async function rmTempUsers(ids: string[]): Promise<void> {
+    await prisma.employeeProfile.deleteMany({ where: { userId: { in: ids } } });
+    await prisma.user.deleteMany({ where: { id: { in: ids } } });
+  }
+
+  itDb("idCard/salary 传 null → 显式清空,未清字段不受影响", async () => {
+    if (!adminUser) return;
+    const actor = getAdminActor();
+    const uid = await mkTempUser();
+    try {
+      await updateEmployeeProfile(actor, uid, { idCard: UNIQUE_ID_CARD, salary: 15000, bankAccount: "6222021234567890123" });
+      const cleared = await updateEmployeeProfile(actor, uid, { idCard: null, salary: null });
+      expect(cleared.idCard).toBeNull();
+      expect(cleared.salary).toBeNull();
+      expect(cleared.bankAccount).toBe("6222021234567890123");
+      const raw = await prisma.employeeProfile.findUnique({ where: { userId: uid } });
+      expect(raw?.idCard).toBeNull();
+      expect(raw?.salary).toBeNull();
+    } finally {
+      await rmTempUsers([uid]);
+    }
+  });
+
+  itDb("身份证查重: 与他人重复 → 422", async () => {
+    if (!adminUser) return;
+    const actor = getAdminActor();
+    const uid1 = await mkTempUser();
+    const uid2 = await mkTempUser();
+    try {
+      await updateEmployeeProfile(actor, uid1, { idCard: UNIQUE_ID_CARD });
+      await expect(updateEmployeeProfile(actor, uid2, { idCard: UNIQUE_ID_CARD }))
+        .rejects.toMatchObject({ status: 422 });
+    } finally {
+      await rmTempUsers([uid1, uid2]);
+    }
+  });
+
+  itDb("身份证查重排除自身: 同档案不改身份证重复保存 → 不报错", async () => {
+    if (!adminUser) return;
+    const actor = getAdminActor();
+    const uid = await mkTempUser();
+    try {
+      await updateEmployeeProfile(actor, uid, { idCard: UNIQUE_ID_CARD });
+      // 模拟整表提交时原样带回 idCard
+      const again = await updateEmployeeProfile(actor, uid, { idCard: UNIQUE_ID_CARD, position: "查重自排除" });
+      expect(again.position).toBe("查重自排除");
+    } finally {
+      await rmTempUsers([uid]);
+    }
+  });
+
+  itDb("全量路径 (updateUserFullProfile) 同样查重 + 支持清空", async () => {
+    if (!adminUser) return;
+    const actor = getAdminActor();
+    const uid1 = await mkTempUser();
+    const uid2 = await mkTempUser();
+    try {
+      await updateUserFullProfile(actor, uid1, { profile: { idCard: UNIQUE_ID_CARD, salary: 9000 } });
+      await expect(updateUserFullProfile(actor, uid2, { profile: { idCard: UNIQUE_ID_CARD } }))
+        .rejects.toMatchObject({ status: 422 });
+      const cleared = await updateUserFullProfile(actor, uid1, { profile: { idCard: null, salary: null } });
+      expect(cleared.profile.idCard).toBeNull();
+      expect(cleared.profile.salary).toBeNull();
+    } finally {
+      await rmTempUsers([uid1, uid2]);
+    }
   });
 });

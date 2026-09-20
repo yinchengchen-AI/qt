@@ -2,6 +2,34 @@
 
 本文件记录 qt-biz 每个版本的详细变更。项目快速入口请见 [README.md](README.md)。
 
+## v0.25.10(2026-09-20)员工档案模块检查修复
+
+### 修复
+
+- **fix(employee-profile)**: 向导上传头像从未落库 — `normalizeValues` 取的是 UploadFile 顶层 `id`,但 antd 把上传返回值挂在 `response` 里(同文件证书路径是对的),`avatarAttachmentId` 一直没写进档案;e2e 14.2 补头像持久化断言防回归。
+- **fix(employee-profile)**: 头像/证书扫描件读权限兜底 — 向导上传这两类附件未挂 `employeeProfileId`(tmp),`canReadAttachment` 只认 `employeeProfileId`,导致档案本人/OPS 看头像 403、FINANCE 反而因 tmp 放行可读;现经 `avatarOfProfile`/`certificateAttachments` 反向关系归属档案,口径与档案附件一致(本人/ADMIN/OPS,FINANCE 拒绝),档案已存在时上传直接传 `employeeProfileId`。
+- **fix(employee-profile)**: 新建档案创建移入事务 — 原 `employeeProfile.create` 在 `$transaction` 外,事务失败留下无子表/审计的空壳 profile;并发双建撞 `userId` 唯一约束被全局 P2002 兜底映射成误导性的 "编号已存在" 422,现明确 409。
+- **fix(employee-profile)**: 审计 payload 携带 Prisma Decimal 导致序列化崩溃 — 第二次更新已有薪资的档案时,`before` 快照里的 Decimal 无法写入 Json 审计字段(必崩);新增 `auditSafeValue`(Decimal→number, Date→ISO),并同步修复 `updateUserWithProfile` 同隐患。
+- **fix(employee-profile)**: ADMIN 可见身份证附件 — P0-5 注释写 "非 ADMIN 不返回 ID_CARD_FRONT/BACK",实现却是无条件过滤(ADMIN 也拿不到);现 ADMIN 附件列表含身份证照,非 ADMIN 仍只回 GENERAL(列表层遮蔽,下载侧 `canReadAttachment` 才是真管控)。
+- **fix(employee-profile)**: 敏感字段支持清空 + 薪资 coerce 陷阱 — idCard/salary/银行卡/开户行/社保/公积金接受 `null` 显式清空;修复 salary 传 `""`/`null` 被 `z.coerce.number()` 吞成 0 的问题(union 按 `""`→undefined、null→null、数字→写入 顺序匹配);向导侧同步转换(idCard `""`→null,salary 保留 null),非敏感可选字符串字段(地址/岗位等)维持 null 拒绝的原契约。
+- **fix(employee-profile)**: 身份证应用层查重 — 随机 IV 加密使密文永不重复,`idCard @unique` 形同虚设;现保存前解密比对全员档案(排除自身),重复 → 422。
+- **fix(employee-profile)**: 409 预检口径统一 — 预检 `actual > expected` 改为 `actual !== expected`,与事务内条件 update(WHERE updatedAt = expected)严格相等一致,消除基线"超前"(时钟偏差)时预检放行、事务却 409 的自相矛盾。
+
+### 变更
+
+- **change(employee-profile)**: 详情页证书卡片新增「查看扫描件」下载入口 — 原证书附件上传后全站没有任何查看路径(只写不看)。
+- **change(employee-profile)**: 移除 PR1 遗留的 `EMPLOYEE_PROFILE_WRITABLE_FIELDS` 临时 allowlist — zod validator 已是字段唯一真源。
+- **change(employee-profile)**: 删除 5 组从未被调用的子表 REST 端点(`/api/employee-skills|certificates|educations|work-experiences|emergency-contacts`,10 个路由文件)— 前端向导只走 `with-profile`,属死代码攻击面;service 层保留(list 被详情复用,create 等有单测覆盖)。
+
+### 测试
+
+- **test(employee-profile)**: `employee-profile-visibility` 新增 12 用例 — tmp 头像/证书扫描件的 OPS/本人/FINANCE/SALES 读权限、ADMIN/OPS 身份证照列表可见性;beforeAll 增加头像/证书扫描件/身份证照 fixtures。
+- **test(employee-profile)**: service 测试新增 4 用例 — idCard/salary 传 null 清空落库、身份证查重(他人重复 422 / 排除自身 / 全量路径同口径);既有加密用例换用独立测试身份证号,避免并行测试文件共用 dev 库时查重互撞。
+- **test(employee-profile)**: validator 测试新增 6 用例 — salary null/空串/字符串数字、idCard null、敏感字段 null、非敏感字段 null 仍拒绝。
+- **test(e2e)**: 14.2 补两条断言 — 头像持久化(`img[src*='/api/files/raw/']`)与「查看扫描件」链接可见。
+
+> **DB schema / migrations: 无变化。**
+
 ## v0.25.9(2026-09-20)完结补开/补录体验加固
 
 ### 修复

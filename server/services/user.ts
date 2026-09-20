@@ -13,7 +13,7 @@ import { audit } from "@/server/audit";
 import { invalidateAuthCache } from "@/lib/auth";
 import type { Prisma } from "@prisma/client";
 import type { EmployeeProfileUpdateInput } from "@/lib/validators/employee-profile";
-import { buildProfileUpdateData, decryptProfile, redactForAudit, linkAttachmentsToProfile } from "@/server/services/employee-profile";
+import { buildProfileUpdateData, decryptProfile, redactForAudit, linkAttachmentsToProfile, auditSafeValue } from "@/server/services/employee-profile";
 
 // OWASP 建议 ≥ 12;兼顾登录延迟
 const PASSWORD_SALT_ROUNDS = 12;
@@ -294,7 +294,7 @@ export async function updateUserWithProfile(
         entity: "EmployeeProfile",
         entityId: String(updatedProfile.id),
         before: existing.profile
-          ? Object.fromEntries(Object.keys(profileData!).map((k) => [k, (existing.profile as unknown as Record<string, unknown>)[k] ?? null]))
+          ? Object.fromEntries(Object.keys(profileData!).map((k) => [k, auditSafeValue((existing.profile as unknown as Record<string, unknown>)[k])]))
           : null,
         after: redactForAudit(profileData!)
       });

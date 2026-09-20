@@ -275,7 +275,11 @@ export async function getAttachmentForRead(id: string) {
           contractId: true,
           contract: { select: { ownerUserId: true, createdById: true } }
         }
-      }
+      },
+      // 头像/证书扫描件可能未挂 employeeProfileId(新建档案时档案尚不存在,先落 tmp),
+      // 保存后通过反向关系归属到档案 —— 读侧按档案附件同一口径判定
+      avatarOfProfile: { select: { userId: true } },
+      certificateAttachments: { take: 1, select: { profile: { select: { userId: true } } } }
     }
   });
 }
@@ -284,9 +288,10 @@ export async function canReadAttachment(att: AttachmentForRead, userId: string):
   // 鉴权规则(放行其一即可):
   //   1) 上传者本人
   //   2) 员工档案附件(PII, 含身份证照): 仅 档案本人 / ADMIN / OPS, 不走下方 FINANCE 全员放行
-  //   3) ADMIN / FINANCE 角色(非档案附件)
-  //   4) 合同/发票附件: 任何对父资源有 READ 权限的角色 (读放开后随行级读口径)
-  //   5) 都没有(tmp 上传) -> 仅上传者可读
+  //   3) 头像/证书扫描件(经反向关系归属到档案, 未挂 employeeProfileId 的 tmp): 同 2)
+  //   4) ADMIN / FINANCE 角色(非档案附件)
+  //   5) 合同/发票附件: 任何对父资源有 READ 权限的角色 (读放开后随行级读口径)
+  //   6) 都没有(tmp 上传) -> 仅上传者可读
   if (att.uploadedById === userId) return true;
 
   // 单次查询: 角色 (读放开后合同 owner 检查已并入角色 READ 判定, 无需再拉合同行)
@@ -299,6 +304,14 @@ export async function canReadAttachment(att: AttachmentForRead, userId: string):
       select: { userId: true }
     });
     return profile?.userId === userId;
+  }
+  // 反向关系兜底: 头像(avatarOfProfile) / 证书扫描件(certificateAttachments→profile)
+  const profileOwnerId =
+    att.avatarOfProfile?.userId ??
+    att.certificateAttachments?.[0]?.profile?.userId;
+  if (profileOwnerId) {
+    if (u?.role?.code === "ADMIN" || u?.role?.code === "OPS") return true;
+    return profileOwnerId === userId;
   }
   if (u?.role?.code === "ADMIN" || u?.role?.code === "FINANCE") return true;
   // 读放开 (role-browse-permissions todo 9): 附件下载随父记录 READ 权限放开
