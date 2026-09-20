@@ -2,12 +2,13 @@
 
 本文件记录 qt-biz 每个版本的详细变更。项目快速入口请见 [README.md](README.md)。
 
-## v0.25.7(2026-09-20)已完结合同补开发票/补录回款
+## v0.25.8(2026-09-20)已完结合同补开发票/补录回款
 
 ### 修复
 
 - **fix(invoice)**: 已完结(CLOSED)合同此前**完全无法补开发票** — 后端 `createInvoice` 硬校验"须 ACTIVE"且无旁路, 前端开票新建页合同下拉只查 ACTIVE 导致完结合同根本选不到。现新增与回款侧同口径的**完结补录旁路**: ADMIN/FINANCE 传 `force=true + forceReason` 即可在 CLOSED 合同补开发票; remark 自动追加 `[FORCE_BACKFILL:原因]` 审计标记; R-08 累计开票上限仍生效(force 不绕过金额校验), DRAFT 合同不在旁路白名单。
 - **fix(payment)**: force 旁路角色由**仅 ADMIN 放宽为 ADMIN + FINANCE**, 与发票侧对齐 — 财务做账补录不再需要先找管理员。服务端角色闸门(防前端伪造 force) + CLOSED 白名单 + R-11/R-12 金额校验口径不变。
+- **test(intelligence)**: 修复 `intelligent-enhancements` 趋势预测测试日期漂移 — `identifyTrendPattern` 的 cutoff 以真实当前时间为基准, 测试写死 `NOW=2026-08-18` 使快照在 30 天 lookback 外全部被过滤, 2026-09-17 起"能识别上升趋势"恒红; 改为动态 `new Date()`。
 
 ### 变更
 
@@ -20,6 +21,17 @@
 - **test(payment)**: `tests/api/payment-create-guard.test.ts` 更新: "FINANCE+force→403" 改为 "SALES+force→403", 新增 "FINANCE+force+CLOSED→成功"。
 
 > **DB schema / migrations: 无变化。**
+
+## v0.25.7(2026-09-09)README 重构与代码审查修复
+
+### 修复
+
+- **fix(code-review)**: 修复代码审查发现的 11 项风险 — `contract-billing.ts` NOT_STARTED 阈值收紧(`< TOLERANCE`, 0.01 元边界正确归 IN_PROGRESS); R-11 错误消息补充容差说明; 统一使用 `TOLERANCE` 常量。
+- **fix(deploy)**: `deploy.sh` 在 `next build` 前停止旧服务释放内存, 防构建期 OOM(3.5G 内存 ECS 实证)。
+
+### 变更
+
+- **docs(readme)**: README 全面重构 — 新增项目概述、核心功能说明、环境配置、常见问题排查。
 
 ## v0.25.6(2026-09-07)合同/开票金额链路守卫补全
 
