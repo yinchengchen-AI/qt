@@ -69,6 +69,8 @@ enum MessageType {
   RECONCILIATION_SUGGESTION
   RECONCILIATION_DISCREPANCY
   RECONCILIATION_WEEKLY_REPORT
+  // 经营周报定时推送 (weekly-business-report job, 每周一 09:00 发 ADMIN ∪ FINANCE)
+  BUSINESS_WEEKLY_REPORT
 }
 
 model User {
@@ -108,6 +110,7 @@ model User {
   messages               Message[]
   messagePreferences     MessagePreference[]
   publishedAnnouncements Announcement[]       @relation("AnnouncementPublishUser")
+  announcementReads      AnnouncementRead[]
   dunningNotes           DunningNote[]
   publishedReleases      AppRelease[]         @relation("AppReleasePublishUser")
   releaseReads           AppReleaseRead[]
@@ -661,7 +664,25 @@ model Announcement {
   updatedAt     DateTime  @updatedAt @db.Timestamptz(6)
   deletedAt     DateTime? @db.Timestamptz(6)
 
+  reads AnnouncementRead[]
+
   @@index([publishAt])
+}
+
+// 用户对一条公告的"已读"记录 (仿 AppReleaseRead 模式)。
+// - unique(userId, announcementId) 防重复, upsert 幂等写;
+// - 不挂 deletedAt: 公告软删后已读记录保留,公告硬删时随 Cascade 清理。
+model AnnouncementRead {
+  id             String       @id @default(cuid())
+  userId         String
+  announcementId String
+  user           User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  announcement   Announcement @relation(fields: [announcementId], references: [id], onDelete: Cascade)
+  readAt         DateTime     @default(now()) @db.Timestamptz(6)
+
+  @@unique([userId, announcementId])
+  @@index([userId, readAt])
+  @@index([announcementId])
 }
 
 // =====================================================
@@ -1024,6 +1045,49 @@ model ReconciliationDiscrepancy {
 
   @@index([status, severity])
   @@index([type])
+}
+
+// =====================================================
+// AI 用量统计与结果缓存
+// feature / status 按项目约定用 String 列 + 应用层 union 类型 (不建 PG enum),
+// 取值见 server/services/ai-client.ts 的 AI_FEATURE / AI_CALL_STATUS。
+// =====================================================
+
+// 每次 AI 调用一行日志 (含缓存命中与失败), 供 admin/ai-usage 页统计分析。
+// userId 不挂 FK: 调用方始终是登录用户, 但用户硬删不应拖垮用量日志。
+model AiUsageLog {
+  id               String   @id @default(cuid())
+  feature          String
+  userId           String
+  model            String
+  cacheHit         Boolean  @default(false)
+  promptTokens     Int      @default(0)
+  completionTokens Int      @default(0)
+  /// 按刊例单价估算 (USD), 口径见 ai-client.ts 顶部常量; 失败/缓存命中为 null
+  costEstimate     Decimal? @db.Decimal(10, 6)
+  latencyMs        Int
+  status           String   @default("SUCCESS") // SUCCESS | FAILURE
+  errorMessage     String?
+  requestId        String?
+  createdAt        DateTime @default(now()) @db.Timestamptz(6)
+
+  @@index([feature, createdAt])
+  @@index([userId, createdAt])
+  @@index([createdAt])
+}
+
+// AI 响应缓存: cacheKey = sha256(feature + model + 规范化 JSON payload)。
+// 过期采用 lazy 判定 (查询时比 expiresAt), 无清理 job。
+model AiResponseCache {
+  id        String   @id @default(cuid())
+  cacheKey  String   @unique
+  feature   String
+  response  Json
+  hitCount  Int      @default(0)
+  expiresAt DateTime @db.Timestamptz(6)
+  createdAt DateTime @default(now()) @db.Timestamptz(6)
+
+  @@index([feature, expiresAt])
 }
 
 // =====================================================

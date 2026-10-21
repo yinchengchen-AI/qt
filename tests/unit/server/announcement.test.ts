@@ -100,6 +100,10 @@ vi.mock("@/lib/prisma", () => ({
         a.updatedAt = now;
         return { ...a };
       })
+    },
+    // listAnnouncements 的 "已读 N/M 人" 分母会按 targetRoles 分组 count 用户
+    user: {
+      count: vi.fn(async () => 0)
     }
   }
 }));

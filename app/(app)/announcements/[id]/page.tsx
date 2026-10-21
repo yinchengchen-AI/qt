@@ -8,6 +8,7 @@ import { requireSession } from "@/lib/session";
 import { getAnnouncement } from "@/server/services/announcement";
 import { ROLE_LABEL } from "@/lib/status";
 import { DateTimeCell } from "@/components/table-cells";
+import { AnnouncementReadReporter } from "@/components/notifications/announcement-read-reporter";
 import { getT } from "@/lib/i18n";
 
 const { Paragraph, Text } = Typography;
@@ -23,6 +24,7 @@ export default async function AnnouncementDetailPage({ params }: { params: Promi
 
   return (
     <Page>
+      <AnnouncementReadReporter id={a.id} />
       <PageHeader
         title={t("announcements.detail.title")}
         actions={

@@ -240,6 +240,19 @@ const messages: Record<Locale, Record<string, string>> = {
     "announcements.empty": "暂无公告",
     "announcements.pagination.prev": "上一页",
     "announcements.pagination.next": "下一页",
+    "announcements.tag.unread": "未读",
+    "announcements.reads.view": "已读 {read}/{total} 人",
+    "announcements.reads.title": "已读名单",
+    "announcements.reads.summary": "应读 {total} 人，已读 {read} 人，未读 {unread} 人",
+    "announcements.reads.column.name": "姓名",
+    "announcements.reads.column.employeeNo": "工号",
+    "announcements.reads.column.readAt": "已读时间",
+    "announcements.reads.empty": "暂无已读记录",
+
+    // AI 分析 (合同风险 AI 摘要, 结果缓存 UX)
+    "ai.cached.tag": "缓存结果",
+    "ai.generatedAt": "生成于 {time}",
+    "ai.regenerate": "重新生成",
 
     // 应用更新记录 (AppRelease)
     "releases.tag.important": "重要",
@@ -632,6 +645,19 @@ const messages: Record<Locale, Record<string, string>> = {
     "announcements.empty": "No announcements",
     "announcements.pagination.prev": "Prev",
     "announcements.pagination.next": "Next",
+    "announcements.tag.unread": "Unread",
+    "announcements.reads.view": "Read {read}/{total}",
+    "announcements.reads.title": "Read receipts",
+    "announcements.reads.summary": "Audience {total}, read {read}, unread {unread}",
+    "announcements.reads.column.name": "Name",
+    "announcements.reads.column.employeeNo": "Employee No.",
+    "announcements.reads.column.readAt": "Read at",
+    "announcements.reads.empty": "No reads yet",
+
+    // AI analysis (contract risk AI summary, result cache UX)
+    "ai.cached.tag": "Cached",
+    "ai.generatedAt": "Generated {time}",
+    "ai.regenerate": "Regenerate",
 
     // AppRelease (release notes)
     "releases.tag.important": "Important",

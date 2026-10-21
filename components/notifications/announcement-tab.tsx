@@ -17,6 +17,7 @@ import {
   Modal,
   Space,
   Spin,
+  Table,
   Tag,
   Typography
 } from "antd";
@@ -54,6 +55,25 @@ type Announcement = {
   targetRoles: string[];
   publishUserId: string;
   publishAt: string;
+  /** 当前用户已读时间; null = 未读 */
+  readAt: string | null;
+  /** 已读人数 / 应读人数 (按 targetRoles 计算, 空 = 全员) */
+  readCount: number;
+  readTotal: number;
+};
+
+type AnnouncementReader = {
+  userId: string;
+  name: string;
+  employeeNo: string;
+  readAt: string;
+};
+
+type AnnouncementReads = {
+  total: number;
+  readCount: number;
+  unreadCount: number;
+  readers: AnnouncementReader[];
 };
 
 const TARGET_ROLE_OPTIONS = Object.entries(ROLE_LABEL).map(([value, label]) => ({
@@ -85,6 +105,12 @@ export function AnnouncementTab() {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [reloadKey, setReloadKey] = useState(0);
+
+  // 已读名单 Modal
+  const [readsOpen, setReadsOpen] = useState(false);
+  const [readsLoading, setReadsLoading] = useState(false);
+  const [readsTitle, setReadsTitle] = useState("");
+  const [readsData, setReadsData] = useState<AnnouncementReads | null>(null);
 
   const load = useCallback(
     async (p: number, kw: string) => {
@@ -147,6 +173,26 @@ export function AnnouncementTab() {
       ]
     });
     setModalOpen(true);
+  };
+
+  const openReads = async (a: Announcement) => {
+    setReadsTitle(a.title);
+    setReadsData(null);
+    setReadsOpen(true);
+    setReadsLoading(true);
+    try {
+      const r = await fetch(`/api/announcements/${a.id}/reads`, { credentials: "include" });
+      const j = await r.json();
+      if (j.code === 0) {
+        setReadsData(j.data);
+      } else {
+        message.error(j.message);
+      }
+    } catch (e) {
+      message.error((e as Error).message);
+    } finally {
+      setReadsLoading(false);
+    }
   };
 
   const handleDelete = (a: Announcement) => {
@@ -298,7 +344,29 @@ export function AnnouncementTab() {
                     </Text>
                   ) : null}
                 </div>
-                <div style={{ fontSize: 15, fontWeight: 500, lineHeight: 1.4, marginBottom: 4 }}>
+                <div
+                  style={{
+                    fontSize: 15,
+                    fontWeight: a.readAt ? 500 : 700,
+                    lineHeight: 1.4,
+                    marginBottom: 4,
+                    display: "flex",
+                    alignItems: "center"
+                  }}
+                >
+                  {!a.readAt ? (
+                    <span
+                      title={t("announcements.tag.unread")}
+                      style={{
+                        flexShrink: 0,
+                        width: 8,
+                        height: 8,
+                        borderRadius: "50%",
+                        background: "var(--ant-color-error, #ff4d4f)",
+                        marginRight: 8
+                      }}
+                    />
+                  ) : null}
                   <Link href={`/announcements/${a.id}`} style={{ color: "inherit" }}>
                     {a.title}
                   </Link>
@@ -313,6 +381,9 @@ export function AnnouncementTab() {
                 {canManage ? (
                   <div style={{ marginTop: 8 }}>
                     <Space size={4}>
+                      <Button type="link" size="small" onClick={() => openReads(a)}>
+                        {t("announcements.reads.view", { read: a.readCount, total: a.readTotal })}
+                      </Button>
                       <Button
                         type="link"
                         size="small"
@@ -429,6 +500,42 @@ export function AnnouncementTab() {
             </FormSection>
           </ProForm>
         </FormCard>
+      </Modal>
+
+      <Modal
+        title={`${t("announcements.reads.title")} · ${readsTitle}`}
+        open={readsOpen}
+        onCancel={() => setReadsOpen(false)}
+        footer={null}
+        width={isMobile ? "100%" : 560}
+        destroyOnHidden
+      >
+        {readsData ? (
+          <Text type="secondary" style={{ display: "block", marginBottom: 8 }}>
+            {t("announcements.reads.summary", {
+              total: readsData.total,
+              read: readsData.readCount,
+              unread: readsData.unreadCount
+            })}
+          </Text>
+        ) : null}
+        <Table<AnnouncementReader>
+          rowKey="userId"
+          size="small"
+          loading={readsLoading}
+          dataSource={readsData?.readers ?? []}
+          pagination={false}
+          locale={{ emptyText: t("announcements.reads.empty") }}
+          columns={[
+            { title: t("announcements.reads.column.name"), dataIndex: "name" },
+            { title: t("announcements.reads.column.employeeNo"), dataIndex: "employeeNo" },
+            {
+              title: t("announcements.reads.column.readAt"),
+              dataIndex: "readAt",
+              render: (v: string) => <DateTimeCell value={v} />
+            }
+          ]}
+        />
       </Modal>
     </div>
   );
