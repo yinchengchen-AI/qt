@@ -62,6 +62,7 @@ const FULL_MENU: MenuItem[] = [
     name: "系统",
     children: [
       { path: "/admin/operation-logs", name: "操作日志", permission: { resource: RESOURCE.OPERATION_LOG, action: ACTION.READ } },
+      { path: "/admin/ai-usage", name: "AI 用量", permission: { resource: RESOURCE.OPERATION_LOG, action: ACTION.READ } },
       { path: "/admin/trash", name: "回收站", permission: { resource: RESOURCE.ROLE, action: ACTION.CREATE } }
     ]
   }
@@ -76,6 +77,7 @@ describe("filterMenu 行为契约", () => {
     expect(allPaths).toContain("/admin/roles");
     expect(allPaths).toContain("/admin/departments");
     expect(allPaths).toContain("/admin/operation-logs");
+    expect(allPaths).toContain("/admin/ai-usage");
     expect(allPaths).toContain("/admin/trash");
   });
 
@@ -87,16 +89,18 @@ describe("filterMenu 行为契约", () => {
     expect(allPaths).not.toContain("/admin/roles");
     expect(allPaths).not.toContain("/admin/departments");
     expect(allPaths).not.toContain("/admin/operation-logs");
+    expect(allPaths).not.toContain("/admin/ai-usage");
     expect(allPaths).not.toContain("/admin/trash");
   });
 
-  it("OPS 看到部门管理(DEPARTMENT.CREATE), 但看不到用户/角色/操作日志/回收站", () => {
+  it("OPS 看到部门管理(DEPARTMENT.CREATE), 但看不到用户/角色/操作日志/AI 用量/回收站", () => {
     const r = filterMenu(FULL_MENU, ROLE_PERMISSIONS.OPS);
     const allPaths = r.flatMap((m) => [m.path, ...(m.children?.map((c) => c.path) ?? [])]);
     expect(allPaths).toContain("/admin/departments");
     expect(allPaths).not.toContain("/admin/users");
     expect(allPaths).not.toContain("/admin/roles");
     expect(allPaths).not.toContain("/admin/operation-logs");
+    expect(allPaths).not.toContain("/admin/ai-usage");
     expect(allPaths).not.toContain("/admin/trash");
   });
 

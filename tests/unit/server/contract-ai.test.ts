@@ -1,5 +1,7 @@
 // DeepSeek AI 风险分析服务单测 (Phase 4b)
 // mock global fetch, 不打真实 API; 覆盖 prompt 结构 / 解析 / 错误映射 / 无 key 降级
+// v0.26+: 网络层迁到 ai-client (带结果缓存/用量日志), 这里 mock prisma 让缓存始终未命中,
+//         缓存/日志行为本身在 tests/unit/server/ai-client.test.ts 覆盖
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 
 // env 在模块 import 时一次性求值 (t3-env), 必须在被测模块加载前注入测试 key,
@@ -7,6 +9,17 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 vi.hoisted(() => {
   process.env.DEEPSEEK_API_KEY = "test-key";
 });
+
+vi.mock("@/lib/prisma", () => ({
+  prisma: {
+    aiResponseCache: {
+      findUnique: async () => null,
+      update: async () => ({}),
+      upsert: async () => ({})
+    },
+    aiUsageLog: { create: async () => ({}) }
+  }
+}));
 
 import { analyzeContractRisk, parseAiJson } from "@/server/services/contract-ai";
 import type { RiskReport } from "@/server/services/contract/risk-report";
@@ -83,6 +96,7 @@ describe("analyzeContractRisk", () => {
     expect(r.summary).toBe("该合同逾期严重");
     expect(r.talkTracks).toEqual(["请尽快回款", "建议约谈"]);
     expect(r.model).toBe("deepseek-chat");
+    expect(r.cached).toBe(false);
 
     const [url, init] = fn.mock.calls[0]!;
     expect(url).toBe("https://api.deepseek.com/chat/completions");

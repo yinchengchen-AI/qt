@@ -32,14 +32,16 @@ vi.mock("@/server/services/contract/workbench", async (importOriginal) => {
 });
 
 const aiHolder = vi.hoisted(() => ({
-  result: { summary: "摘要", talkTracks: ["话术"], model: "deepseek-chat", generatedAt: "2026-08-19T00:00:00.000Z" } as unknown,
-  error: null as Error | null
+  result: { summary: "摘要", talkTracks: ["话术"], model: "deepseek-chat", cached: false, generatedAt: "2026-08-19T00:00:00.000Z" } as unknown,
+  error: null as Error | null,
+  lastOpts: undefined as { userId?: string; force?: boolean } | undefined
 }));
 vi.mock("@/server/services/contract-ai", async (importOriginal) => {
   const mod = await importOriginal<typeof import("@/server/services/contract-ai")>();
   return {
     ...mod,
-    analyzeContractRisk: async () => {
+    analyzeContractRisk: async (_report: unknown, _context: unknown, opts?: { userId?: string; force?: boolean }) => {
+      aiHolder.lastOpts = opts;
       if (aiHolder.error) throw aiHolder.error;
       return aiHolder.result;
     }
@@ -73,14 +75,16 @@ function makeDetail() {
   };
 }
 
-function call(id: string) {
-  return GET(new Request(`http://localhost/api/contracts/${id}/ai-analysis`), { params: Promise.resolve({ id }) });
+function call(id: string, qs = "") {
+  return GET(new Request(`http://localhost/api/contracts/${id}/ai-analysis${qs}`), { params: Promise.resolve({ id }) });
 }
 
 beforeEach(() => {
   sessionHolder.actor = ACTOR;
   riskHolder.detail = null;
   aiHolder.error = null;
+  aiHolder.lastOpts = undefined;
+  aiHolder.result = { summary: "摘要", talkTracks: ["话术"], model: "deepseek-chat", cached: false, generatedAt: "2026-08-19T00:00:00.000Z" };
 });
 
 describe("GET /api/contracts/[id]/ai-analysis", () => {
@@ -109,5 +113,23 @@ describe("GET /api/contracts/[id]/ai-analysis", () => {
     expect(res.status).toBe(503);
     const j = await res.json();
     expect(j.message).toContain("未配置");
+  });
+
+  it("透传 userId 与 cached 字段; 默认不 force", async () => {
+    riskHolder.detail = makeDetail();
+    aiHolder.result = { summary: "s", talkTracks: ["t"], model: "deepseek-chat", cached: true, generatedAt: "2026-10-20T00:00:00.000Z" };
+    const res = await call("c1");
+    expect(res.status).toBe(200);
+    const j = await res.json();
+    expect(j.data.cached).toBe(true);
+    expect(aiHolder.lastOpts?.userId).toBe(ACTOR.id);
+    expect(aiHolder.lastOpts?.force).toBe(false);
+  });
+
+  it("?force=1 → 透传 force=true (跳过缓存读取)", async () => {
+    riskHolder.detail = makeDetail();
+    const res = await call("c1", "?force=1");
+    expect(res.status).toBe(200);
+    expect(aiHolder.lastOpts?.force).toBe(true);
   });
 });

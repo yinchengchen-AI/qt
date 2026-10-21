@@ -14,6 +14,8 @@ export async function GET(
     try {
       const user = await requireSession();
       const { id } = await params;
+      // ?force=1 跳过缓存读取 (前端"重新生成"), 仍写新缓存与用量日志
+      const force = new URL(req.url).searchParams.get("force") === "1";
       // getContractRisk 复用合同读权限 (读放开 + contract:read), 内含实时算分与报告契约
       const detail = await getContractRisk(user, id);
       if (!detail) throw new ApiError(ERROR_CODES.NOT_FOUND, "合同不存在", 404);
@@ -35,7 +37,7 @@ export async function GET(
         paidAmount: detail.paidAmount,
         invoicedAmount: detail.invoicedAmount,
         daysOverdue: detail.daysOverdue
-      });
+      }, { userId: user.id, force });
       return ok(data);
     } catch (e) {
       return err(e);

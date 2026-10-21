@@ -147,6 +147,8 @@ const MENU: MenuItem[] = [
     children: [
       { path: "/admin/dictionaries", name: "数据字典", permission: { resource: RESOURCE.DICTIONARY, action: ACTION.CREATE } },
       { path: "/admin/operation-logs", name: "操作日志", permission: { resource: RESOURCE.OPERATION_LOG, action: ACTION.READ } },
+      // AI 用量统计(仅 ADMIN): 与操作日志同一 OPERATION_LOG.READ 权限
+      { path: "/admin/ai-usage", name: "AI 用量", permission: { resource: RESOURCE.OPERATION_LOG, action: ACTION.READ } },
       // 消息归档(仅 ADMIN 可看全部): service 内显式另字护占; 菜单用 ROLE.CREATE proxy
       { path: "/admin/messages", name: "消息归档", permission: { resource: RESOURCE.ROLE, action: ACTION.CREATE } },
       { path: "/admin/trash", name: "回收站", permission: { resource: RESOURCE.ROLE, action: ACTION.CREATE } },
@@ -986,6 +988,7 @@ const CRUMB_LABEL: Record<string, string> = {
   departments: "部门管理",
   dictionaries: "数据字典",
   "operation-logs": "操作日志",
+  "ai-usage": "AI 用量",
   // 合同工作台 (业务分组子项, 无独立段名映射时会显示英文 workbench)
   workbench: "合同工作台",
   // 员工档案自助编辑 (admin/users/[id]/edit-profile)

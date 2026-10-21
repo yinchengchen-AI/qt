@@ -7,6 +7,7 @@ import dynamic from "next/dynamic";
 import { EmptyState } from "@/components/empty-state";
 import { RiskTag } from "@/components/workbench/risk-drawer";
 import { useResponsive } from "@/lib/use-breakpoint";
+import { useT } from "@/lib/i18n";
 import type { ContractRiskDetail } from "@/server/services/contract/workbench";
 import type { ContractAiAnalysis } from "@/server/services/contract-ai";
 import type { RiskLevel } from "@/server/services/contract/risk-score";
@@ -128,17 +129,19 @@ export function RiskReportView({ contractId }: Props) {
   );
 }
 
-/** AI 分析区 (Phase 4b): 按钮触发生成 (不自动调 LLM, 省 token); 无 key 时服务端 503 降级提示 */
+/** AI 分析区 (Phase 4b): 按钮触发生成 (不自动调 LLM, 省 token); 无 key 时服务端 503 降级提示;
+    命中结果缓存时灰字标注"缓存结果", "重新生成"带 force=1 跳过缓存 */
 function AiAnalysisSection({ contractId }: { contractId: string }) {
+  const t = useT();
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<ContractAiAnalysis | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  const generate = async () => {
+  const generate = async (force = false) => {
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch(`/api/contracts/${contractId}/ai-analysis`, { credentials: "include" });
+      const res = await fetch(`/api/contracts/${contractId}/ai-analysis${force ? "?force=1" : ""}`, { credentials: "include" });
       const j = await res.json();
       if (j.code !== 0) throw new Error(j.message);
       setResult(j.data as ContractAiAnalysis);
@@ -172,14 +175,20 @@ function AiAnalysisSection({ contractId }: { contractId: string }) {
               </List.Item>
             )}
           />
-          <div style={{ fontSize: 11, color: "rgba(0,0,0,0.35)", marginTop: 4 }}>
-            {result.model} · {new Date(result.generatedAt).toLocaleString("zh-CN")}
+          <div style={{ fontSize: 11, color: "rgba(0,0,0,0.35)", marginTop: 4, display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+            <span>
+              {result.cached ? `${t("ai.cached.tag")} · ` : ""}
+              {result.model} · {t("ai.generatedAt", { time: new Date(result.generatedAt).toLocaleString("zh-CN") })}
+            </span>
+            <Button type="link" size="small" style={{ padding: 0, fontSize: 11, height: "auto" }} loading={loading} onClick={() => generate(true)}>
+              {t("ai.regenerate")}
+            </Button>
           </div>
         </div>
       ) : (
         <div>
           {error ? <Alert type="warning" title={error} style={{ marginBottom: 8 }} /> : null}
-          <Button size="small" loading={loading} onClick={generate}>
+          <Button size="small" loading={loading} onClick={() => generate()}>
             {error ? "重试 AI 分析" : "生成 AI 分析"}
           </Button>
         </div>

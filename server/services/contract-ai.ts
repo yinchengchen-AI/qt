@@ -1,26 +1,28 @@
 // DeepSeek LLM 合同风险分析 (Phase 4b, spec §7.1 第二层)
 //
 // 职责: 把 Phase 4a 的结构化风险报告转成自然语言摘要 + 跟进话术。
+// 本文件只做 prompt 组装与输出解析, 网络调用/结果缓存/用量日志统一走
+// server/services/ai-client.ts (callAiChat)。
 // 安全 (spec §10): API key 只走 lib/env.ts 服务端读取, 不落库不前端可见;
 //   错误信息永不携带 key; 出域数据最小化 — 只发报告字段 (合同号/客户名/金额/评分),
 //   不含联系人/电话/证件号等个人敏感字段。
 // 降级: 未配置 key → 503 (明确告知未配置, 不伪装本地生成)。
-import { ApiError } from "@/lib/api";
-import { env } from "@/lib/env";
-import { ERROR_CODES } from "@/types/errors";
 import type { RiskReport } from "@/server/services/contract/risk-report";
 import { RISK_DIMENSION_LABELS } from "@/server/services/contract/risk-report";
+import { AI_FEATURE, callAiChat } from "@/server/services/ai-client";
+import { env } from "@/lib/env";
+import { SYSTEM_USER_ID } from "@/lib/system";
 
 export type ContractAiAnalysis = {
   summary: string;
   talkTracks: string[];
   model: string;
+  /** true = 命中结果缓存 (未实际调用 LLM) */
+  cached: boolean;
   generatedAt: string;
 };
 
-const TIMEOUT_MS = 20_000;
-
-/** 发送给 LLM 的报告载荷 (出域最小化: 仅业务聚合字段) */
+/** 发送给 LLM 的报告载荷 (出域最小化: 仅业务聚合字段); 同时是结果缓存的 cacheKey 载荷 */
 function buildPromptPayload(report: RiskReport, context: {
   customerName: string;
   title: string;
@@ -61,10 +63,6 @@ const SYSTEM_PROMPT = [
   "严格输出 JSON: {\"summary\": string, \"talkTracks\": string[]}"
 ].join("\n");
 
-type ChatCompletion = {
-  choices?: Array<{ message?: { content?: string } }>;
-};
-
 /** 从 LLM 文本输出中稳健解析 JSON (容忍 ```json 包裹与首尾杂讯) */
 export function parseAiJson(text: string): { summary: string; talkTracks: string[] } {
   const cleaned = text.replace(/```(?:json)?/g, "").trim();
@@ -89,55 +87,25 @@ export async function analyzeContractRisk(
     paidAmount: number;
     invoicedAmount: number;
     daysOverdue: number;
+  },
+  opts?: {
+    /** 调用用户 id, 落 AiUsageLog; 缺省按系统调用记录 */
+    userId?: string;
+    /** true = 跳过缓存读取 (仍写新缓存), 供前端"重新生成" */
+    force?: boolean;
   }
 ): Promise<ContractAiAnalysis> {
-  if (!env.DEEPSEEK_API_KEY) {
-    throw new ApiError(ERROR_CODES.INTERNAL_ERROR, "AI 分析未配置 (DEEPSEEK_API_KEY 未设置)", 503);
-  }
-  const url = `${env.DEEPSEEK_BASE_URL.replace(/\/$/, "")}/chat/completions`;
-  let res: Response;
-  try {
-    res = await fetch(url, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${env.DEEPSEEK_API_KEY}`
-      },
-      body: JSON.stringify({
-        model: env.DEEPSEEK_MODEL,
-        messages: [
-          { role: "system", content: SYSTEM_PROMPT },
-          { role: "user", content: `合同风险数据:\n${JSON.stringify(buildPromptPayload(report, context), null, 2)}` }
-        ],
-        response_format: { type: "json_object" },
-        temperature: 0.3
-      }),
-      signal: AbortSignal.timeout(TIMEOUT_MS)
-    });
-  } catch (e) {
-    // 网络/超时: 不带任何内部细节给客户端
-    throw new ApiError(ERROR_CODES.INTERNAL_ERROR, `AI 服务请求失败 (${e instanceof Error ? e.name : "network"})`, 502);
-  }
-
-  if (res.status === 401 || res.status === 403) {
-    throw new ApiError(ERROR_CODES.INTERNAL_ERROR, "AI 服务鉴权失败 (请检查 DEEPSEEK_API_KEY)", 502);
-  }
-  if (res.status === 429) {
-    throw new ApiError(ERROR_CODES.INTERNAL_ERROR, "AI 服务限流中, 请稍后再试", 502);
-  }
-  if (!res.ok) {
-    throw new ApiError(ERROR_CODES.INTERNAL_ERROR, `AI 服务异常 (HTTP ${res.status})`, 502);
-  }
-
-  const body = (await res.json()) as ChatCompletion;
-  const content = body.choices?.[0]?.message?.content;
-  if (!content) {
-    throw new ApiError(ERROR_CODES.INTERNAL_ERROR, "AI 服务返回为空", 502);
-  }
-  try {
-    const parsed = parseAiJson(content);
-    return { ...parsed, model: env.DEEPSEEK_MODEL, generatedAt: new Date().toISOString() };
-  } catch {
-    throw new ApiError(ERROR_CODES.INTERNAL_ERROR, "AI 输出解析失败 (非预期 JSON)", 502);
-  }
+  const payload = buildPromptPayload(report, context);
+  const { result, cached, generatedAt } = await callAiChat({
+    feature: AI_FEATURE.CONTRACT_RISK_ANALYSIS,
+    userId: opts?.userId ?? SYSTEM_USER_ID,
+    payload,
+    messages: [
+      { role: "system", content: SYSTEM_PROMPT },
+      { role: "user", content: `合同风险数据:\n${JSON.stringify(payload, null, 2)}` }
+    ],
+    parse: parseAiJson,
+    force: opts?.force
+  });
+  return { ...result, model: env.DEEPSEEK_MODEL, cached, generatedAt };
 }
