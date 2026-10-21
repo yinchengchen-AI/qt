@@ -14,6 +14,7 @@ import { runAgingSnapshot } from "@/server/jobs/aging-snapshot";
 import { runRiskScoreSnapshot } from "@/server/jobs/risk-score-snapshot";
 import { runContractRenewalRemind } from "@/server/jobs/contract-renewal-remind";
 import { runDailyLinkageCheck } from "@/server/jobs/daily-linkage-check";
+import { runWeeklyBusinessReport } from "@/server/jobs/weekly-business-report";
 
 /**
  * 单个 job 一次执行的统计。
@@ -103,7 +104,10 @@ export async function runAllJobs(now = new Date()): Promise<JobResult[]> {
     // Phase 1.5: 到期超 30 天未续签提醒 (按周 entityKey 去重)
     { name: "contract-renewal-remind", run: () => runContractRenewalRemind(now) },
     // Phase 3: 联动补盲 (超期未开票 / 开票-回款偏差, 按日 entityKey 去重)
-    { name: "daily-linkage-check", run: () => runDailyLinkageCheck(now) }
+    { name: "daily-linkage-check", run: () => runDailyLinkageCheck(now) },
+    // 经营周报: 每周一 09:00 cron 准点 + hourly 兜底; job 内部只在周一执行,
+    // entityKey 按 ISO 周幂等, 重跑不重复发
+    { name: "weekly-business-report", run: () => runWeeklyBusinessReport(now) }
   ] as const;
   const settled = await Promise.allSettled(jobs.map((j) => j.run()));
   return settled.map((s, i) => {

@@ -13,12 +13,14 @@ import {
   invoiceOverdueJob,
 } from "@/server/jobs/runner";
 import { tickStaleContracts } from "@/server/jobs/stale-contract";
+import { runWeeklyBusinessReport } from "@/server/jobs/weekly-business-report";
 
 const jobEnum = z.enum([
   "run-all",
   "contract-expiring",
   "invoice-overdue",
   "contract-stale-notify",
+  "weekly-business-report",
 ]);
 
 export async function POST(
@@ -47,7 +49,10 @@ export async function POST(
               ? [await invoiceOverdueJob(now)]
               : parsed === "contract-stale-notify"
                 ? [await tickStaleContracts(now)]
-                : (() => { throw new ApiError(ERROR_CODES.INTERNAL_ERROR, `unknown job: ${parsed}`, 500); })();
+                : parsed === "weekly-business-report"
+                  // 管理后台手动触发 = 手动补跑, force 跳过"仅周一"判断 (entityKey 仍周幂等)
+                  ? [await runWeeklyBusinessReport(now, { force: true })]
+                  : (() => { throw new ApiError(ERROR_CODES.INTERNAL_ERROR, `unknown job: ${parsed}`, 500); })();
       return ok({ at: now.toISOString(), results });
     } catch (e) {
       return err(e);

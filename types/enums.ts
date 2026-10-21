@@ -127,6 +127,8 @@ export const MESSAGE_TYPE = [
   // 联动补盲 (daily-linkage-check job; 同迁移文件)
   "LINKAGE_NO_INVOICE",
   "LINKAGE_INVOICE_PAYMENT_GAP",
+  // 经营周报定时推送 (weekly-business-report job, 每周一 09:00; PG enum 迁移 20261021_message_type_business_weekly_report)
+  "BUSINESS_WEEKLY_REPORT",
 ] as const;
 
 // 5 个内置角色

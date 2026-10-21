@@ -31,6 +31,8 @@ describe("categoryOf", () => {
     expect(categoryOf("PAYMENT_RECEIVED")).toBe(MESSAGE_CATEGORY.FINANCE);
     expect(categoryOf("INVOICE_ISSUED")).toBe(MESSAGE_CATEGORY.FINANCE);
     expect(categoryOf("INVOICE_REJECTED")).toBe(MESSAGE_CATEGORY.FINANCE);
+    // 经营周报 (weekly-business-report job) 归财务域
+    expect(categoryOf("BUSINESS_WEEKLY_REPORT")).toBe(MESSAGE_CATEGORY.FINANCE);
   });
 
   it("对账域类型归类正确", () => {
@@ -59,6 +61,8 @@ describe("categoryOf", () => {
 describe("isSubscribable / SUBSCRIBABLE_MESSAGE_TYPES", () => {
   it("排除已下线类型", () => {
     expect(isSubscribable("CONTRACT_EXPIRING")).toBe(true);
+    // 经营周报可订阅/退订 (出现在偏好设置页)
+    expect(isSubscribable("BUSINESS_WEEKLY_REPORT")).toBe(true);
     expect(isSubscribable("CUSTOMER_STATUS_SUGGEST")).toBe(false);
     expect(isSubscribable("CUSTOMER_STATUS_AUTO_APPLIED")).toBe(false);
     expect(isSubscribable("CUSTOMER_STATUS_AUTO_REVERTED")).toBe(false);

@@ -64,6 +64,8 @@ const MESSAGE: Record<string, StatusMeta> = {
   CONTRACT_RENEWAL_REMIND:       { label: "续签提醒", tone: "warning" },
   LINKAGE_NO_INVOICE:            { label: "联动无发票", tone: "warning" },
   LINKAGE_INVOICE_PAYMENT_GAP:   { label: "联动票款缺口", tone: "danger" },
+  // 经营周报定时推送 (weekly-business-report job, 每周一 09:00)
+  BUSINESS_WEEKLY_REPORT:        { label: "经营周报", tone: "info" },
   // 已下线类型 (v0.5.0 客户状态机迁移; 历史数据仍可能出现在归档/回收站, 保留渲染)
   CUSTOMER_STATUS_SUGGEST:       { label: "客户状态建议", tone: "info" },
   CUSTOMER_STATUS_AUTO_APPLIED:  { label: "状态自动应用", tone: "processing" },

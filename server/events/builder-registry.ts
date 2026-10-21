@@ -147,7 +147,29 @@ const REGISTRY: Record<string, MessageBuilder> = {
     title: `本周对账汇总：新增 ${p.newCount} 条流水，匹配率 ${p.matchRate}%`,
     content: `待确认 ${p.pendingCount} 条，差异 ${p.discrepancyCount} 条，请前往对账中心查看`,
     link: { kind: "reconciliation" }
-  })
+  }),
+  BUSINESS_WEEKLY_REPORT: (p) => {
+    const lines = [
+      `统计区间：${p.rangeFrom ?? "—"} ~ ${p.rangeTo ?? "—"}（上周）`,
+      `新签合同 ${Number(p.contractCount ?? 0)} 份，合同额 ¥${p.contractAmount ?? 0}`,
+      `已开票 ¥${p.invoiceAmount ?? 0}（${Number(p.invoiceCount ?? 0)} 张），已回款 ¥${p.paymentAmount ?? 0}，未回款 ¥${p.unpaidAmount ?? 0}`,
+      `账龄：0-30 天 ¥${p.aging0_30 ?? 0} / 31-60 天 ¥${p.aging31_60 ?? 0} / 61-90 天 ¥${p.aging61_90 ?? 0} / 90+ 天 ¥${p.aging90 ?? 0}（90+ 占比 ${p.over90Ratio ?? 0}%）`
+    ];
+    const top = Array.isArray(p.topRanking) ? p.topRanking as Array<{ rank?: number; name?: string; contractAmount?: number }> : [];
+    if (top.length > 0) {
+      lines.push(`业绩排行 Top${top.length}：${top.map((r) => `${r.rank ?? "-"}.${r.name ?? "—"} ¥${r.contractAmount ?? 0}`).join("，")}`);
+    }
+    lines.push(
+      p.downloadUrl
+        ? `明细报表下载：${p.downloadUrl}`
+        : "（本期明细附件不可用，请到统计页手动导出）"
+    );
+    return {
+      title: `经营周报 ${p.weekKey ?? ""}`,
+      content: lines.join("\n"),
+      link: { kind: "statistics" }
+    };
+  }
 };
 
 // 兜底:未知 / 已下线 type 仍允许 emit 走历史占位提示,避免一个陌生 type 把整页渲染崩掉
