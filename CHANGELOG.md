@@ -2,6 +2,22 @@
 
 本文件记录 qt-biz 每个版本的详细变更。项目快速入口请见 [README.md](README.md)。
 
+## v0.25.12(2026-10-21)公告已读回执 + AI 用量缓存 + 经营周报
+
+本版新增三个功能:公告已读回执与阅读统计、AI 用量统计与结果缓存、经营周报定时推送。**DB schema 有变化:3 个迁移(1 张新表 AnnouncementRead、2 张新表 AiUsageLog/AiResponseCache、MessageType 枚举加值),新表均已含 GRANT qt_app 判重块**。
+
+### 新增
+
+- **feat(announcement)**: 公告已读回执 — 新增 `AnnouncementRead` 表(仿 AppReleaseRead:幂等 upsert、首次 readAt 不刷新);公告详情页 mount 静默上报 `POST /api/announcements/[id]/read`(复用 visibilityWhere 404 语义防越权探测);公告 Tab 未读公告标题红点加粗。
+- **feat(announcement)**: 阅读统计 — `GET /api/announcements/[id]/reads` 返回已读名单 + 应读分母(targetRoles 空=全员,非空按角色)与未读数,仅发布人本人或 ADMIN/OPS 可查;公告卡片加「已读 N/M 人」Modal 名单。
+- **feat(ai)**: 统一 AI client(`server/services/ai-client.ts`)— sha256 缓存 key(feature+model+规范化 payload)、24h TTL、`AiResponseCache` 命中直接返回、`AiUsageLog` 记录 token/耗时/成本估算/失败原因;`?force=1` 跳过缓存。合同风险 AI 分析改为薄 prompt 组装层接入。
+- **feat(ai)**: `/admin/ai-usage` 用量页(OPERATION_LOG.READ,仅 ADMIN)— 汇总卡(总调用/命中率/token/估算成本 USD)+ feature/status/缓存命中/用户/时间范围过滤;风险报告 AI 摘要命中缓存时显示「缓存结果 · 生成于 …」并支持「重新生成」。
+- **feat(jobs)**: 经营周报定时推送 — 每周一 09:00(cron `0 9 * * 1` + hourly run-all 兜底)给 ADMIN∪FINANCE 发站内信:上周业绩总览 + 账龄摘要 + 业绩排行 Top,附 xlsx 明细(MinIO 失败降级纯文本);`entityKey` 按 ISO 周幂等,admin 可手动 `?force` 补跑;MessageType 新增 `BUSINESS_WEEKLY_REPORT`(归 FINANCE 类别,偏好设置页可退订)。
+
+### 测试
+
+- **test**: typecheck / lint / vitest 全绿(128 文件,1128 用例);新增 announcement-read(6)、ai-client(13)、ai-usage(8)、weekly-business-report(7)等用例。
+
 ## v0.25.11(2026-09-20)合同完结判定收紧
 
 ### 变更
