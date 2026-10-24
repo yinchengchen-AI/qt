@@ -2,6 +2,15 @@
 
 本文件记录 qt-biz 每个版本的详细变更。项目快速入口请见 [README.md](README.md)。
 
+## v0.25.13(2026-10-25)依赖升级:next 16.3.5 / vitest 4.1.11 / vite 8
+
+例行依赖升级,无业务功能变化。**DB schema / migrations: 无变化**。
+
+变更:
+- **chore(deps)**: next 16.2.12 → ^16.3.5;vitest 4.1.8 → 4.1.11 并显式补 vite 8.0.16 devDependency(peerOptional);mysql2 ^3.22.5 → ^3.24.4;sharp ^0.35.3 → ^0.35.4
+- **chore(deps)**: overrides 刷新 —— 去掉 minimatch@5/@10 的 brace-expansion 补丁(已随版本内置),新增 baseline-browser-mapping / browserslist / fast-uri / nanoid / js-yaml / deepmerge-ts / mysql2;package-lock 与 pnpm-lock 同步刷新(CI 走 pnpm install --frozen-lockfile)
+- **测试**: typecheck / lint 全绿;vitest 失败用例单独运行均通过,本地 Windows 全量并发跑共享 dev 库存在既有抖动,与本次升级无关
+
 ## v0.25.12(2026-10-21)公告已读回执 + AI 用量缓存 + 经营周报
 
 本版新增三个功能:公告已读回执与阅读统计、AI 用量统计与结果缓存、经营周报定时推送。**DB schema 有变化:3 个迁移(1 张新表 AnnouncementRead、2 张新表 AiUsageLog/AiResponseCache、MessageType 枚举加值),新表均已含 GRANT qt_app 判重块**。
