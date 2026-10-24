@@ -397,6 +397,9 @@ nginx 反代下上游异常时,由 `public/502.html` 静态页与 `app/502/page.
 最近 5 个版本(另附更早的重要版本 v0.25.0),完整历史见 [CHANGELOG.md](CHANGELOG.md)。
 
 
+### v0.25.14(2026-10-25)next 回退 16.2.12(生产构建 OOM)
+
+v0.25.13 的 next 16.3.5 在生产机(3.5GB 内存)next build 持续 OOM,回退 next 至 16.2.12;vitest 4.1.11+vite 8 / mysql2 3.24 / sharp 0.35.4 / overrides 刷新等其余升级保留。生产机另加 swappiness=60 + zram 3G 压缩 swap。无 DB 迁移。
 ### v0.25.13(2026-10-25)依赖升级:next 16.3.5 / vitest 4.1.11 / vite 8
 
 例行依赖升级(next / vitest+vite / mysql2 / sharp / overrides 刷新),无业务功能变化,无 DB 迁移。package-lock 与 pnpm-lock 同步刷新。

@@ -2,6 +2,18 @@
 
 本文件记录 qt-biz 每个版本的详细变更。项目快速入口请见 [README.md](README.md)。
 
+## v0.25.14(2026-10-25)next 回退 16.2.12(生产构建 OOM)
+
+v0.25.13 将 next 升级到 16.3.5 后,生产服务器(3.5GB 内存)next build 持续被 OOM killer 杀掉(exit 137,连续 6 次尝试;swappiness 60/100、min_free_kbytes、zram 压缩 swap 均未解决,内核几乎不 swap 构建进程的匿名页)。回退 next 到 16.2.12(与 eslint-config-next 版本一致),其余依赖升级全部保留。**DB schema / migrations: 无变化**。
+
+变更:
+- **fix(deps)**: next ^16.3.5 → 16.2.12(生产 next build OOM 回退;eslint-config-next 保持 16.2.12 本就匹配)
+- **chore(server)**: 生产机 sysctl swappiness 0 → 60(/etc/sysctl.conf + /etc/sysctl.d/99-qt-build.conf,修复阿里云默认 0 导致 OOM 先于 swap 触发的问题)+ zram 3G lz4 压缩 swap(zram-swap.service 持久化,min_free_kbytes=131072),缓解后续构建内存峰值
+- **保留 v0.25.13 其余升级**: vitest 4.1.11 + vite 8.0.16 / mysql2 ^3.24.4 / sharp ^0.35.4 / overrides 刷新,package-lock 与 pnpm-lock 同步
+
+### 测试
+
+- **test**: typecheck / lint 全绿;vitest 全量并发下仍有 5 个左右既有抖动(Windows 本地共享 dev 库导致,失败集合每次不同、单独运行全过,与本改动无关)
 ## v0.25.13(2026-10-25)依赖升级:next 16.3.5 / vitest 4.1.11 / vite 8
 
 例行依赖升级,无业务功能变化。**DB schema / migrations: 无变化**。
