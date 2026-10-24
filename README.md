@@ -397,6 +397,9 @@ nginx 反代下上游异常时,由 `public/502.html` 静态页与 `app/502/page.
 最近 5 个版本(另附更早的重要版本 v0.25.0),完整历史见 [CHANGELOG.md](CHANGELOG.md)。
 
 
+### v0.25.13(2026-10-25)依赖升级:next 16.3.5 / vitest 4.1.11 / vite 8
+
+例行依赖升级(next / vitest+vite / mysql2 / sharp / overrides 刷新),无业务功能变化,无 DB 迁移。package-lock 与 pnpm-lock 同步刷新。
 ### v0.25.12(2026-10-21)公告已读回执 + AI 用量缓存 + 经营周报
 
 三个新功能:公告已读回执(详情页自动上报,发布人/ADMIN/OPS 看已读名单与未读数,列表未读红点);AI 用量统计与结果缓存(统一 ai-client,sha256 缓存 24h TTL + 逐次调用 token/成本日志,新增 `/admin/ai-usage` 用量页);经营周报定时推送(每周一 09:00 给 ADMIN/FINANCE 发上周业绩+账龄+排行站内信附 xlsx,周幂等可退订可手动补跑)。含 3 个 DB 迁移(新表均含 GRANT qt_app)。
