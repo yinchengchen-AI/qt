@@ -38,7 +38,6 @@ import {
   AppstoreOutlined,
   AccountBookOutlined,
   IdcardOutlined,
-  PushpinOutlined,
 } from "@ant-design/icons";
 import type { RoleCode } from "@/types/enums";
 import { ACTION, RESOURCE, type Action, type Resource } from "@/lib/permissions";
@@ -123,7 +122,7 @@ const MENU: MenuItem[] = [
       { path: "/statistics/data-quality", name: "异常数据", permission: { resource: RESOURCE.STATISTICS, action: ACTION.READ } },
     ]
   },
-  // 通知中心:消息 + 公告 + 回收站统一入口 (/messages 内 Tabs 切换, 见 app/(app)/messages/page.tsx)
+  // 通知中心:消息与公告统一入口 (/messages 内 Tabs 切换)
   {
     path: "/messages",
     name: "通知中心",
@@ -217,8 +216,6 @@ export function DashboardShell({ user, children }: Props) {
   const [navOpen, setNavOpen] = useState(false);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [messages, setMessages] = useState<MessageRowPayload[]>([]);
-  // 抽屉里的置顶公告(打开抽屉时拉一次)
-  const [pinned, setPinned] = useState<Array<{ id: string; title: string; content: string }>>([]);
   // 抽屉消息分页:loadMessages(false) 翻页追加,loadMessages(true) 重置到第 1 页
   const [msgPage, setMsgPage] = useState(1);
   const [msgHasMore, setMsgHasMore] = useState(false);
@@ -286,23 +283,10 @@ export function DashboardShell({ user, children }: Props) {
     }
   };
 
-  const loadPinned = async () => {
-    try {
-      const r = await fetch("/api/announcements/pinned", { credentials: "include" });
-      const j = await r.json();
-      if (j.code === 0) setPinned((j.data.list ?? []) as typeof pinned);
-    } catch {
-      /* ignore */
-    }
-  };
-
   useMessageStream({
     onKick: () => {
       refreshUnread();
-      if (drawerOpen) {
-        loadMessages();
-        loadPinned();
-      }
+      if (drawerOpen) loadMessages();
     },
     // v0.22.0: 后端直推 message:new 事件, 抽屉打开时直接 prepend;不打开时仅刷新 unread 计数。
     onNewMessage: (row) => {
@@ -590,7 +574,6 @@ export function DashboardShell({ user, children }: Props) {
                 onClick={() => {
                   setDrawerOpen(true);
                   loadMessages();
-                  loadPinned();
                 }}
                 aria-label="消息"
                 style={{
@@ -709,62 +692,10 @@ export function DashboardShell({ user, children }: Props) {
             >
               {t("messages.markAllRead")}
             </a>
-            {messages.length > 0 && messages.every((m) => !!m.readAt) ? (
-              <a
-                onClick={(e) => {
-                  e.preventDefault();
-                  modal.confirm({
-                    title: t("messages.clearReadConfirm.title"),
-                    content: t("messages.clearReadConfirm.content"),
-                    okText: t("messages.action.clearRead"),
-                    okType: "danger",
-                    cancelText: t("announcements.cancel"),
-                    onOk: async () => {
-                      try {
-                        const r = await fetch("/api/messages/read/clear", { method: "POST", credentials: "include" });
-                        const j = await r.json();
-                        if (j.code === 0) {
-                          modal.success({ content: t("messages.toast.clearedRead", { n: j.data.deleted }) });
-                          loadMessages();
-                        } else {
-                          modal.error({ content: j.message });
-                        }
-                      } catch {
-                        modal.error({ content: t("messages.toast.actionFailed") });
-                      }
-                    }
-                  });
-                }}
-                style={{ color: token.colorError, fontSize: 13, cursor: "pointer" }}
-              >
-                {t("messages.action.clearRead")}
-              </a>
-            ) : null}
           </Space>
         }
       >
         <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-          {pinned.length > 0 ? (
-            <div
-              style={{
-                background: token.colorWarningBg,
-                border: `1px solid ${token.colorWarningBorder}`,
-                borderRadius: 8,
-                padding: "10px 12px"
-              }}
-            >
-              <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 6, fontWeight: 600, fontSize: 13, color: token.colorText }}>
-                <PushpinOutlined />
-                {t("messages.pinned.title")}
-              </div>
-              {pinned.map((p) => (
-                <div key={p.id} style={{ marginBottom: 6 }}>
-                  <div style={{ fontSize: 13, fontWeight: 500 }}>{p.title}</div>
-                  <div style={{ fontSize: 12, color: token.colorTextTertiary, marginTop: 2 }}>{p.content}</div>
-                </div>
-              ))}
-            </div>
-          ) : null}
           {messages.length === 0 ? (
             <Empty
               image={Empty.PRESENTED_IMAGE_SIMPLE}
@@ -892,41 +823,17 @@ export function DashboardShell({ user, children }: Props) {
           ) : null}
           {messages.length > 0 ? (
             <div style={{ textAlign: "center", marginTop: 8 }}>
-              <Space size={12}>
-                <a
-                  href="/messages"
-                  onClick={(e) => {
-                    e.preventDefault();
-                    router.push("/messages");
-                    setDrawerOpen(false);
-                  }}
-                  style={{ color: token.colorPrimary, fontSize: 13 }}
-                >
-                  {t("messages.drawer.viewAll")}
-                </a>
-                <a
-                  href="/messages?tab=archive"
-                  onClick={(e) => {
-                    e.preventDefault();
-                    router.push("/messages?tab=archive");
-                    setDrawerOpen(false);
-                  }}
-                  style={{ color: token.colorTextSecondary, fontSize: 13 }}
-                >
-                  {t("messages.drawer.viewArchive")}
-                </a>
-                <a
-                  href="/messages?tab=recycle"
-                  onClick={(e) => {
-                    e.preventDefault();
-                    router.push("/messages?tab=recycle");
-                    setDrawerOpen(false);
-                  }}
-                  style={{ color: token.colorTextSecondary, fontSize: 13 }}
-                >
-                  {t("messages.drawer.viewRecycle")}
-                </a>
-              </Space>
+              <a
+                href="/messages"
+                onClick={(e) => {
+                  e.preventDefault();
+                  router.push("/messages");
+                  setDrawerOpen(false);
+                }}
+                style={{ color: token.colorPrimary, fontSize: 13 }}
+              >
+                {t("messages.drawer.viewAll")}
+              </a>
             </div>
           ) : null}
         </div>

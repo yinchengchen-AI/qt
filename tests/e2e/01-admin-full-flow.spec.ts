@@ -4,6 +4,7 @@
 // → 创建回款 → 确认回款 → 统计 → 消息中心 → 公告
 import { test, expect } from "@playwright/test";
 import { DEV_PASSWORD } from "./_dev-credentials";
+import { loginCookiesOnce } from "./_auth";
 
 const stamp = Date.now();
 const customerName = `E2E客户-${stamp}`;
@@ -99,19 +100,34 @@ test.describe.serial("场景 1: admin 完整主链路", () => {
   });
 
   test("01.8 访问工作台 + 消息中心 + 公告", async ({ page }) => {
-    await page.goto("/dashboard");
-    await page.waitForLoadState("networkidle");
+    const cookies = await loginCookiesOnce(page.context().browser()!, "admin");
+    await page.context().addCookies(cookies);
     await page.goto("/messages");
-    await page.waitForLoadState("networkidle");
     // 至少有 ProTable 容器
     await expect(page.locator(".ant-pro-table").first()).toBeVisible({ timeout: 10000 });
+    await expect(page.getByRole("tab", { name: "全部", exact: true })).toBeVisible();
+    await expect(page.getByRole("tab", { name: /^未读/ })).toBeVisible();
+    await expect(page.getByRole("tab", { name: "已读", exact: true })).toBeVisible();
+    await expect(page.getByRole("tab", { name: "公告", exact: true })).toBeVisible();
+    await expect(page.getByRole("tab", { name: "归档", exact: true })).toHaveCount(0);
+    await expect(page.getByRole("tab", { name: "回收站", exact: true })).toHaveCount(0);
+    await expect(page.getByRole("button", { name: "订阅", exact: true })).toHaveCount(0);
+    await expect(page.getByRole("button", { name: "清空已读", exact: true })).toHaveCount(0);
+    await expect(page.locator(".ant-pro-table .ant-checkbox-input")).toHaveCount(0);
     // 公告并入通知中心: 深链直达公告 Tab
     await page.goto("/messages?tab=announcements");
-    await page.waitForLoadState("networkidle");
+    await expect(page.getByRole("tab", { name: "公告", exact: true })).toHaveAttribute("aria-selected", "true");
     // 旧路径 /announcements 重定向到通知中心公告 Tab
     await page.goto("/announcements");
-    await page.waitForLoadState("networkidle");
     await expect(page).toHaveURL(/\/messages\?tab=announcements/);
+
+    await page.goto("/dashboard");
+    await page.getByRole("button", { name: "消息", exact: true }).click();
+    await expect(page.getByRole("link", { name: "查看全部消息 →" })).toBeVisible();
+    await expect(page.locator('a[href="/messages?tab=archive"]')).toHaveCount(0);
+    await expect(page.locator('a[href="/messages?tab=recycle"]')).toHaveCount(0);
+    await expect(page.getByText(/清空已读|messages\.action\.clearRead/)).toHaveCount(0);
+    await expect(page.getByText(/置顶公告|messages\.pinned\.title/)).toHaveCount(0);
   });
 
   test("01.9 统计页加载", async ({ page }) => {

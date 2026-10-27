@@ -6,14 +6,14 @@
 [![TypeScript](https://img.shields.io/badge/TypeScript-6.0.3-3178c6)](https://www.typescriptlang.org/)
 [![Prisma](https://img.shields.io/badge/Prisma-7.9.1-2d3748)](https://www.prisma.io/)
 [![PostgreSQL](https://img.shields.io/badge/PostgreSQL-16-336791)](https://www.postgresql.org/)
-[![Last Release](https://img.shields.io/badge/release-v0.25.6-blue)](CHANGELOG.md)
+[![Last Release](https://img.shields.io/badge/release-v0.25.13-blue)](CHANGELOG.md)
 [![CI](https://github.com/yinchengchen-AI/qt/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/yinchengchen-AI/qt/actions/workflows/ci.yml)
 
 > **客户 / 合同 / 开票 / 回款** 一体化管理,附件走 MinIO presigned 直传,服务端 Server Actions + RBAC + 行级隔离。
 >
-> **当前版本: v0.25.6**(2026-09-07)。文档地图见 [docs/README.md](docs/README.md),架构与设计见 [docs/architecture/DESIGN-v3.md](docs/architecture/DESIGN-v3.md),用户手册见 [docs/user/USER_MANUAL.md](docs/user/USER_MANUAL.md)。
+> **当前版本: v0.25.13**(2026-10-27)。文档地图见 [docs/README.md](docs/README.md),架构与设计见 [docs/architecture/DESIGN-v3.md](docs/architecture/DESIGN-v3.md),用户手册见 [docs/user/USER_MANUAL.md](docs/user/USER_MANUAL.md)。
 
-<!-- 最近更新于 2026-09-09 — 全面重构 README 结构 -->
+<!-- 最近更新于 2026-10-27 — 通知中心核心功能简化 -->
 
 ---
 
@@ -30,7 +30,7 @@
 | **开票管理** | 发票 CRUD、R-11 回款保护、开票金额上限校验、红冲、与回款的关联关系 |
 | **回款管理** | 回款登记、确认 / 对账、与发票的双向关联、R-08 合同级开票限额 |
 | **统计分析** | 总览 / 账龄 / 业绩 / Top 排行、xlsx 导出 (exceljs 流式) |
-| **消息与公告** | 通知中心 (消息 / 公告 / 回收站)、操作日志、员工档案 |
+| **消息与公告** | 通知中心 (全部 / 未读 / 已读 / 公告)、操作日志、员工档案 |
 
 ### 技术亮点
 
@@ -184,7 +184,7 @@ res.send(buffer);
 
 ### 消息与公告
 
-- **通知中心** — `/messages` 单入口 + Tabs(消息 / 公告 / 回收站)
+- **通知中心** — `/messages` 单入口 + Tabs(全部 / 未读 / 已读 / 公告)
 - **操作日志** — `{ actorId, action, before, after, at }`,admin 页面可查询
 - **员工档案** — 教育 / 证书 / 工作经历 / 家庭成员 5 步向导编辑
 
@@ -396,6 +396,9 @@ nginx 反代下上游异常时,由 `public/502.html` 静态页与 `app/502/page.
 
 最近 5 个版本(另附更早的重要版本 v0.25.0),完整历史见 [CHANGELOG.md](CHANGELOG.md)。
 
+### v0.25.13(2026-10-27)通知中心核心功能简化
+
+用户通知中心收敛为「全部 / 未读 / 已读 / 公告」，保留查看、已读、SSE 和公告管理；移除高级筛选、批量操作、订阅设置、清空已读及归档/回收站用户入口。通知抽屉同步精简，后端 API、自动任务和管理员工具保持兼容，无 DB 变更。
 
 ### v0.25.12(2026-10-21)公告已读回执 + AI 用量缓存 + 经营周报
 

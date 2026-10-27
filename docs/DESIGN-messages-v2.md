@@ -1,8 +1,8 @@
 # 消息中心 v2 设计文档
 
-> 最近同步：2026-09-03（v0.22.0 重新设计）
-> 目标版本：v0.22.0
-> 状态：实现中
+> 最近同步：2026-10-27（v0.25.13 核心通知简化）
+> 目标版本：v0.25.13
+> 状态：已实施
 
 本文档取代 v0.5.x 以来消息中心的散点设计，统一描述重做后的数据模型、API、UI、实时通道与 i18n。已有的 v0.5.x ~ v0.21.14 演进路径保留在 `CHANGELOG.md` 与 `docs/architecture/DESIGN-v3.md` 中。
 
@@ -118,45 +118,28 @@ server/notifications/hub.ts               # SSE hub (支持 message:new)
 
 ### 5.1 `/messages` 页面
 
-```
-┌────────────┬─────────────────────────────────────────────┐
-│ Sidebar    │ Toolbar: 搜索 | 类型多选 | 状态 | 日期 | 操作│
-│ (分类)     ├─────────────────────────────────────────────┤
-│            │                                              │
-│ 全部  12  │ ProTable (row select + click navigate +     │
-│ 合同  5   │  mark-read inline)                          │
-│ 财务  3   │                                              │
-│ 对账  2   │                                              │
-│ 证书  1   │                                              │
-│ 系统  0   │                                              │
-│ ──────    │                                              │
-│ 归档设置  │                                              │
-│ 全部已读  │                                              │
-└────────────┴─────────────────────────────────────────────┘
-```
+当前用户界面只保留 **全部 / 未读 / 已读 / 公告** 四个页签：
 
-- 左侧分类 sidebar 来自 `unread-summary`，点击切换 `category` 过滤。
-- 顶部 toolbar 包含搜索、类型多选、状态 tab、日期范围。
-- 批量操作：勾选后顶部出现 batch action bar（已读 / 删除 / 取消）。
-- 移动端：sidebar 折叠为顶部 chip 行；其余不变。
+- 消息表格展示类型、标题/内容摘要、时间和操作；未读用行内红点与标题加粗表达。
+- 操作仅保留「查看」（有业务链接时）、单条「标记已读」和页头「全部标记已读」。
+- 公告页签保留阅读与 ADMIN / OPS 管理能力，包括发布、编辑、删除、置顶标识和已读统计。
+- 不再展示分类/关键词/日期筛选、批量操作、订阅设置、清空已读、归档/回收站和重复置顶公告卡片。
+- 仅保留 `?tab=announcements` 深链；旧 `?tab=archive|recycle` 回退到「全部」。上述低频 API 仍为兼容保留，不因 UI 移除而删除。
 
 ### 5.2 Dashboard 抽屉
 
-- 列表按"今天 / 本周 / 更早"三段分组。
-- 顶部 chip：全部 / 未读（带 badge）/ 已读。
-- 收到 `message:new` 时直接 prepend 到「今天」分组。
-- 列表项保持可点击跳转并自动 mark-read。
-- 加载更多按钮保留。
+- 单一消息列表保留未读样式、相对时间、加载更多和「查看全部」。
+- 收到 `message:new` 时直接 prepend；列表项点击后自动 mark-read 并跳转业务链接。
+- 顶部只保留「全部标记已读」，不再展示置顶公告摘要、清空已读、归档和回收站入口。
 
-### 5.3 偏好设置入口
+### 5.3 偏好设置
 
-- `/messages` 页面底部「订阅设置」按钮 → Drawer
-- 列表展示所有 `MessageType`，每行一个 switch（默认开）
-- 关闭后 `bus.emit` 不会再给该用户写对应类型的消息；历史消息保留
+- 用户侧订阅设置入口已移除，`GET/PUT /api/messages/preferences` 与 `MessagePreference` 数据模型继续保留。
+- `bus.emit` 仍尊重既有退订记录；历史消息保留，后端行为不随本次 UI 简化改变。
 
 ## 6. i18n 策略
 
-- 文案 key 命名：`messages.<area>.<thing>`，例如 `messages.toolbar.search`、`messages.batch.markRead`。
+- 文案 key 命名：`messages.<area>.<thing>`，例如 `messages.tab.unread`、`messages.action.markRead`。
 - `bus.ts` 渲染的 title/content **仍存为渲染后字符串**（避免每次读 Message 都跑 i18n）：这是历史现状，重做不动这块。
 - 所有 UI 控件（按钮、占位、确认弹窗）走 `useT()`。
 

@@ -1,7 +1,7 @@
 # 消息归档与回收站 v0.24.0 设计文档
 
-> 最近同步: 2026-09-04 (v0.24.0 实施)
-> 目标版本: v0.24.0
+> 最近同步: 2026-10-27 (v0.25.13 用户 UI 收敛, 后端契约保留)
+> 目标版本: v0.25.13
 > 状态: 已实施
 
 本文档是 [DESIGN-messages-v2.md](./DESIGN-messages-v2.md) 的补充, 描述 v0.24.0 引入的"消息归档与回收站统一重做"。
@@ -168,19 +168,9 @@ env `MESSAGE_RECYCLE_PURGE_DAYS` 控制阈值 (默认 30)。
 
 ### 6.1 用户 `/messages` 页面
 
-5 个 tab 顺序: **全部 / 未读 / 已读 / 归档 / 回收站**
+自 v0.25.13 起，普通用户通知中心不再暴露归档和回收站页签，只保留 **全部 / 未读 / 已读 / 公告**。Dashboard 抽屉也不再提供归档/回收站链接，旧 `?tab=archive|recycle` 回退到「全部」。
 
-- 前 3 个 tab: 行为基本不变, "批量删除" 改为"移到回收站" (文案 + 二次确认)
-- **归档 tab**: ProTable reading `/api/messages/archive`
-  - 列: type / title / content / createdAt / archivedAt
-  - 行操作: 查看 (link) / 移到收件箱 (走 `restoreUserArchive`)
-  - 批量 bar: 移到收件箱
-- **回收站 tab**: ProTable reading `/api/messages/recycle`
-  - 列: type / title / content / createdAt / deletedAt + 已读/未读状态
-  - 行操作: 查看 (link) / 恢复 / 彻底删除
-  - 批量 bar: 恢复 / 彻底删除
-
-支持 `?tab=archive` / `?tab=recycle` deep link (Dashboard 抽屉底部加 "查看归档" / "查看回收站" 链接)。
+这是用户界面收敛，不改变本文档的数据与后端契约：`MessageArchive`、`Message.deletedAt`、自动归档/清理任务、用户侧兼容 API、审计事件和管理员工具均保留。需要回查或恢复消息时，由管理员通过 `/admin/messages` 处理。
 
 ### 6.2 管理 `/admin/messages` 页面
 
