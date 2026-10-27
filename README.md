@@ -6,12 +6,12 @@
 [![TypeScript](https://img.shields.io/badge/TypeScript-6.0.3-3178c6)](https://www.typescriptlang.org/)
 [![Prisma](https://img.shields.io/badge/Prisma-7.9.1-2d3748)](https://www.prisma.io/)
 [![PostgreSQL](https://img.shields.io/badge/PostgreSQL-16-336791)](https://www.postgresql.org/)
-[![Last Release](https://img.shields.io/badge/release-v0.25.13-blue)](CHANGELOG.md)
+[![Last Release](https://img.shields.io/badge/release-v0.25.15-blue)](CHANGELOG.md)
 [![CI](https://github.com/yinchengchen-AI/qt/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/yinchengchen-AI/qt/actions/workflows/ci.yml)
 
 > **客户 / 合同 / 开票 / 回款** 一体化管理,附件走 MinIO presigned 直传,服务端 Server Actions + RBAC + 行级隔离。
 >
-> **当前版本: v0.25.13**(2026-10-27)。文档地图见 [docs/README.md](docs/README.md),架构与设计见 [docs/architecture/DESIGN-v3.md](docs/architecture/DESIGN-v3.md),用户手册见 [docs/user/USER_MANUAL.md](docs/user/USER_MANUAL.md)。
+> **当前版本: v0.25.15**(2026-10-27)。文档地图见 [docs/README.md](docs/README.md),架构与设计见 [docs/architecture/DESIGN-v3.md](docs/architecture/DESIGN-v3.md),用户手册见 [docs/user/USER_MANUAL.md](docs/user/USER_MANUAL.md)。
 
 <!-- 最近更新于 2026-10-27 — 通知中心核心功能简化 -->
 
@@ -396,10 +396,16 @@ nginx 反代下上游异常时,由 `public/502.html` 静态页与 `app/502/page.
 
 最近 5 个版本(另附更早的重要版本 v0.25.0),完整历史见 [CHANGELOG.md](CHANGELOG.md)。
 
-### v0.25.13(2026-10-27)通知中心核心功能简化
+### v0.25.15(2026-10-27)通知中心核心功能简化
 
 用户通知中心收敛为「全部 / 未读 / 已读 / 公告」，保留查看、已读、SSE 和公告管理；移除高级筛选、批量操作、订阅设置、清空已读及归档/回收站用户入口。通知抽屉同步精简，后端 API、自动任务和管理员工具保持兼容，无 DB 变更。
 
+### v0.25.14(2026-10-25)next 回退 16.2.12(生产构建 OOM)
+
+v0.25.13 的 next 16.3.5 在生产机(3.5GB 内存)next build 持续 OOM,回退 next 至 16.2.12;vitest 4.1.11+vite 8 / mysql2 3.24 / sharp 0.35.4 / overrides 刷新等其余升级保留。生产机另加 swappiness=60 + zram 3G 压缩 swap。无 DB 迁移。
+### v0.25.13(2026-10-25)依赖升级:next 16.3.5 / vitest 4.1.11 / vite 8
+
+例行依赖升级(next / vitest+vite / mysql2 / sharp / overrides 刷新),无业务功能变化,无 DB 迁移。package-lock 与 pnpm-lock 同步刷新。
 ### v0.25.12(2026-10-21)公告已读回执 + AI 用量缓存 + 经营周报
 
 三个新功能:公告已读回执(详情页自动上报,发布人/ADMIN/OPS 看已读名单与未读数,列表未读红点);AI 用量统计与结果缓存(统一 ai-client,sha256 缓存 24h TTL + 逐次调用 token/成本日志,新增 `/admin/ai-usage` 用量页);经营周报定时推送(每周一 09:00 给 ADMIN/FINANCE 发上周业绩+账龄+排行站内信附 xlsx,周幂等可退订可手动补跑)。含 3 个 DB 迁移(新表均含 GRANT qt_app)。
