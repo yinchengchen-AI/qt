@@ -61,26 +61,6 @@ describe("Role permissions", () => {
     expect(hasPermission("OPS", RESOURCE.ANNOUNCEMENT, ACTION.CREATE)).toBe(true);
   });
 
-  it("DUNNING: SALES 可记录+查看; EXPERT/OPS 只读; FINANCE/ADMIN 拿全 CRUD", () => {
-    // 业务现场 (SALES): 仅 CREATE+READ
-    expect(hasPermission("SALES", RESOURCE.DUNNING, ACTION.CREATE)).toBe(true);
-    expect(hasPermission("SALES", RESOURCE.DUNNING, ACTION.READ)).toBe(true);
-    expect(hasPermission("SALES", RESOURCE.DUNNING, ACTION.UPDATE)).toBe(false);
-    expect(hasPermission("SALES", RESOURCE.DUNNING, ACTION.DELETE)).toBe(false);
-    // 技术专家: 只读 (催款记录归 SALES/财务)
-    expect(hasPermission("EXPERT", RESOURCE.DUNNING, ACTION.READ)).toBe(true);
-    expect(hasPermission("EXPERT", RESOURCE.DUNNING, ACTION.CREATE)).toBe(false);
-    expect(hasPermission("EXPERT", RESOURCE.DUNNING, ACTION.UPDATE)).toBe(false);
-    expect(hasPermission("EXPERT", RESOURCE.DUNNING, ACTION.DELETE)).toBe(false);
-    // 财务对账留痕: 全 CRUD
-    expect(hasPermission("FINANCE", RESOURCE.DUNNING, ACTION.CREATE)).toBe(true);
-    expect(hasPermission("FINANCE", RESOURCE.DUNNING, ACTION.UPDATE)).toBe(true);
-    expect(hasPermission("FINANCE", RESOURCE.DUNNING, ACTION.DELETE)).toBe(true);
-    // 行政只读 (不参与催收)
-    expect(hasPermission("OPS", RESOURCE.DUNNING, ACTION.READ)).toBe(true);
-    expect(hasPermission("OPS", RESOURCE.DUNNING, ACTION.CREATE)).toBe(false);
-  });
-
   it("ROLE_PERMISSIONS covers all 5 built-in roles", () => {
     expect(Object.keys(ROLE_PERMISSIONS).sort()).toEqual(["ADMIN", "EXPERT", "FINANCE", "OPS", "SALES"]);
   });

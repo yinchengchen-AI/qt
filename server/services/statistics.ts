@@ -190,9 +190,6 @@ export type AgingRow = {
   bucket: "0-30" | "31-60" | "61-90" | "90+";
   status: string;
   basisUsed: "issue" | "due";
-  hasDunning: boolean;
-  latestDunningStatus: string | null;
-  latestDunningAt: string | null;
 };
 
 export type AgingDimensionRow = {
@@ -328,33 +325,7 @@ export async function getInvoiceAging(
   const paidMap = new Map<string, number>();
   for (const p of paid) paidMap.set(p.invoiceId!, Number(p._sum.amount ?? 0));
 
-  // 3) 拉每张发票的"最新 1 条"催收记录 — 用 groupBy 拿 max(lastContactAt),
-  //   再用 in + 排序取该 max 对应那条的 status. 比 findMany 拉全表省内存.
-  //   注意: 多条催收同 lastContactAt 时 groupBy 拿不到 status, 走 fallback 二次查询
-  //   限定 invoiceId + lastContactAt 来精确锁定.
-  const latestDunningMax = await prisma.dunningNote.groupBy({
-    by: ["invoiceId"],
-    where: { invoiceId: { in: invoices.map((i) => i.id) } },
-    _max: { lastContactAt: true }
-  });
-  const latestDunningMap = new Map<string, { status: string; lastContactAt: Date }>();
-  if (latestDunningMax.length > 0) {
-    // 用 max 时间作为锚, 二次查询拿对应的 status
-    const anchorRows = await prisma.dunningNote.findMany({
-      where: {
-        invoiceId: { in: latestDunningMax.map((m) => m.invoiceId) },
-        lastContactAt: { in: latestDunningMax.map((m) => m._max.lastContactAt).filter((d): d is Date => d !== null) }
-      },
-      select: { invoiceId: true, status: true, lastContactAt: true }
-    });
-    for (const d of anchorRows) {
-      if (!latestDunningMap.has(d.invoiceId)) {
-        latestDunningMap.set(d.invoiceId, { status: d.status, lastContactAt: d.lastContactAt });
-      }
-    }
-  }
-
-  // 4) 计算每张发票的 daysOverdue / remaining / bucket
+  // 3) 计算每张发票的 daysOverdue / remaining / bucket
   const allRows: AgingRow[] = [];
   const dataQualityExcluded: DataQualityExcluded = {
     amount: 0,
@@ -398,10 +369,7 @@ export async function getInvoiceAging(
       remaining: round2(remain),
       bucket,
       status: inv.status,
-      basisUsed: basis,
-      hasDunning: latestDunningMap.has(inv.id),
-      latestDunningStatus: latestDunningMap.get(inv.id)?.status ?? null,
-      latestDunningAt: latestDunningMap.get(inv.id)?.lastContactAt.toISOString() ?? null
+      basisUsed: basis
     });
   }
 

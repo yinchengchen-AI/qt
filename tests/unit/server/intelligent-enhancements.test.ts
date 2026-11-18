@@ -9,10 +9,6 @@ import {
   type EnhancedRiskScoreInput
 } from "@/server/services/contract/risk-score-enhanced";
 import {
-  generateSmartCollectionAdvice,
-  type PaymentHabit
-} from "@/server/services/smart-collection";
-import {
   identifyTrendPattern,
   predictFutureScore,
   type TrendPoint
@@ -26,7 +22,6 @@ import {
   type UserBehavior
 } from "@/server/services/personalized-recommendations";
 import { generateLLMReport } from "@/server/services/ai-report-generation";
-import { generateLLMCollectionAdvice } from "@/server/services/smart-collection";
 import { env } from "@/lib/env";
 
 const DAY_MS = 86_400_000;
@@ -124,31 +119,6 @@ describe("risk-score-enhanced 增强风险评分", () => {
     const a = computeEnhancedRiskScore(input);
     const b = computeEnhancedRiskScore(input);
     expect(a.score).toBe(b.score);
-  });
-});
-
-describe("smart-collection 智能催款", () => {
-  it("contractNo 正确传递", () => {
-    const habits: PaymentHabit[] = [
-      {
-        contractId: "c1",
-        contractNo: "HT-2026-001",
-        customerId: "cust1",
-        customerName: "客户 A",
-        totalContracts: 5,
-        paidOnTimeCount: 3,
-        latePaymentCount: 2,
-        avgPaymentDays: 12,
-        preferredPaymentMethod: "bank_transfer",
-        lastPaymentDate: daysAgo(15),
-        outstandingAmount: 50000,
-        overdueDays: 20
-      }
-    ];
-    const advice = generateSmartCollectionAdvice(habits);
-    expect(advice).toHaveLength(1);
-    expect(advice[0]?.contractNo).toBe("HT-2026-001");
-    expect(advice[0]?.contractId).toBe("c1");
   });
 });
 
@@ -301,23 +271,5 @@ describe("LLM 增强服务未配置 key 时明确报错", () => {
         risks: { highRiskCount: 0, criticalRiskCount: 0, avgRiskScore: 0, topRisks: [] }
       })
     ).rejects.toThrow("AI 报表生成未配置");
-  });
-
-  it("generateLLMCollectionAdvice 未配置 key 抛 503", async () => {
-    const habit: PaymentHabit = {
-      contractId: "c1",
-      contractNo: "HT-001",
-      customerId: "cust1",
-      customerName: "客户",
-      totalContracts: 1,
-      paidOnTimeCount: 1,
-      latePaymentCount: 0,
-      avgPaymentDays: 0,
-      preferredPaymentMethod: "bank_transfer",
-      lastPaymentDate: null,
-      outstandingAmount: 0,
-      overdueDays: 0
-    };
-    await expect(generateLLMCollectionAdvice(habit)).rejects.toThrow("AI 催款建议未配置");
   });
 });

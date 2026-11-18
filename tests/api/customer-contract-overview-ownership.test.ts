@@ -1,6 +1,6 @@
 // 读放开 (v0.19, role-browse-permissions): 客户/合同 360 概览的 Invoice / Payment
 // 查询不再做任何 owner 行级过滤 (读放开后 SALES/EXPERT 全量可读), 行级限定只保留
-// 在统计/工作台口径 (statistics.ts / getDunningSummary 自带受限 where)。
+// 在统计/工作台口径 (statistics.ts 自带受限 where)。
 //
 // 本文件原为修复锁 (P2009 500): overview 曾把 ownerEq spread 到无 ownerUserId 字段的
 // Invoice/Payment 查询, Prisma 把 ownerUserId 当 unknown arg 抛错。新口径下该风险点

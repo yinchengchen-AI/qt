@@ -290,9 +290,7 @@ export async function GET(req: Request) {
           逾期天数: r.daysOverdue,
           剩余未收: r.remaining.toFixed(2),
           状态: r.status,
-          基准: r.basisUsed,
-          已有催收: r.hasDunning ? "是" : "否",
-          最新催收状态: r.latestDunningStatus ?? "-"
+          基准: r.basisUsed
         }));
         const buf = await exportToXlsx(rows, [
           { header: "发票号", key: "发票号", width: 22 },
@@ -303,9 +301,7 @@ export async function GET(req: Request) {
           { header: "逾期天数", key: "逾期天数", width: 10 },
           { header: "剩余未收", key: "剩余未收", width: 14 },
           { header: "状态", key: "状态", width: 12 },
-          { header: "基准", key: "基准", width: 10 },
-          { header: "已有催收", key: "已有催收", width: 10 },
-          { header: "最新催收状态", key: "最新催收状态", width: 16 }
+          { header: "基准", key: "基准", width: 10 }
         ]);
         return new Response(new Uint8Array(buf), {
           headers: {

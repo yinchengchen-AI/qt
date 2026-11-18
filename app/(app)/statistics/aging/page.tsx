@@ -11,13 +11,11 @@ import { Button, Segmented, Space, Tabs, Tag, Typography, theme } from "antd";
 import { Column, Line } from "@ant-design/charts";
 import { DownloadOutlined, ReloadOutlined } from "@ant-design/icons";
 import useSWR from "swr";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { Page } from "@/components/page";
 import { PageHeader } from "@/components/page-header";
 import { AgingSummary } from "@/components/aging-summary";
-import { DunningDrawer, DunningBadge } from "@/components/dunning-drawer";
-import { CollectionAdviceTab } from "@/components/collection-advice-tab";
 import { Authority } from "@/components/authority";
 import { EmptyState } from "@/components/empty-state";
 import { HintBox } from "@/components/callout";
@@ -56,7 +54,6 @@ type AgingRow = {
   bucket: Bucket;
   status: string;
   basisUsed: AgingBasis;
-  hasDunning: boolean;
 };
 
 type AgingDimensionRow = {
@@ -127,10 +124,6 @@ export default function AgingPage() {
   const [error, setError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<string>("detail");
   const abortControllerRef = useRef<AbortController | null>(null);
-
-  // dunning drawer
-  const [dunningInvoiceId, setDunningInvoiceId] = useState<string | null>(null);
-  const [dunningInvoiceNo, setDunningInvoiceNo] = useState<string | undefined>();
 
   // 客户/负责人/合同下拉选项(SWR 缓存, 失败回落空)
   const { data: customerOptions = [] } = useSWR<Array<{ value: string; label: string }>>(
@@ -207,15 +200,6 @@ export default function AgingPage() {
     };
   }, [refetchAging]);
 
-  // dunningMap 派生(不缓存, 避免内存泄漏 + 始终 fresh)
-  const dunningMap = useMemo(() => {
-    const map: Record<string, number> = {};
-    for (const r of agingData?.rows ?? []) {
-      if (r.hasDunning) map[r.invoiceId] = 1;
-    }
-    return map;
-  }, [agingData]);
-
   const handleExport = async () => {
     try {
       const qs = new URLSearchParams();
@@ -238,10 +222,6 @@ export default function AgingPage() {
       // downloadExcel 已经会 message.error, 这里静默
     }
   };
-
-  const handleDunningChanged = useCallback(() => {
-    refetchAging();
-  }, [refetchAging]);
 
   // ── 渲染 ──
   return (
@@ -402,7 +382,7 @@ export default function AgingPage() {
                 {
                   key: "detail",
                   label: `明细 (${agingData?.total ?? 0})`,
-                  children: <DetailTable data={agingData} loading={agingLoading} dunningMap={dunningMap} page={page} pageSize={pageSize} onPageChange={(p, ps) => { setPage(p); setPageSize(ps); }} onOpenDunning={(id, no) => { setDunningInvoiceId(id); setDunningInvoiceNo(no); }} />
+                  children: <DetailTable data={agingData} loading={agingLoading} page={page} pageSize={pageSize} onPageChange={(p, ps) => { setPage(p); setPageSize(ps); }} />
                 },
                 {
                   key: "byCustomer",
@@ -418,34 +398,12 @@ export default function AgingPage() {
                   key: "uninvoiced",
                   label: "未开票合同",
                   children: <UninvoicedTable isMobile={isMobile} />
-                },
-                {
-                  key: "collection",
-                  label: "催款建议",
-                  children: (
-                    <ProCard>
-                      <CollectionAdviceTab
-                        onOpenDunning={(id, no) => {
-                          setDunningInvoiceId(id);
-                          setDunningInvoiceNo(no);
-                        }}
-                      />
-                    </ProCard>
-                  )
                 }
               ]}
             />
           </div>
         </>
       )}
-
-      <DunningDrawer
-        open={!!dunningInvoiceId}
-        invoiceId={dunningInvoiceId}
-        invoiceNo={dunningInvoiceNo}
-        onClose={() => setDunningInvoiceId(null)}
-        onChanged={handleDunningChanged}
-      />
     </Page>
   );
 }
@@ -457,19 +415,15 @@ export default function AgingPage() {
 function DetailTable({
   data,
   loading,
-  dunningMap,
   page,
   pageSize,
-  onPageChange,
-  onOpenDunning
+  onPageChange
 }: {
   data: AgingResult | null;
   loading: boolean;
-  dunningMap: Record<string, number>;
   page: number;
   pageSize: number;
   onPageChange: (page: number, pageSize: number) => void;
-  onOpenDunning: (id: string, no: string) => void;
 }) {
   const { isMobile } = useResponsive();
   const { token } = useToken();
@@ -512,21 +466,7 @@ function DetailTable({
             { title: "账龄段", dataIndex: "bucket", width: 90, render: (_, r) => <Tag color={BUCKET_COLORS[r.bucket]}>{r.bucket}</Tag> },
             { title: "逾期天数", dataIndex: "daysOverdue", width: 100, align: "right", render: (_, r) => <Tag color={BUCKET_COLORS[r.bucket]}>{r.daysOverdue} 天</Tag> },
             { title: "剩余未收", dataIndex: "remaining", width: 140, align: "right", render: (_, r) => <Text strong>{formatCurrency(r.remaining)}</Text> },
-            { title: "状态", dataIndex: "status", width: 100, render: (_, r) => <StatusTag status={r.status} domain="invoice" /> },
-            { title: "催收", dataIndex: "hasDunning", width: 90, render: (_, r) => <DunningBadge count={dunningMap[r.invoiceId] ?? 0} /> },
-            {
-              title: "操作",
-              dataIndex: "actions",
-              width: 120,
-              fixed: !isMobile ? "right" : undefined,
-              render: (_, r) => (
-                <Authority code="DUNNING:CREATE">
-                  <Button size="small" type="link" onClick={() => onOpenDunning(r.invoiceId, r.invoiceNo)}>
-                    添加催收
-                  </Button>
-                </Authority>
-              )
-            }
+            { title: "状态", dataIndex: "status", width: 100, render: (_, r) => <StatusTag status={r.status} domain="invoice" /> }
           ]}
         />
       ) : (

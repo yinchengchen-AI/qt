@@ -22,7 +22,6 @@ const RESOURCE_LIST: { value: string; label: string; group?: string }[] = [
   { value: RESOURCE.APP_RELEASE, label: "更新日志", group: "系统" },
   { value: RESOURCE.CUSTOMER, label: "客户", group: "业务" },
   { value: RESOURCE.CONTRACT, label: "合同", group: "业务" },
-  { value: RESOURCE.DUNNING, label: "催款", group: "业务" },
   { value: RESOURCE.INVOICE, label: "开票", group: "财务" },
   { value: RESOURCE.PAYMENT, label: "回款", group: "财务" },
   { value: RESOURCE.STATISTICS, label: "统计", group: "分析" },

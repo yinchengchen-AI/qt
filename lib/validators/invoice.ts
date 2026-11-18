@@ -28,7 +28,7 @@ export const invoiceCreateSchema = z.object({
   taxRate: taxRateSchema.default(0.06),
   applyDate: isoDate,
   expectedIssueDate: isoDate.optional(),
-  // 合同约定付款日 (账龄 basis=due / 催收消费); 选填
+  // 合同约定付款日 (账龄 basis=due); 选填
   dueDate: isoDate.optional(),
   titleType: z.enum(["COMPANY", "PERSONAL"]),
   titleName: z.string().min(1, "请填写抬头名称").max(100),

@@ -1,11 +1,10 @@
-// Dashboard 账龄迷你卡 (从 dashboard summary 里的 agingBuckets + dunning/summary 派生)
+// Dashboard 账龄迷你卡 (从 dashboard summary 里的 agingBuckets 派生)
 // 替代 dashboard/page.tsx 的 IIFE 渲染
 "use client";
 import { ProCard } from "@ant-design/pro-components";
-import { Col, Row, Tag, Typography } from "antd";
+import { Col, Row, Typography } from "antd";
 import Link from "next/link";
 import { formatCurrency } from "@/lib/format";
-import { useT } from "@/lib/i18n";
 
 const { Text } = Typography;
 
@@ -20,12 +19,9 @@ const BUCKET_COLORS: Record<keyof AgingBuckets, string> = {
 
 type Props = {
   buckets?: AgingBuckets;
-  /** 来自 /api/statistics/aging/dunning/summary 的催收 byStatus 计数; 可选, 没拉成功时整段隐藏 */
-  dunningByStatus?: Record<"CONTACTED" | "PROMISED" | "DISPUTED" | "LEGAL", number>;
 };
 
-export function DashboardAgingMini({ buckets, dunningByStatus }: Props) {
-  const t = useT();
+export function DashboardAgingMini({ buckets }: Props) {
   const safe: AgingBuckets = {
     "0-30": buckets?.["0-30"] ?? 0,
     "31-60": buckets?.["31-60"] ?? 0,
@@ -36,12 +32,6 @@ export function DashboardAgingMini({ buckets, dunningByStatus }: Props) {
   if (total === 0) return null;
   const over90Amount = safe["90+"];
   const over90Ratio = (over90Amount / total) * 100;
-  const dunningTotal = dunningByStatus
-    ? (dunningByStatus.CONTACTED ?? 0) +
-      (dunningByStatus.PROMISED ?? 0) +
-      (dunningByStatus.DISPUTED ?? 0) +
-      (dunningByStatus.LEGAL ?? 0)
-    : null;
 
   return (
     <ProCard
@@ -49,7 +39,6 @@ export function DashboardAgingMini({ buckets, dunningByStatus }: Props) {
       subTitle={
         <Text type="secondary" style={{ fontSize: 12 }}>
           应收总额 {formatCurrency(total)} · 90+ 占比 {over90Ratio.toFixed(1)}%
-          {dunningTotal !== null ? ` · 催收中 ${dunningTotal} 张` : ""}
         </Text>
       }
       style={{ marginBottom: 24 }}
@@ -86,15 +75,6 @@ export function DashboardAgingMini({ buckets, dunningByStatus }: Props) {
           );
         })}
       </Row>
-      {dunningByStatus ? (
-        <div style={{ marginTop: 12, display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
-          <Text type="secondary" style={{ fontSize: 12 }}>{t("aging.dunning.title")}:</Text>
-          <Tag color="blue">已联系 {dunningByStatus.CONTACTED ?? 0}</Tag>
-          <Tag color="green">客户承诺 {dunningByStatus.PROMISED ?? 0}</Tag>
-          <Tag color="orange">争议 {dunningByStatus.DISPUTED ?? 0}</Tag>
-          <Tag color="red">法务介入 {dunningByStatus.LEGAL ?? 0}</Tag>
-        </div>
-      ) : null}
     </ProCard>
   );
 }

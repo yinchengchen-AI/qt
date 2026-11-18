@@ -31,7 +31,6 @@ export const RESOURCE = {
   ANNOUNCEMENT: "ANNOUNCEMENT",
   OPERATION_LOG: "OPERATION_LOG",
   DEPARTMENT: "DEPARTMENT",
-  DUNNING: "DUNNING",
   APP_RELEASE: "APP_RELEASE",
   RECONCILIATION: "RECONCILIATION",
 } as const;
@@ -58,8 +57,7 @@ const R_EXPORT: Action[] = ["READ", "EXPORT"];
 export const ROLE_PERMISSIONS: Record<RoleCode, Permission[]> = {
   ADMIN: Object.values(RESOURCE).map((resource) =>
     resource === RESOURCE.STATISTICS || resource === RESOURCE.CUSTOMER || resource === RESOURCE.CONTRACT ||
-    resource === RESOURCE.INVOICE || resource === RESOURCE.PAYMENT || resource === RESOURCE.DUNNING ||
-    resource === RESOURCE.RECONCILIATION
+    resource === RESOURCE.INVOICE || resource === RESOURCE.PAYMENT || resource === RESOURCE.RECONCILIATION
       ? { resource, actions: [...CRUD, ACTION.EXPORT] }
       : { resource, actions: CRUD }
   ),
@@ -72,8 +70,6 @@ export const ROLE_PERMISSIONS: Record<RoleCode, Permission[]> = {
     { resource: RESOURCE.INVOICE, actions: [...CRU, ACTION.EXPORT] },
     { resource: RESOURCE.PAYMENT, actions: [...CR, ACTION.EXPORT] },
     { resource: RESOURCE.STATISTICS, actions: R },
-    // 催收: 业务现场记录进度(增 / 查), 修改与清理由财务负责.
-    { resource: RESOURCE.DUNNING, actions: CR },
     { resource: RESOURCE.MESSAGE, actions: CRUD },
     { resource: RESOURCE.ANNOUNCEMENT, actions: R },
     { resource: RESOURCE.APP_RELEASE, actions: R },
@@ -87,8 +83,6 @@ export const ROLE_PERMISSIONS: Record<RoleCode, Permission[]> = {
     { resource: RESOURCE.INVOICE, actions: [...CRUD, ACTION.EXPORT] },
     { resource: RESOURCE.PAYMENT, actions: [...CRUD, ACTION.EXPORT] },
     { resource: RESOURCE.STATISTICS, actions: R_EXPORT },
-    // 催收: 财务对账合规留痕, 拿全 CRUD; 业务仅可新增/查询.
-    { resource: RESOURCE.DUNNING, actions: CRUD },
     { resource: RESOURCE.RECONCILIATION, actions: [...CRUD, ACTION.EXPORT] },
     { resource: RESOURCE.MESSAGE, actions: CRUD },
     { resource: RESOURCE.ANNOUNCEMENT, actions: R },
@@ -104,14 +98,13 @@ export const ROLE_PERMISSIONS: Record<RoleCode, Permission[]> = {
     { resource: RESOURCE.INVOICE, actions: [...R, ACTION.EXPORT] },
     { resource: RESOURCE.PAYMENT, actions: [...R, ACTION.EXPORT] },
     { resource: RESOURCE.STATISTICS, actions: R },
-    { resource: RESOURCE.DUNNING, actions: R },
     { resource: RESOURCE.RECONCILIATION, actions: R },
     { resource: RESOURCE.MESSAGE, actions: CRUD },
     { resource: RESOURCE.ANNOUNCEMENT, actions: CRUD },
     { resource: RESOURCE.APP_RELEASE, actions: R },
   ],
   // 技术专家: 类似销售跟进自己的客户/合同 (行级隔离同 SALES), 但不管钱 —
-  // 发票/回款只读+导出, 催款只读; 商业发起与催收记录归 SALES/财务.
+  // 发票/回款只读+导出; 商业发起归 SALES/财务.
   EXPERT: [
     { resource: RESOURCE.DEPARTMENT, actions: R },
     { resource: RESOURCE.USER, actions: R },
@@ -124,8 +117,6 @@ export const ROLE_PERMISSIONS: Record<RoleCode, Permission[]> = {
     // 回款: 仅查看/导出自己合同的对账进度; 登记回款归 SALES/财务.
     { resource: RESOURCE.PAYMENT, actions: [...R, ACTION.EXPORT] },
     { resource: RESOURCE.STATISTICS, actions: R },
-    // 催收: 仅查看; 现场记录归 SALES, 修改清理由财务负责.
-    { resource: RESOURCE.DUNNING, actions: R },
     { resource: RESOURCE.RECONCILIATION, actions: R },
     { resource: RESOURCE.MESSAGE, actions: CRUD },
     { resource: RESOURCE.ANNOUNCEMENT, actions: R },

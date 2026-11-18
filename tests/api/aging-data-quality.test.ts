@@ -148,7 +148,6 @@ afterAll(async () => {
   if (!dbReachable) return;
   if (createdInvoiceIds.length > 0) {
     await prisma.invoiceDataQualityIssue.deleteMany({ where: { invoiceId: { in: createdInvoiceIds } } });
-    await prisma.dunningNote.deleteMany({ where: { invoiceId: { in: createdInvoiceIds } } });
     await prisma.payment.deleteMany({ where: { invoiceId: { in: createdInvoiceIds } } });
     await prisma.invoiceAuditLog.deleteMany({ where: { invoiceId: { in: createdInvoiceIds } } });
     await prisma.invoice.deleteMany({ where: { id: { in: createdInvoiceIds } } });

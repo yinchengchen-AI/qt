@@ -1,6 +1,5 @@
 "use client";
 import { useEffect, useState } from "react";
-import useSWR from "swr";
 import Link from "next/link";
 import { ProCard } from "@ant-design/pro-components";
 import { Column, Pie } from "@ant-design/charts";
@@ -78,19 +77,6 @@ export default function DashboardPage() {
       });
     return () => ab.abort();
   }, [range]);
-
-  // 催收汇总 — 拉失败时整段隐藏,不阻塞 dashboard 主数据
-  const dunningFetcher = async (url: string) => {
-    const r = await fetch(url, { credentials: "include" });
-    const j = await r.json();
-    if (j.code !== 0) throw new Error(j.message);
-    return j.data as { byStatus: Record<"CONTACTED" | "PROMISED" | "DISPUTED" | "LEGAL", number> };
-  };
-  const { data: dunningData } = useSWR<{ byStatus: Record<"CONTACTED" | "PROMISED" | "DISPUTED" | "LEGAL", number> }>(
-    "/api/statistics/aging/dunning/summary",
-    dunningFetcher,
-    { revalidateOnFocus: false, dedupingInterval: 60_000, onError: () => undefined }
-  );
 
   // 图表高度在窄屏上压缩,避免单屏只能看到 1-2 根柱子
   const chartHeight = isMobile ? 260 : 320;
@@ -219,15 +205,9 @@ export default function DashboardPage() {
   // ── 待办预警(全部为零则不渲染) ──
   const pendingInvoiceCount = inv.pending;
   const over90Amount = data.agingBuckets?.["90+"] ?? 0;
-  const dunningActive = dunningData
-    ? (dunningData.byStatus.CONTACTED ?? 0) + (dunningData.byStatus.PROMISED ?? 0) + (dunningData.byStatus.DISPUTED ?? 0)
-    : 0;
-  const dunningLegal = dunningData?.byStatus.LEGAL ?? 0;
   const todoItems: { label: string; value: string; href: string; color: string }[] = [];
   if (pendingInvoiceCount > 0) todoItems.push({ label: "待开票", value: `${pendingInvoiceCount} 张`, href: "/invoices", color: token.colorPrimary });
   if (over90Amount > 0) todoItems.push({ label: "90+ 账龄", value: formatCompact(over90Amount), href: "/statistics/aging", color: "#ff4d4f" });
-  if (dunningActive > 0) todoItems.push({ label: "催收中", value: `${dunningActive} 张`, href: "/statistics/aging", color: "#faad14" });
-  if (dunningLegal > 0) todoItems.push({ label: "法务介入", value: `${dunningLegal} 张`, href: "/statistics/aging", color: "#cf1322" });
 
   const TOWN_TOP_N = 10;
   const rawTown = data.townDistribution.map((d) => ({ town: d.town || "未录入", count: d.count }));
@@ -395,10 +375,7 @@ export default function DashboardPage() {
         </Col>
       </Row>
 
-      <DashboardAgingMini
-        buckets={data.agingBuckets as never}
-        dunningByStatus={dunningData?.byStatus}
-      />
+      <DashboardAgingMini buckets={data.agingBuckets as never} />
 
       {/*** Top 客户 ***/}
       <ProCard title="Top 5 客户（按合同额）" style={{ marginBottom: 24 }}>

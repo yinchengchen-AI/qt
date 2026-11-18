@@ -2,7 +2,7 @@
 //
 // 职责:
 //   - 所有走 DeepSeek 的功能统一经 callAiChat() 出站, 不再各自裸 fetch
-//     (现状仅 contract-ai.ts 一个真实调用方; ai-report-generation / smart-collection 的占位函数不接)。
+//     (现状仅 contract-ai.ts 一个真实调用方; ai-report-generation 的占位函数不接)。
 //   - 结果缓存: cacheKey = sha256(feature + ":" + model + ":" + 规范化 JSON payload),
 //     命中未过期缓存直接返回 (AiResponseCache.hitCount++), TTL 24h, 过期 lazy 判定;
 //     force=true 跳过读取但仍写新缓存。
