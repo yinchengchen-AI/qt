@@ -121,6 +121,7 @@ export async function GET(req: Request) {
           where: {
             deletedAt: null,
             town: { not: null },
+            ...own,
           } as Prisma.CustomerWhereInput,
           select: { town: true },
         }),

@@ -42,13 +42,13 @@ test.describe.serial("场景 1: admin 完整主链路", () => {
   });
 
   test("01.4 Dashboard 显示总览卡片", async ({ page }) => {
+    const cookies = await loginCookiesOnce(page.context().browser()!, "admin");
+    await page.context().addCookies(cookies);
     await page.goto("/dashboard");
-    // 等 SWR 加载
-    await page.waitForLoadState("networkidle");
-    // 至少看到一个 KPI 标题或 StatGrid 卡片
-    const title = page.getByRole("heading", { name: "工作台" });
+    // 页面标题和可见 KPI
+    const title = page.getByRole("heading", { name: "业务总览" });
     await expect(title).toBeVisible({ timeout: 10000 });
-    await expect(page.getByTestId("stat-grid").first()).toBeVisible({ timeout: 10000 });
+    await expect(page.getByText("客户总数", { exact: true })).toBeVisible({ timeout: 10000 });
   });
 
   test("01.5 客户列表页加载 + 显示 admin 已有数据", async ({ page }) => {

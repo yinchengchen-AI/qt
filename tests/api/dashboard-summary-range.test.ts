@@ -136,30 +136,26 @@ beforeAll(async () => {
 
 afterAll(async () => {
   if (!dbReachable) return;
-  try {
-    if (invoiceIds.length > 0) {
-      await prisma.invoiceAuditLog.deleteMany({ where: { invoiceId: { in: invoiceIds } } });
-      await prisma.invoice.deleteMany({ where: { id: { in: invoiceIds } } });
+  if (invoiceIds.length > 0) {
+    await prisma.invoiceAuditLog.deleteMany({ where: { invoiceId: { in: invoiceIds } } });
+    await prisma.invoice.deleteMany({ where: { id: { in: invoiceIds } } });
+  }
+  if (contractNos.length > 0) {
+    const ctrIds = (await prisma.contract.findMany({ where: { contractNo: { in: contractNos } }, select: { id: true } })).map((c) => c.id);
+    if (ctrIds.length > 0) {
+      await prisma.payment.deleteMany({ where: { contractId: { in: ctrIds } } });
     }
-    if (contractNos.length > 0) {
-      const ctrIds = (await prisma.contract.findMany({ where: { contractNo: { in: contractNos } }, select: { id: true } })).map((c) => c.id);
-      if (ctrIds.length > 0) {
-        await prisma.payment.deleteMany({ where: { contractId: { in: ctrIds } } });
-      }
-      await prisma.contract.deleteMany({ where: { contractNo: { in: contractNos } } });
-    }
-    if (customerIds.length > 0) {
-      await prisma.customer.deleteMany({ where: { id: { in: customerIds } } });
-    }
-  } catch {
-    // ignore cleanup errors
+    await prisma.contract.deleteMany({ where: { contractNo: { in: contractNos } } });
+  }
+  if (customerIds.length > 0) {
+    await prisma.customer.deleteMany({ where: { id: { in: customerIds } } });
   }
   await prisma.$disconnect();
 });
 
 const itDb = (name: string, fn: () => Promise<void>) =>
-  it(name, async () => {
-    if (!dbReachable || !adminUser) return;
+  it(name, async (ctx) => {
+    if (!dbReachable || !adminUser) return ctx.skip();
     await fn();
   });
 
