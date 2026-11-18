@@ -86,8 +86,8 @@ export function generateLocalSummary(data: BusinessData): AnalysisReport {
 
   // 2. 收款分析
   if (data.payments.paymentRate < 0.7) {
-    findings.push(`回款率偏低（${Math.round(data.payments.paymentRate * 100)}%），需加强催款`);
-    recommendations.push("建议对逾期合同进行重点催款");
+    findings.push(`回款率偏低（${Math.round(data.payments.paymentRate * 100)}%），需加强回款跟进`);
+    recommendations.push("建议对逾期合同进行重点跟进回款");
   } else if (data.payments.paymentRate > 0.9) {
     findings.push(`回款率良好（${Math.round(data.payments.paymentRate * 100)}%）`);
   }
@@ -110,7 +110,7 @@ export function generateLocalSummary(data: BusinessData): AnalysisReport {
   // 5. 趋势分析
   if (data.payments.avgPaymentDays > 30) {
     trends.push("平均回款天数超过 30 天，客户付款周期较长");
-    recommendations.push("考虑优化付款条件或加强催款");
+    recommendations.push("考虑优化付款条件或加强回款跟进");
   }
 
   // 6. 生成总结

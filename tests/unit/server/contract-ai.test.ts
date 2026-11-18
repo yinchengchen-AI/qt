@@ -38,7 +38,7 @@ const REPORT: RiskReport = {
     amountAnomaly: { score: 0, detail: "客户合同样本不足，不评估金额偏离" }
   },
   weightedScore: "100×0.30 + 100×0.25 + 100×0.20 + 20×0.15 + 0×0.10 = 78 → 四舍五入 78",
-  recommendations: ["付款进度落后最严重：建议立即发起催款（剩余 ¥100,000）"],
+  recommendations: ["付款进度落后最严重：建议立即发起回款跟进（剩余 ¥100,000）"],
   trendSummary: { days: 30, from: 10, to: 78, mainDriver: "expiry" }
 };
 
@@ -108,7 +108,7 @@ describe("analyzeContractRisk", () => {
     const userMsg = body.messages[1].content;
     expect(userMsg).toContain("QT-2026-001");
     expect(userMsg).toContain("已逾期 60 天");
-    expect(userMsg).toContain("催款");
+    expect(userMsg).toContain("回款跟进");
   });
 
   it("401 → 鉴权失败 502", async () => {

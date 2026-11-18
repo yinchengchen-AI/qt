@@ -228,7 +228,7 @@ describe("tickStaleContracts — 回款已足额但开票不足额提醒 (CONTRA
 
     const pendingMsgs = await findMessages(c.id, "CONTRACT_PAID_INVOICE_PENDING");
     expect(pendingMsgs.length).toBeGreaterThan(0);
-    // 不应再走"未结清催款"分支
+    // 不应再走"未结清回款跟进"分支
     const unpaidMsgs = await findMessages(c.id, "CONTRACT_EXPIRED_UNPAID");
     expect(unpaidMsgs.length).toBe(0);
 
@@ -242,7 +242,7 @@ describe("tickStaleContracts — 回款已足额但开票不足额提醒 (CONTRA
   it("回款在 0.01 容差内视为足额 (与 status.ts Decimal+容差口径一致)", async () => {
     if (!dbReachable) return;
     // total=1000, 100% 足额阈值=1000, 容差后有效阈值 999.99
-    // 低于 999.99 (如 95% 的 950) 视为未足额走催款分支; 999.99 本身足额
+    // 低于 999.99 (如 95% 的 950) 视为未足额走回款跟进分支; 999.99 本身足额
     const c = await mkContract({ endDate: veryOldEndDate, totalAmount: "1000.00", suffix: "P2" });
     await mkReconciledPayment(c.id, "999.99", "P2");
     // 不开票 → 若视为回款足额, 应走"待补开票"分支

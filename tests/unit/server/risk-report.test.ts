@@ -90,12 +90,12 @@ describe("buildTrendSummary", () => {
 });
 
 describe("buildRecommendations", () => {
-  it("§7.2 示例: 催款带剩余金额 + 逾期催收建议 + 客户信用", () => {
+  it("§7.2 示例: 回款跟进带剩余金额 + 逾期回款跟进建议 + 客户信用", () => {
     const risk = makeRisk();
     const recs = buildRecommendations(risk, null);
     // payment 80 最高 → 第一条; expiry 66.7 第二; invoicing 60 第三 (Top 3)
-    expect(recs[0]).toBe("付款进度落后最严重：建议立即发起催款（剩余 ¥40,000）");
-    expect(recs[1]).toBe("合同已逾期 20 天，请优先催收；合同完结需开票+回款 100% 足额（或管理员手动完结），逾期不会自动关单");
+    expect(recs[0]).toBe("付款进度落后最严重：建议立即发起回款跟进（剩余 ¥40,000）");
+    expect(recs[1]).toBe("合同已逾期 20 天，请优先跟进回款；合同完结需开票+回款 100% 足额（或管理员手动完结），逾期不会自动关单");
     expect(recs[2]).toBe("开票进度落后：请尽快补开发票（缺口 ¥30,000）");
   });
 
@@ -118,10 +118,10 @@ describe("buildRecommendations", () => {
     expect(recs).toEqual(["暂无高风险维度，保持常规跟进"]);
   });
 
-  it("长期逾期 → 催收建议文案 (不再提示自动强关)", () => {
+  it("长期逾期 → 回款跟进建议文案 (不再提示自动强关)", () => {
     const risk = makeRisk({ daysOverdue: 95, dimensionRaw: { expiry: 100, payment: 0, invoicing: 0, customerCredit: 0, amountAnomaly: 0 } });
     const recs = buildRecommendations(risk, null);
-    expect(recs[0]).toBe("合同已逾期 95 天，请优先催收；合同完结需开票+回款 100% 足额（或管理员手动完结），逾期不会自动关单");
+    expect(recs[0]).toBe("合同已逾期 95 天，请优先跟进回款；合同完结需开票+回款 100% 足额（或管理员手动完结），逾期不会自动关单");
   });
 });
 

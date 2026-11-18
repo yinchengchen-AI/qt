@@ -65,7 +65,7 @@ function makeDetail() {
     asOf: "2026-08-19",
     dimensions: {},
     weightedScore: "w",
-    recommendations: ["催款"],
+    recommendations: ["回款跟进"],
     trendSummary: null,
     totalAmount: 100000,
     paidAmount: 0,

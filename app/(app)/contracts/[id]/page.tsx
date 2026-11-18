@@ -386,7 +386,7 @@ const handleDelete = () => {
                 type="error"
                 showIcon
                 title="开票-回款偏差超过 20%"
-                description="已开票金额与已确认回款差距较大且最新发票开具超 30 天，请跟进催收"
+                description="已开票金额与已确认回款差距较大且最新发票开具超 30 天，请跟进回款"
               />
             ) : null}
             {/* 续签链 (Phase 1.5): 续签自 / 续签至 */}

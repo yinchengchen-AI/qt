@@ -99,13 +99,13 @@ export function buildRecommendations(
     switch (k) {
       case "expiry": {
         recs.push(
-          `合同已逾期 ${risk.daysOverdue} 天，请优先催收；合同完结需开票+回款 100% 足额（或管理员手动完结），逾期不会自动关单`
+          `合同已逾期 ${risk.daysOverdue} 天，请优先跟进回款；合同完结需开票+回款 100% 足额（或管理员手动完结），逾期不会自动关单`
         );
         break;
       }
       case "payment": {
         const remaining = Math.max(0, risk.totalAmount - risk.paidAmount);
-        recs.push(`付款进度落后最严重：建议立即发起催款（剩余 ${fmtWan(remaining)}）`);
+        recs.push(`付款进度落后最严重：建议立即发起回款跟进（剩余 ${fmtWan(remaining)}）`);
         break;
       }
       case "invoicing": {

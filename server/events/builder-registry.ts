@@ -67,7 +67,7 @@ const REGISTRY: Record<string, MessageBuilder> = {
   }),
   CONTRACT_EXPIRED_UNPAID: (p) => ({
     title: `合同 ${p.contractNo} 已过期未结清`,
-    content: `客户：${p.customerName ?? "—"}，请跟进催收`,
+    content: `客户：${p.customerName ?? "—"}，请跟进回款`,
     link: { kind: "contract", id: p.contractId }
   }),
   CONTRACT_PAID_INVOICE_PENDING: (p) => ({
@@ -125,7 +125,7 @@ const REGISTRY: Record<string, MessageBuilder> = {
   }),
   LINKAGE_INVOICE_PAYMENT_GAP: (p) => ({
     title: `合同 ${p.contractNo} 开票-回款偏差 ${Number(p.gapRatio ?? 0)}%（缺口 ¥${p.gapAmount ?? "-"}）`,
-    content: `客户：${p.customerName ?? "-"}，已开票 ¥${p.invoicedAmount ?? "-"} / 已回款 ¥${p.paidAmount ?? "-"}，请跟进催收`,
+    content: `客户：${p.customerName ?? "-"}，已开票 ¥${p.invoicedAmount ?? "-"} / 已回款 ¥${p.paidAmount ?? "-"}，请跟进回款`,
     link: { kind: "contract", id: p.contractId }
   }),
   RECONCILIATION_AUTO_MATCHED: (p) => ({
