@@ -47,8 +47,15 @@ describe("H1: getInvoiceAging 越权 (SALES 传他人 ownerUserId)", () => {
   let dbReachable = false;
   let salesId: string | null = null;
   let otherId: string | null = null;
+  let selfInvoiceId: string | null = null;
+  let otherInvoiceId: string | null = null;
   const tag = `TEST-OWNERSHIP-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
   const createdUserIds: string[] = [];
+  const createdCustomerIds: string[] = [];
+  const createdContractIds: string[] = [];
+  const createdInvoiceIds: string[] = [];
+  const createdPaymentIds: string[] = [];
+  const expectedBuckets = { "0-30": 0, "31-60": 600, "61-90": 0, "90+": 0 };
 
   beforeAll(async () => {
     try {
@@ -58,7 +65,12 @@ describe("H1: getInvoiceAging 越权 (SALES 传他人 ownerUserId)", () => {
       dbReachable = false;
       return;
     }
-    for (const suffix of ["self", "other"]) {
+    const fixtures = [
+      { suffix: "self", invoiceAmount: 1000, paymentAmount: 400, daysAgo: 45 },
+      { suffix: "other", invoiceAmount: 2000, paymentAmount: 500, daysAgo: 120 }
+    ] as const;
+    for (const fixture of fixtures) {
+      const { suffix, invoiceAmount, paymentAmount, daysAgo } = fixture;
       const user = await prisma.user.create({
         data: {
           employeeNo: `${tag}-${suffix}`,
@@ -73,33 +85,153 @@ describe("H1: getInvoiceAging 越权 (SALES 传他人 ownerUserId)", () => {
       createdUserIds.push(user.id);
       if (suffix === "self") salesId = user.id;
       else otherId = user.id;
+
+      const customer = await prisma.customer.create({
+        data: {
+          code: `${tag}-CUSTOMER-${suffix}`,
+          name: `${tag}-客户-${suffix}`,
+          customerType: "ENTERPRISE",
+          province: "浙江省",
+          city: "杭州市",
+          contactPhone: "13800000000",
+          ownerUserId: user.id,
+          createdById: user.id,
+          updatedById: user.id
+        }
+      });
+      createdCustomerIds.push(customer.id);
+      const signDate = new Date(Date.now() - 200 * 86400_000);
+      const contract = await prisma.contract.create({
+        data: {
+          contractNo: `${tag}-CONTRACT-${suffix}`,
+          customerId: customer.id,
+          customerName: customer.name,
+          title: `${tag}-合同-${suffix}`,
+          serviceType: "OTHER",
+          signDate,
+          startDate: signDate,
+          endDate: new Date(Date.now() + 365 * 86400_000),
+          totalAmount: invoiceAmount,
+          taxRate: 0.06,
+          taxAmount: 0,
+          amountExcludingTax: invoiceAmount,
+          paymentMethod: "LUMP_SUM",
+          installmentPlan: [],
+          status: "ACTIVE",
+          ownerUserId: user.id,
+          signerId: user.id,
+          attachments: [],
+          createdById: user.id,
+          updatedById: user.id
+        }
+      });
+      createdContractIds.push(contract.id);
+      const issuedAt = new Date(Date.now() - daysAgo * 86400_000);
+      const invoice = await prisma.invoice.create({
+        data: {
+          invoiceNo: `${tag}-INVOICE-${suffix}`,
+          contractId: contract.id,
+          customerId: customer.id,
+          customerName: customer.name,
+          invoiceType: "VAT_SPECIAL",
+          amount: invoiceAmount,
+          taxRate: 0.06,
+          taxAmount: 0,
+          amountExcludingTax: invoiceAmount,
+          applyDate: issuedAt,
+          actualIssueDate: issuedAt,
+          dueDate: issuedAt,
+          titleType: "COMPANY",
+          titleName: customer.name,
+          status: "ISSUED",
+          applicantUserId: user.id,
+          financeUserId: user.id,
+          attachments: [],
+          createdById: user.id,
+          updatedById: user.id
+        }
+      });
+      createdInvoiceIds.push(invoice.id);
+      if (suffix === "self") selfInvoiceId = invoice.id;
+      else otherInvoiceId = invoice.id;
+
+      const payment = await prisma.payment.create({
+        data: {
+          paymentNo: `${tag}-PAYMENT-${suffix}`,
+          customerId: customer.id,
+          contractId: contract.id,
+          invoiceId: invoice.id,
+          amount: paymentAmount,
+          receivedAt: new Date(),
+          method: "BANK_TRANSFER",
+          bankRefNo: `${tag}-BANK-${suffix}`,
+          status: "CONFIRMED",
+          recorderUserId: user.id,
+          createdById: user.id,
+          updatedById: user.id
+        }
+      });
+      createdPaymentIds.push(payment.id);
     }
   });
 
   afterAll(async () => {
-    if (dbReachable && createdUserIds.length > 0) {
+    if (!dbReachable) return;
+    if (createdPaymentIds.length > 0) {
+      await prisma.payment.deleteMany({ where: { id: { in: createdPaymentIds } } });
+    }
+    if (createdInvoiceIds.length > 0) {
+      await prisma.invoiceDataQualityIssue.deleteMany({ where: { invoiceId: { in: createdInvoiceIds } } });
+      await prisma.invoiceAuditLog.deleteMany({ where: { invoiceId: { in: createdInvoiceIds } } });
+      await prisma.invoice.deleteMany({ where: { id: { in: createdInvoiceIds } } });
+    }
+    if (createdContractIds.length > 0) {
+      await prisma.riskScoreSnapshot.deleteMany({ where: { contractId: { in: createdContractIds } } });
+      await prisma.payment.deleteMany({ where: { contractId: { in: createdContractIds } } });
+      await prisma.contract.deleteMany({ where: { id: { in: createdContractIds } } });
+    }
+    if (createdCustomerIds.length > 0) {
+      await prisma.customer.deleteMany({ where: { id: { in: createdCustomerIds } } });
+    }
+    if (createdUserIds.length > 0) {
       await prisma.user.deleteMany({ where: { id: { in: createdUserIds } } });
     }
   });
 
   it("受限角色传他人 ownerUserId, 结果仍只含自己的发票", async () => {
-    if (!dbReachable || !salesId || !otherId) return;
+    if (!dbReachable || !salesId || !otherId || !selfInvoiceId || !otherInvoiceId) return;
     const sales = mkUser("SALES", salesId);
     // 恶意入参: 指定他人的 ownerUserId —— 修复后应被强制改回 salesId
     const res = await getInvoiceAging(sales, { ownerUserId: otherId, pageSize: 200 });
     const lightweight = await getInvoiceAgingBuckets(sales);
-    expect(res.rows).toEqual([]);
-    expect(res.buckets).toEqual({ "0-30": 0, "31-60": 0, "61-90": 0, "90+": 0 });
+    expect(res.rows).toHaveLength(1);
+    expect(res.rows[0]).toMatchObject({
+      invoiceId: selfInvoiceId,
+      ownerUserId: salesId,
+      remaining: 600,
+      bucket: "31-60"
+    });
+    expect(res.rows.some((row) => row.invoiceId === otherInvoiceId)).toBe(false);
+    expect(res.buckets).toEqual(expectedBuckets);
+    expect(lightweight).toEqual(expectedBuckets);
     expect(lightweight).toEqual(res.buckets);
   });
 
   it("EXPERT 同样被强制只能看自己", async () => {
-    if (!dbReachable || !salesId || !otherId) return;
+    if (!dbReachable || !salesId || !otherId || !selfInvoiceId || !otherInvoiceId) return;
     const expert = mkUser("EXPERT", salesId);
     const res = await getInvoiceAging(expert, { ownerUserId: otherId, pageSize: 200 });
     const lightweight = await getInvoiceAgingBuckets(expert);
-    expect(res.rows).toEqual([]);
-    expect(res.buckets).toEqual({ "0-30": 0, "31-60": 0, "61-90": 0, "90+": 0 });
+    expect(res.rows).toHaveLength(1);
+    expect(res.rows[0]).toMatchObject({
+      invoiceId: selfInvoiceId,
+      ownerUserId: salesId,
+      remaining: 600,
+      bucket: "31-60"
+    });
+    expect(res.rows.some((row) => row.invoiceId === otherInvoiceId)).toBe(false);
+    expect(res.buckets).toEqual(expectedBuckets);
+    expect(lightweight).toEqual(expectedBuckets);
     expect(lightweight).toEqual(res.buckets);
   });
 });
