@@ -5,10 +5,9 @@ import { ProCard } from "@ant-design/pro-components";
 import { Col, Row, Typography } from "antd";
 import Link from "next/link";
 import { formatCurrency } from "@/lib/format";
+import { AGING_BUCKET_KEYS, type AgingBuckets } from "@/lib/types/aging";
 
 const { Text } = Typography;
-
-export type AgingBuckets = Record<"0-30" | "31-60" | "61-90" | "90+", number>;
 
 const BUCKET_COLORS: Record<keyof AgingBuckets, string> = {
   "0-30": "#52c41a",
@@ -28,7 +27,7 @@ export function DashboardAgingMini({ buckets }: Props) {
     "61-90": buckets?.["61-90"] ?? 0,
     "90+": buckets?.["90+"] ?? 0
   };
-  const total = safe["0-30"] + safe["31-60"] + safe["61-90"] + safe["90+"];
+  const total = AGING_BUCKET_KEYS.reduce((sum, key) => sum + safe[key], 0);
   if (total === 0) return null;
   const over90Amount = safe["90+"];
   const over90Ratio = (over90Amount / total) * 100;
@@ -49,7 +48,7 @@ export function DashboardAgingMini({ buckets }: Props) {
       }
     >
       <Row gutter={[12, 12]}>
-        {(Object.keys(safe) as (keyof AgingBuckets)[]).map((b) => {
+        {AGING_BUCKET_KEYS.map((b) => {
           // 90+ 账龄是最高风险段:金额 >0 时用红框红底强化预警
           const isDanger = b === "90+" && safe[b] > 0;
           return (

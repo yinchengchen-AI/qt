@@ -7,6 +7,11 @@ import { isRowRestricted, ownerEq, ownerViaContract } from "@/lib/ownership";
 import { INVOICE_ISSUED_AMOUNT_STATUSES } from "@/lib/invoice-amounts";
 import type { DateRange } from "@/lib/date-range";
 import { getOpenAgingExcludedIssues } from "@/lib/invoice-data-quality";
+import {
+  AGING_BUCKET_KEYS,
+  type AgingBucketKey,
+  type AgingBuckets
+} from "@/lib/types/aging";
 
 /**
  * 构造 Prisma DateTimeFilter。fieldName 仅用于在调用处自注释作用字段,
@@ -187,7 +192,7 @@ export type AgingRow = {
   ownerName: string;
   daysOverdue: number;
   remaining: number;
-  bucket: "0-30" | "31-60" | "61-90" | "90+";
+  bucket: AgingBucketKey;
   status: string;
   basisUsed: "issue" | "due";
 };
@@ -223,7 +228,7 @@ export type DataQualityExcluded = {
 };
 
 export type AgingResult = {
-  buckets: { "0-30": number; "31-60": number; "61-90": number; "90+": number };
+  buckets: AgingBuckets;
   total: number;
   rows: AgingRow[];
   summary: AgingSummary;
@@ -234,11 +239,7 @@ export type AgingResult = {
   dataQualityExcluded: DataQualityExcluded;
 };
 
-const _BUCKET_KEYS = ["0-30", "31-60", "61-90", "90+"] as const;
-type BucketKey = (typeof _BUCKET_KEYS)[number];
-type Bucket = BucketKey;
-
-function bucketOf(days: number): Bucket {
+function bucketOf(days: number): AgingBucketKey {
   // 与现状保持一致:负数(数据错录)归 90+ 段,被视为最高风险
   if (days < 0) return "90+";
   if (days <= 30) return "0-30";
@@ -247,19 +248,19 @@ function bucketOf(days: number): Bucket {
   return "90+";
 }
 
-export async function getInvoiceAging(
+function summarizeAgingBuckets(rows: AgingRow[]): AgingBuckets {
+  const buckets = Object.fromEntries(AGING_BUCKET_KEYS.map((key) => [key, 0])) as AgingBuckets;
+  for (const row of rows) buckets[row.bucket] = round2(buckets[row.bucket] + row.remaining);
+  return buckets;
+}
+
+async function getAgingBaseRows(
   user: SessionUser,
-  query: AgingQuery = {}
-): Promise<AgingResult> {
+  query: AgingQuery
+): Promise<{ rows: AgingRow[]; dataQualityExcluded: DataQualityExcluded }> {
   requirePermission(user.roleCode, RESOURCE.STATISTICS, ACTION.READ);
   const basis = query.basis ?? "due";
-  const page = Math.max(1, query.page ?? 1);
-  const pageSize = Math.min(200, Math.max(1, query.pageSize ?? 100));
-  const sort = query.sort ?? "daysOverdue:desc";
-
   const now = new Date();
-
-  // 1) 拉基础发票池(应用 owner 隔离 + 业务过滤)
   const baseWhere: Prisma.InvoiceWhereInput = {
     deletedAt: null,
     status: "ISSUED",
@@ -272,9 +273,8 @@ export async function getInvoiceAging(
     // 否则入参会展开覆盖 ownerViaContract 注入的隔离条件造成越权 (IDOR)
     const effectiveOwnerId = isRowRestricted(user) ? user.id : query.ownerUserId;
     const existing = (baseWhere.contract ?? {}) as Prisma.ContractWhereInput;
-    baseWhere.contract = { ...existing, ownerUserId: effectiveOwnerId } as Prisma.InvoiceWhereInput['contract'];
+    baseWhere.contract = { ...existing, ownerUserId: effectiveOwnerId } as Prisma.InvoiceWhereInput["contract"];
   }
-  // 报表中心:按日期范围过滤发票开具/到期日
   if (query.from || query.to) {
     const dateFilter: Prisma.DateTimeFilter = {};
     if (query.from) dateFilter.gte = query.from;
@@ -302,17 +302,6 @@ export async function getInvoiceAging(
     }
   });
   const dqMap = await getOpenAgingExcludedIssues(invoices.map((i) => i.id));
-  // 拉合同号(owner 显示需要)
-  const contractIds = [...new Set(invoices.map((i) => i.contractId))];
-  const contracts = contractIds.length > 0
-    ? await prisma.contract.findMany({
-        where: { id: { in: contractIds } },
-        select: { id: true, contractNo: true }
-      })
-    : [];
-  const contractNoMap = new Map(contracts.map((c) => [c.id, c.contractNo]));
-
-  // 2) 拉每张发票的"仍生效"回款
   const paid = await prisma.payment.groupBy({
     by: ["invoiceId"],
     where: {
@@ -325,8 +314,7 @@ export async function getInvoiceAging(
   const paidMap = new Map<string, number>();
   for (const p of paid) paidMap.set(p.invoiceId!, Number(p._sum.amount ?? 0));
 
-  // 3) 计算每张发票的 daysOverdue / remaining / bucket
-  const allRows: AgingRow[] = [];
+  const rows: AgingRow[] = [];
   const dataQualityExcluded: DataQualityExcluded = {
     amount: 0,
     invoiceCount: 0,
@@ -335,15 +323,11 @@ export async function getInvoiceAging(
   const dqInvoiceCountByCode = new Map<string, number>();
   const dqAmountByCode = new Map<string, number>();
   for (const inv of invoices) {
-    // 基准日:basis=issue 用 actualIssueDate;basis=due 用 dueDate,fallback 到 actualIssueDate
-    const basisDate =
-      basis === "issue"
-        ? inv.actualIssueDate
-        : (inv.dueDate ?? inv.actualIssueDate);
-    if (!basisDate) continue; // 都没值,跳过
+    const basisDate = basis === "issue" ? inv.actualIssueDate : inv.dueDate ?? inv.actualIssueDate;
+    if (!basisDate) continue;
     const days = daysBetween(now, new Date(basisDate));
     const remain = new Prisma.Decimal(inv.amount).minus(paidMap.get(inv.id) ?? 0);
-    if (remain.lessThanOrEqualTo(0.01)) continue; // 0.01 容差
+    if (remain.lessThanOrEqualTo(0.01)) continue;
     const dqCodes = dqMap.get(inv.id);
     if (dqCodes && dqCodes.length > 0) {
       const amount = round2(remain);
@@ -355,26 +339,60 @@ export async function getInvoiceAging(
       }
       continue;
     }
-    const bucket = bucketOf(days);
-    allRows.push({
+    rows.push({
       invoiceId: inv.id,
       invoiceNo: inv.invoiceNo,
       customerId: inv.customerId,
       customerName: inv.customerName,
       contractId: inv.contractId,
-      contractNo: contractNoMap.get(inv.contractId) ?? null,
+      contractNo: null,
       ownerUserId: inv.contract?.ownerUserId ?? "",
       ownerName: inv.contract?.owner?.name ?? "-",
       daysOverdue: days,
       remaining: round2(remain),
-      bucket,
+      bucket: bucketOf(days),
       status: inv.status,
       basisUsed: basis
     });
   }
+  dataQualityExcluded.byCode = Object.fromEntries(
+    [...dqAmountByCode.entries()].map(([code, amount]) => [
+      code,
+      { amount, invoiceCount: dqInvoiceCountByCode.get(code) ?? 0 }
+    ])
+  );
+  return { rows, dataQualityExcluded };
+}
+
+export async function getInvoiceAgingBuckets(user: SessionUser): Promise<AgingBuckets> {
+  const { rows } = await getAgingBaseRows(user, {});
+  return summarizeAgingBuckets(rows);
+}
+
+export async function getInvoiceAging(
+  user: SessionUser,
+  query: AgingQuery = {}
+): Promise<AgingResult> {
+  const page = Math.max(1, query.page ?? 1);
+  const pageSize = Math.min(200, Math.max(1, query.pageSize ?? 100));
+  const sort = query.sort ?? "daysOverdue:desc";
+  const { rows: baseRows, dataQualityExcluded } = await getAgingBaseRows(user, query);
+
+  const contractIds = [...new Set(baseRows.map((row) => row.contractId))];
+  const contracts = contractIds.length > 0
+    ? await prisma.contract.findMany({
+        where: { id: { in: contractIds } },
+        select: { id: true, contractNo: true }
+      })
+    : [];
+  const contractNoMap = new Map(contracts.map((c) => [c.id, c.contractNo]));
+  const allRows = baseRows.map((row) => ({
+    ...row,
+    contractNo: contractNoMap.get(row.contractId) ?? null
+  }));
 
   // 5) 应用桶过滤 + 最小金额过滤
-  const bucketsFilter = query.buckets && query.buckets.length > 0 ? new Set(query.buckets as Bucket[]) : null;
+  const bucketsFilter = query.buckets && query.buckets.length > 0 ? new Set(query.buckets as AgingBucketKey[]) : null;
   const minAmount = typeof query.minAmount === "number" && query.minAmount > 0 ? query.minAmount : 0;
   const filtered = allRows.filter((r) => {
     if (bucketsFilter && !bucketsFilter.has(r.bucket)) return false;
@@ -390,15 +408,7 @@ export async function getInvoiceAging(
   });
 
   // 7) 分桶汇总(对全量 filtered,不是仅当前页 — KPI 反映全部超期)
-  const buckets = { "0-30": 0, "31-60": 0, "61-90": 0, "90+": 0 } as Record<Bucket, number>;
-  for (const r of filtered) buckets[r.bucket] = round2(buckets[r.bucket] + r.remaining);
-  const dqByCode = Object.fromEntries(
-    [...dqAmountByCode.entries()].map(([code, amount]) => [
-      code,
-      { amount, invoiceCount: dqInvoiceCountByCode.get(code) ?? 0 }
-    ])
-  );
-  dataQualityExcluded.byCode = dqByCode;
+  const buckets = summarizeAgingBuckets(filtered);
 
   // 8) 维度聚合(byCustomer / byOwner)
   const byCustomer = aggregateByDimension(filtered, "customerId", "customerName");
@@ -418,7 +428,7 @@ export async function getInvoiceAging(
   const pageRows = filtered.slice((page - 1) * pageSize, page * pageSize);
 
   return {
-    buckets: buckets as AgingResult["buckets"],
+    buckets,
     total, // 老字段:全量超期数
     rows: pageRows, // 老字段:当前页(分页后)
     summary: {
@@ -436,7 +446,7 @@ export async function getInvoiceAging(
     byCustomer,
     byOwner,
     pagination: { page, pageSize, total, totalPages },
-    basisUsed: basis,
+    basisUsed: query.basis ?? "due",
     dataQualityExcluded
   };
 }
@@ -684,7 +694,7 @@ export async function getAgingTrend(
   // 把 now 截到 UTC 0 点,避免漂移
   const todayUtc = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
 
-  const out: Array<{ date: string; total: number; byBucket: Record<Bucket, number>; dataQualityExcluded: number }> = [];
+  const out: Array<{ date: string; total: number; byBucket: AgingBuckets; dataQualityExcluded: number }> = [];
 
   if (isRowRestricted(user)) {
     // 受限角色:快照无 owner 维度,回退实时计算

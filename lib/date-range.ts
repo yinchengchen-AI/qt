@@ -37,8 +37,7 @@ export function toDateRangeQuery(range: [Dayjs, Dayjs] | null | undefined): { fr
 
 /**
  * 默认统计区间:本月 1 号 00:00 (本地) ~ 当前时刻。
- * 与 app/api/dashboard/summary/route.ts:monthRange() 语义一致,
- * 避免不同统计页出现 "本月" vs "全期" 行为漂移。
+ * 未传预设或自定义区间时,各统计模块统一使用本月,避免口径漂移。
  */
 export function defaultMonthRange(): DateRange {
   const now = new Date();

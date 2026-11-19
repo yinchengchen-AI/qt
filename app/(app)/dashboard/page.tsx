@@ -21,23 +21,11 @@ import { StatusTag } from "@/components/status-tag";
 import { CONTRACT_STATUS_MAP } from "@/lib/enum-maps";
 import { useResponsive } from "@/lib/use-breakpoint";
 import { DashboardAgingMini } from "@/components/dashboard-aging-mini";
+import type { RangePreset } from "@/lib/date-range";
+import type { DashboardSummary } from "@/lib/types/dashboard";
 
 const { Text } = Typography;
 const { useToken } = theme;
-
-type DashboardData = {
-  overview: { contractAmount: number; invoiceAmount: number; paymentAmount: number; unpaidAmount: number; invoiceRate: number; paymentRate: number; contractCount: number; invoiceCount: number; paymentCount: number; range: { from?: string; to?: string } };
-  distribution: { byScale: { key: string; count: number }[]; byType: { key: string; count: number }[]; byStatus: { key: string; count: number }[] };
-  townDistribution: { town: string | null; count: number }[];
-  agingBuckets: Record<string, number>;
-  customers: { total: number; newInRange: number };
-  contracts: { byStatus: { status: string; count: number; totalAmount: number }[] };
-  invoices: { total: number; byStatus: { status: string; count: number; totalAmount: number }[]; pending: number };
-  payments: { total: number; byStatus: { status: string; count: number; totalAmount: number }[] };
-  topCustomers: { id: string; name: string; code: string; total: number; contractCount: number }[];
-};
-
-type RangePreset = "month" | "quarter" | "year";
 const RANGE_OPTIONS: { value: RangePreset; label: string }[] = [
   { value: "month", label: "月度" },
   { value: "quarter", label: "季度" },
@@ -54,7 +42,7 @@ const CONTRACT_STATUS_COLORS: Record<string, string> = {
 export default function DashboardPage() {
   const { isMobile, isPhone } = useResponsive();
   const [range, setRange] = useState<RangePreset>("month");
-  const [data, setData] = useState<DashboardData | null>(null);
+  const [data, setData] = useState<DashboardSummary | null>(null);
   const [loading, setLoading] = useState(true);
   const { token } = useToken();
 
@@ -375,7 +363,7 @@ export default function DashboardPage() {
         </Col>
       </Row>
 
-      <DashboardAgingMini buckets={data.agingBuckets as never} />
+      <DashboardAgingMini buckets={data.agingBuckets} />
 
       {/*** Top 客户 ***/}
       <ProCard title="Top 5 客户（按合同额）" style={{ marginBottom: 24 }}>

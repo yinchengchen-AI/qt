@@ -6,15 +6,13 @@ import Link from "next/link";
 import { StatGrid, type StatItem } from "@/components/stat-grid";
 import { formatCurrency } from "@/lib/format";
 import { useT } from "@/lib/i18n";
+import {
+  AGING_BUCKET_KEYS,
+  type AgingBucketKey,
+  type AgingBuckets
+} from "@/lib/types/aging";
 
 const { Text } = Typography;
-
-export type AgingBuckets = {
-  "0-30": number;
-  "31-60": number;
-  "61-90": number;
-  "90+": number;
-};
 
 export type AgingSummaryData = {
   totalReceivable: number;
@@ -25,13 +23,12 @@ export type AgingSummaryData = {
   ownerCount: number;
 };
 
-const BUCKET_META: Record<keyof AgingBuckets, { key: string; color: string }> = {
+const BUCKET_META: Record<AgingBucketKey, { key: string; color: string }> = {
   "0-30": { key: "aging.bucket.0-30", color: "#52c41a" },
   "31-60": { key: "aging.bucket.31-60", color: "#1677ff" },
   "61-90": { key: "aging.bucket.61-90", color: "#faad14" },
   "90+": { key: "aging.bucket.90+", color: "#ff4d4f" }
 };
-const BUCKET_KEYS: (keyof AgingBuckets)[] = ["0-30", "31-60", "61-90", "90+"];
 
 type Props = {
   buckets: AgingBuckets;
@@ -46,7 +43,7 @@ type Props = {
 export function AgingSummary({ buckets, summary, basisUsed, invoiceCount, columns = 5, loading }: Props) {
   const t = useT();
   const total = useMemo(
-    () => BUCKET_KEYS.reduce((s, k) => s + (buckets[k] ?? 0), 0),
+    () => AGING_BUCKET_KEYS.reduce((s, k) => s + (buckets[k] ?? 0), 0),
     [buckets]
   );
 
@@ -97,7 +94,7 @@ export function AgingSummary({ buckets, summary, basisUsed, invoiceCount, column
           <Text type="secondary" style={{ fontSize: 12, marginBottom: 12, display: "block" }}>
             账龄结构 (基准: {basisUsed === "due" ? "到期日" : "开票日"})
           </Text>
-          {BUCKET_KEYS.map((k) => {
+          {AGING_BUCKET_KEYS.map((k) => {
             const v = buckets[k] ?? 0;
             const pct = (v / total) * 100;
             return (

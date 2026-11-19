@@ -7,11 +7,11 @@
 //
 // DB 不可达时账龄用例 skip; ownership 助手的纯函数用例不依赖 DB 始终可跑。
 
-import { describe, it, expect, beforeAll } from "vitest";
+import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { prisma } from "@/lib/prisma";
 import type { SessionUser } from "@/lib/session";
 import { ownerEq, ownerViaContract, isRowRestricted } from "@/lib/ownership";
-import { getInvoiceAging } from "@/server/services/statistics";
+import { getInvoiceAging, getInvoiceAgingBuckets } from "@/server/services/statistics";
 
 function mkUser(roleCode: SessionUser["roleCode"], id = `user-${roleCode.toLowerCase()}`): SessionUser {
   return { id, employeeNo: id, name: id, email: `${id}@t.local`, roleCode, permissions: [] };
@@ -47,6 +47,8 @@ describe("H1: getInvoiceAging 越权 (SALES 传他人 ownerUserId)", () => {
   let dbReachable = false;
   let salesId: string | null = null;
   let otherId: string | null = null;
+  const tag = `TEST-OWNERSHIP-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  const createdUserIds: string[] = [];
 
   beforeAll(async () => {
     try {
@@ -56,10 +58,28 @@ describe("H1: getInvoiceAging 越权 (SALES 传他人 ownerUserId)", () => {
       dbReachable = false;
       return;
     }
-    // 取两个真实存在的用户 id 作为"自己"和"他人"的入参
-    const users = await prisma.user.findMany({ where: { deletedAt: null }, take: 2, select: { id: true } });
-    salesId = users[0]?.id ?? null;
-    otherId = users[1]?.id ?? null;
+    for (const suffix of ["self", "other"]) {
+      const user = await prisma.user.create({
+        data: {
+          employeeNo: `${tag}-${suffix}`,
+          name: `${tag}-${suffix}`,
+          email: `${tag}-${suffix}@example.com`,
+          passwordHash: "not-valid",
+          isSystem: true,
+          role: { connect: { code: "SALES" } }
+        },
+        select: { id: true }
+      });
+      createdUserIds.push(user.id);
+      if (suffix === "self") salesId = user.id;
+      else otherId = user.id;
+    }
+  });
+
+  afterAll(async () => {
+    if (dbReachable && createdUserIds.length > 0) {
+      await prisma.user.deleteMany({ where: { id: { in: createdUserIds } } });
+    }
   });
 
   it("受限角色传他人 ownerUserId, 结果仍只含自己的发票", async () => {
@@ -67,17 +87,19 @@ describe("H1: getInvoiceAging 越权 (SALES 传他人 ownerUserId)", () => {
     const sales = mkUser("SALES", salesId);
     // 恶意入参: 指定他人的 ownerUserId —— 修复后应被强制改回 salesId
     const res = await getInvoiceAging(sales, { ownerUserId: otherId, pageSize: 200 });
-    for (const row of res.rows) {
-      expect(row.ownerUserId).toBe(salesId);
-    }
+    const lightweight = await getInvoiceAgingBuckets(sales);
+    expect(res.rows).toEqual([]);
+    expect(res.buckets).toEqual({ "0-30": 0, "31-60": 0, "61-90": 0, "90+": 0 });
+    expect(lightweight).toEqual(res.buckets);
   });
 
   it("EXPERT 同样被强制只能看自己", async () => {
     if (!dbReachable || !salesId || !otherId) return;
     const expert = mkUser("EXPERT", salesId);
     const res = await getInvoiceAging(expert, { ownerUserId: otherId, pageSize: 200 });
-    for (const row of res.rows) {
-      expect(row.ownerUserId).toBe(salesId);
-    }
+    const lightweight = await getInvoiceAgingBuckets(expert);
+    expect(res.rows).toEqual([]);
+    expect(res.buckets).toEqual({ "0-30": 0, "31-60": 0, "61-90": 0, "90+": 0 });
+    expect(lightweight).toEqual(res.buckets);
   });
 });

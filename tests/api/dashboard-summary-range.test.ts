@@ -168,6 +168,16 @@ describe("dashboard/summary 区间过滤", () => {
     expect(names).not.toContain(`${TAG}-去年客户`);
   });
 
+  itDb("range 预设优先于同时传入的 from/to", async () => {
+    const from = new Date(Date.now() - 401 * 86400_000).toISOString();
+    const to = new Date().toISOString();
+    const j = await callSummary(`range=month&from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`);
+    expect(j.code).toBe(0);
+    const names = j.data.topCustomers.map((c: { name: string }) => c.name);
+    expect(names).toContain(`${TAG}-本月客户`);
+    expect(names).not.toContain(`${TAG}-去年客户`);
+  });
+
   itDb("from/to 全期: Top 5 同时含本月与去年客户(对照组)", async () => {
     const from = new Date(Date.now() - 401 * 86400_000).toISOString();
     const to = new Date().toISOString();
@@ -176,6 +186,26 @@ describe("dashboard/summary 区间过滤", () => {
     const names = j.data.topCustomers.map((c: { name: string }) => c.name);
     expect(names).toContain(`${TAG}-本月客户`);
     expect(names).toContain(`${TAG}-去年客户`);
+  });
+});
+
+describe("dashboard/summary 响应契约", () => {
+  itDb("非法 from 日期返回 400 VALIDATION_FAILED", async () => {
+    sessionHolder.actor = buildAdmin();
+    const response = await getDashboardSummary(new Request("http://localhost/api/dashboard/summary?from=not-a-date"));
+    const j = await response.json();
+    expect(response.status).toBe(400);
+    expect(j.errorCode).toBe(ERROR_CODES.VALIDATION_FAILED);
+  });
+
+  itDb("range 使用 ISO string, agingBuckets 只有四个桶且不返回 distribution", async () => {
+    const j = await callSummary("range=month");
+    expect(j.code).toBe(0);
+    expect(j.data.overview.range).toEqual({ from: expect.any(String), to: expect.any(String) });
+    expect(Number.isNaN(Date.parse(j.data.overview.range.from))).toBe(false);
+    expect(Number.isNaN(Date.parse(j.data.overview.range.to))).toBe(false);
+    expect(Object.keys(j.data.agingBuckets)).toEqual(["0-30", "31-60", "61-90", "90+"]);
+    expect(j.data).not.toHaveProperty("distribution");
   });
 });
 

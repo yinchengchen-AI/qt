@@ -10,15 +10,17 @@
 //   7) 旧响应字段 { buckets, total, rows } 仍存在(保证 dashboard 不破)
 //
 // DB 不可达时整组 skip. 用 unique TAG 前缀隔离数据, afterAll 自清理.
-import { describe, it, expect, beforeAll, afterAll } from "vitest";
+import { describe, it, expect, beforeAll, afterAll, vi } from "vitest";
 import { prisma } from "@/lib/prisma";
 import type { SessionUser } from "@/lib/session";
 import {
   getInvoiceAging,
+  getInvoiceAgingBuckets,
   getAgingByCustomer,
   getUninvoicedContracts
 } from "@/server/services/statistics";
 import { createInvoice, invoiceAction } from "@/server/services/invoice";
+import { createPayment, paymentAction } from "@/server/services/payment";
 
 let dbReachable = false;
 const TAG = `TEST-AGING-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
@@ -28,6 +30,7 @@ let testCustomerId: string | null = null;
 const createdContractNos: string[] = [];
 const createdInvoiceIds: string[] = [];
 const createdCustomerIds: string[] = [];
+const createdUserIds: string[] = [];
 
 const buildAdmin = (): SessionUser => {
   if (!adminUser) throw new Error("admin not bootstrapped");
@@ -37,6 +40,21 @@ const buildFinance = (): SessionUser => {
   if (!financeUser) throw new Error("finance not bootstrapped");
   return { id: financeUser.id, employeeNo: financeUser.employeeNo, name: financeUser.name, email: financeUser.email, roleCode: "FINANCE", permissions: [] };
 };
+async function makeRestrictedOwner(suffix: string): Promise<SessionUser> {
+  const owner = await prisma.user.create({
+    data: {
+      employeeNo: `${TAG}-${suffix}`,
+      name: `${TAG}-${suffix}`,
+      email: `${TAG}-${suffix}@example.com`,
+      passwordHash: "not-valid",
+      isSystem: true,
+      role: { connect: { code: "SALES" } }
+    },
+    select: { id: true, employeeNo: true, name: true, email: true }
+  });
+  createdUserIds.push(owner.id);
+  return { ...owner, roleCode: "SALES", permissions: [] };
+}
 async function makeContract(customerId: string, customerName: string, ownerId: string, signerId: string, totalAmount: number, suffix: string, daysAgoSign = 90) {
   const contractNo = `${TAG}-CTR-${suffix}`;
   const signDate = new Date(Date.now() - daysAgoSign * 86400_000);
@@ -155,6 +173,10 @@ afterAll(async () => {
   if (createdCustomerIds.length > 0) {
     await prisma.customer.deleteMany({ where: { id: { in: createdCustomerIds } } });
   }
+  if (createdUserIds.length > 0) {
+    await prisma.message.deleteMany({ where: { receiverUserId: { in: createdUserIds } } });
+    await prisma.user.deleteMany({ where: { id: { in: createdUserIds } } });
+  }
 });
 
 describe("getInvoiceAging 旧字段后向兼容", () => {
@@ -174,6 +196,50 @@ describe("getInvoiceAging 旧字段后向兼容", () => {
     expect(r.buckets).toHaveProperty("90+");
     expect(typeof r.total).toBe("number");
     expect(Array.isArray(r.rows)).toBe(true);
+  });
+});
+
+describe("getInvoiceAgingBuckets 同源四桶", () => {
+  it("默认 due 口径与完整报表完全相等且不查询合同号", async () => {
+    if (!dbReachable || !adminUser) return;
+    const owner = await makeRestrictedOwner("LIGHT-DEFAULT-OWNER");
+    const ctr = await makeContract(testCustomerId!, `${TAG}-客户`, owner.id, owner.id, 10000, "light-default", 120);
+    createdContractNos.push(ctr.contractNo);
+    await makeIssuedInvoice(ctr.id, owner.id, 1000, "light-default", 45);
+
+    const report = await getInvoiceAging(owner);
+    const contractFindMany = vi.spyOn(prisma.contract, "findMany");
+    try {
+      const lightweight = await getInvoiceAgingBuckets(owner);
+      expect(report.buckets).toEqual({ "0-30": 0, "31-60": 1000, "61-90": 0, "90+": 0 });
+      expect(lightweight).toEqual(report.buckets);
+      expect(contractFindMany).not.toHaveBeenCalled();
+    } finally {
+      contractFindMany.mockRestore();
+    }
+  });
+
+  it("部分回款与 90+ 口径和完整报表完全相等", async () => {
+    if (!dbReachable || !adminUser || !financeUser) return;
+    const owner = await makeRestrictedOwner("LIGHT-PARTIAL-OWNER");
+    const ctr = await makeContract(testCustomerId!, `${TAG}-客户`, owner.id, owner.id, 5000, "light-partial", 150);
+    createdContractNos.push(ctr.contractNo);
+    const inv = await makeIssuedInvoice(ctr.id, owner.id, 1000, "light-partial", 120);
+    const payment = await createPayment(buildFinance(), {
+      invoiceId: inv.id,
+      contractId: ctr.id,
+      amount: 400,
+      receivedAt: new Date().toISOString(),
+      method: "BANK_TRANSFER"
+    });
+    await paymentAction(buildFinance(), payment.id, { action: "confirm", bankRefNo: `${TAG}-LIGHT-PARTIAL` });
+
+    const report = await getInvoiceAging(owner);
+    const lightweight = await getInvoiceAgingBuckets(owner);
+    const row = report.rows.find((x) => x.invoiceId === inv.id);
+    expect(row).toMatchObject({ remaining: 600, bucket: "90+" });
+    expect(report.buckets).toEqual({ "0-30": 0, "31-60": 0, "61-90": 0, "90+": 600 });
+    expect(lightweight).toEqual(report.buckets);
   });
 });
 

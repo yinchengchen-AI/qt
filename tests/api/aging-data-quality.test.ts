@@ -11,6 +11,7 @@ import { prisma } from "@/lib/prisma";
 import type { SessionUser } from "@/lib/session";
 import {
   getInvoiceAging,
+  getInvoiceAgingBuckets,
   getAgingByCustomer,
 } from "@/server/services/statistics";
 import { createInvoice, invoiceAction } from "@/server/services/invoice";
@@ -23,6 +24,7 @@ let testCustomerId: string | null = null;
 let testCustomer2Id: string | null = null;
 const createdContractNos: string[] = [];
 const createdInvoiceIds: string[] = [];
+const createdUserIds: string[] = [];
 
 const buildAdmin = (): SessionUser => {
   if (!adminUser) throw new Error("admin not bootstrapped");
@@ -34,7 +36,23 @@ const buildFinance = (): SessionUser => {
   return { id: financeUser.id, employeeNo: financeUser.employeeNo, name: financeUser.name, email: financeUser.email, roleCode: "FINANCE", permissions: [] };
 };
 
-async function makeContract(suffix: string, customerId: string | null = testCustomerId!) {
+async function makeRestrictedOwner(): Promise<SessionUser> {
+  const owner = await prisma.user.create({
+    data: {
+      employeeNo: `${TAG}-OWNER`,
+      name: `${TAG}-OWNER`,
+      email: `${TAG}-owner@example.com`,
+      passwordHash: "not-valid",
+      isSystem: true,
+      role: { connect: { code: "SALES" } }
+    },
+    select: { id: true, employeeNo: true, name: true, email: true }
+  });
+  createdUserIds.push(owner.id);
+  return { ...owner, roleCode: "SALES", permissions: [] };
+}
+
+async function makeContract(suffix: string, customerId: string | null = testCustomerId!, ownerId = adminUser!.id) {
   const signDate = new Date(Date.now() - 120 * 86400_000);
   const contractNo = `${TAG}-CTR-${suffix}`;
   const ctr = await prisma.contract.create({
@@ -54,11 +72,11 @@ async function makeContract(suffix: string, customerId: string | null = testCust
       paymentMethod: "LUMP_SUM",
       installmentPlan: [],
       status: "ACTIVE",
-      ownerUserId: adminUser!.id,
-      signerId: adminUser!.id,
+      ownerUserId: ownerId,
+      signerId: ownerId,
       attachments: [],
-      createdById: adminUser!.id,
-      updatedById: adminUser!.id
+      createdById: ownerId,
+      updatedById: ownerId
     }
   });
   createdContractNos.push(contractNo);
@@ -163,21 +181,29 @@ afterAll(async () => {
   if (customerIds.length > 0) {
     await prisma.customer.deleteMany({ where: { id: { in: customerIds } } });
   }
+  if (createdUserIds.length > 0) {
+    await prisma.message.deleteMany({ where: { receiverUserId: { in: createdUserIds } } });
+    await prisma.user.deleteMany({ where: { id: { in: createdUserIds } } });
+  }
 });
 
 describe("应收账龄数据质量隔离", () => {
   it("OPEN 问题发票不进入主桶, 但进入 dataQualityExcluded", async () => {
     if (!dbReachable || !adminUser) return;
-    const ctr = await makeContract("dq-open");
+    const owner = await makeRestrictedOwner();
+    const ctr = await makeContract("dq-open", testCustomerId!, owner.id);
     const inv = await makeIssuedInvoice(ctr.id, "dq-open");
     await prisma.invoiceDataQualityIssue.create({
       data: { invoiceId: inv.id, issueCode: "PENDING_INVOICE_NO", status: "OPEN" }
     });
 
-    const r = await getInvoiceAging(buildAdmin());
+    const r = await getInvoiceAging(owner);
+    const lightweight = await getInvoiceAgingBuckets(owner);
+    expect(r.buckets).toEqual({ "0-30": 0, "31-60": 0, "61-90": 0, "90+": 0 });
+    expect(lightweight).toEqual(r.buckets);
     expect(r.rows.find((x) => x.invoiceId === inv.id)).toBeUndefined();
-    expect(r.summary.dataQualityExcludedInvoiceCount).toBeGreaterThanOrEqual(1);
-    expect(r.dataQualityExcluded.amount).toBeGreaterThanOrEqual(1000);
+    expect(r.summary.dataQualityExcludedInvoiceCount).toBe(1);
+    expect(r.dataQualityExcluded.amount).toBe(1000);
     expect(r.dataQualityExcluded.byCode.PENDING_INVOICE_NO).toBeDefined();
   });
 
