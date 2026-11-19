@@ -26,13 +26,37 @@ function summaryFixture(customerTotal: number): DashboardSummary {
       paymentCount: 4,
       range: { from: "2026-11-01T00:00:00.000Z", to: "2026-11-30T23:59:59.999Z" }
     },
-    agingBuckets: { "0-30": 0, "31-60": 0, "61-90": 0, "90+": 0 },
+    agingBuckets: { "0-30": 1000, "31-60": 2000, "61-90": 3000, "90+": 4000 },
     customers: { total: customerTotal, newInRange: 3 },
-    contracts: { byStatus: [] },
-    invoices: { total: 3, byStatus: [], pending: 0 },
-    payments: { total: 4, byStatus: [] },
-    topCustomers: [],
-    townDistribution: []
+    contracts: {
+      byStatus: [
+        { status: "DRAFT", count: 1, totalAmount: 20000 },
+        { status: "ACTIVE", count: 2, totalAmount: 100000 },
+        { status: "CLOSED", count: 1, totalAmount: 50000 }
+      ]
+    },
+    invoices: {
+      total: 3,
+      byStatus: [
+        { status: "ISSUED", count: 2, totalAmount: 70000 },
+        { status: "PENDING_FINANCE", count: 1, totalAmount: 10000 }
+      ],
+      pending: 1
+    },
+    payments: {
+      total: 4,
+      byStatus: [
+        { status: "CONFIRMED", count: 3, totalAmount: 40000 },
+        { status: "PLANNED", count: 1, totalAmount: 10000 }
+      ]
+    },
+    topCustomers: [
+      { id: "customer-1", name: "示例客户", code: "C001", total: 120000, contractCount: 2 }
+    ],
+    townDistribution: [
+      { town: "余杭街道", count: 6 },
+      { town: "仓前街道", count: 4 }
+    ]
   };
 }
 
@@ -50,6 +74,43 @@ async function fulfillSummaryError(route: Route, message: string) {
     contentType: "application/json",
     body: JSON.stringify({ code: 500, errorCode: "INTERNAL_ERROR", message })
   });
+}
+
+async function expectDashboardLayout(page: Page) {
+  const main = page.getByRole("main");
+  for (const title of [
+    "客户总数",
+    "合同总额",
+    "已开票额",
+    "已回款额",
+    "客户区域分布",
+    "合同状态",
+    "开票概况",
+    "回款概况",
+    "账龄结构（应收）",
+    "Top 5 客户（按合同额）"
+  ]) {
+    await expect(main.getByText(title, { exact: true })).toBeVisible();
+  }
+  for (const bucket of ["0-30 天", "31-60 天", "61-90 天", "90+ 天"]) {
+    await expect(main.getByText(bucket, { exact: true })).toBeVisible();
+  }
+
+  await expect(main.locator("canvas").first()).toBeVisible();
+  await expect(main.locator("canvas").nth(1)).toBeVisible();
+  const expectedChartHeight = (page.viewportSize()?.width ?? 0) < 768 ? 260 : 320;
+  const chartHeights = await main.locator("canvas").evaluateAll((canvases) =>
+    canvases.map((canvas) => canvas.getBoundingClientRect().height)
+  );
+  for (const height of chartHeights) {
+    expect(height).toBe(expectedChartHeight);
+  }
+
+  const overflow = await page.evaluate(() => ({
+    scroll: document.documentElement.scrollWidth,
+    client: document.documentElement.clientWidth
+  }));
+  expect(overflow.scroll).toBeLessThanOrEqual(overflow.client + 1);
 }
 
 test("21.1 Dashboard 不展示催收状态且不请求催收汇总", async ({ page }) => {
@@ -199,4 +260,47 @@ test("21.4 季度延迟时保留旧内容并显示数据更新中", async ({ pag
 
   await expect(page.getByRole("main").getByText("34", { exact: true })).toBeVisible();
   await expect(page.getByText("数据更新中", { exact: true })).toHaveCount(0);
+});
+
+test("21.5 月度/季度/年度区间与各分区在三端完整展示且无横向溢出", async ({ page }) => {
+  const pageErrors: string[] = [];
+  page.on("pageerror", (error) => pageErrors.push(error.message));
+  await page.route("**/api/dashboard/summary?**", async (route) => {
+    const range = new URL(route.request().url()).searchParams.get("range");
+    const customerTotal = range === "quarter" ? 34 : range === "year" ? 56 : 12;
+    await fulfillSummary(route, summaryFixture(customerTotal));
+  });
+
+  await ensureLoggedIn(page);
+  const monthResponse = page.waitForResponse(
+    (response) => new URL(response.url()).pathname === "/api/dashboard/summary"
+      && new URL(response.url()).searchParams.get("range") === "month"
+      && response.status() === 200
+  );
+  await page.goto("/dashboard");
+  await monthResponse;
+  await expect(page.getByRole("main").getByText("12", { exact: true })).toBeVisible();
+  await expectDashboardLayout(page);
+
+  const quarterResponse = page.waitForResponse(
+    (response) => new URL(response.url()).pathname === "/api/dashboard/summary"
+      && new URL(response.url()).searchParams.get("range") === "quarter"
+      && response.status() === 200
+  );
+  await page.getByText("季度", { exact: true }).click();
+  await quarterResponse;
+  await expect(page.getByRole("main").getByText("34", { exact: true })).toBeVisible();
+  await expectDashboardLayout(page);
+
+  const yearResponse = page.waitForResponse(
+    (response) => new URL(response.url()).pathname === "/api/dashboard/summary"
+      && new URL(response.url()).searchParams.get("range") === "year"
+      && response.status() === 200
+  );
+  await page.getByText("年度", { exact: true }).click();
+  await yearResponse;
+  await expect(page.getByRole("main").getByText("56", { exact: true })).toBeVisible();
+  await expectDashboardLayout(page);
+
+  expect(pageErrors).toEqual([]);
 });
