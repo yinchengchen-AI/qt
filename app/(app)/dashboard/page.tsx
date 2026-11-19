@@ -1,9 +1,10 @@
 "use client";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import Link from "next/link";
+import useSWR from "swr";
 import { ProCard } from "@ant-design/pro-components";
 import { Column, Pie } from "@ant-design/charts";
-import { Badge, Col, Progress, Row, Segmented, Space, Tag, Tooltip, Typography, theme } from "antd";
+import { Alert, Badge, Button, Col, Progress, Row, Segmented, Space, Tag, Tooltip, Typography, theme } from "antd";
 import {
   TeamOutlined,
   FileTextOutlined,
@@ -17,6 +18,7 @@ import { PageHeader } from "@/components/page-header";
 import { StatGrid, type StatItem } from "@/components/stat-grid";
 import { EmptyState } from "@/components/empty-state";
 import { formatCompact, formatCurrency, formatDate } from "@/lib/format";
+import { fetchApiData } from "@/lib/fetch-api";
 import { StatusTag } from "@/components/status-tag";
 import { CONTRACT_STATUS_MAP } from "@/lib/enum-maps";
 import { useResponsive } from "@/lib/use-breakpoint";
@@ -42,34 +44,17 @@ const CONTRACT_STATUS_COLORS: Record<string, string> = {
 export default function DashboardPage() {
   const { isMobile, isPhone } = useResponsive();
   const [range, setRange] = useState<RangePreset>("month");
-  const [data, setData] = useState<DashboardSummary | null>(null);
-  const [loading, setLoading] = useState(true);
+  const summary = useSWR<DashboardSummary, Error>(
+    `/api/dashboard/summary?range=${range}`,
+    fetchApiData,
+    { keepPreviousData: true, revalidateOnFocus: false }
+  );
   const { token } = useToken();
-
-  useEffect(() => {
-    const ab = new AbortController();
-    setLoading(true);
-    fetch(`/api/dashboard/summary?range=${range}`, { credentials: "include", signal: ab.signal })
-      .then((r) => r.json())
-      .then((j) => {
-        if (ab.signal.aborted) return;
-        if (j.code === 0) setData(j.data);
-      })
-      .catch((e) => {
-        if (ab.signal.aborted) return;
-        // dashboard 主数据失败时保持现有数据,避免白屏
-        console.error("dashboard summary failed", e);
-      })
-      .finally(() => {
-        if (!ab.signal.aborted) setLoading(false);
-      });
-    return () => ab.abort();
-  }, [range]);
 
   // 图表高度在窄屏上压缩,避免单屏只能看到 1-2 根柱子
   const chartHeight = isMobile ? 260 : 320;
 
-  if (loading || !data) {
+  if (summary.isLoading && !summary.data) {
     return (
       <Page>
         <PageHeader title="业务总览" subtitle="实时经营数据快照：客户、合同、开票、回款" />
@@ -80,6 +65,23 @@ export default function DashboardPage() {
     );
   }
 
+  if (summary.error && !summary.data) {
+    return (
+      <Page>
+        <PageHeader title="业务总览" subtitle="实时经营数据快照：客户、合同、开票、回款" />
+        <EmptyState
+          error={{
+            message: summary.error.message,
+            onRetry: () => {
+              void summary.mutate();
+            }
+          }}
+        />
+      </Page>
+    );
+  }
+
+  const data = summary.data!;
   const { overview: o, customers: cust, invoices: inv, payments: pay, contracts: cont, topCustomers: top } = data;
 
   // ── 统计区间(取自 overview.range,接口默认本月) ──
@@ -254,6 +256,28 @@ export default function DashboardPage() {
           />
         }
       />
+
+      {summary.isValidating ? (
+        <Alert type="info" showIcon message="数据更新中" style={{ marginBottom: 16 }} />
+      ) : null}
+      {summary.error ? (
+        <Alert
+          type="warning"
+          showIcon
+          message="数据刷新失败，当前展示上次成功结果"
+          action={(
+            <Button
+              size="small"
+              onClick={() => {
+                void summary.mutate();
+              }}
+            >
+              重试
+            </Button>
+          )}
+          style={{ marginBottom: 16 }}
+        />
+      ) : null}
 
       {/* 区间行:日期 + 预设 Tag + 权限提示(收 ⓘ) */}
       <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", marginBottom: 16 }}>
