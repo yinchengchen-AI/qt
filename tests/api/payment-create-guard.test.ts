@@ -11,6 +11,7 @@ import { ERROR_CODES } from "@/types/errors";
 import type { SessionUser } from "@/lib/session";
 import { createPayment } from "@/server/services/payment";
 import { createInvoice, invoiceAction } from "@/server/services/invoice";
+import { getContractOverview } from "@/server/services/contract";
 
 let dbReachable = false;
 const TAG = `TEST-PAY-GUARD-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
@@ -59,7 +60,9 @@ beforeAll(async () => {
 afterAll(async () => {
   if (!dbReachable) return;
   try {
+    // force→CONFIRMED 会写 PAYMENT_RECEIVED 消息 (与 confirm 同路径), 一并清理
     if (createdPaymentIds.length > 0) {
+      await prisma.message.deleteMany({ where: { entityKey: { in: createdPaymentIds.map((id) => `PAYMENT_RECEIVED:${id}`) } } });
       await prisma.operationLog.deleteMany({ where: { entityId: { in: createdPaymentIds } } });
       await prisma.payment.deleteMany({ where: { id: { in: createdPaymentIds } } });
     }
@@ -214,19 +217,22 @@ describe("createPayment 金额前置校验", () => {
 // =====================================================
 // admin/财务 force 旁路 (P2-3): 用于 CLOSED 合同上补录回款
 //   - 触发场景: cron 误关 / admin 误关后, 通过 reopen+force 补录
-//   - 安全约束: 仅 ADMIN/FINANCE 可用; force 模式下必须填 forceReason
-//   - 业务校验不变: 金额仍需 ≤ 发票金额 / 合同总额
+//   - 安全约束: 仅 ADMIN/FINANCE 可用; force 模式下必须填 forceReason + bankRefNo
+//   - 业务校验不变: 金额仍需 ≤ 发票金额 / 合同总额; 流水号查重 (R-10)
+//   - v0.26.1 语义升级: force=补录, 隐含钱已到账 → 直接落 CONFIRMED,
+//     合同"已回款"口径立即包含, 不再卡在 PLANNED 等二次确认
 // =====================================================
 describe("createPayment admin/财务 force 旁路 (P2-3)", () => {
-  it("ADMIN + force + CLOSED 合同 → 成功, remark 含 [FORCE_BACKFILL] 标记", guard(async () => {
+  it("ADMIN + force + CLOSED 合同 → 直接 CONFIRMED, remark 含 [FORCE_BACKFILL] 标记", guard(async () => {
     const c = await mkContract("1000.00", "FORCE-OK", "CLOSED");
     const p = await createPayment(
       buildAdmin(),
-      { contractId: c.id, amount: 500, receivedAt: new Date().toISOString(), method: "BANK_TRANSFER", remark: "客户补打款" },
+      { contractId: c.id, amount: 500, receivedAt: new Date().toISOString(), method: "BANK_TRANSFER", bankRefNo: "FORCE-REF-OK", remark: "客户补打款" },
       { force: true, forceReason: "cron 误关恢复后补录" },
     );
     expect(p.contractId).toBe(c.id);
-    expect(p.status).toBe("PLANNED");
+    expect(p.status).toBe("CONFIRMED");
+    expect(p.bankRefNo).toBe("FORCE-REF-OK");
     expect(p.remark).toContain("[FORCE_BACKFILL:cron 误关恢复后补录]");
     expect(p.remark).toContain("客户补打款");
     // 审计真源: OperationLog 落 PAYMENT_FORCE_BACKFILL 一条 (remark 标记只是展示层冗余)
@@ -234,17 +240,26 @@ describe("createPayment admin/财务 force 旁路 (P2-3)", () => {
       where: { entity: "Payment", entityId: p.id, action: "PAYMENT_FORCE_BACKFILL" }
     });
     expect(log?.actorId).toBe(adminUser?.id);
+    // 与 confirm 同路径: 写入 PAYMENT_RECEIVED 消息 (负责人/登记人/管理员收到回款通知)
+    const msg = await prisma.message.findFirst({
+      where: { entityKey: `PAYMENT_RECEIVED:${p.id}` }
+    });
+    expect(msg).not.toBeNull();
+    // 合同 overview 的已回款口径立即包含本笔 (补录不再显示为 0)
+    const overview = await getContractOverview(buildAdmin(), c.id);
+    expect(overview.totals.paidAmount).toBe(500);
     createdPaymentIds.push(p.id);
   }));
 
-  it("ADMIN + force + ACTIVE 合同 → 成功 (force 不影响 ACTIVE 路径)", guard(async () => {
+  it("ADMIN + force + ACTIVE 合同 → 同样直接 CONFIRMED (force=补录语义与合同状态无关)", guard(async () => {
     const c = await mkContract("1000.00", "FORCE-ACTIVE", "ACTIVE");
     const p = await createPayment(
       buildAdmin(),
-      { contractId: c.id, amount: 200, receivedAt: new Date().toISOString(), method: "BANK_TRANSFER" },
+      { contractId: c.id, amount: 200, receivedAt: new Date().toISOString(), method: "BANK_TRANSFER", bankRefNo: "FORCE-REF-ACTIVE" },
       { force: true, forceReason: "test" },
     );
     expect(p.contractId).toBe(c.id);
+    expect(p.status).toBe("CONFIRMED");
     // 即使 force=true 也加 FORCE_BACKFILL 标记 (审计可追溯: 当时操作是否带 force)
     expect(p.remark ?? "").toContain("[FORCE_BACKFILL:test]");
     createdPaymentIds.push(p.id);
@@ -264,21 +279,51 @@ describe("createPayment admin/财务 force 旁路 (P2-3)", () => {
     ).rejects.toMatchObject({ errorCode: ERROR_CODES.FORBIDDEN });
   }));
 
-  it("FINANCE + force + CLOSED 合同 → 成功 (与 ADMIN 同口径)", guard(async () => {
+  it("FINANCE + force + CLOSED 合同 → 直接 CONFIRMED (与 ADMIN 同口径)", guard(async () => {
     const c = await mkContract("1000.00", "FORCE-FIN", "CLOSED");
     const p = await createPayment(
       buildFinance(),
-      { contractId: c.id, amount: 300, receivedAt: new Date().toISOString(), method: "BANK_TRANSFER", remark: "财务补录尾款" },
+      { contractId: c.id, amount: 300, receivedAt: new Date().toISOString(), method: "BANK_TRANSFER", bankRefNo: "FORCE-REF-FIN", remark: "财务补录尾款" },
       { force: true, forceReason: "完结后尾款到账" },
     );
     expect(p.contractId).toBe(c.id);
-    expect(p.status).toBe("PLANNED");
+    expect(p.status).toBe("CONFIRMED");
+    expect(p.bankRefNo).toBe("FORCE-REF-FIN");
     expect(p.remark).toContain("[FORCE_BACKFILL:完结后尾款到账]");
     const log = await prisma.operationLog.findFirst({
       where: { entity: "Payment", entityId: p.id, action: "PAYMENT_FORCE_BACKFILL" }
     });
     expect(log?.actorId).toBe(financeUser?.id);
     createdPaymentIds.push(p.id);
+  }));
+
+  it("force 模式缺 bankRefNo → 422 (直接确认的前提, 与 confirm 的 R-10 查重口径一致)", guard(async () => {
+    const c = await mkContract("1000.00", "FORCE-NOREF", "CLOSED");
+    const err = await createPayment(
+      buildAdmin(),
+      { contractId: c.id, amount: 100, receivedAt: new Date().toISOString(), method: "BANK_TRANSFER" },
+      { force: true, forceReason: "test" },
+    ).then(() => null, (e: unknown) => e);
+    expect(err).toMatchObject({ errorCode: ERROR_CODES.VALIDATION_FAILED });
+    expect(String((err as Error).message)).toContain("银行流水号");
+  }));
+
+  it("force 模式 bankRefNo 与已确认回款重复 → 409 PAYMENT_DUPLICATE_REF", guard(async () => {
+    const c = await mkContract("1000.00", "FORCE-DUP", "CLOSED");
+    const p1 = await createPayment(
+      buildAdmin(),
+      { contractId: c.id, amount: 300, receivedAt: new Date().toISOString(), method: "BANK_TRANSFER", bankRefNo: "FORCE-REF-DUP" },
+      { force: true, forceReason: "第一笔" },
+    );
+    expect(p1.status).toBe("CONFIRMED");
+    createdPaymentIds.push(p1.id);
+    await expect(
+      createPayment(
+        buildAdmin(),
+        { contractId: c.id, amount: 200, receivedAt: new Date().toISOString(), method: "BANK_TRANSFER", bankRefNo: "FORCE-REF-DUP" },
+        { force: true, forceReason: "同流水号重复" },
+      ),
+    ).rejects.toMatchObject({ errorCode: ERROR_CODES.PAYMENT_DUPLICATE_REF });
   }));
 
   it("ADMIN + force + 不填 forceReason → 400", guard(async () => {
@@ -308,7 +353,7 @@ describe("createPayment admin/财务 force 旁路 (P2-3)", () => {
     await expect(
       createPayment(
         buildAdmin(),
-        { contractId: c.id, amount: 60, receivedAt: new Date().toISOString(), method: "BANK_TRANSFER" },
+        { contractId: c.id, amount: 60, receivedAt: new Date().toISOString(), method: "BANK_TRANSFER", bankRefNo: "FORCE-REF-OVER" },
         { force: true, forceReason: "test" },
       ),
     ).rejects.toMatchObject({ errorCode: ERROR_CODES.PAYMENT_OVER_CONTRACT });
@@ -322,7 +367,7 @@ describe("createPayment admin/财务 force 旁路 (P2-3)", () => {
     await expect(
       createPayment(
         buildAdmin(),
-        { contractId: c.id, invoiceId: inv.id, amount: 30, receivedAt: new Date().toISOString(), method: "BANK_TRANSFER" },
+        { contractId: c.id, invoiceId: inv.id, amount: 30, receivedAt: new Date().toISOString(), method: "BANK_TRANSFER", bankRefNo: "FORCE-REF-INVVOID" },
         { force: true, forceReason: "test" },
       ),
     ).rejects.toMatchObject({ errorCode: ERROR_CODES.VALIDATION_FAILED });

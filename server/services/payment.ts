@@ -7,7 +7,7 @@ import { requirePermission, RESOURCE, ACTION } from "@/lib/permissions";
 import type { PaymentCreateInput, PaymentActionInput } from "@/lib/validators/payment";
 import { Prisma } from "@prisma/client";
 import type { Prisma as PrismaNS } from "@prisma/client";
-import { listAdminUserIds } from "@/server/events/bus";
+import { emit, listAdminUserIds } from "@/server/events/bus";
 import { assertRecordWritable, ownerViaContract, parseStatusList } from "@/lib/ownership";
 import { runTransitionInTx } from "@/lib/status-machine";
 import { flushPendingKicks } from "@/server/notifications/hub";
@@ -85,8 +85,10 @@ export async function createPayment(
   options?: { force?: boolean; forceReason?: string },
 ) {
   requirePermission(user.roleCode, RESOURCE.PAYMENT, ACTION.CREATE);
-  // admin/财务 force 旁路: 仅 ADMIN/FINANCE 可用, 用于 CLOSED 合同上补录回款
-  // (典型场景: cron 误关 / admin 误关后, 重开+补录两步走)
+  // admin/财务 force 补录: 仅 ADMIN/FINANCE 可用, 用于 CLOSED 合同上补录回款
+  // (典型场景: 历史强关遗留 / admin 误关后, 款已到账补账)。
+  // v0.26.1 语义: force 隐含钱已到账 → 本笔直接落 CONFIRMED 并通知,
+  // 合同"已回款"口径立即包含; 前提: 必填银行流水号 + R-10 查重 (与 confirm 同口径)。
   if (options?.force && user.roleCode !== "ADMIN" && user.roleCode !== "FINANCE") {
     throw new ApiError(ERROR_CODES.FORBIDDEN, "仅管理员或财务可强制录回款（force）", 403);
   }
@@ -115,6 +117,22 @@ export async function createPayment(
           422,
         );
       }
+    }
+    // force = 补录语义 (v0.26.1): 隐含钱已到账 → 本笔直接落 CONFIRMED,
+    // 合同"已回款"口径立即包含, 不再卡在 PLANNED 等二次确认。
+    // 直接确认的前提: 必须有银行流水号且不与已确认池重复 (R-10, 与 confirm 同口径)。
+    const forceRef = options?.force === true ? input.bankRefNo?.trim() : undefined;
+    if (options?.force === true) {
+      if (!forceRef) {
+        throw new ApiError(ERROR_CODES.VALIDATION_FAILED, "force 补录直接确认，必须填写银行流水号", 422);
+      }
+      // 加分布式锁防止同一流水号并发补录导致重复 (与 confirm 同一锁键)
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${forceRef})::bigint)`;
+      // R-10: 流水号唯一 (在 CONFIRMED/RECONCILED 池里, 已删除记录不占号)
+      const dup = await tx.payment.findFirst({
+        where: { bankRefNo: forceRef, status: { in: ["CONFIRMED", "RECONCILED"] }, deletedAt: null },
+      });
+      if (dup) throw new ApiError(ERROR_CODES.PAYMENT_DUPLICATE_REF, `流水号 ${forceRef} 已存在`, 409);
     }
     let inv: Awaited<ReturnType<typeof tx.invoice.findFirst>> = null;
     if (input.invoiceId) {
@@ -194,7 +212,8 @@ export async function createPayment(
         bankRefNo: input.bankRefNo ?? null,
         bankName: input.bankName ?? null,
         remark: finalRemark,
-        status: "PLANNED",
+        // force 补录直接确认; 普通登记保持 PLANNED 走财务确认两步
+        status: options?.force === true ? "CONFIRMED" : "PLANNED",
         recorderUserId: user.id,
         createdById: user.id,
         updatedById: user.id
@@ -213,8 +232,17 @@ export async function createPayment(
           contractId: contract.id,
           invoiceId: input.invoiceId ?? null,
           amount: input.amount,
+          status: "CONFIRMED",
           forceReason: options.forceReason?.trim().slice(0, 500) ?? null
         }
+      });
+      // 与 confirm 同路径发 PAYMENT_RECEIVED 通知 (合同负责人 + 登记人 + 管理员)
+      const admins = await listAdminUserIds(tx);
+      await emit(tx, {
+        type: "PAYMENT_RECEIVED",
+        payload: { paymentId: created.id, paymentNo, amount: Number(created.amount), customerName: contract.customerName },
+        entityKey: `PAYMENT_RECEIVED:${created.id}`,
+        receivers: Array.from(new Set([contract.ownerUserId, user.id, ...admins])),
       });
     }
     return created;
