@@ -107,7 +107,7 @@ export default function DashboardPage() {
         }
       />
 
-      {summary.isValidating ? (
+      {summary.isValidating && !summary.error ? (
         <Alert type="info" showIcon message="数据更新中" style={{ marginBottom: 16 }} />
       ) : null}
       {summary.error ? (

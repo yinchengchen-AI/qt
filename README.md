@@ -38,7 +38,7 @@
 - **状态机驱动** — 合同 / 发票 / 回款 的合法迁移路径用 switch 强制,不可逆状态受保护
 - **16 条业务校验** — R-01 到 R-16 编号化,错误码体系统一,前端 Zod 校验与后端 service 校验双保险
 - **MinIO presigned 直传** — 附件不走应用服务器,前端直传 MinIO,服务端只生成签名 URL
-- **全链路测试** — Vitest 1062 用例 + Playwright E2E(chromium / iPad / iPhone),CI 自动验证
+- **全链路测试** — Vitest 130 个测试文件 / 1128 用例 + Playwright E2E(chromium / iPad / iPhone),CI 自动验证
 
 > 详细架构见 [docs/architecture/DESIGN-v3.md](docs/architecture/DESIGN-v3.md),用户操作手册见 [docs/user/USER_MANUAL.md](docs/user/USER_MANUAL.md)。
 
@@ -385,7 +385,7 @@ nginx 反代下上游异常时,由 `public/502.html` 静态页与 `app/502/page.
 |---|---|
 | `npm run typecheck` | 0 errors(实测) |
 | `npm run lint` | 0 errors / 0 warnings(实测) |
-| `npm test` | 122 个 `.test.ts`,1062 用例:本地无 PG 时 629 pass/423 skip/10 fail; 有 PG(`npm run dev:setup`) 时应全绿 |
+| `npm test` | 130 个 `.test.ts`,1128 用例:最终全量运行 1128 pass / 0 fail |
 | `npm run test:e2e` | 部分运行:01.1 / 12 / 14 三项目(chromium / iPad / iPhone)全绿(沿用上轮记录) |
 | `prisma generate` + `migrate deploy` | 59 / 59 migrations,client v7.9.1 |
 | `npm run build` | 本地因 `docker-data/postgres` 目录权限未通过验证(环境限制,非代码错误) |

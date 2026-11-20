@@ -167,6 +167,10 @@ test("21.2 首次汇总 500 显示错误并可重试恢复", async ({ page }) =>
 
 test("21.3 月度成功后季度 500 保留旧 KPI 并提示，重试刷新当前区间", async ({ page }) => {
   let quarterAttempts = 0;
+  let releaseQuarterRetry: (() => void) | undefined;
+  const quarterRetryGate = new Promise<void>((resolve) => {
+    releaseQuarterRetry = resolve;
+  });
   await page.route("**/api/dashboard/summary?**", async (route) => {
     const range = new URL(route.request().url()).searchParams.get("range");
     if (range === "quarter") {
@@ -175,6 +179,7 @@ test("21.3 月度成功后季度 500 保留旧 KPI 并提示，重试刷新当�
         await fulfillSummaryError(route, "季度汇总失败");
         return;
       }
+      await quarterRetryGate;
       await fulfillSummary(route, summaryFixture(34));
       return;
     }
@@ -202,12 +207,22 @@ test("21.3 月度成功后季度 500 保留旧 KPI 并提示，重试刷新当�
   await expect(page.getByText("数据刷新失败，当前展示上次成功结果", { exact: true })).toBeVisible();
   await expect(page.getByRole("main").getByText("12", { exact: true })).toBeVisible();
 
+  const quarterRetryRequest = page.waitForRequest(
+    (request) => new URL(request.url()).pathname === "/api/dashboard/summary"
+      && new URL(request.url()).searchParams.get("range") === "quarter"
+  );
   const quarterRetry = page.waitForResponse(
     (response) => new URL(response.url()).pathname === "/api/dashboard/summary"
       && new URL(response.url()).searchParams.get("range") === "quarter"
       && response.status() === 200
   );
   await page.getByRole("button", { name: /重\s*试/ }).click();
+  await quarterRetryRequest;
+
+  await expect(page.getByText("数据刷新失败，当前展示上次成功结果", { exact: true })).toBeVisible();
+  await expect(page.getByText("数据更新中", { exact: true })).toHaveCount(0);
+
+  releaseQuarterRetry!();
   await quarterRetry;
 
   await expect(page.getByRole("main").getByText("34", { exact: true })).toBeVisible();

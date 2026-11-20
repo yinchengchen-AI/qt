@@ -90,8 +90,6 @@ describe("账龄 Excel 导出", () => {
       { length: worksheet!.columnCount },
       (_, index) => String(headerRow.getCell(index + 1).text ?? "")
     );
-    expect(headers).not.toContain("已有催收");
-    expect(headers).not.toContain("最新催收状态");
-    expect(headers).toEqual(expect.arrayContaining(["发票号", "客户", "合同号", "剩余未收", "基准"]));
+    expect(headers).toEqual(["发票号", "客户", "合同号", "业务人员", "账龄段", "逾期天数", "剩余未收", "状态", "基准"]);
   });
 });
