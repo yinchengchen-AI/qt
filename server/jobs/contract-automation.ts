@@ -6,7 +6,7 @@
  *                              - tryAutoClose: endDate<now + 开票+回款双 100% 足额 → CLOSED (reason=completed)
  *
  * 注: 原宽限期强关 (tryAutoCloseOnOverdue, endDate+GRACE<now 仍未结清 → CLOSED) 已移除,
- *     过期未结清合同保持 ACTIVE, 由 contract-stale-notify 催款提醒 + admin 手动完结兜底。
+ *     过期未结清合同保持 ACTIVE, 由 contract-stale-notify 跟进回款提醒 + admin 手动完结兜底。
  */
 import { prisma } from "@/lib/prisma";
 import { tryAutoPublish, tryAutoClose } from "@/server/services/contract";

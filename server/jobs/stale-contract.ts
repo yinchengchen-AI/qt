@@ -1,7 +1,7 @@
 // 合同过期未结清提醒 (stale contract notice)
 //
 // 场景: 合同 endDate 已过, 但开票/回款未达 100% 足额, 不会走 tryAutoClose.
-// 这类合同会无限期 ACTIVE, owner / admin 需要被持续提醒去催款 / 处理。
+// 这类合同会无限期 ACTIVE, owner / admin 需要被持续提醒去跟进回款 / 处理。
 //
 // 触发: tickStaleContracts, 接入 runAllJobs, cron 每小时跑一次。
 //
@@ -9,12 +9,12 @@
 //   - status = ACTIVE
 //   - endDate < now
 //   - 分支 A: 累计已确认回款 (CONFIRMED + RECONCILED) < totalAmount (100% 足额)
-//     → CONTRACT_EXPIRED_UNPAID (催款)
+//     → CONTRACT_EXPIRED_UNPAID (跟进回款)
 //   - 分支 B: 回款已足额, 但开票 (INVOICE_ISSUED_AMOUNT_STATUSES 口径) < totalAmount
 //     → CONTRACT_PAID_INVOICE_PENDING (催补开发票; 否则 tryAutoClose 永不完结它也无人感知)
 //
 // 通知: 给 ownerUserId + 所有 ACTIVE 非系统 admin 发站内信.
-// 注: 原"宽限期后自动强关"规则已移除, 文案不再带强关倒计时, 只催款。
+// 注: 原"宽限期后自动强关"规则已移除, 文案不再带强关倒计时, 只跟进回款。
 //
 // 去重: 按 (type + entityId + 今日) 维度, 已有相同消息则跳过, 避免每天刷屏。
 //   查询走 Message 表 (MessageType 复合索引已建)。
@@ -130,7 +130,7 @@ export async function tickStaleContracts(now: Date): Promise<JobResult> {
       continue;
     }
 
-    // 分支 A: 回款未足额 → 催款
+    // 分支 A: 回款未足额 → 跟进回款
     if (sentUnpaidIds.has(c.id)) continue;
     await emit(prisma, {
       type: "CONTRACT_EXPIRED_UNPAID",
