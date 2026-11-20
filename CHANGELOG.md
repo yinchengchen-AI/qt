@@ -2,6 +2,26 @@
 
 本文件记录 qt-biz 每个版本的详细变更。项目快速入口请见 [README.md](README.md)。
 
+## v0.26.1(2026-11-20)force 补录回款直接确认
+
+修复"合同完结后补录回款、合同上已回款仍显示 0"的断点:force 补录(仅 ADMIN/财务可用)隐含钱已到账,本笔直接落为已确认并计入合同回款口径,同时补齐银行流水号必填与查重。**DB schema / migrations: 无变化**。
+
+### 变更
+
+- **fix(payment)**: `createPayment` force 分支本笔直接落 `CONFIRMED`(原 `PLANNED`),合同列表/详情/统计的已回款口径立即包含;普通登记仍走"登记 → 财务确认"两步,状态机其余迁移不变。
+- **fix(payment)**: force 模式必填 `bankRefNo` + R-10 流水号查重(advisory lock 防并发,与 confirm 同口径);R-11/R-12 超额校验不弱化;审计 `PAYMENT_FORCE_BACKFILL` 补充 `status` 字段。
+- **feat(payment)**: force 补录与 confirm 同路径发 `PAYMENT_RECEIVED` 通知(合同负责人 + 登记人 + 管理员)。
+
+### 数据修复
+
+- 新增 `scripts/data-quality/confirm-force-backfill-payments.ts`:以 system actor 调 `paymentAction confirm` 补确认存量 PLANNED + `[FORCE_BACKFILL:` 标记的回款(状态机 + 审计 + 校验同人工路径,支持 `--dry-run` / `--apply`,缺流水号自动跳过)。
+
+### 验证
+
+- `npm run typecheck`、`npm run lint`: PASS。
+- `npm test`: 130 文件、1116 用例 PASS(14 skipped);并行运行中 `statistics-performance.test.ts` 曾出现文件级 flake,独立运行 14/14 PASS,与本次改动无关。
+- 新增/更新回归: force 缺银行流水号 → 422;流水号重复 → 409;force 成功后合同 overview `paidAmount` 立即包含本笔且写入回款通知消息。
+
 ## v0.26.0(2026-11-20)账龄与 Dashboard 契约清理
 
 删除催收记录、法务状态和智能催款建议的运行时入口，保留中性的逾期回款跟进提醒与合同风险能力；同时完成 Dashboard 数据口径、行级隔离、请求恢复和组件边界优化。**DB schema / migrations: 无变化**。
