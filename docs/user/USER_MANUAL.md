@@ -135,9 +135,12 @@
 > **C**=Create 新建, **R**=Read 查看, **U**=Update 编辑, **D**=Delete 删除。
 
 **v0.18.0 (2026-08-02) 调整** — 详见 [CHANGELOG.md v0.18.0](../../CHANGELOG.md) 与 [docs/history/security/permissions-audit-2026-08-02.md](../history/security/permissions-audit-2026-08-02.md):
+- DUNNING 矩阵重排: 现场 (SALES/EXPERT) 只 CR; **财务拿 CRUD**.
 - EXPERT 不再开票: 仅 R + 导出, 商业发起归 SALES.
 - 公告按发文主体管理: 仅发布人/ADMIN 可改/删 (service 强制).
 - 回收站 service 入口硬卡 ADMIN; 菜单可绕过性已消除.
+
+> 预发布 v0.26.0 将移除 DUNNING 运行时入口；上述 v0.18.0 权限调整作为历史记录保留。
 
 
 ### 3.3 关键权限设计
