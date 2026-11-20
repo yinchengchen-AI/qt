@@ -2,6 +2,33 @@
 
 本文件记录 qt-biz 每个版本的详细变更。项目快速入口请见 [README.md](README.md)。
 
+## v0.26.0(2026-11-20)账龄与 Dashboard 契约清理
+
+删除催收记录、法务状态和智能催款建议的运行时入口，保留中性的逾期回款跟进提醒与合同风险能力；同时完成 Dashboard 数据口径、行级隔离、请求恢复和组件边界优化。**DB schema / migrations: 无变化**。
+
+### 变更
+
+- **feat(aging)**: 删除催收 CRUD / 汇总 / 智能建议页面、service、权限和测试入口；账龄页保留明细、客户、业务人员、未开票合同、四个账龄桶、KPI 和导出。
+- **change(api)**: `/api/statistics/aging/dunning-notes[/:id]`、`/api/statistics/aging/dunning/summary`、`/api/statistics/aging/collection-advice` 均不再提供运行时路由，已登录 GET 返回 404。
+- **change(aging-excel)**: 账龄 Excel 删除“已有催收”“最新催收状态”两列，保留发票号、客户、合同号、剩余未收、基准等账龄字段；Aging 行不再返回催收字段。
+- **refactor(messages)**: 自动逾期提醒、开票-回款偏差提醒与风险建议统一使用“跟进回款 / 回款跟进”；提醒事件、合同详情预警、风险 AI 和经营周报保留。
+- **fix(dashboard)**: SALES / EXPERT 镇街分布只统计本人客户；统一 Dashboard DTO 与四桶账龄口径，轻量桶与完整账龄一致，不请求未消费 distribution。
+- **fix(dashboard)**: 首次汇总失败可重试；切换区间刷新失败保留上次成功数据并允许重试；延迟刷新保留旧内容并显示更新状态。
+- **refactor(dashboard)**: 拆分 KPI、待办、图表、状态和 Top 客户组件，图表动态加载；页面使用 SWR `keepPreviousData`，无重复 DTO、`as never` 或手写主请求 effect。
+
+### 数据保留
+
+- Prisma `DunningNote` 模型、Invoice / User 关系及全部历史 migrations 原样保留，仅作为历史数据表存在；系统不再提供对应 UI / API / 权限消费者，需要查询时由 DBA 只读访问。
+- 未执行 DELETE / DROP / TRUNCATE，未新增数据迁移；本地只读验证表存在且 `COUNT(*)=0`。生产部署前后计数及不变性核验由发布收尾执行。
+
+### 验证
+
+- `npm run typecheck`、`npm run lint`、`npm run build`: PASS；构建路由清单不含四组已删除路由。
+- 三文件 Playwright 最终恢复结果为 37 passed / 18 failed / 14 skipped：Dashboard 15/15、账龄 15/15 均通过；18 个失败全部来自未改动 `responsive.spec.ts` 的已知登录、navigation / networkidle 及 `/projects` 404 场景，未修复或新增 skip。`01-admin-full-flow.spec.ts -g 01.4` 3/3、`02-row-isolation.spec.ts -g 02.2` 3/3 均通过。
+- Dashboard 覆盖三端区间、KPI、四桶、图表、无横向溢出、无 dunning 请求，以及首次错误重试、刷新失败保留旧数据和延迟刷新；账龄覆盖基准切换、四个保留 Tab、移动端和四组路由 404。账龄 Excel 测试实际生成并读取 xlsx 表头。
+- `npm test` 最终恢复运行为 130/130 文件、1128/1128 用例 PASS。此前并行运行曾出现 `employee-profile.test.ts` 外键清理与 `messages-v2-routes.test.ts` mock 调用波动；两个原文件分别有 15/15、14/14 的独立 PASS 记录，另一次 messages 独立运行仍复现 6 个失败，作为间歇性测试环境问题保留在预发布报告。
+- 浏览器验收覆盖 Dashboard、账龄、消息与合同详情的中性提醒；四组删除路由实际返回 404，Network 未出现 dunning / collection-advice 请求。`git diff --exit-code -- prisma/schema.prisma prisma/migrations` 零差异。
+
 ## v0.25.15(2026-10-27)通知中心核心功能简化
 
 ### 变更

@@ -161,7 +161,7 @@
 
 ### 3.2 资源 × 操作 × 角色 矩阵
 
-资源：`USER` `ROLE` `DICTIONARY` `DEPARTMENT` `CUSTOMER` `CONTRACT` `INVOICE` `PAYMENT` `STATISTICS` `DUNNING` `MESSAGE` `ANNOUNCEMENT` `APP_RELEASE` `OPERATION_LOG`
+资源：`USER` `ROLE` `DICTIONARY` `DEPARTMENT` `CUSTOMER` `CONTRACT` `INVOICE` `PAYMENT` `STATISTICS` `MESSAGE` `ANNOUNCEMENT` `APP_RELEASE` `OPERATION_LOG`
 
 操作：`READ` `CREATE` `UPDATE` `DELETE` `EXPORT` (v0.18.0+; AUDIT 已移除)
 
@@ -176,7 +176,6 @@
 | INVOICE | CRUD+导出 | CRU+导出 (自己合同) | CRUD+导出 | R+导出 | **R+导出** (v0.18.0+) |
 | PAYMENT | CRUD+导出 | CR+导出 (自己合同) | CRUD+导出 | R+导出 | **R+导出** |
 | STATISTICS | R+导出 | R (本人业绩) | R+导出 | R (无金额) | R (本人业绩) |
-| DUNNING | CRUD+导出 | **CR** (v0.18.0+) | **CRUD** (v0.18.0+) | R | **R** (v0.18.0+) |
 | MESSAGE | CRU(自己) | CRU(自己) | CRU(自己) | CRU(自己) | CRU(自己) |
 | ANNOUNCEMENT | CRUD | R | R | CRUD (改/删限发布人) | R |
 | APP_RELEASE | R | R | R | R | R |
@@ -446,10 +445,7 @@ PLANNED ─confirm(finance)─▶ CONFIRMED ─reconcile(finance)─▶ RECONCIL
 - **Top 客户 metric**:`metric=contract` 时筛 `total > 0`,`metric=payment` 时筛 `paymentTotal > 0`,避免按所选维度无数据的客户出现在榜上。
 - **账龄基准 `Invoice.dueDate`**: 合同约定付款日(可空);`getInvoiceAging(basis="due")` 优先用 `dueDate`,回退 `actualIssueDate`。
   新增/编辑发票时由用户在开票审核/录入时填写;历史 ISSUED 发票 SQL 回填 `actualIssueDate + 30 天`(迁移 `20260703_aging_redesign`)。
-- **催收记录 `DunningNote`**: invoiceId 级(1:N cascade delete),字段 status(CONTACTED/PROMISED/DISPUTED/LEGAL) / channel / promisedDate / lastContactAt / remark / actorId。
-  资源权限 `DUNNING`: ADMIN CRUD+EXPORT, FINANCE CRU, SALES/EXPERT CRUD(业务人员需能记录催收), OPS R。
-  行级隔离: SALES/EXPERT 仅能看到自己 owner 合同下发票的催收, 看不到的发票创建/读取统一 404(不泄露存在性)。
-  PROMISED 状态必须带 `promisedDate`; `getDunningSummary.topOverdue.remaining` 走与 `getInvoiceAging` 同口径(减回款)。
+- **历史表保留 `DunningNote`**: Prisma 保留模型及 Invoice / User 关系，仅用于兼容既有数据库与历史数据；无运行时 service / API / UI 入口，也无权限消费者。不得通过新迁移删除该表或历史记录；需要查询时由 DBA 只读访问。
 
 ### 8.2 看板 / 导出
 - 管理员/财务：合同/开票/回款总览、账龄、客户 Top10、员工 Top10。
@@ -511,15 +507,7 @@ PLANNED ─confirm(finance)─▶ CONFIRMED ─reconcile(finance)─▶ RECONCIL
   - ACTIVE 且无 ISSUED 发票的合同, signDate 升序, `isOverdue = daysSinceSign > thresholdDays`
 - `GET /api/statistics/aging/trend?days=30&basis=`
   - 读 AgingSnapshot 预计算表(每日 cron 幂等 upsert 近 30 天);快照缺失的日期回退实时计算;受限角色(SALES/EXPERT)恒走实时计算以维持行级隔离
-- `GET /api/statistics/aging/dunning/summary`
-  - 催收汇总 `{ totalOpen, withDunning, byStatus, topOverdue }`;
-    `topOverdue[i].remaining = amount - paid` 与 getInvoiceAging 同口径
-- `GET /api/statistics/aging/dunning-notes?invoiceId=&limit=200`
-  - 业务人员 (SALES/EXPERT) 行级隔离走 `Invoice -> Contract -> ownerUserId`
-- `POST /api/statistics/aging/dunning-notes`(需 `DUNNING:CREATE`)
-  - PROMISED 状态必须带 `promisedDate` (400)
-- `PATCH /api/statistics/aging/dunning-notes/:id`(需 `DUNNING:UPDATE`)
-- `DELETE /api/statistics/aging/dunning-notes/:id`(需 `DUNNING:DELETE`)
+- 历史 dunning-notes / dunning/summary / collection-advice 路由已删除，不属于现行 API；已登录请求返回 404。
 - `GET /api/statistics/top-customers?metric=contract|payment&limit=10&from=&to=`
   - `from/to` 同时作用于 `Contract.signDate` / `Invoice.actualIssueDate` / `Payment.receivedAt`
 - `GET /api/statistics/employee-performance?userId=&from=&to=`

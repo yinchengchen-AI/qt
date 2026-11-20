@@ -6,14 +6,14 @@
 [![TypeScript](https://img.shields.io/badge/TypeScript-6.0.3-3178c6)](https://www.typescriptlang.org/)
 [![Prisma](https://img.shields.io/badge/Prisma-7.9.1-2d3748)](https://www.prisma.io/)
 [![PostgreSQL](https://img.shields.io/badge/PostgreSQL-16-336791)](https://www.postgresql.org/)
-[![Last Release](https://img.shields.io/badge/release-v0.25.15-blue)](CHANGELOG.md)
+[![Last Release](https://img.shields.io/badge/release-v0.26.0-blue)](CHANGELOG.md)
 [![CI](https://github.com/yinchengchen-AI/qt/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/yinchengchen-AI/qt/actions/workflows/ci.yml)
 
 > **客户 / 合同 / 开票 / 回款** 一体化管理,附件走 MinIO presigned 直传,服务端 Server Actions + RBAC + 行级隔离。
 >
-> **当前版本: v0.25.15**(2026-10-27)。文档地图见 [docs/README.md](docs/README.md),架构与设计见 [docs/architecture/DESIGN-v3.md](docs/architecture/DESIGN-v3.md),用户手册见 [docs/user/USER_MANUAL.md](docs/user/USER_MANUAL.md)。
+> **当前版本: v0.26.0**(2026-11-20)。文档地图见 [docs/README.md](docs/README.md),架构与设计见 [docs/architecture/DESIGN-v3.md](docs/architecture/DESIGN-v3.md),用户手册见 [docs/user/USER_MANUAL.md](docs/user/USER_MANUAL.md)。
 
-<!-- 最近更新于 2026-10-27 — 通知中心核心功能简化 -->
+<!-- 最近更新于 2026-11-20 — 账龄与 Dashboard 契约清理、回款跟进提醒中性化 -->
 
 ---
 
@@ -30,7 +30,7 @@
 | **开票管理** | 发票 CRUD、R-11 回款保护、开票金额上限校验、红冲、与回款的关联关系 |
 | **回款管理** | 回款登记、确认 / 对账、与发票的双向关联、R-08 合同级开票限额 |
 | **统计分析** | 总览 / 账龄 / 业绩 / Top 排行、xlsx 导出 (exceljs 流式) |
-| **消息与公告** | 通知中心 (全部 / 未读 / 已读 / 公告)、操作日志、员工档案 |
+| **消息与公告** | 通知中心 (全部 / 未读 / 已读 / 公告)、逾期合同跟进回款提醒、操作日志、员工档案 |
 
 ### 技术亮点
 
@@ -134,7 +134,7 @@ const customer = await createCustomer({ ...data, ownerUserId: user.id }, user);
   ```
 - **R-08 开票限额** — 合同累计开票金额 ≤ 合同总额
 - **附件** — 合同级附件,走 MinIO presigned 直传
-- **自动状态机** — `contract-auto-publish` / `contract-auto-complete` / `contract-stale-notify` 三个 cron 任务每小时自动推进; 原"宽限期强关"(过期未结清自动 CLOSED) 已移除, 逾期合同保持 ACTIVE 并由 stale-notify 催款提醒
+- **自动状态机** — `contract-auto-publish` / `contract-auto-complete` / `contract-stale-notify` 三个 cron 任务每小时自动推进; 原"宽限期强关"(过期未结清自动 CLOSED) 已移除, 逾期合同保持 ACTIVE 并由 stale-notify 发送跟进回款提醒
 
 **代码示例** — 合同状态判断:
 ```ts
@@ -394,7 +394,11 @@ nginx 反代下上游异常时,由 `public/502.html` 静态页与 `app/502/page.
 
 ## 最近更新
 
-最近 5 个版本(另附更早的重要版本 v0.25.0),完整历史见 [CHANGELOG.md](CHANGELOG.md)。
+近期版本(另附更早的重要版本 v0.25.0),完整历史见 [CHANGELOG.md](CHANGELOG.md)。
+
+### v0.26.0(2026-11-20)账龄与 Dashboard 契约清理
+
+删除催收记录、法务状态和智能催款建议的 UI / API / 权限入口，账龄 Excel 同步删除两列历史催收字段；`DunningNote` 模型、历史 migrations 与数据保留，无 DB schema 变化。自动逾期提醒、合同详情预警与风险建议改用“跟进回款 / 回款跟进”。Dashboard 修复 SALES / EXPERT 镇街行级隔离、首次错误重试及刷新失败保留旧数据，并统一 DTO、四桶账龄与组件边界。验证详情和已知无关测试失败见 [CHANGELOG.md](CHANGELOG.md)。
 
 ### v0.25.15(2026-10-27)通知中心核心功能简化
 

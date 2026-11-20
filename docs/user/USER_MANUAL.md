@@ -113,7 +113,7 @@
 | `SALES`(业务人员) | 客户 / 合同 / 项目推进,**行级隔离**只看自己的数据 |
 | `FINANCE`(财务人员) | 发票 / 回款 / 对账,统计可导出 |
 | `OPS`(行政人员) | 部门 / 公告维护与发布;字典 R (v0.18.0+) — 字典写权限收归 ADMIN |
-| `EXPERT`(技术专家) | 任务执行 / 跟进 / 现场交付;类似 SALES 跟进本人客户/合同(**行级隔离**),但钱相关只读(发票/回款只读+导出,催款只读) |
+| `EXPERT`(技术专家) | 任务执行 / 跟进 / 现场交付;类似 SALES 跟进本人客户/合同(**行级隔离**),但钱相关只读(发票/回款只读+导出) |
 
 ### 3.2 模块权限矩阵(简版)
 
@@ -123,7 +123,6 @@
 | 合同 | CRUD + 导出 | CRU + 导出 | R + 导出 | R + 导出 | CRU + 导出 + **行级隔离** |
 | 开票 | CRUD + 导出 | CRU + 导出 | CRUD + 导出 | R + 导出 | **R + 导出** (v0.18.0+) |
 | 回款 | CRUD + 导出 | CR + 导出 | CRUD + 导出 | R + 导出 | **R + 导出** |
-| 催收 (DUNNING, v0.18.0+) | CRUD + 导出 | **CR** | **CRUD** | R | **R** |
 | 统计分析 | R + 导出 | R | R + 导出 | R | R |
 | 部门 | CRUD | R | R | CRUD | R |
 | 员工 / 角色 | CRUD(角色只读) | R | R | R | R |
@@ -136,7 +135,6 @@
 > **C**=Create 新建, **R**=Read 查看, **U**=Update 编辑, **D**=Delete 删除。
 
 **v0.18.0 (2026-08-02) 调整** — 详见 [CHANGELOG.md v0.18.0](../../CHANGELOG.md) 与 [docs/history/security/permissions-audit-2026-08-02.md](../history/security/permissions-audit-2026-08-02.md):
-- DUNNING 矩阵重排: 现场 (SALES/EXPERT) 只 CR; **财务拿 CRUD**.
 - EXPERT 不再开票: 仅 R + 导出, 商业发起归 SALES.
 - 公告按发文主体管理: 仅发布人/ADMIN 可改/删 (service 强制).
 - 回收站 service 入口硬卡 ADMIN; 菜单可绕过性已消除.
@@ -270,7 +268,7 @@ v0.5.0(2026-06-29)起客户表不再有 `status` 字段, 详情页右上角「�
 **自动化细节**:
 - `DRAFT → ACTIVE`:`createContract` / `updateContract` 保存时自动判定 `isPublishable(c)`,条件满足即升 ACTIVE。每小时 cron `tickPublishableDrafts` 兜底。
 - `ACTIVE → CLOSED (completed)`:每小时 `tickCompletionCandidates` 扫"已到期 + 开票回款双 100% 足额"的合同,自动完结。
-- 原"宽限期强关"(过期 + 60 天宽限仍未结清 → 自动 CLOSED) 已移除:过期未结清合同保持 ACTIVE,每小时 `contract-stale-notify` 给 owner/admin 发催款提醒,由 admin 手动完结兜底。
+- 原"宽限期强关"(过期 + 60 天宽限仍未结清 → 自动 CLOSED) 已移除:过期未结清合同保持 ACTIVE,每小时 `contract-stale-notify` 给 owner/admin 发跟进回款提醒,由 admin 手动完结兜底。
 - `ACTIVE → CLOSED (terminated)`:admin 强制完结(选 reason)。
 - 业务自创建/维护合同,日常无需手动点状态按钮。
 
@@ -584,16 +582,11 @@ PLANNED ─confirm─▶ CONFIRMED ─reconcile─▶ RECONCILED
   - 重置回到默认(按到期日 + 全选桶 + 全部客户/业务人员/合同)
 - **KPI**: 应收总额 / 90+ 余额(占比 + 风险方向) / 最高单笔欠款(链接到发票) / 涉及客户数 / 涉及业务人员数
 - **趋势 + 桶图** 同行展示: 左侧 4 桶柱图, 右侧近 30 天应收总额 Line Chart(读 `AgingSnapshot` 每日快照表,cron 每日幂等重算近 30 天;受限角色实时计算)
-- **Tab 1: 明细** — ProTable 服务端分页(20/50/100), 列: 发票号 / 客户 / 合同 / 业务人员 / 桶 / 逾期天数 / 剩余未收 / 状态 / 催收 Badge / 操作(添加催收)
+- **Tab 1: 明细** — ProTable 服务端分页(20/50/100), 列: 发票号 / 客户 / 合同 / 业务人员 / 桶 / 逾期天数 / 剩余未收 / 状态
   - 表头 Tab label 显示 "明细 (N)" — N 为全部超期数, 跨页时此 N 不变
 - **Tab 2: 按客户** — 客户维度 Top 20, 列: 客户 / 发票数 / 总应收 / 4 桶金额 / 90+ 占比(按 20%/50% 染色)
 - **Tab 3: 按业务人员** — 合同 owner 维度 Top 20, 列同客户 (SALES 只能看到自己, 其它角色看全员)
 - **Tab 4: 未开票合同** — ACTIVE 但还没 ISSUED 发票的合同, signDate 升序, `已过天数 > 30` 标红
-- **催收闭环**:
-  - 行内"添加催收"按钮(需 `DUNNING:CREATE`) → Drawer 表单: 状态 Segmented / 联系方式 / 最近联系时间 / 备注; PROMISED 必填承诺日
-  - 状态机: `已联系 → 客户承诺(必填承诺日) → 已回款(回款到账后可在 /invoices 页操作)`, 或 `争议 / 法务介入`
-  - 历史记录在 Drawer 内列表展示, 倒序(最近联系在前)
-  - SALES 行级隔离: 只看自己 owner 合同下的催收
 - **已退款处理**:已 `refund` 的回款视为从未入账,`remaining` 按发票金额回弹;若该发票随后又有新的 `CONFIRMED` 回款,`remaining` 仍按累计生效回款扣减
 - **移动端**:KPI 单列堆叠(2 列);Tab 折叠到 Top 5;明细表 `sticky` 表头;趋势图 / 桶图分两行(每个 `xs={24}`)
 - **导出**: Excel `账龄分析_<basis>_<YYYY-MM-DD>.xlsx`, 走 `/api/statistics/export?type=aging` 带全部当前 filter
@@ -960,14 +953,14 @@ curl -X POST -H "Authorization: Bearer ${CRON_SECRET}" \
 - 写日志到 `/var/log/qt-cron.log`(运维巡检可见)
 - (可选) 推飞书 webhook,需在 `.env` 配置 `FEISHU_WEBHOOK_URL=https://open.feishu.cn/...`
 
-### 16.3 逾期催款提醒 (contract-stale-notify)
+### 16.3 逾期回款跟进提醒 (contract-stale-notify)
 
 合同 `endDate` 过期后**未达双 100% 足额**的,系统每小时给 owner + admin 发 `CONTRACT_EXPIRED_UNPAID` 站内信(同一天去重,不刷屏):
 
-- **回款未足额** → `CONTRACT_EXPIRED_UNPAID`(催款,带逾期天数/已收/剩余金额)
-- **回款已足额但开票不足额** → `CONTRACT_PAID_INVOICE_PENDING`(催补开发票;否则合同永远不会自动完结)
+- **回款未足额** → `CONTRACT_EXPIRED_UNPAID`(请跟进回款,带逾期天数/已收/剩余金额)
+- **回款已足额但开票不足额** → `CONTRACT_PAID_INVOICE_PENDING`(提醒补开发票;否则合同永远不会自动完结)
 
-**注意**:原"宽限期强关"规则已移除——逾期未结清合同**不会**再被自动 CLOSED,将一直保持 `ACTIVE` 并持续催款,直到双 100% 足额自动完结或 admin 手动完结。历史 `reason=overdue_terminated` 的 CLOSED 合同不受影响(保持终态,如需恢复走 admin 重新打开)。
+**注意**:原"宽限期强关"规则已移除——逾期未结清合同**不会**再被自动 CLOSED,将一直保持 `ACTIVE` 并持续发送跟进回款提醒,直到双 100% 足额自动完结或 admin 手动完结。历史 `reason=overdue_terminated` 的 CLOSED 合同不受影响(保持终态,如需恢复走 admin 重新打开)。
 
 ### 16.4 部署后必做(deploy.sh 已自动化)
 
