@@ -2,6 +2,24 @@
 
 本文件记录 qt-biz 每个版本的详细变更。项目快速入口请见 [README.md](README.md)。
 
+## v0.26.2(2026-11-23)PDF 打印样式统一收尾
+
+5 个 PDF 打印路由(客户/合同/发票/回款/业绩排行)统一走 `lib/print-html.ts` 模板 + `lib/print-format.ts` 的 `pf*` 格式化(可空文本空值渲染 "—"、金额带 ¥ 千分位);本次补齐路由迁移收尾、删除模板历史死代码。**DB schema / migrations: 无变化**。
+
+### 变更
+
+- **refactor(print)**: 新增 `lib/print-format.ts`(`pfText/pfAmount/pfDate/pfDateTime/pfPercent/pfPerson`,全部包装 `lib/format.ts`),5 个 PDF 路由从各自内联 `fmtDate/fmtAmount` 助手切到统一 `pf*`,空值口径统一为 "—"。
+- **refactor(print)**: 删除 `lib/print-html.ts` 已无使用方的 `signer-detail` 整套 CSS(v0.21.9 移除旧 employee-performance PDF 路由后残留,与统一模板视觉冲突)及 `footer` 字段 / `legacy-footer` 样式(全部路由无人使用)。
+- **fix(print)**: 发票 PDF 抬头名称走 `pfText`(个人发票无抬头时渲染 "—" 而非空白格);回款记录空数据改 `emptyText` 占位,删除伪造的 `(无)` 行。
+- **fix(print)**: 合同 PDF 付款方式 / 状态枚举回退包 `pfText`,空值不再渲染空白格。
+- **chore(print)**: 业绩排行 PDF 删除冗余 `signature: true`(默认即 true)。
+
+### 验证
+
+- `npm run typecheck`、`npm run lint`: PASS。
+- `npm test`: 133 文件、1153 用例 PASS。
+- 新增回归: `tests/unit/lib/print-html.test.ts` 11 例(品牌 header / 汇总卡 tone / 富表 rowClass·cellClass 钩子 / emptyText / 签字区 / 页面方向 / HTML 转义 / 无死代码残留);`tests/unit/lib/print-format.test.ts` 7 例(`pf*` 格式化口径);`tests/pdf-routes-unified.test.ts` 4 例(路由字段格式约定,防后续加字段回退)。
+
 ## v0.26.1(2026-11-20)force 补录回款直接确认
 
 修复"合同完结后补录回款、合同上已回款仍显示 0"的断点:force 补录(仅 ADMIN/财务可用)隐含钱已到账,本笔直接落为已确认并计入合同回款口径,同时补齐银行流水号必填与查重。**DB schema / migrations: 无变化**。
