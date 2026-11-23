@@ -13,15 +13,14 @@ import { prisma } from "@/lib/prisma";
 import { renderPrintHtml, type PrintDoc } from "@/lib/print-html";
 import { ALLOWED_DICTIONARY_CATEGORIES } from "@/lib/dictionary-categories";
 import { CONTRACT_STATUS_MAP, INVOICE_STATUS_MAP, PAYMENT_STATUS_MAP } from "@/lib/enum-maps";
-import { formatDate, formatDateTime } from "@/lib/format";
+import {
+  pfAmount,
+  pfDate,
+  pfDateTime,
+  pfPerson,
+  pfText,
+} from "@/lib/print-format";
 import { formatRegion } from "@/lib/region";
-
-const fmtDate = (s: string | Date | null | undefined) =>
-  s ? formatDate(s) : "—";
-const fmtDateTime = (s: string | Date | null | undefined) =>
-  s ? formatDateTime(s) : "—";
-const fmtAmount = (v: string | number | null | undefined) =>
-  v == null || v === "" ? "—" : "¥" + Number(v).toFixed(2);
 
 export async function GET(
   req: Request,
@@ -59,44 +58,41 @@ export async function GET(
         subtitle: `客户编号 ${c.code}`,
         meta: [
           { label: "客户编号:", value: c.code },
-          {
-            label: "客户负责人:",
-            value: owner ? `${owner.name}(${owner.employeeNo})` : "—",
-          },
+          { label: "客户负责人:", value: pfPerson(owner) },
         ],
         mainRows: [
           { label: "客户全称", value: c.name },
-          { label: "简称", value: c.shortName ?? "—" },
+          { label: "简称", value: pfText(c.shortName) },
           {
             label: "统一社会信用代码",
-            value: c.unifiedSocialCreditCode ?? "—",
+            value: pfText(c.unifiedSocialCreditCode),
           },
           {
             label: "类型",
-            value: label("CUSTOMER_TYPE", c.customerType) || "—",
+            value: pfText(label("CUSTOMER_TYPE", c.customerType)),
           },
-          { label: "规模", value: label("CUSTOMER_SCALE", c.scale) || "—" },
+          { label: "规模", value: pfText(label("CUSTOMER_SCALE", c.scale)) },
           {
             label: "行业",
-            value: label("CUSTOMER_INDUSTRY", c.industry) || "—",
+            value: pfText(label("CUSTOMER_INDUSTRY", c.industry)),
           },
           {
             label: "客户来源",
-            value: label("CUSTOMER_SOURCE", c.sourceChannel) || "—",
+            value: pfText(label("CUSTOMER_SOURCE", c.sourceChannel)),
           },
           {
             label: "联系人 / 职务",
-            value:
-              [c.contactName, c.contactTitle].filter(Boolean).join(" · ") ||
-              "—",
+            value: pfText(
+              [c.contactName, c.contactTitle].filter(Boolean).join(" · "),
+            ),
           },
-          { label: "联系电话", value: c.contactPhone ?? "—" },
+          { label: "联系电话", value: pfText(c.contactPhone) },
           {
             label: "所在地区",
-            value: formatRegion(c.province, c.city, c.district) || "—",
+            value: pfText(formatRegion(c.province, c.city, c.district)),
           },
-          { label: "详细地址", value: c.address ?? "—" },
-          { label: "创建时间", value: fmtDateTime(c.createdAt) },
+          { label: "详细地址", value: pfText(c.address) },
+          { label: "创建时间", value: pfDateTime(c.createdAt) },
         ],
         summary: [
           {
@@ -106,17 +102,17 @@ export async function GET(
           },
           {
             label: "合同总额",
-            value: fmtAmount(totals.contractTotal),
+            value: pfAmount(totals.contractTotal),
             tone: "primary",
           },
           {
             label: "已开票",
-            value: fmtAmount(totals.invoicedTotal),
+            value: pfAmount(totals.invoicedTotal),
             tone: "warning",
           },
           {
             label: "已回款",
-            value: fmtAmount(totals.paidTotal),
+            value: pfAmount(totals.paidTotal),
             tone: "success",
           },
         ],
@@ -127,8 +123,8 @@ export async function GET(
             rows: overview.contracts.map((c2) => ({
               合同号: c2.contractNo,
               标题: c2.title,
-              签订日: fmtDate(c2.signDate),
-              总额: fmtAmount(c2.totalAmount),
+              签订日: pfDate(c2.signDate),
+              总额: pfAmount(c2.totalAmount),
               状态: CONTRACT_STATUS_MAP[c2.status] ?? c2.status,
             })),
             emptyText: "暂无关联合同",
@@ -139,8 +135,8 @@ export async function GET(
             rows: overview.invoices.map((i) => ({
               发票号: i.invoiceNo ?? "未开",
               合同号: i.contractNo,
-              开票日: fmtDate(i.actualIssueDate),
-              金额: fmtAmount(i.amount),
+              开票日: pfDate(i.actualIssueDate),
+              金额: pfAmount(i.amount),
               状态: INVOICE_STATUS_MAP[i.status] ?? i.status,
             })),
             emptyText: "暂无开票记录",
@@ -151,8 +147,8 @@ export async function GET(
             rows: overview.payments.map((p) => ({
               回单号: p.paymentNo,
               合同号: p.contractNo,
-              到账日: fmtDate(p.receiveDate),
-              金额: fmtAmount(p.amount),
+              到账日: pfDate(p.receiveDate),
+              金额: pfAmount(p.amount),
               状态: PAYMENT_STATUS_MAP[p.status] ?? p.status,
             })),
             emptyText: "暂无回款记录",

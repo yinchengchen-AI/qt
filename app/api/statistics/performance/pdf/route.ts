@@ -14,7 +14,7 @@ import {
 } from "@/server/services/statistics";
 import { renderPrintHtml, type PrintDoc } from "@/lib/print-html";
 import { exportMaxRows } from "@/lib/excel";
-import { formatDate } from "@/lib/format";
+import { pfAmount, pfDate } from "@/lib/print-format";
 
 const query = z.object({
   dimension: z.enum(["owner", "signer", "region"]).default("owner"),
@@ -24,15 +24,6 @@ const query = z.object({
 });
 
 const DIMENSION_LABEL = { owner: "按员工", signer: "按签约人", region: "按区域" } as const;
-
-const fmtDate = (s: string | Date | null | undefined) => (s ? formatDate(s) : "-");
-
-// 金额统一保留 2 位小数,与 Excel #,##0.00 对齐
-const fmtMoney = (v: string | number | null | undefined) => {
-  if (v == null || v === "") return "-";
-  const n = Number(v);
-  return Number.isFinite(n) ? n.toFixed(2) : "-";
-};
 
 const fmtRate = (v: number) => (Number.isFinite(v) ? v.toFixed(2) : "0.00");
 
@@ -74,7 +65,7 @@ export async function GET(req: Request) {
       const totalInvRate = totals.contractAmount > 0 ? (totals.invoiceAmount / totals.contractAmount) * 100 : 0;
       const totalPayRate = totals.invoiceAmount > 0 ? (totals.paymentAmount / totals.invoiceAmount) * 100 : 0;
 
-      const periodLabel = `${fmtDate(range.from)} ~ ${fmtDate(range.to)}`;
+      const periodLabel = `${pfDate(range.from)} ~ ${pfDate(range.to)}`;
 
       // ==== 表 1: 业绩排行 ====
       const secondCol = isRegion ? "区域" : "姓名";
@@ -88,10 +79,10 @@ export async function GET(req: Request) {
         [secondCol]: r.name,
         [thirdCol]: isRegion ? (r.customerCount ?? 0) : (r.employeeNo ?? ""),
         合同数: r.contractCount,
-        合同额: fmtMoney(r.contractAmount),
-        已开票额: fmtMoney(r.invoiceAmount),
-        已回款额: fmtMoney(r.paymentAmount),
-        未回款额: fmtMoney(r.unpaidAmount),
+        合同额: pfAmount(r.contractAmount),
+        已开票额: pfAmount(r.invoiceAmount),
+        已回款额: pfAmount(r.paymentAmount),
+        未回款额: pfAmount(r.unpaidAmount),
         "开票率(%)": fmtRate(r.invoiceRate),
         "回款率(%)": fmtRate(r.paymentRate),
         __kind: "data" as const
@@ -101,10 +92,10 @@ export async function GET(req: Request) {
         [secondCol]: `总计 (${ranking.length} ${entityUnit})`,
         [thirdCol]: isRegion ? totals.customerCount : "",
         合同数: totals.contractCount,
-        合同额: fmtMoney(totals.contractAmount),
-        已开票额: fmtMoney(totals.invoiceAmount),
-        已回款额: fmtMoney(totals.paymentAmount),
-        未回款额: fmtMoney(totals.unpaidAmount),
+        合同额: pfAmount(totals.contractAmount),
+        已开票额: pfAmount(totals.invoiceAmount),
+        已回款额: pfAmount(totals.paymentAmount),
+        未回款额: pfAmount(totals.unpaidAmount),
         "开票率(%)": fmtRate(totalInvRate),
         "回款率(%)": fmtRate(totalPayRate),
         __kind: "total" as const
@@ -136,8 +127,8 @@ export async function GET(req: Request) {
             负责人: r.ownerName,
             签约人: r.signerName,
             合同号: r.contractNo,
-            签约日期: fmtDate(r.signDate),
-            合同金额: fmtMoney(r.totalAmount),
+            签约日期: pfDate(r.signDate),
+            合同金额: pfAmount(r.totalAmount),
             __kind: "data" as const
           });
           gAmount += r.totalAmount;
@@ -152,7 +143,7 @@ export async function GET(req: Request) {
           签约人: "",
           合同号: "",
           签约日期: "",
-          合同金额: fmtMoney(Number(gAmount.toFixed(2))),
+          合同金额: pfAmount(Number(gAmount.toFixed(2))),
           __kind: "subtotal" as const
         });
       }
@@ -166,7 +157,7 @@ export async function GET(req: Request) {
         签约人: "",
         合同号: "",
         签约日期: "",
-        合同金额: fmtMoney(Number(shownAmount.toFixed(2))),
+        合同金额: pfAmount(Number(shownAmount.toFixed(2))),
         __kind: "total" as const
       });
 
@@ -182,10 +173,10 @@ export async function GET(req: Request) {
           { label: "合同份数", value: `${totals.contractCount} 份` }
         ],
         summary: [
-          { label: "合同总额", value: fmtMoney(totals.contractAmount), tone: "primary" },
-          { label: "已开票额", value: fmtMoney(totals.invoiceAmount), tone: "warning" },
-          { label: "已回款额", value: fmtMoney(totals.paymentAmount), tone: "success" },
-          { label: "未回款额", value: fmtMoney(totals.unpaidAmount), tone: "danger" }
+          { label: "合同总额", value: pfAmount(totals.contractAmount), tone: "primary" },
+          { label: "已开票额", value: pfAmount(totals.invoiceAmount), tone: "warning" },
+          { label: "已回款额", value: pfAmount(totals.paymentAmount), tone: "success" },
+          { label: "未回款额", value: pfAmount(totals.unpaidAmount), tone: "danger" }
         ],
         sections: [
           {
@@ -212,8 +203,7 @@ export async function GET(req: Request) {
               column === "合同金额" || column === "签约日期" ? "amount" : undefined
           }
         ],
-        note: `口径说明: 排行与明细均按「${dimensionLabel}」维度同口径取数, 各组小计之和 = 总计, 与业绩排行页面及 xlsx 导出一致。`,
-        signature: true
+        note: `口径说明: 排行与明细均按「${dimensionLabel}」维度同口径取数, 各组小计之和 = 总计, 与业绩排行页面及 xlsx 导出一致。`
       };
       return new Response(renderPrintHtml(doc), {
         headers: { "Content-Type": "text/html; charset=utf-8" }

@@ -8,7 +8,13 @@ import { requirePermission, RESOURCE, ACTION } from "@/lib/permissions";
 import { getPayment } from "@/server/services/payment";
 import { prisma } from "@/lib/prisma";
 import { renderPrintHtml, type PrintDoc } from "@/lib/print-html";
-import { formatDateTime } from "@/lib/format";
+import {
+  pfAmount,
+  pfDate,
+  pfDateTime,
+  pfPerson,
+  pfText,
+} from "@/lib/print-format";
 
 export async function GET(
   req: Request,
@@ -35,38 +41,32 @@ export async function GET(
 
       const doc: PrintDoc = {
         title: `回款 - ${p.paymentNo}`,
-        subtitle: `金额 ¥${Number(p.amount).toFixed(2)} · 状态 ${PAYMENT_STATUS_MAP[p.status] ?? p.status}`,
+        subtitle: `金额 ${pfAmount(p.amount)} · 状态 ${PAYMENT_STATUS_MAP[p.status] ?? p.status}`,
         mainRows: [
           { label: "回款号", value: p.paymentNo },
-          { label: "金额", value: Number(p.amount).toFixed(2) },
+          { label: "金额", value: pfAmount(p.amount) },
           { label: "收款方式", value: METHOD_MAP[p.method] ?? p.method },
           {
             label: "到账日",
-            value: formatDateTime(p.receivedAt),
+            value: pfDate(p.receivedAt),
           },
-          { label: "银行流水号", value: p.bankRefNo ?? "—" },
-          { label: "收款行", value: p.bankName ?? "—" },
-          { label: "关联发票号", value: p.invoice?.invoiceNo ?? "—" },
+          { label: "银行流水号", value: pfText(p.bankRefNo) },
+          { label: "收款行", value: pfText(p.bankName) },
+          { label: "关联发票号", value: pfText(p.invoice?.invoiceNo) },
           { label: "状态", value: PAYMENT_STATUS_MAP[p.status] ?? p.status },
           {
             label: "登记人",
-            value: recorder
-              ? `${recorder.name} (${recorder.employeeNo})`
-              : p.recorderUserId,
+            value: recorder ? pfPerson(recorder) : p.recorderUserId,
           },
           {
             label: "对账人",
-            value: reconciler
-              ? `${reconciler.name} (${reconciler.employeeNo})`
-              : "—",
+            value: pfPerson(reconciler),
           },
           {
             label: "对账时间",
-            value: p.reconciledAt
-              ? formatDateTime(p.reconciledAt)
-              : "—",
+            value: pfDateTime(p.reconciledAt),
           },
-          { label: "备注", value: p.remark ?? "—" },
+          { label: "备注", value: pfText(p.remark) },
         ],
       };
       return new Response(renderPrintHtml(doc), {

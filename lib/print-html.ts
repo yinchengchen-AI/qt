@@ -71,8 +71,6 @@ export type PrintDoc = {
   sections?: PrintSection[];
   /** 文档备注/说明,放在主表下方,签名区上方 */
   note?: string;
-  /** 页脚,通常"打印人 / 打印时间" */
-  footer?: PrintRow[];
   /** 是否在底部显示签字占位区(默认 true) */
   signature?: boolean;
   /** 系统名,显示在 header */
@@ -379,46 +377,6 @@ export function renderPrintHtml(doc: PrintDoc): string {
     }
     table.grid tr { page-break-inside: avoid; }
 
-    /* 员工业绩明细 (PDF 5 字段 + 小计(万元)) — 跟原 PDF 模板视觉对齐 */
-    table.grid.signer-detail { font-size: 11.5px; }
-    table.grid.signer-detail th,
-    table.grid.signer-detail td {
-      padding: 6px 8px;
-      border: 1.5px solid #1f2937;
-    }
-    table.grid.signer-detail th {
-      background: #fff;
-      color: #000;
-      font-size: 12px;
-      text-align: center;
-      font-weight: 700;
-    }
-    /* 合同行: 金额右对齐 */
-    table.grid.signer-detail td.amount,
-    table.grid.signer-detail td.subtotal-wan {
-      text-align: right;
-      font-variant-numeric: tabular-nums;
-    }
-    /* 签约人小计行: 浅灰底 + 加粗 */
-    table.grid.signer-detail tr.signer-subtotal {
-      background: #e5e7eb;
-    }
-    table.grid.signer-detail tr.signer-subtotal td {
-      font-weight: 700;
-    }
-    /* 全公司合计行: 深灰底 + 加粗 */
-    table.grid.signer-detail tr.signer-total {
-      background: #d1d5db;
-    }
-    table.grid.signer-detail tr.signer-total td {
-      font-weight: 700;
-      font-size: 12px;
-    }
-    /* 签约人组内逐行交替底色 (浅黄/白) — 模拟原 PDF */
-    table.grid.signer-detail tr.detail-row {
-      background: #fffbe6;
-    }
-
     /* 文档备注 */
     .doc-note {
       margin-top: 14px;
@@ -447,16 +405,6 @@ export function renderPrintHtml(doc: PrintDoc): string {
       height: 36px; border-bottom: 1px solid var(--ink-1);
       margin-top: 4px;
     }
-
-    /* 通用 footer 字段(老 API 兼容) */
-    .legacy-footer {
-      margin-top: 24px; padding-top: 10px;
-      border-top: 1px solid var(--line);
-      color: var(--ink-3); font-size: 11px;
-    }
-    .legacy-footer table { margin-left: auto; }
-    .legacy-footer th { background: transparent; border: 0; color: var(--ink-3); font-weight: 500; }
-    .legacy-footer td { border: 0; }
 
     /* 提示语(不打印) */
     .no-print-hint {
@@ -492,16 +440,6 @@ export function renderPrintHtml(doc: PrintDoc): string {
   ${(doc.sections ?? []).map(renderSection).join("")}
 
   ${doc.note ? `<div class="doc-note"><div class="doc-note-label">备注</div>${esc(doc.note)}</div>` : ""}
-
-  ${
-    doc.footer && doc.footer.length
-      ? `<div class="legacy-footer">
-          <table class="kv">
-            <tbody>${renderKvRows(doc.footer)}</tbody>
-          </table>
-        </div>`
-      : ""
-  }
 
   ${showSig ? renderSignature() : ""}
 

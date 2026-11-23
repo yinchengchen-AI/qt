@@ -12,7 +12,14 @@ import { requirePermission, RESOURCE, ACTION } from "@/lib/permissions";
 import { getInvoice } from "@/server/services/invoice";
 import { prisma } from "@/lib/prisma";
 import { renderPrintHtml, type PrintDoc } from "@/lib/print-html";
-import { formatDate, formatDateTime } from "@/lib/format";
+import {
+  pfAmount,
+  pfDate,
+  pfDateTime,
+  pfPercent,
+  pfPerson,
+  pfText,
+} from "@/lib/print-format";
 
 const TITLE_TYPE_MAP: Record<string, string> = {
   COMPANY: "公司",
@@ -66,25 +73,23 @@ export async function GET(
             label: "发票类型",
             value: INVOICE_TYPE_MAP[inv.invoiceType] ?? inv.invoiceType,
           },
-          { label: "含税金额", value: Number(inv.amount).toFixed(2) },
+          { label: "含税金额", value: pfAmount(inv.amount) },
           {
             label: "税率",
-            value: (Number(inv.taxRate) * 100).toFixed(2) + "%",
+            value: pfPercent(inv.taxRate),
           },
-          { label: "税额", value: Number(inv.taxAmount).toFixed(2) },
+          { label: "税额", value: pfAmount(inv.taxAmount) },
           {
             label: "不含税金额",
-            value: Number(inv.amountExcludingTax).toFixed(2),
+            value: pfAmount(inv.amountExcludingTax),
           },
           {
             label: "申请日",
-            value: formatDate(inv.applyDate),
+            value: pfDate(inv.applyDate),
           },
           {
             label: "实际开票日",
-            value: inv.actualIssueDate
-              ? formatDate(inv.actualIssueDate)
-              : "—",
+            value: pfDate(inv.actualIssueDate),
           },
           {
             label: "状态",
@@ -92,36 +97,33 @@ export async function GET(
           },
           {
             label: "申请人",
-            value: applicant
-              ? `${applicant.name} (${applicant.employeeNo})`
-              : inv.applicantUserId,
+            value: applicant ? pfPerson(applicant) : inv.applicantUserId,
           },
           {
             label: "财务审核人",
-            value: finance ? `${finance.name} (${finance.employeeNo})` : "—",
+            value: pfPerson(finance),
           },
-          { label: "审核意见", value: inv.reviewComment ?? "—" },
+          { label: "审核意见", value: pfText(inv.reviewComment) },
           {
             label: "抬头类型",
             value: TITLE_TYPE_MAP[inv.titleType] ?? inv.titleType,
           },
-          { label: "抬头名称", value: inv.titleName },
-          { label: "税号", value: inv.taxNo ?? "—" },
-          { label: "开户行", value: inv.bankName ?? "—" },
-          { label: "银行账号", value: inv.bankAccount ?? "—" },
-          { label: "地址", value: inv.address ?? "—" },
-          { label: "电话", value: inv.phone ?? "—" },
-          { label: "备注", value: inv.remark ?? "—" },
+          { label: "抬头名称", value: pfText(inv.titleName) },
+          { label: "税号", value: pfText(inv.taxNo) },
+          { label: "开户行", value: pfText(inv.bankName) },
+          { label: "银行账号", value: pfText(inv.bankAccount) },
+          { label: "地址", value: pfText(inv.address) },
+          { label: "电话", value: pfText(inv.phone) },
+          { label: "备注", value: pfText(inv.remark) },
         ],
         sections: [
           {
             title: "回款记录",
-            rows: payments.length
-              ? payments.map((p) => ({
-                  label: p.paymentNo,
-                  value: `¥${Number(p.amount).toFixed(2)} · 到账 ${formatDateTime(p.receivedAt)} · ${PAYMENT_STATUS_MAP[p.status] ?? p.status}`,
-                }))
-              : [{ label: "(无)", value: "" }],
+            rows: payments.map((p) => ({
+              label: p.paymentNo,
+              value: `${pfAmount(p.amount)} · 到账 ${pfDateTime(p.receivedAt)} · ${PAYMENT_STATUS_MAP[p.status] ?? p.status}`,
+            })),
+            emptyText: "(暂无回款记录)",
           },
         ],
       };
