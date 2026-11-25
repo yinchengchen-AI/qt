@@ -8,6 +8,7 @@ import dayjs from "dayjs";
 import { Page } from "@/components/page";
 import { PageHeader } from "@/components/page-header";
 import { StatGrid, type StatItem } from "@/components/stat-grid";
+import { AiReportCard } from "@/components/statistics/ai-report-card";
 import { EmptyState } from "@/components/empty-state";
 import { formatCurrency } from "@/lib/format";
 import { downloadExcel } from "@/lib/excel-client";
@@ -72,6 +73,7 @@ export default function OverviewPage() {
   const o = data?.overview;
   const s = data?.series ?? [];
   const cust = data?.customers;
+  const { from, to } = toDateRangeQuery(range);
 
   const lineData = s.flatMap((x) => [
     { month: x.month, value: x.contractAmount, type: "合同额" },
@@ -104,6 +106,10 @@ export default function OverviewPage() {
       ) : (
         <>
           <StatGrid items={kpis} columns={4} loading={loading && !data} />
+
+          <div style={{ marginTop: 24 }}>
+            <AiReportCard key={`${from ?? ""}:${to ?? ""}`} from={from} to={to} />
+          </div>
 
           <div style={{ marginTop: 24 }}>
             <PageHeader level="section" title="合同/开票/回款趋势" subtitle="按月统计合同额、已开票额、已回款额" />

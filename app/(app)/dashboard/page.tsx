@@ -17,6 +17,7 @@ import { formatDate } from "@/lib/format";
 import { fetchApiData } from "@/lib/fetch-api";
 import { useResponsive } from "@/lib/use-breakpoint";
 import { DashboardAgingMini } from "@/components/dashboard-aging-mini";
+import { AiReportCard } from "@/components/statistics/ai-report-card";
 import type { RangePreset } from "@/lib/date-range";
 import type { DashboardSummary } from "@/lib/types/dashboard";
 
@@ -142,6 +143,8 @@ export default function DashboardPage() {
           </Tooltip>
         )}
       </div>
+
+      <AiReportCard key={range} range={range} />
 
       <DashboardKpis
         overview={data.overview}
