@@ -159,6 +159,10 @@ const REGISTRY: Record<string, MessageBuilder> = {
     if (top.length > 0) {
       lines.push(`业绩排行 Top${top.length}：${top.map((r) => `${r.rank ?? "-"}.${r.name ?? "—"} ¥${r.contractAmount ?? 0}`).join("，")}`);
     }
+    if (typeof p.reportSummary === "string" && p.reportSummary) {
+      const label = p.reportSource === "AI" ? "AI 生成" : "规则摘要";
+      lines.push(`经营解读（${label}）：${p.reportSummary}`);
+    }
     lines.push(
       p.downloadUrl
         ? `明细报表下载：${p.downloadUrl}`

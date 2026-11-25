@@ -144,7 +144,14 @@ vi.mock("@/lib/env", async (importOriginal) => {
 });
 
 import { runWeeklyBusinessReport, buildWeeklyReportXlsx } from "@/server/jobs/weekly-business-report";
+import { generateBusinessReport } from "@/server/services/ai-report-generation";
 import { isoWeekKey } from "@/server/jobs/contract-renewal-remind";
+import { SYSTEM_USER_ID } from "@/lib/system";
+import { localReportFixture } from "@/tests/fixtures/business-report";
+
+vi.mock("@/server/services/ai-report-generation", () => ({
+  generateBusinessReport: vi.fn()
+}));
 
 // 2026-10-19 是周一, 2026-10-20 是周二 (本地时区构造, getDay 与服务器一致)
 const MONDAY = new Date("2026-10-19T09:00:00");
@@ -160,6 +167,13 @@ beforeEach(() => {
   mockState.messages = [];
   mockState.disabledPrefs = [];
   mockState.overviewCalls = 0;
+  vi.mocked(generateBusinessReport).mockClear();
+  vi.mocked(generateBusinessReport).mockResolvedValue({
+    ...localReportFixture,
+    summary: "本周经营解读",
+    source: "AI",
+    model: "deepseek-chat"
+  });
 });
 
 describe("runWeeklyBusinessReport", () => {
@@ -180,6 +194,25 @@ describe("runWeeklyBusinessReport", () => {
     expect(m.content).toContain("请到统计页手动导出");
   });
 
+  it("周报包含 AI 经营解读, 使用系统缓存范围", async () => {
+    await runWeeklyBusinessReport(MONDAY);
+    expect(generateBusinessReport).toHaveBeenCalledWith(expect.objectContaining({
+      range: expect.any(Object),
+      overview: expect.objectContaining({ contractAmount: 1000 }),
+      aging: expect.any(Object)
+    }), { userId: SYSTEM_USER_ID, cacheScope: "SYSTEM:ADMIN", force: false });
+    expect(mockState.messages[0]!.content).toContain("经营解读（AI 生成）：本周经营解读");
+  });
+
+  it("AI 降级时周报明确标记规则摘要", async () => {
+    vi.mocked(generateBusinessReport).mockResolvedValue({
+      ...localReportFixture,
+      notice: "AI 解读暂不可用，当前展示规则摘要"
+    });
+    await runWeeklyBusinessReport(MONDAY);
+    expect(mockState.messages[0]!.content).toContain("经营解读（规则摘要）：规则经营摘要");
+  });
+
   it("同周重跑: 第二次 created=0, 消息数不增 (entityKey 周幂等)", async () => {
     const r1 = await runWeeklyBusinessReport(MONDAY);
     expect(r1.created).toBe(2);
@@ -187,6 +220,7 @@ describe("runWeeklyBusinessReport", () => {
     const r2 = await runWeeklyBusinessReport(MONDAY);
     expect(r2.created).toBe(0);
     expect(mockState.messages.length).toBe(countAfterFirst);
+    expect(generateBusinessReport).toHaveBeenCalledTimes(1);
   });
 
   it("退订用户 (MessagePreference enabled=false) 收不到", async () => {
@@ -208,6 +242,7 @@ describe("runWeeklyBusinessReport", () => {
     const r = await runWeeklyBusinessReport(MONDAY);
     expect(r.created).toBe(0);
     expect(mockState.messages).toHaveLength(0);
+    expect(generateBusinessReport).not.toHaveBeenCalled();
   });
 
   it("非周一跳过: 不查统计, 不发消息; force 可手动补跑", async () => {

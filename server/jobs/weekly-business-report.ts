@@ -20,6 +20,7 @@ import type { SessionUser } from "@/lib/session";
 import type { DateRange } from "@/lib/date-range";
 import { SYSTEM_USER_ID } from "@/lib/system";
 import { emit } from "@/server/events/bus";
+import { generateBusinessReport } from "@/server/services/ai-report-generation";
 import { ensureBucketAndCors, getBucket, getS3Client } from "@/server/storage/minio";
 import {
   getInvoiceAging,
@@ -249,6 +250,19 @@ export async function runWeeklyBusinessReport(
     return { job, created: 0, scanned, durationMs: Date.now() - t0 };
   }
 
+  const report = await generateBusinessReport({
+    range,
+    overview,
+    aging: {
+      buckets: aging.buckets,
+      totalReceivable: aging.summary.totalReceivable,
+      over90Amount: aging.summary.over90Amount,
+      over90Ratio: aging.summary.over90Ratio,
+      dataQualityExcludedAmount: aging.summary.dataQualityExcludedAmount,
+      dataQualityExcludedInvoiceCount: aging.summary.dataQualityExcludedInvoiceCount
+    }
+  }, { userId: SYSTEM_USER_ID, cacheScope: "SYSTEM:ADMIN", force: false });
+
   const topRanking = ranking.slice(0, 5).map((r) => ({
     rank: r.rank,
     name: r.name,
@@ -274,6 +288,8 @@ export async function runWeeklyBusinessReport(
       aging90: aging.buckets["90+"],
       over90Ratio: aging.summary.over90Ratio,
       topRanking,
+      reportSummary: report.summary,
+      reportSource: report.source,
       downloadUrl
     },
     entityKey,
