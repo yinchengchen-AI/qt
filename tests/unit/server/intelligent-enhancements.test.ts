@@ -1,6 +1,6 @@
 // Phase 5 智能增强服务单测
 // 纯函数不触库，验证边界行为与修复后的确定性
-import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
+import { describe, it, expect } from "vitest";
 import {
   computeEnhancedRiskScore,
   industryRiskScore,
@@ -21,8 +21,7 @@ import {
   analyzeWorkPattern,
   type UserBehavior
 } from "@/server/services/personalized-recommendations";
-import { generateLLMReport } from "@/server/services/ai-report-generation";
-import { env } from "@/lib/env";
+
 
 const DAY_MS = 86_400_000;
 // 动态当前时间: identifyTrendPattern 内部 cutoff 以真实 now 为基准,
@@ -238,38 +237,3 @@ describe("personalized-recommendations 个性化推荐", () => {
   });
 });
 
-describe("LLM 增强服务未配置 key 时明确报错", () => {
-  beforeEach(() => {
-    vi.spyOn(env, "DEEPSEEK_API_KEY", "get").mockReturnValue(undefined);
-  });
-
-  afterEach(() => {
-    vi.restoreAllMocks();
-  });
-
-  it("generateLLMReport 未配置 key 抛 503", async () => {
-    await expect(
-      generateLLMReport({
-        contracts: {
-          total: 0,
-          active: 0,
-          completed: 0,
-          totalAmount: 0,
-          avgAmount: 0,
-          topCustomers: [],
-          statusDistribution: {}
-        },
-        invoices: { total: 0, issued: 0, pending: 0, totalAmount: 0, invoiceRate: 0 },
-        payments: {
-          total: 0,
-          confirmed: 0,
-          pending: 0,
-          totalAmount: 0,
-          paymentRate: 0,
-          avgPaymentDays: 0
-        },
-        risks: { highRiskCount: 0, criticalRiskCount: 0, avgRiskScore: 0, topRisks: [] }
-      })
-    ).rejects.toThrow("AI 报表生成未配置");
-  });
-});

@@ -1,3 +1,4 @@
+import type { AnalysisReport } from "@/lib/types/business-report";
 import type { BusinessReportData } from "@/server/services/business-report-data";
 import type { AgingResult } from "@/server/services/statistics";
 
@@ -62,3 +63,14 @@ export const businessReportDataFixture: BusinessReportData = {
 };
 
 export const reportOptions = { userId: "u1", cacheScope: "u1:SALES" };
+
+export const localReportFixture: AnalysisReport = {
+  summary: "规则经营摘要",
+  keyFindings: ["规则发现"],
+  recommendations: ["规则建议"],
+  generatedAt: "2026-11-01T00:00:00.000Z",
+  source: "LOCAL",
+  model: null,
+  cached: false,
+  notice: null
+};
