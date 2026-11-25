@@ -6,14 +6,14 @@
 [![TypeScript](https://img.shields.io/badge/TypeScript-6.0.3-3178c6)](https://www.typescriptlang.org/)
 [![Prisma](https://img.shields.io/badge/Prisma-7.9.1-2d3748)](https://www.prisma.io/)
 [![PostgreSQL](https://img.shields.io/badge/PostgreSQL-16-336791)](https://www.postgresql.org/)
-[![Last Release](https://img.shields.io/badge/release-v0.26.0-blue)](CHANGELOG.md)
+[![Last Release](https://img.shields.io/badge/release-v0.27.0-blue)](CHANGELOG.md)
 [![CI](https://github.com/yinchengchen-AI/qt/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/yinchengchen-AI/qt/actions/workflows/ci.yml)
 
 > **客户 / 合同 / 开票 / 回款** 一体化管理,附件走 MinIO presigned 直传,服务端 Server Actions + RBAC + 行级隔离。
 >
-> **当前版本: v0.26.0**(2026-11-20)。文档地图见 [docs/README.md](docs/README.md),架构与设计见 [docs/architecture/DESIGN-v3.md](docs/architecture/DESIGN-v3.md),用户手册见 [docs/user/USER_MANUAL.md](docs/user/USER_MANUAL.md)。
+> **当前版本: v0.27.0**(2026-11-25)。文档地图见 [docs/README.md](docs/README.md),架构与设计见 [docs/architecture/DESIGN-v3.md](docs/architecture/DESIGN-v3.md),用户手册见 [docs/user/USER_MANUAL.md](docs/user/USER_MANUAL.md)。
 
-<!-- 最近更新于 2026-11-20 — 账龄与 Dashboard 契约清理、回款跟进提醒中性化 -->
+<!-- 最近更新于 2026-11-25 — AI 经营解读、周报复用与权限缓存隔离 -->
 
 ---
 
@@ -172,6 +172,7 @@ if (sumAmt > newAmount + TOL.toNumber()) {
 - **账龄分析** — 按账龄区间统计待回款金额
 - **业绩排行** — 按员工统计业绩,支持 xlsx 导出
 - **Top 排行** — Top 客户 / Top 合同按金额排序
+- **AI 经营解读** — 工作台与统计总览按需生成摘要 / 发现 / 建议,支持行级权限、用户缓存隔离、数字校验与规则降级;经营周报复用同一服务
 
 **代码示例** — 导出 xlsx:
 ```ts
@@ -395,6 +396,10 @@ nginx 反代下上游异常时,由 `public/502.html` 静态页与 `app/502/page.
 ## 最近更新
 
 近期版本(另附更早的重要版本 v0.25.0),完整历史见 [CHANGELOG.md](CHANGELOG.md)。
+
+### v0.27.0(2026-11-25)AI 经营解读
+
+工作台与统计总览新增按需经营解读:复用现有统计口径生成摘要、关键发现与跟进建议,不在页面加载时自动调用模型。新增用户 / 角色缓存隔离、出域字段最小化、AI 输出数字白名单和无 Key / 异常规则降级;经营周报复用同一服务并标记来源。同步修复 npm 类型依赖和并行测试 / E2E 稳定性。无 DB schema 变化。
 
 ### v0.26.0(2026-11-20)账龄与 Dashboard 契约清理
 

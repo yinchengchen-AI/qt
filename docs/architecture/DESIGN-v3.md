@@ -455,6 +455,15 @@ PLANNED ─confirm(finance)─▶ CONFIRMED ─reconcile(finance)─▶ RECONCIL
 - **导出行数兜底**:路由统一调用 `exportMaxRows()`(env `EXPORT_MAX_ROWS`,默认 5000,硬上限 10000)切到 `rows.slice(0, MAX_ROWS)`,防止员工/客户全量导出 OOM。
 - **总览「新增客户」字段**:响应里叫 `customers.newInRange`,在已选时间区间内 `createdAt ∈ [from, to]` 计数;无区间时退化为全量(并非"本月")——文案/字段名一致标注区间语义。
 
+### 8.3 AI 经营解读
+
+- **入口**:`GET /api/statistics/ai-report`,支持 `range=month|quarter|year` 或自定义 `from/to`;页面只在用户点击后请求,`force=1` 跳过缓存重新生成。
+- **数据流**:`SessionUser` → `collectBusinessReportData` → 现有 `getOverview/getInvoiceAging/getTimeSeries` → `callAiChat`。权威指标仍由统计 Service 计算,SALES / EXPERT 行级隔离不变。
+- **出域最小化**:prompt 只含日历区间、聚合业绩、四桶账龄、数据质量隔离值和月度趋势;不包含客户名、员工名、发票号、联系人、证件或银行信息。区间只序列化为日历日,避免当前时分秒导致缓存持续失效。
+- **输出约束**:模型只返回 `summary/keyFindings/recommendations`;Zod 限制结构及长度,数字白名单要求输出数字全部来自授权后的 payload,异常输出、无 Key、超时或上游错误统一回退 `source=LOCAL` 的规则摘要并显示提示。
+- **缓存与用量**:`BUSINESS_REPORT` 使用 24 小时缓存,缓存键加入 `cacheScope=userId:roleCode`;未传 scope 的合同风险缓存键保持兼容。`/admin/ai-usage` 显示「经营解读」及 token、延迟、缓存命中和估算成本。
+- **周报**:同一报告服务在确认 ADMIN / FINANCE 接收人后执行一次,消息标记「AI 生成」或「规则摘要」;无接收人不生成,ISO 周幂等、退订和 xlsx 行为不变。
+
 ---
 
 ## 9. 接口契约

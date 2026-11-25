@@ -2,6 +2,26 @@
 
 本文件记录 qt-biz 每个版本的详细变更。项目快速入口请见 [README.md](README.md)。
 
+## v0.27.0(2026-11-25)AI 经营解读与周报增强
+
+工作台、统计总览和经营周报新增可核验、可降级的经营解读。指标仍由现有统计 Service 计算,AI 只生成摘要、关键发现和跟进建议;页面按需调用,权限与行级隔离不变。**DB schema / migrations: 无变化**。
+
+### 变更
+
+- **feat(statistics)**: 新增 `GET /api/statistics/ai-report` 和共用「经营解读」卡片;支持月 / 季 / 年及自定义区间,页面加载不自动调用模型,切换区间清除旧结果,「重新生成」使用 `force=1`。
+- **feat(ai)**: 用真实 DeepSeek 调用替换原 AI 报表占位实现;结构化输出经 Zod 校验,数字白名单拒绝输入之外的金额、比例和日期。无 Key、超时、上游异常或非法输出时明确回退 `LOCAL` 规则摘要。
+- **feat(security)**: AI 缓存新增 `cacheScope=userId:roleCode`,不同用户不共享经营解读缓存;旧合同风险缓存键保持兼容。prompt 只含聚合指标和日历区间,排除客户名、员工名、发票号及其他明细。
+- **feat(jobs)**: 经营周报复用同一报告服务,消息标记「AI 生成」或「规则摘要」;无接收人不生成,同周幂等、退订和 xlsx 附件行为不变。
+- **chore(deps)**: `@types/node` 22.10.0 → 22.20.6,满足 Vite 8 类型要求并恢复标准 `npm install`;同步 package-lock 与 pnpm-lock。
+- **test**: 合并消息 Service 的重复 mock,隔离临时测试用户与 ADMIN 通知,按发票号定位通知断言;E2E 复用共享登录态、避免 SSE 下等待 `networkidle`,并稳定移动端按钮操作。
+
+### 验证
+
+- `npm run typecheck`、`npm run lint`、`npm run build`: PASS。
+- `npm test`: 136 个文件、1168 个用例全部 PASS。
+- Playwright(`22-ai-business-report`、`21-dashboard`、`03-finance-flow`): chromium / iPad / iPhone 共 39 个用例全部 PASS;覆盖按需请求、区间切换、规则降级、移动端和原财务流程。
+- 真实 DeepSeek 验收: finance 在工作台与统计页生成成功,统计页命中缓存;SALES 使用独立缓存范围。`/admin/ai-usage` 对应 `BUSINESS_REPORT` SUCCESS 记录包含 Token、延迟和估算成本,缓存命中记录 Token 为 0。
+
 ## v0.26.2(2026-11-23)PDF 打印样式统一收尾
 
 5 个 PDF 打印路由(客户/合同/发票/回款/业绩排行)统一走 `lib/print-html.ts` 模板 + `lib/print-format.ts` 的 `pf*` 格式化(可空文本空值渲染 "—"、金额带 ¥ 千分位);本次补齐路由迁移收尾、删除模板历史死代码。**DB schema / migrations: 无变化**。
