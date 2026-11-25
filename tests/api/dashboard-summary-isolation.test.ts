@@ -39,6 +39,7 @@ async function makeUser(roleCode: "ADMIN" | "SALES" | "EXPERT"): Promise<Session
       name: `${TAG}-${roleCode}`,
       email: `${TAG}-${suffix}@example.com`,
       passwordHash: "not-valid",
+      isSystem: true,
       role: { connect: { code: roleCode } }
     },
     select: { id: true, employeeNo: true, name: true, email: true }
