@@ -1,8 +1,7 @@
 // 统一 DeepSeek 调用入口: 结果缓存 + 用量日志
 //
 // 职责:
-//   - 所有走 DeepSeek 的功能统一经 callAiChat() 出站, 不再各自裸 fetch
-//     (现状仅 contract-ai.ts 一个真实调用方; ai-report-generation 的占位函数不接)。
+//   - 所有走 DeepSeek 的功能统一经 callAiChat() 出站, 不再各自裸 fetch。
 //   - 结果缓存: cacheKey = sha256(feature + ":" + model + ":" + 规范化 JSON payload),
 //     命中未过期缓存直接返回 (AiResponseCache.hitCount++), TTL 24h, 过期 lazy 判定;
 //     force=true 跳过读取但仍写新缓存。
@@ -20,7 +19,8 @@ import { getRequestContext } from "@/lib/request-context";
 
 // feature / status 是 String 列 (项目约定不建 PG enum), 应用层 union 约束
 export const AI_FEATURE = {
-  CONTRACT_RISK_ANALYSIS: "CONTRACT_RISK_ANALYSIS"
+  CONTRACT_RISK_ANALYSIS: "CONTRACT_RISK_ANALYSIS",
+  BUSINESS_REPORT: "BUSINESS_REPORT"
 } as const;
 export type AiFeature = (typeof AI_FEATURE)[keyof typeof AI_FEATURE];
 
@@ -52,6 +52,8 @@ export type CallAiChatParams<T> = {
   parse: (content: string) => T;
   /** 跳过缓存读取 (仍写新缓存与日志), 供"重新生成"使用 */
   force?: boolean;
+  /** 用户/角色等缓存隔离范围; 缺省保持旧缓存键格式 */
+  cacheScope?: string;
 };
 
 export type AiChatResult<T> = {
@@ -75,9 +77,10 @@ export function normalizePayload(value: unknown): unknown {
   return value;
 }
 
-export function computeCacheKey(feature: AiFeature, model: string, payload: unknown): string {
+export function computeCacheKey(feature: AiFeature, model: string, payload: unknown, cacheScope?: string): string {
   const canonical = JSON.stringify(normalizePayload(payload));
-  return createHash("sha256").update(`${feature}:${model}:${canonical}`).digest("hex");
+  const scope = cacheScope ? `:${cacheScope}` : "";
+  return createHash("sha256").update(`${feature}:${model}${scope}:${canonical}`).digest("hex");
 }
 
 type ChatCompletion = {
@@ -124,7 +127,7 @@ export async function callAiChat<T>(params: CallAiChatParams<T>): Promise<AiChat
     throw new ApiError(ERROR_CODES.INTERNAL_ERROR, "AI 分析未配置 (DEEPSEEK_API_KEY 未设置)", 503);
   }
   const model = env.DEEPSEEK_MODEL;
-  const cacheKey = computeCacheKey(params.feature, model, params.payload);
+  const cacheKey = computeCacheKey(params.feature, model, params.payload, params.cacheScope);
 
   if (!params.force) {
     try {

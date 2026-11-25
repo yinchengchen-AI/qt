@@ -56,6 +56,7 @@ const EMPTY_SUMMARY: Summary = {
 // feature 列的可读名; 新 feature 接入 ai-client 时同步补一行
 const FEATURE_LABELS: Record<string, string> = {
   CONTRACT_RISK_ANALYSIS: "合同风险分析",
+  BUSINESS_REPORT: "经营解读",
 };
 const FEATURE_OPTIONS = Object.entries(FEATURE_LABELS).map(([value, label]) => ({ value, label }));
 

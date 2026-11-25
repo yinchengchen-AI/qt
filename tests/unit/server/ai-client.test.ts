@@ -113,6 +113,16 @@ describe("computeCacheKey / normalizePayload", () => {
     expect(computeCacheKey(AI_FEATURE.CONTRACT_RISK_ANALYSIS, "m", { a: 2 })).not.toBe(base);
     expect(computeCacheKey(AI_FEATURE.CONTRACT_RISK_ANALYSIS, "m2", { a: 1 })).not.toBe(base);
   });
+
+  it("cacheScope 隔离用户缓存, 缺省保持旧键格式", () => {
+    const payload = { contractAmount: 100 };
+    const legacy = computeCacheKey(AI_FEATURE.CONTRACT_RISK_ANALYSIS, "m", payload);
+    expect(legacy).toMatch(/^[a-f0-9]{64}$/);
+    expect(computeCacheKey(AI_FEATURE.BUSINESS_REPORT, "m", payload, "u1:SALES"))
+      .not.toBe(computeCacheKey(AI_FEATURE.BUSINESS_REPORT, "m", payload, "u2:SALES"));
+    expect(computeCacheKey(AI_FEATURE.BUSINESS_REPORT, "m", payload, "u1:SALES"))
+      .not.toBe(computeCacheKey(AI_FEATURE.BUSINESS_REPORT, "m", payload));
+  });
 });
 
 describe("estimateCostUsd", () => {
