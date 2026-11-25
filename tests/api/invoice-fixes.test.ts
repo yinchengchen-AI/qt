@@ -325,7 +325,7 @@ describe("#11 开票/驳回站内信通知申请人", () => {
     const inv = await mkDraftInvoice(c.id, 50, "NT-1");
     await issueInvoice(inv.id, `${TAG}NT1`);
     const issueMsg = await prisma.message.findFirst({
-      where: { receiverUserId: adminUser.id, type: "INVOICE_ISSUED" },
+      where: { receiverUserId: adminUser.id, type: "INVOICE_ISSUED", title: { contains: digits20(`${TAG}NT1`) } },
       orderBy: { createdAt: "desc" }
     });
     expect(issueMsg).toBeTruthy();
@@ -334,7 +334,7 @@ describe("#11 开票/驳回站内信通知申请人", () => {
     await invoiceAction(buildFinance(), inv2.id, { action: "submit" });
     await invoiceAction(buildFinance(), inv2.id, { action: "reject", reason: "抬头有误" });
     const rejectMsg = await prisma.message.findFirst({
-      where: { receiverUserId: adminUser.id, type: "INVOICE_REJECTED" },
+      where: { receiverUserId: adminUser.id, type: "INVOICE_REJECTED", title: { contains: inv2.invoiceNo } },
       orderBy: { createdAt: "desc" }
     });
     expect(rejectMsg).toBeTruthy();

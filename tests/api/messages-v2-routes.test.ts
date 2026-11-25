@@ -38,7 +38,18 @@ vi.mock("@/server/services/message", async (importOriginal) => {
   return {
     ...mod,
     unreadSummary: async () => ({ total: 7, byCategory: { contract: 3, finance: 2, reconciliation: 1, certificate: 1, system: 0, unknown: 0 } }),
-    batchMutate: async (_u: SessionUser, input: { ids: string[]; action: string }) => ({ affected: input.ids.length })
+    batchMutate: async (_u: SessionUser, input: { ids: string[]; action: string }) => ({ affected: input.ids.length }),
+    listMessages: async (_u: SessionUser, params: Record<string, unknown>) => {
+      listCalls.push(params);
+      return {
+        list: [],
+        total: 0,
+        page: 1,
+        pageSize: 20,
+        nextCursor: null,
+        unreadCount: 0
+      };
+    }
   };
 });
 
@@ -181,27 +192,6 @@ describe("PUT /api/messages/preferences (v0.22.0 lock)", () => {
 // 回归: v0.22.0 的 transform 把 undefined 折叠成 false,导致「全部」tab/drawer 看到的是已读(空)
 // ============================================================
 const listCalls = vi.hoisted(() => [] as Array<Record<string, unknown>>);
-
-vi.mock("@/server/services/message", async (importOriginal) => {
-  const mod = await importOriginal<typeof import("@/server/services/message")>();
-  return {
-    ...mod,
-    // 保留原有 mock,避免覆盖 v0.22.0 lock 里的 unreadSummary / batchMutate
-    unreadSummary: async () => ({ total: 7, byCategory: { contract: 3, finance: 2, reconciliation: 1, certificate: 1, system: 0, unknown: 0 } }),
-    batchMutate: async (_u: SessionUser, input: { ids: string[]; action: string }) => ({ affected: input.ids.length }),
-    listMessages: async (_u: SessionUser, params: Record<string, unknown>) => {
-      listCalls.push(params);
-      return {
-        list: [],
-        total: 0,
-        page: 1,
-        pageSize: 20,
-        nextCursor: null,
-        unreadCount: 0
-      };
-    }
-  };
-});
 
 import { GET as messagesGET } from "@/app/api/messages/route";
 

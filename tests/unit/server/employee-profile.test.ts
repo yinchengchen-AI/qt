@@ -290,7 +290,7 @@ describe("EmployeeProfile 敏感字段清空 + 身份证查重", () => {
 
   async function mkTempUser(): Promise<string> {
     const ts = `${Date.now()}_${Math.floor(Math.random() * 1e6)}`;
-    const role = await prisma.role.findFirst({ where: { code: "ADMIN" } });
+    const role = await prisma.role.findFirst({ where: { code: "SALES" } });
     const u = await prisma.user.create({
       data: {
         employeeNo: `TSDQ_${ts}`,
