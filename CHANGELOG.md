@@ -2,6 +2,16 @@
 
 本文件记录 qt-biz 每个版本的详细变更。项目快速入口请见 [README.md](README.md)。
 
+## v0.27.1(2026-11-25)CI 供应链策略修复
+
+将 `@types/node` 从 22.20.6 调整为 22.20.5。22.20.6 发布于本版推送当天,触发 CI pnpm minimumReleaseAge 检查;22.20.5 仍满足 Vite 8 的 `>=22.12.0` 要求且符合既有供应链策略,**不通过放宽安全检查绕过**。**DB schema / migrations: 无变化**。
+
+### 验证
+
+- `pnpm install --frozen-lockfile`: PASS,无 minimumReleaseAge 例外项。
+- `npm run typecheck`、`npm run lint`: PASS。
+- `npm test`: 136 个文件、1168 个用例全部 PASS。
+
 ## v0.27.0(2026-11-25)AI 经营解读与周报增强
 
 工作台、统计总览和经营周报新增可核验、可降级的经营解读。指标仍由现有统计 Service 计算,AI 只生成摘要、关键发现和跟进建议;页面按需调用,权限与行级隔离不变。**DB schema / migrations: 无变化**。
