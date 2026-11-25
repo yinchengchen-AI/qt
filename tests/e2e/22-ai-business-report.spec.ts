@@ -74,7 +74,8 @@ test("统计页明确展示规则降级", async ({ page }) => {
   await generateButton.evaluate((element) => {
     element.scrollIntoView({ block: "center", behavior: "auto" });
   });
-  await generateButton.click();
+  await generateButton.focus();
+  await generateButton.press("Enter");
   expect((await reportResponse).status()).toBe(200);
   await expect(page.getByText("规则经营摘要", { exact: true })).toBeVisible();
   await expect(page.getByText("规则摘要", { exact: true })).toBeVisible();

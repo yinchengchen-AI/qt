@@ -1,59 +1,56 @@
 // 场景 3：FINANCE 财务开票 + 对账 + 统计
-import { test, expect } from "@playwright/test";
-import { DEV_PASSWORD } from "./_dev-credentials";
+import { test, expect, type Page } from "@playwright/test";
+import { loginCookiesOnce } from "./_auth";
 
-async function ensureLoggedIn(page: import("@playwright/test").Page, employeeNo: string, password: string) {
-  // 如果已在 dashboard 就不用再登录
-  if (page.url().includes("/dashboard")) return;
-  // 如果不是登录页就跳过去
-  if (!page.url().includes("/login")) {
-    await page.goto("/login");
-    await page.waitForLoadState("networkidle");
-  }
-  await page.getByPlaceholder("工号", { exact: true }).fill(employeeNo);
-  await page.getByPlaceholder("密码", { exact: true }).fill(password);
-  await page.getByRole("button", { name: "登 录", exact: true }).click();
-  await page.waitForURL(/dashboard/, { timeout: 10000 });
+test.beforeAll(async ({ browser }) => {
+  await loginCookiesOnce(browser, "finance");
+});
+
+async function ensureLoggedIn(page: Page, employeeNo: string) {
+  const cookies = await loginCookiesOnce(page.context().browser()!, employeeNo);
+  await page.context().addCookies(cookies);
+  await expect.poll(async () => (await page.request.get("/api/auth/me")).status()).toBe(200);
+  if (!page.url().includes("/dashboard")) await page.goto("/dashboard");
 }
 
 test.describe.serial("场景 3: FINANCE 财务全链路", () => {
   test("03.1 FINANCE 登录", async ({ page }) => {
-    await ensureLoggedIn(page, "finance", DEV_PASSWORD);
+    await ensureLoggedIn(page, "finance");
     await expect(page).toHaveURL(/dashboard/);
   });
 
   test("03.2 FINANCE 访问开票管理", async ({ page }) => {
-    await ensureLoggedIn(page, "finance", DEV_PASSWORD);
+    await ensureLoggedIn(page, "finance");
     await page.goto("/invoices");
-    await page.waitForLoadState("networkidle");
+  
     await expect(page.locator(".ant-pro-table").first()).toBeVisible({ timeout: 10000 });
   });
 
   test("03.3 FINANCE 访问回款管理", async ({ page }) => {
-    await ensureLoggedIn(page, "finance", DEV_PASSWORD);
+    await ensureLoggedIn(page, "finance");
     await page.goto("/payments");
-    await page.waitForLoadState("networkidle");
+  
     await expect(page.locator(".ant-pro-table").first()).toBeVisible({ timeout: 10000 });
   });
 
   test("03.4 FINANCE 访问统计总览", async ({ page }) => {
-    await ensureLoggedIn(page, "finance", DEV_PASSWORD);
+    await ensureLoggedIn(page, "finance");
     await page.goto("/statistics/overview");
-    await page.waitForLoadState("networkidle");
+  
     await expect(page.locator(".ant-pro-card").first()).toBeVisible({ timeout: 10000 });
   });
 
   test("03.5 FINANCE 访问账龄分析", async ({ page }) => {
-    await ensureLoggedIn(page, "finance", DEV_PASSWORD);
+    await ensureLoggedIn(page, "finance");
     await page.goto("/statistics/aging");
-    await page.waitForLoadState("networkidle");
+  
     await expect(page.locator(".ant-pro-card").first()).toBeVisible({ timeout: 10000 });
   });
 
   test("03.6 FINANCE 访问员工业绩", async ({ page }) => {
-    await ensureLoggedIn(page, "finance", DEV_PASSWORD);
+    await ensureLoggedIn(page, "finance");
     await page.goto("/statistics/performance");
-    await page.waitForLoadState("networkidle");
+  
     await expect(page.locator(".ant-pro-card").first()).toBeVisible({ timeout: 10000 });
   });
 });
